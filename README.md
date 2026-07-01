@@ -1,15 +1,24 @@
 # PCS-Portable-Comm-Server
 A portable communications server with dedicated routing, integrated cellular internet, GPS disciplined NTP, LAN file sharing, and web monitoring.
 
-What started as an annoyance caused by windows networking has evolved into my first real hardware and software project.
+What started as an annoyance caused by Windows networking has evolved into my first real hardware and software project.
 
 # Premise
-During ARRL Field Day 2026 me and my amateur radio club ran into some networking issues. We had 3 windows laptops running radio contact logging software for the event, and wanted all 3 to use the same log file for accurate tracking of stats.
+During ARRL Field Day 2026 me and my amateur radio club ran into some networking issues. We had 3 Windows laptops running radio contact logging software for the event, and wanted all 3 to use the same log file for accurate tracking of stats.
 
-The problem was...Windows update.
+The problem was... Windows update.
 
-During the Winter Field Day prior, we had used my Dell Latitude 7212 Toughbook for networking. All logging machines connected to my machine via the WiFi hotspot function and it worked well enough. The only problem was windows not allowing me to turn the hotspot on without an internet connection. My toughbook had a DW5821e cellular modem, but the signal was marginal so I had to make sure once the hotspot was on it never turned off.
+During the Winter Field Day prior, we had used my Dell Latitude 7212 Toughbook for networking. All logging machines connected to my machine via the WiFi hotspot function and it worked well enough. The only problem was w
+Windows not allowing me to turn the hotspot on without an internet connection. My toughbook had a DW5821e cellular modem, but the signal was very marginal so I had to make sure once the hotspot was on it never turned off.
 
 Nerve wracking and annoying, but we made it work.
 
 # The Issue That Started This Project
+
+Windows being Windows, this suboptimal but functional solution never worked again.
+
+It was an hour before start time, while everyone was setting up antennas I was configuring the network share. Only trouble was, Windows had other ideas. Devices couldn't connect to my hotspot, once connected my Toughbook never showed they were, they didn't have internet access, and I could never see my Toughbook share over the local network. It was a massive headache that was thankfully solved by a club member who let us use his portable cellular router while we sourced a replacement dedicated club router.
+
+Once we had everything booked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event.
+
+Needless to say
