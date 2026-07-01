@@ -158,6 +158,27 @@ The working RTC config is backed up on the Pi as:
 
     /boot/firmware/config.txt.pcs-rtc-working
 
+## RTC Setup
+
+If the PCS I2C RTC module is installed, run the RTC setup script after installing dependencies.
+
+Command:
+
+    ./scripts/setup-rtc.sh
+
+The script:
+
+- Backs up `/boot/firmware/config.txt`
+- Enables I2C if needed
+- Adds the DS1307-compatible RTC overlay if needed
+- Avoids modifying HDMI/display settings
+
+Reboot after running the script on a fresh install, then verify with:
+
+    ls /dev/rtc*
+    dmesg | grep -i rtc
+    timedatectl
+
 ## Current Tested Status
 
 Confirmed working on the PCS test Pi:
