@@ -1,0 +1,33 @@
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs / temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Python / scripts
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets / credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.crt
+*.csr
+*.ovpn
+wg*.conf
+
+# Local/private config dumps
+local-config/
+private-config/
+secrets/
