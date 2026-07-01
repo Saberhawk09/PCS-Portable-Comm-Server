@@ -14,11 +14,11 @@ This checklist tracks basic validation tests for PCS hardware, networking, and s
 
 ## Network Tests
 
-- [ ] Router creates Wi-Fi network
-- [ ] Router DHCP assigns client IP addresses
+- [X] Router creates Wi-Fi network
+- [X] Router DHCP assigns client IP addresses
 - [ ] Wired client can connect over Ethernet
-- [ ] Wireless client can connect over Wi-Fi
-- [ ] Client devices can communicate on LAN
+- [X] Wireless client can connect over Wi-Fi
+- [X] Client devices can communicate on LAN
 
 ## Server Tests
 
@@ -36,13 +36,15 @@ This checklist tracks basic validation tests for PCS hardware, networking, and s
 - [ ] LTE antennas are connected
 - [ ] Cellular connection comes online
 - [ ] Pi has internet access over cellular
-- [ ] Router receives WAN connection from Pi
-- [ ] Client PC can access internet through PCS
+- [X] Router receives WAN connection from Pi
+- [X] Client PC can access internet through PCS
 
 ## Field Usability Tests
 
 - [ ] All external ports are accessible
 - [ ] Switch positions are clearly labeled
-- [ ] System can be operated without opening enclosure
+- [ git add docs/testing-checklist.md
+git commit -m "Update testing checklist for router WAN handoff"
+git push] System can be operated without opening enclosure
 - [ ] Cooling is adequate under normal load
 - [ ] File share works with expected logging software
