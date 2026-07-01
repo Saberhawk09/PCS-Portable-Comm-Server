@@ -30,4 +30,5 @@ wg*.conf
 # Local/private config dumps
 local-config/
 private-config/
-secrets/
+secrets/notes/system-snapshots/
+notes/system-snapshots/
