@@ -41,10 +41,9 @@ This checklist tracks basic validation tests for PCS hardware, networking, and s
 
 ## Field Usability Tests
 
+- [x] Router WAN handoff recovers automatically after Pi reboot
 - [ ] All external ports are accessible
 - [ ] Switch positions are clearly labeled
-- [ git add docs/testing-checklist.md
-git commit -m "Update testing checklist for router WAN handoff"
-git push] System can be operated without opening enclosure
+- [ ] System can be operated without opening enclosure
 - [ ] Cooling is adequate under normal load
 - [ ] File share works with expected logging software
