@@ -18,6 +18,12 @@ Confirmed working:
 - NTP service active
 - Basic utility packages installed
 - Project repo cloned to ~/Projects/PCS-Portable-Comm-Server
+- Dependency install script tested successfully
+- NetworkManager active
+- ModemManager active
+- Avahi active as pcs-pi.local
+- Chrony active and synced
+- Cockpit working from Windows at port 9090
 
 RTC verification:
 
@@ -38,6 +44,8 @@ Current notes:
 - Working config backed up as /boot/firmware/config.txt.pcs-rtc-working
 - Avoid changing display/HDMI settings unless Raspberry Pi Connect screen sharing breaks again
 - The Pi is currently being used as the PCS test system after backing up the previous GOES receiver SD card image
+- eth0 currently shows unavailable because Ethernet is not connected
+- wlan0 is connected through NetworkManager
 
 Next planned checks:
 
