@@ -27,6 +27,14 @@ Confirmed working:
 - Samba test share setup script tested successfully
 - PCS-Share accessible from Windows
 - Windows client login to Samba share confirmed
+- Router WAN handoff test succeeded
+- Pi shared current Wi-Fi uplink out through Ethernet
+- Windstream test router received internet through Pi Ethernet
+- Windows PC connected to test router Wi-Fi successfully reached internet
+- Windows client received address `192.168.254.64` from Windstream router
+- Windows client gateway was `192.168.254.254`
+- Windows client successfully pinged `8.8.8.8`
+- Windows client successfully resolved and pinged `google.com`
 
 RTC verification:
 
@@ -52,6 +60,10 @@ Current notes:
 - Temporary Samba share path is /srv/pcs-share
 - Samba share name is PCS-Share
 - Final share location may move to removable storage later
+- Router WAN handoff currently uses Pi Wi-Fi as temporary uplink
+- Future final uplink is expected to be the cellular modem
+- Pi Ethernet share profile is `pcs-router-wan-share`
+- Pi Ethernet share address is `10.42.0.1/24`
 
 Next planned checks:
 
