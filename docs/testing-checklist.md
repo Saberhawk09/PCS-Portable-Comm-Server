@@ -22,10 +22,10 @@ This checklist tracks basic validation tests for PCS hardware, networking, and s
 
 ## Server Tests
 
-- [ ] Pi is reachable over network
-- [ ] SMB file share is visible to clients
-- [ ] Client PC can read files from share
-- [ ] Client PC can write files to share
+- [X] Pi is reachable over network
+- [X] SMB file share is visible to clients
+- [X] Client PC can read files from share
+- [X] Client PC can write files to share
 - [ ] GPSD detects GPS source
 - [ ] Chrony uses GPS source for time discipline
 - [ ] Client PC can use PCS as NTP server
