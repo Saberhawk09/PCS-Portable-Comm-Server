@@ -35,7 +35,9 @@ Windows not allowing me to turn the hotspot on without an internet connection. M
 
 Nerve wracking and annoying, but we made it work.
 
-Windows being Windows, this suboptimal but functional solution never worked again.
+However.
+
+With Windows being Windows, this suboptimal but functional solution never worked again.
 
 It was an hour before start time, while everyone was setting up antennas I was configuring the network share. Only trouble was, Windows had other ideas. Devices couldn't connect to my hotspot, once connected my Toughbook never showed they were, they didn't have internet access, and I could never see my Toughbook share over the local network. It was a massive headache that was thankfully solved by a club member who let us use his portable cellular router while we sourced a replacement dedicated club router.
 
