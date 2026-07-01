@@ -4,6 +4,16 @@ A portable communications server built around a Raspberry Pi 4 with dedicated ro
 
 What started as an annoyance caused by Windows networking has evolved into my first real hardware and software project.
 
+## Project Goals
+
+- Reliable LAN routing
+- Cellular Internet connectivity
+- GPS-disciplined NTP
+- Shared logging storage
+- Battery operation
+- Rugged field deployment
+- Easy operation by non-technical users
+
 # WARNING, AI GENERATED CODE
 
 I'm a highschool dropout working at a convenience store, of course I'm using AI to help me code. 
@@ -16,7 +26,9 @@ As usual, when multi-billion dollar companies fail to understand how to code the
 
 During ARRL Field Day 2026 me and my amateur radio club ran into some networking issues. We had 3 Windows laptops running radio contact logging software for the event, and wanted all 3 to use the same log file for accurate tracking of stats.
 
-The problem was... Windows update.
+The problem was simple:
+
+Windows update.
 
 During the Winter Field Day prior, we had used my Dell Latitude 7212 Toughbook for networking. All logging machines connected to my machine via the WiFi hotspot function and it worked well enough. The only problem was w
 Windows not allowing me to turn the hotspot on without an internet connection. My toughbook had a DW5821e cellular modem, but the signal was very marginal so I had to make sure once the hotspot was on it never turned off.
@@ -30,3 +42,5 @@ It was an hour before start time, while everyone was setting up antennas I was c
 Once we had everything hooked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event.
 
 Needless to say I was annoyed. Not just at Windows, but at myself for assuming it would work properly and not planning ahead. Well the lessons from that mistake have evolved into this project.
+
+The goal of this project isn't to replace commercial networking equipment, it's to build a communications appliance specifically tailored to amateur radio Field Day, emergency communications exercises, and other portable operations.
