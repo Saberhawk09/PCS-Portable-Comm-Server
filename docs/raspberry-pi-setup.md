@@ -17,7 +17,7 @@ The Raspberry Pi is responsible for server-side services, while the router handl
 Planned starting point:
 
 - Raspberry Pi 4 8GB
-- Raspberry Pi OS Lite
+- Raspberry Pi OS with desktop, 64-bit
 - Ethernet enabled
 - SSH enabled
 - Static or predictable network configuration
@@ -25,7 +25,7 @@ Planned starting point:
 
 ## Initial Setup Checklist
 
-- [ ] Flash Raspberry Pi OS Lite to SD card
+- [ ] Flash Raspberry Pi OS with desktop, 64-bit to SD card
 - [ ] Enable SSH
 - [ ] Set hostname
 - [ ] Update system packages
