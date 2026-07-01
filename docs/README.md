@@ -6,3 +6,8 @@
 - [Network Design](network-design.md)
 - [Raspberry Pi Setup](raspberry-pi-setup.md)
 - [Testing Checklist](testing-checklist.md)
+
+## Hardware Notes
+
+- [Wiring Notes](../hardware/wiring-notes.md)
+- [Enclosure Notes](../hardware/enclosure-notes.md)
