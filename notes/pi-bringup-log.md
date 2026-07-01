@@ -39,6 +39,12 @@ Confirmed working:
 - Windows PC behind Windstream test router could ping `10.42.0.1`
 - Windows PC behind Windstream test router could access Samba at `\\10.42.0.1\PCS-Share`
 - Windows PC behind Windstream test router could access Cockpit at `https://10.42.0.1:9090`
+- Router WAN handoff survives reboot
+- `pcs-router-wan-share` automatically reconnects after reboot when Ethernet link is present
+- Windows client behind Windstream test router regained internet about 30 seconds after Pi reboot
+- Post-reboot Windows client successfully pinged `8.8.8.8`
+- Post-reboot Windows client successfully resolved and pinged `google.com`
+- Post-reboot Windows client successfully pinged Pi at `10.42.0.1`
 
 RTC verification:
 
@@ -71,6 +77,9 @@ Current notes:
 - `pcs-pi.local` does not currently resolve from behind the test router
 - This is expected because `.local` / mDNS usually does not cross router WAN/LAN boundaries
 - Official test access path from router clients is currently by IP address: `10.42.0.1`
+- Router WAN handoff autostart is handled by NetworkManager connection autoconnect
+- Current tested router handoff path is Pi Wi-Fi uplink to Pi Ethernet shared output
+- Final PCS uplink is expected to change from Wi-Fi to cellular modem later
 
 Next planned checks:
 
