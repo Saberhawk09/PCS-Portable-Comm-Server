@@ -24,6 +24,9 @@ Confirmed working:
 - Avahi active as pcs-pi.local
 - Chrony active and synced
 - Cockpit working from Windows at port 9090
+- Samba test share setup script tested successfully
+- PCS-Share accessible from Windows
+- Windows client login to Samba share confirmed
 
 RTC verification:
 
@@ -46,6 +49,9 @@ Current notes:
 - The Pi is currently being used as the PCS test system after backing up the previous GOES receiver SD card image
 - eth0 currently shows unavailable because Ethernet is not connected
 - wlan0 is connected through NetworkManager
+- Temporary Samba share path is /srv/pcs-share
+- Samba share name is PCS-Share
+- Final share location may move to removable storage later
 
 Next planned checks:
 
