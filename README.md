@@ -19,6 +19,6 @@ Windows being Windows, this suboptimal but functional solution never worked agai
 
 It was an hour before start time, while everyone was setting up antennas I was configuring the network share. Only trouble was, Windows had other ideas. Devices couldn't connect to my hotspot, once connected my Toughbook never showed they were, they didn't have internet access, and I could never see my Toughbook share over the local network. It was a massive headache that was thankfully solved by a club member who let us use his portable cellular router while we sourced a replacement dedicated club router.
 
-Once we had everything booked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event.
+Once we had everything hooked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event.
 
 Needless to say
