@@ -6,13 +6,13 @@ What started as an annoyance caused by Windows networking has evolved into my fi
 
 ## Project Goals
 
-- Reliable LAN routing
-- Cellular Internet connectivity
-- GPS-disciplined NTP
-- Shared logging storage
-- Battery operation
-- Rugged field deployment
-- Easy operation by non-technical users
+- Reliable LAN Routing
+- Cellular Internet Connectivity For Connected Clients
+- GPS-disciplined NTP Server
+- LAN File Share
+- Rugged Field Deployment
+- Emergency/Grid Power Capable
+- Easy Operation by Non-technical Users
 
 # WARNING, AI GENERATED CODE
 
