@@ -2,7 +2,7 @@
 
 A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS disciplined NTP, LAN file sharing, and web monitoring.
 
-What started as an annoyance caused by Windows networking has evolved into my first real hardware and software project.
+What started as an annoyance caused by Windows networking has evolved into my first end-to-end hardware and software project.
 
 ## Project Goals
 
