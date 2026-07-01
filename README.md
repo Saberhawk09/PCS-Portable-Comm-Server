@@ -6,13 +6,13 @@ What started as an annoyance caused by Windows networking has evolved into my fi
 
 # WARNING, AI GENERATED CODE
 
-I'm a highschool dropout working at a convenience store, of course I'm using AI to help me code. With that said, all code will be reviewed by me (not just hey it works, let's keep going) and all ideas / designs will be 100% human generated.
+I'm a highschool dropout working at a convenience store, of course I'm using AI to help me code. 
 
-# Premise
-
-As usual, when multi-billion dollar companies fail to understand how to code their software properly, open source comes to the rescue yet again.
+With that said, all code will be reviewed by me (not just hey it works, let's keep going) and all ideas / designs will be 100% human generated.
 
 # The Issue That Started This Project
+
+As usual, when multi-billion dollar companies fail to understand how to code their software properly, open source comes to the rescue yet again.
 
 During ARRL Field Day 2026 me and my amateur radio club ran into some networking issues. We had 3 Windows laptops running radio contact logging software for the event, and wanted all 3 to use the same log file for accurate tracking of stats.
 
