@@ -35,6 +35,10 @@ Confirmed working:
 - Windows client gateway was `192.168.254.254`
 - Windows client successfully pinged `8.8.8.8`
 - Windows client successfully resolved and pinged `google.com`
+- Router client access to Pi-hosted services confirmed
+- Windows PC behind Windstream test router could ping `10.42.0.1`
+- Windows PC behind Windstream test router could access Samba at `\\10.42.0.1\PCS-Share`
+- Windows PC behind Windstream test router could access Cockpit at `https://10.42.0.1:9090`
 
 RTC verification:
 
@@ -64,6 +68,9 @@ Current notes:
 - Future final uplink is expected to be the cellular modem
 - Pi Ethernet share profile is `pcs-router-wan-share`
 - Pi Ethernet share address is `10.42.0.1/24`
+- `pcs-pi.local` does not currently resolve from behind the test router
+- This is expected because `.local` / mDNS usually does not cross router WAN/LAN boundaries
+- Official test access path from router clients is currently by IP address: `10.42.0.1`
 
 Next planned checks:
 

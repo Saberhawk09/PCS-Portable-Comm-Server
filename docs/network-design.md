@@ -61,3 +61,20 @@ Expected result:
 - Router clients should be able to reach the internet through the Pi's current uplink
 
 This test does not require the WWAN modem. It only validates the Ethernet handoff side of the design.
+
+## Client Access To Pi Services Through Router
+
+During router WAN handoff testing, clients behind the test router were able to access Pi-hosted services using the Pi's router-facing Ethernet address.
+
+Confirmed working from a Windows client behind the Windstream test router:
+
+- Ping to `10.42.0.1`
+- Samba access at `\\10.42.0.1\PCS-Share`
+- Cockpit access at `https://10.42.0.1:9090`
+
+The hostname `pcs-pi.local` did not resolve from behind the router. This is expected because `.local` / mDNS normally only works within the same local broadcast domain and usually does not cross a router WAN/LAN boundary.
+
+For field use, the reliable access addresses are currently:
+
+- File share: `\\10.42.0.1\PCS-Share`
+- Cockpit: `https://10.42.0.1:9090`
