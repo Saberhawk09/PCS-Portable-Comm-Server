@@ -78,3 +78,7 @@ For field use, the reliable access addresses are currently:
 
 - File share: `\\10.42.0.1\PCS-Share`
 - Cockpit: `https://10.42.0.1:9090`
+
+During home testing, the Pi was reachable from the test-router client network at both `10.42.0.1` and the Pi's home Wi-Fi address `192.168.50.236`.
+
+For field use, documentation should prefer `10.42.0.1` because it is controlled by the PCS Ethernet handoff profile. The `192.168.50.236` address is only valid on the current home Wi-Fi network.

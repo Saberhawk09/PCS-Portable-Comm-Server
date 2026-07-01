@@ -45,6 +45,9 @@ Confirmed working:
 - Post-reboot Windows client successfully pinged `8.8.8.8`
 - Post-reboot Windows client successfully resolved and pinged `google.com`
 - Post-reboot Windows client successfully pinged Pi at `10.42.0.1`
+- Windows PC was also able to reach the Pi using its home Wi-Fi address `192.168.50.236`
+- Internet traffic path is confirmed as: Windows PC → test router Wi-Fi → test router WAN → Pi Ethernet → Pi Wi-Fi → home router → internet
+- For portable PCS field use, the preferred stable client access address remains `10.42.0.1`, because `192.168.50.236` is specific to the current home network
 
 RTC verification:
 
