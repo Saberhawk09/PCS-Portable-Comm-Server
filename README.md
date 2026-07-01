@@ -20,7 +20,7 @@ I'm a highschool dropout working at a convenience store, of course I'm using AI 
 
 With that said, all code will be reviewed by me (not just hey it works, let's keep going) and all ideas / designs will be 100% human generated.
 
-# The Issue That Started This Project
+## The Issue That Started This Project
 
 As usual, when multi-billion dollar companies fail to understand how to code their software properly, open source comes to the rescue yet again.
 
@@ -43,4 +43,4 @@ Once we had everything hooked up via Ethernet, all the file sharing worked and w
 
 Needless to say I was annoyed. Not just at Windows, but at myself for assuming it would work properly and not planning ahead. Well the lessons from that mistake have evolved into this project.
 
-The goal of this project isn't to replace commercial networking equipment, it's to build a communications appliance specifically tailored to amateur radio Field Day, emergency communications exercises, and other portable operations.
+The goal of this project isn't to replace commercial networking equipment, it's to build a communications appliance specifically tailored to emergency communications exercises and other portable operations.
