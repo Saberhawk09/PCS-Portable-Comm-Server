@@ -6,6 +6,7 @@
 - [Network Design](network-design.md)
 - [Raspberry Pi Setup](raspberry-pi-setup.md)
 - [Testing Checklist](testing-checklist.md)
+- [Samba File Share](samba-file-share.md)
 
 ## Hardware Notes
 
