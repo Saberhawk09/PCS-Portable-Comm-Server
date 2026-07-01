@@ -30,6 +30,7 @@ This GitHub will also use a mix of my own writing and AI generated text. All tex
 - [Network Design](docs/network-design.md)
 - [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
 - [Testing Checklist](docs/testing-checklist.md)
+- [Samba File Share](docs/samba-file-share.md)
 
 ## Hardware Notes
 
