@@ -34,6 +34,15 @@ Planned starting point:
 - [ ] Confirm external storage is detected
 - [ ] Confirm GPS / GNSS function is visible
 
+## Dependency Installation
+
+After installing Raspberry Pi OS with desktop, 64-bit, clone this repository and run the dependency installer.
+
+```bash
+git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
+cd PCS-Portable-Comm-Server
+./scripts/install-dependencies.sh
+
 ## Planned Services
 
 | Service | Purpose | Status |
