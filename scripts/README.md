@@ -72,6 +72,46 @@ Or use the Pi IP address:
 
 This is a temporary proof-of-concept share. The final PCS file share may use removable storage.
 
+## setup-router-wan-share.sh
+
+Creates a NetworkManager shared Ethernet profile for testing router WAN handoff.
+
+Run from the repository root:
+
+    ./scripts/setup-router-wan-share.sh
+
+Default profile details:
+
+- Profile name: `pcs-router-wan-share`
+- Interface: `eth0`
+- Pi Ethernet address: `10.42.0.1/24`
+- IPv4 mode: shared
+- IPv6 mode: ignored
+
+This allows the Pi to share its current uplink out through Ethernet.
+
+Temporary test layout:
+
+    Internet over Pi Wi-Fi → Pi eth0 → Router WAN → Router clients
+
+Future PCS layout:
+
+    Cellular modem → Pi → Pi eth0 → Router WAN → Router clients
+
+To activate the profile after connecting the router WAN port to the Pi Ethernet port:
+
+    sudo nmcli connection up pcs-router-wan-share
+
+To disable it:
+
+    sudo nmcli connection down pcs-router-wan-share
+
+To delete the profile:
+
+    sudo nmcli connection delete pcs-router-wan-share
+
+This script does not configure the WWAN modem. It only prepares the Ethernet handoff side.
+
 ## pcs-status.sh
 
 Prints a PCS system status report.
