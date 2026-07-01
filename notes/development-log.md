@@ -21,7 +21,7 @@ This file tracks major project decisions, build progress, and testing notes for 
 
 The GitHub repository has been created and initial documentation is being organized.
 
-The PCS design goal is still a portable field networking/server system with routing, cellular internet, LAN file sharing, GPS-disciplined NTP, and grid/emergency power support. :contentReference[oaicite:0]{index=0}
+The PCS design goal is still a portable field networking/server system with routing, cellular internet, LAN file sharing, GPS-disciplined NTP, and grid/emergency power support.
 
 The following hardware is currently on hand:
 
