@@ -20,6 +20,20 @@ I'm a highschool dropout working at a convenience store, of course I'm using AI 
 
 With that said, all code will be reviewed by me (not just hey it works, let's keep going) and all ideas / designs will be 100% human generated.
 
+## Documentation
+
+- [Project Overview](docs/project-overview.md)
+- [Bill of Materials](docs/bill-of-materials.md)
+- [Power System](docs/power-system.md)
+- [Network Design](docs/network-design.md)
+- [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
+- [Testing Checklist](docs/testing-checklist.md)
+
+## Hardware Notes
+
+- [Wiring Notes](hardware/wiring-notes.md)
+- [Enclosure Notes](hardware/enclosure-notes.md)
+
 ## The Issue That Started This Project
 
 As usual, when multi-billion dollar companies fail to understand how to code their software properly, open source comes to the rescue yet again.
