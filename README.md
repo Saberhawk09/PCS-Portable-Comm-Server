@@ -54,11 +54,21 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-After setup, reboot and validate:
+The setup script installs the PCS software baseline, configures the Pi client network, sets up Samba, Chrony, RTC support, Cockpit, the PCS Control Panel, and the dashboard redirect.
+
+## After Setup
+
+After setup completes, reboot:
 
 ```bash
 sudo reboot
+```
+
+After the Pi comes back up:
+
+```bash
 cd /home/pi/Projects/PCS-Portable-Comm-Server
+git status
 ./scripts/pcs-self-test.sh
 ./scripts/pcs-status.sh
 ```
@@ -66,8 +76,73 @@ cd /home/pi/Projects/PCS-Portable-Comm-Server
 Expected result:
 
 ```text
+nothing to commit, working tree clean
 PCS Pi-side self-test PASSED.
 ```
+
+The self-test should show:
+
+```text
+Fail: 0
+Warn: 0
+```
+
+## Expected Hardware / Network State
+
+Current pre-WWAN test layout:
+
+```text
+Client devices
+    ↓ Wi-Fi / LAN
+Access point / switch
+    ↓ LAN port
+Raspberry Pi eth0 - 10.42.0.1/24
+    ↓
+Raspberry Pi uplink - wlan0 now, cellular later
+    ↓
+Internet
+```
+
+Expected access point settings:
+
+```text
+AP/router DHCP: disabled
+AP/router LAN IP: 10.42.0.2
+Pi eth0: 10.42.0.1
+Cable: Pi eth0 → AP/router LAN port
+```
+
+The access point may claim it has no internet access. That is okay if connected clients route through the Pi successfully.
+
+## Windows Client Testing
+
+From a Windows client connected to the PCS access point, run:
+
+```cmd
+ipconfig
+```
+
+Expected:
+
+```text
+IPv4 Address:      10.42.0.x
+Subnet Mask:       255.255.255.0
+Default Gateway:   10.42.0.1
+```
+
+Then test network access:
+
+```cmd
+ping 10.42.0.1
+ping 8.8.8.8
+ping google.com
+```
+
+Expected:
+
+- `10.42.0.1` replies from the Pi
+- `8.8.8.8` confirms internet routing
+- `google.com` confirms DNS
 
 ## Quick Client Access
 
@@ -86,6 +161,13 @@ Windows NTP test:
 
 ```cmd
 w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
+```
+
+Windows File Explorer tests:
+
+```text
+\\10.42.0.1\PCS-Share
+\\10.42.0.1\PCS-Backup
 ```
 
 ## Important Scripts
