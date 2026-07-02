@@ -1236,7 +1236,145 @@ PY
 require_root
 ensure_repo
 
+cellular_safe_status() {
+    local modem_list
+    local modem_num
+
+    echo "=== PCS Cellular Status ==="
+    echo
+
+    echo "--- ModemManager modem list ---"
+    modem_list="$(mmcli -L 2>/dev/null || true)"
+    if [[ -n "${modem_list}" ]]; then
+        echo "${modem_list}"
+    else
+        echo "No modems were found"
+    fi
+
+    modem_num="$(echo "${modem_list}" | sed -n 's#.*Modem/\([0-9]\+\).*#\1#p' | head -n 1)"
+
+    if [[ -n "${modem_num}" ]]; then
+        echo
+        echo "--- Safe modem summary ---"
+        mmcli -m "${modem_num}" 2>/dev/null \
+            | grep -Ei "manufacturer:|model:|firmware revision:|h/w revision:|state:|power state:|access tech:|signal quality:|operator name:|registration:|packet service state:|ports:" \
+            | sed -E \
+                -e 's/(equipment id: ).*/\1[REDACTED]/I' \
+                -e 's/(imei: ).*/\1[REDACTED]/I' \
+                -e 's/(own numbers?: ).*/\1[REDACTED]/I' \
+                -e 's/(own: ).*/\1[REDACTED]/I' \
+                -e 's/(subscriber id: ).*/\1[REDACTED]/I' \
+                -e 's/(sim iccid: ).*/\1[REDACTED]/I' \
+            || true
+    fi
+
+    echo
+    echo "--- NetworkManager devices ---"
+    nmcli device status || true
+
+    echo
+    echo "--- Cellular profile ---"
+    if nmcli -t -f NAME connection show | grep -qx "pcs-cellular-tmobile"; then
+        nmcli connection show "pcs-cellular-tmobile" \
+            | grep -E "connection.id|connection.autoconnect|gsm.apn|ipv4.method|ipv6.method|ipv4.route-metric|ipv6.route-metric" \
+            || true
+    else
+        echo "pcs-cellular-tmobile profile does not exist yet"
+    fi
+
+    echo
+    echo "--- WWAN address state ---"
+    if ip -br addr show wwan0 >/dev/null 2>&1; then
+        if ip -br addr show wwan0 | awk 'NF > 2 { found=1 } END { exit found ? 0 : 1 }'; then
+            echo "wwan0: IP assigned"
+        else
+            echo "wwan0: no IP assigned"
+        fi
+    else
+        echo "wwan0: not present"
+    fi
+
+    echo
+    echo "--- Default route interfaces ---"
+    ip route show default 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i=="dev") print "default via " $(i+1)}' || true
+
+    echo
+    echo "=== Cellular status complete ==="
+}
+
+cellular_ensure_profile() {
+    local cell_con="pcs-cellular-tmobile"
+    local cell_apn="fast.t-mobile.com"
+
+    if nmcli -t -f NAME connection show | grep -qx "${cell_con}"; then
+        echo "Connection ${cell_con} already exists. Updating it."
+    else
+        echo "Creating connection ${cell_con}."
+        nmcli connection add type gsm ifname "*" con-name "${cell_con}" apn "${cell_apn}"
+    fi
+
+    nmcli connection modify "${cell_con}" \
+        gsm.apn "${cell_apn}" \
+        connection.autoconnect no \
+        ipv4.method auto \
+        ipv6.method auto \
+        ipv4.route-metric 900 \
+        ipv6.route-metric 900
+}
+
+cellular_connect() {
+    local cell_con="pcs-cellular-tmobile"
+
+    echo "=== PCS Cellular Connect ==="
+    echo
+    cellular_ensure_profile
+
+    echo
+    echo "--- Bringing cellular connection up ---"
+    nmcli connection up "${cell_con}"
+
+    echo
+    echo "--- Waiting 10 seconds ---"
+    sleep 10
+
+    echo
+    echo "--- Cellular ping test through wwan0 ---"
+    ping -I wwan0 -c 3 -W 4 8.8.8.8 || true
+
+    echo
+    cellular_safe_status
+}
+
+cellular_disconnect() {
+    local cell_con="pcs-cellular-tmobile"
+
+    echo "=== PCS Cellular Disconnect ==="
+    echo
+
+    if nmcli -t -f NAME connection show | grep -qx "${cell_con}"; then
+        nmcli connection down "${cell_con}" || true
+    else
+        echo "Connection ${cell_con} does not exist."
+    fi
+
+    echo
+    cellular_safe_status
+}
+
+
 case "${ACTION}" in
+    cellular-status)
+        cellular_safe_status
+        ;;
+
+    cellular-connect)
+        cellular_connect
+        ;;
+
+    cellular-disconnect)
+        cellular_disconnect
+        ;;
+
     dashboard-json)
         dashboard_json
         ;;
