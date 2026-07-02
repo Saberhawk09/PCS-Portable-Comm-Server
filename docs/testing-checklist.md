@@ -28,7 +28,7 @@ This checklist tracks basic validation tests for PCS hardware, networking, and s
 - [X] Client PC can write files to share
 - [ ] GPSD detects GPS source
 - [ ] Chrony uses GPS source for time discipline
-- [ ] Client PC can use PCS as NTP server
+- [X] Client PC can use PCS as NTP server
 
 ## Cellular Tests
 
