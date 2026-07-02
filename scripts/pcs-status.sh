@@ -125,15 +125,91 @@ else
     echo "i2c-tools not installed"
 fi
 echo
+echo "--- WWAN / Cellular ---"
 
-echo "--- ModemManager ---"
-if command -v mmcli >/dev/null 2>&1; then
-    mmcli -L || true
+if systemctl is-active --quiet ModemManager; then
+    echo "ModemManager: active"
 else
-    echo "mmcli not installed"
+    echo "ModemManager: inactive"
 fi
-echo
 
+if systemctl is-enabled --quiet ModemManager 2>/dev/null; then
+    echo "ModemManager enabled: yes"
+else
+    echo "ModemManager enabled: no"
+fi
+
+if command -v mmcli >/dev/null 2>&1; then
+    MODEM_LIST="$(mmcli -L 2>&1 || true)"
+
+    echo
+    echo "[ModemManager list]"
+    echo "${MODEM_LIST}"
+
+    if echo "${MODEM_LIST}" | grep -q "/Modem/"; then
+        MODEM_NUM="$(echo "${MODEM_LIST}" | sed -n 's#.*Modem/\([0-9]\+\).*#\1#p' | head -n 1)"
+
+        if [[ -n "${MODEM_NUM}" ]]; then
+            echo
+            echo "[Safe modem summary]"
+            mmcli -m "${MODEM_NUM}" 2>/dev/null \
+                | grep -Ei "manufacturer:|model:|firmware revision:|h/w revision:|state:|power state:|access tech:|signal quality:|operator name:|registration:|packet service state:|ports:" \
+                | sed -E \
+                    -e 's/(equipment id: ).*/\1[REDACTED]/I' \
+                    -e 's/(imei: ).*/\1[REDACTED]/I' \
+                    -e 's/(own numbers?: ).*/\1[REDACTED]/I' \
+                    -e 's/(own: ).*/\1[REDACTED]/I' \
+                    -e 's/(subscriber id: ).*/\1[REDACTED]/I' \
+                    -e 's/(sim iccid: ).*/\1[REDACTED]/I' \
+                || true
+        fi
+    fi
+else
+    echo "mmcli: missing"
+fi
+
+echo
+echo "[NetworkManager GSM device]"
+if nmcli device status 2>/dev/null | awk '$2 == "gsm" { found=1 } END { exit found ? 0 : 1 }'; then
+    nmcli device status | awk '$2 == "gsm" { print }'
+else
+    echo "No GSM/WWAN device shown by NetworkManager"
+fi
+
+echo
+echo "[Cellular profile]"
+if nmcli -t -f NAME connection show 2>/dev/null | grep -qx "pcs-cellular-tmobile"; then
+    nmcli connection show "pcs-cellular-tmobile" \
+        | grep -E "connection.id|connection.autoconnect|gsm.apn|ipv4.method|ipv6.method|ipv4.route-metric|ipv6.route-metric" \
+        || true
+else
+    echo "pcs-cellular-tmobile profile does not exist"
+fi
+
+echo
+echo "[WWAN interfaces]"
+if [[ -e /dev/cdc-wdm0 ]]; then
+    echo "/dev/cdc-wdm0: present"
+else
+    echo "/dev/cdc-wdm0: missing"
+fi
+
+if ip link show wwan0 >/dev/null 2>&1; then
+    echo "wwan0: present"
+    ip -br addr show wwan0 || true
+else
+    echo "wwan0: missing"
+fi
+
+echo
+echo "[Cellular route preference]"
+if ip route show default 2>/dev/null | grep -q "dev wwan0"; then
+    ip route show default | grep "dev wwan0" || true
+else
+    echo "No default route through wwan0 currently active"
+fi
+
+echo
 echo "--- Samba Shares ---"
 if command -v testparm >/dev/null 2>&1; then
     testparm -s 2>/dev/null | grep -E "^\[.*\]" || echo "No Samba shares found by testparm"
@@ -179,6 +255,22 @@ else
     echo "rpi-connect command not found"
 fi
 echo
+
+WWAN_SUMMARY="unknown"
+if systemctl is-active --quiet ModemManager; then
+    MODEM_LIST_SUMMARY="$(mmcli -L 2>/dev/null || true)"
+    if echo "${MODEM_LIST_SUMMARY}" | grep -q "/Modem/"; then
+        if nmcli device status 2>/dev/null | awk '$2 == "gsm" && $3 == "connected" { found=1 } END { exit found ? 0 : 1 }'; then
+            WWAN_SUMMARY="modem detected, cellular connected"
+        else
+            WWAN_SUMMARY="modem detected, cellular disconnected/manual"
+        fi
+    else
+        WWAN_SUMMARY="ModemManager active, no modem detected"
+    fi
+else
+    WWAN_SUMMARY="ModemManager inactive"
+fi
 
 echo "=== PCS Quick Summary ==="
 echo
@@ -298,7 +390,8 @@ echo "Last backup sync:         ${BACKUP_SYNC_STATUS}"
 echo "Cockpit:                  ${COCKPIT_STATUS}"
 echo "PCS Control Panel:        ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
 echo "Dashboard Redirect:       ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
-echo "WWAN modem:               ${MODEM_STATUS}"
+printf "%-27s %s
+" "WWAN modem:" "${WWAN_SUMMARY}"
 echo "GPSD:                     ${GPSD_STATUS}"
 echo
 
