@@ -41,7 +41,6 @@ This GitHub will also use a mix of my own writing and AI generated text. All tex
 
 After installing Raspberry Pi OS with desktop, 64-bit, clone this repository and run the PCS base setup script.
 
-```bash
 git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
 cd PCS-Portable-Comm-Server
 ./scripts/setup-pcs-base.sh
