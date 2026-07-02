@@ -210,6 +210,81 @@ else
 fi
 
 echo
+echo "--- GPS / GNSS ---"
+
+echo "[EM7455 GPS NMEA starter]"
+if systemctl is-enabled --quiet pcs-em7455-gps-nmea.service 2>/dev/null; then
+    echo "pcs-em7455-gps-nmea.service enabled: yes"
+else
+    echo "pcs-em7455-gps-nmea.service enabled: no"
+fi
+
+if systemctl is-active --quiet pcs-em7455-gps-nmea.service 2>/dev/null; then
+    echo "pcs-em7455-gps-nmea.service state: active/exited"
+else
+    echo "pcs-em7455-gps-nmea.service state: inactive or missing"
+fi
+
+systemctl status pcs-em7455-gps-nmea.service --no-pager -l 2>/dev/null \
+    | grep -E "Active:|NMEA output detected|GPS NMEA starter complete|Sent GPS_START|ModemManager modem detected" \
+    || true
+
+echo
+echo "[NMEA serial port]"
+if [[ -e /dev/ttyUSB1 ]]; then
+    echo "/dev/ttyUSB1: present"
+else
+    echo "/dev/ttyUSB1: missing"
+fi
+
+echo
+echo "[gpsd]"
+if systemctl is-active --quiet gpsd.service 2>/dev/null; then
+    echo "gpsd.service: active"
+else
+    echo "gpsd.service: inactive"
+fi
+
+if systemctl is-enabled --quiet gpsd.service 2>/dev/null; then
+    echo "gpsd.service enabled: yes"
+else
+    echo "gpsd.service enabled: no"
+fi
+
+systemctl status gpsd.service --no-pager -l 2>/dev/null \
+    | grep -E "Active:|/usr/sbin/gpsd" \
+    || true
+
+echo
+echo "[gpsd NMEA quick check]"
+if command -v gpspipe >/dev/null 2>&1; then
+    if timeout 10 gpspipe -r 2>/dev/null | grep -qm1 '^\$G'; then
+        echo "gpsd NMEA: present / location hidden"
+    else
+        echo "gpsd NMEA: not seen during quick check"
+    fi
+else
+    echo "gpspipe: missing"
+fi
+
+echo
+echo "[Chrony GPS source]"
+CHRONY_GPS_SOURCE="$(chronyc sources -v 2>/dev/null | awk '$2 == "GPS" { print }' || true)"
+
+if [[ -n "${CHRONY_GPS_SOURCE}" ]]; then
+    echo "${CHRONY_GPS_SOURCE}"
+    CHRONY_GPS_REACH="$(echo "${CHRONY_GPS_SOURCE}" | awk '{ print $5 }' | head -n 1)"
+
+    if [[ "${CHRONY_GPS_REACH}" =~ ^[0-9]+$ ]] && [[ "${CHRONY_GPS_REACH}" -gt 0 ]]; then
+        echo "Chrony GPS reach: ${CHRONY_GPS_REACH}"
+    else
+        echo "Chrony GPS reach: zero or unknown"
+    fi
+else
+    echo "Chrony GPS source: not shown"
+fi
+
+echo
 echo "--- Samba Shares ---"
 if command -v testparm >/dev/null 2>&1; then
     testparm -s 2>/dev/null | grep -E "^\[.*\]" || echo "No Samba shares found by testparm"
@@ -270,6 +345,17 @@ if systemctl is-active --quiet ModemManager; then
     fi
 else
     WWAN_SUMMARY="ModemManager inactive"
+fi
+
+GPS_SUMMARY="unknown"
+if systemctl is-active --quiet gpsd.service 2>/dev/null; then
+    if timeout 6 gpspipe -r 2>/dev/null | grep -qm1 '^\$G'; then
+        GPS_SUMMARY="gpsd active, NMEA present"
+    else
+        GPS_SUMMARY="gpsd active, no quick NMEA sample"
+    fi
+else
+    GPS_SUMMARY="gpsd inactive"
 fi
 
 echo "=== PCS Quick Summary ==="
