@@ -52,6 +52,30 @@ Configures the Raspberry Pi RTC overlay and I2C support.
 ./scripts/setup-rtc.sh
 ```
 
+### setup-em7455-gps-nmea.sh
+
+Configures the tested EM7455/DW5811e GPS path:
+
+EM7455/DW5811e -> /dev/ttyUSB1 NMEA -> gpsd -> Chrony
+
+Run after the WWAN USB adapter, EM7455/DW5811e modem, and GPS antenna are installed:
+
+./scripts/setup-em7455-gps-nmea.sh
+
+This installs/configures:
+
+- pcs-em7455-gps-nmea.service
+- gpsd on /dev/ttyUSB1
+- Chrony SHM refclock 0 for GPS-backed LAN NTP
+
+It does not change AT!USBCOMP.
+
+### pcs-em7455-gps-nmea-start.py
+
+Helper used by pcs-em7455-gps-nmea.service.
+
+It enables modem GPS through ModemManager, sends GPS_START to /dev/ttyUSB1, and verifies that NMEA output is present. It hides live location in service logs.
+
 ### setup-chrony-lan-ntp.sh
 
 Configures Chrony to serve NTP to PCS clients on:
