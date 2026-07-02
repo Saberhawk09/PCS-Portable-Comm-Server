@@ -18,6 +18,11 @@ PCS_SAMBA_PATH="/mnt/pcs-usb/PCS-Share"
 PCS_BACKUP_SHARE="PCS-Backup"
 PCS_BACKUP_PATH="/srv/pcs-share-backup"
 
+PCS_CONTROL_SERVICE="pcs-control-panel.service"
+PCS_CONTROL_PORT="8080"
+PCS_CONTROL_URL="http://127.0.0.1:8080"
+
+
 echo
 echo "=== PCS Pi-Side Self Test ==="
 echo
@@ -314,6 +319,36 @@ if port_listening_tcp 9090; then
     pass "TCP port 9090 appears to be listening"
 else
     warn "TCP port 9090 not visible in ss output; cockpit.socket may still activate on demand"
+fi
+
+section "PCS Control Panel"
+
+if service_active "${PCS_CONTROL_SERVICE}"; then
+    pass "${PCS_CONTROL_SERVICE} is active"
+else
+    fail "${PCS_CONTROL_SERVICE} is not active"
+fi
+
+if service_enabled "${PCS_CONTROL_SERVICE}"; then
+    pass "${PCS_CONTROL_SERVICE} is enabled"
+else
+    fail "${PCS_CONTROL_SERVICE} is not enabled"
+fi
+
+if port_listening_tcp "${PCS_CONTROL_PORT}"; then
+    pass "TCP port ${PCS_CONTROL_PORT} appears to be listening"
+else
+    fail "TCP port ${PCS_CONTROL_PORT} does not appear to be listening"
+fi
+
+if command_exists curl; then
+    if curl -fsS --max-time 5 "${PCS_CONTROL_URL}" >/dev/null 2>&1; then
+        pass "PCS Control Panel HTTP check works at ${PCS_CONTROL_URL}"
+    else
+        fail "PCS Control Panel HTTP check failed at ${PCS_CONTROL_URL}"
+    fi
+else
+    skip "curl not found; skipping PCS Control Panel HTTP check"
 fi
 
 section "Raspberry Pi Connect"

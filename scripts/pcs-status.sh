@@ -16,6 +16,10 @@ PCS_BACKUP_SHARE_PATH="/srv/pcs-share-backup"
 
 PCS_HOSTNAME="$(hostname 2>/dev/null || echo pcs-pi)"
 
+PCS_CONTROL_SERVICE="pcs-control-panel.service"
+PCS_CONTROL_PORT="8080"
+PCS_CONTROL_URL="http://10.42.0.1:8080"
+
 echo "=== PCS System Status ==="
 echo
 
@@ -150,7 +154,7 @@ done
 echo
 
 echo "--- Key Services ---"
-for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket; do
+for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket pcs-control-panel.service; do
     echo
     echo "[$service]"
     echo -n "enabled: "
@@ -186,6 +190,7 @@ GPSD_STATUS="unknown"
 SAMBA_STATUS="unknown"
 COCKPIT_STATUS="unknown"
 CHRONY_STATUS="unknown"
+CONTROL_PANEL_STATUS="unknown"
 RTC_STATUS="unknown"
 PRIMARY_SHARE_STATUS="unknown"
 BACKUP_SHARE_STATUS="unknown"
@@ -246,6 +251,12 @@ else
     CHRONY_STATUS="inactive"
 fi
 
+if systemctl is-active --quiet "${PCS_CONTROL_SERVICE}"; then
+    CONTROL_PANEL_STATUS="active"
+else
+    CONTROL_PANEL_STATUS="inactive"
+fi
+
 if [[ -d "${PCS_SHARE_PATH}" ]] && testparm -s 2>/dev/null | grep -q "^\[${PCS_SHARE_NAME}\]"; then
     PRIMARY_SHARE_STATUS="present"
 else
@@ -276,6 +287,7 @@ echo "Primary share:            ${PRIMARY_SHARE_STATUS} (${PCS_SHARE_NAME})"
 echo "Backup share:             ${BACKUP_SHARE_STATUS} (${PCS_BACKUP_SHARE_NAME})"
 echo "Last backup sync:         ${BACKUP_SYNC_STATUS}"
 echo "Cockpit:                  ${COCKPIT_STATUS}"
+echo "PCS Control Panel:        ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
 echo "WWAN modem:               ${MODEM_STATUS}"
 echo "GPSD:                     ${GPSD_STATUS}"
 echo
@@ -292,6 +304,10 @@ echo "  \\\\${PCS_ROUTER_IP}\\${PCS_BACKUP_SHARE_NAME}"
 echo
 echo "Cockpit web UI:"
 echo "  https://${PCS_ROUTER_IP}:9090"
+echo
+
+echo "PCS Control Panel:"
+echo "  http://${PCS_ROUTER_IP}:${PCS_CONTROL_PORT}"
 echo
 echo "LAN NTP server:"
 echo "  ${PCS_ROUTER_IP}"
@@ -322,6 +338,10 @@ echo "Backup file share:"
 echo "  explorer \\\\${PCS_ROUTER_IP}\\${PCS_BACKUP_SHARE_NAME}"
 echo
 
+echo "PCS Control Panel:"
+echo "  start http://${PCS_ROUTER_IP}:${PCS_CONTROL_PORT}"
+echo
+
 echo "--- Current Test Topology ---"
 echo
 echo "Expected current test path:"
@@ -338,6 +358,7 @@ echo "- ${PCS_HOSTNAME}.local may not resolve from behind the router because mDN
 echo "- ${PCS_SHARE_NAME} is the current primary/test share."
 echo "- ${PCS_BACKUP_SHARE_NAME} is the SD-card backup mirror share."
 echo "- Run ./scripts/sync-pcs-share-to-backup.sh to manually mirror the primary share to backup."
+echo "- PCS Control Panel is available at http://${PCS_ROUTER_IP}:${PCS_CONTROL_PORT} on the router-side network."
 echo "- No WWAN modem is expected until the EM7565 USB adapter is installed."
 echo "- GPSD is expected to remain inactive until GPS/GNSS setup is configured."
 echo
