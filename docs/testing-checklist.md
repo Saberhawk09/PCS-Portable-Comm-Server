@@ -1,54 +1,232 @@
-# Testing Checklist
+# PCS Testing Checklist
 
-This checklist tracks basic validation tests for PCS hardware, networking, and server functions.
+This checklist is used after setup, reboot, or major configuration changes.
 
-## Power Tests
+## Pi-Side Validation
 
-- [ ] AC input powers internal 12V PSU
-- [ ] DC Anderson input powers internal 12V rail
-- [ ] Source selector switch correctly selects AC / Off / DC
-- [ ] 12V rail fuse protects main DC bus
-- [ ] 5V buck converter outputs stable voltage
-- [ ] Raspberry Pi boots from 5V rail
-- [ ] Router powers correctly from selected rail
+Run from the repository root:
 
-## Network Tests
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+git status
+./scripts/pcs-self-test.sh
+```
 
-- [X] Router creates Wi-Fi network
-- [X] Router DHCP assigns client IP addresses
-- [ ] Wired client can connect over Ethernet
-- [X] Wireless client can connect over Wi-Fi
-- [X] Client devices can communicate on LAN
+Expected Git result:
 
-## Server Tests
+```text
+nothing to commit, working tree clean
+```
 
-- [X] Pi is reachable over network
-- [X] SMB file share is visible to clients
-- [X] Client PC can read files from share
-- [X] Client PC can write files to share
-- [ ] GPSD detects GPS source
-- [ ] Chrony uses GPS source for time discipline
-- [X] Client PC can use PCS as NTP server
+Expected self-test result:
 
-## Cellular Tests
+```text
+PCS Pi-side self-test PASSED.
+```
 
-- [ ] WWAN modem is detected over USB
-- [ ] LTE antennas are connected
-- [ ] Cellular connection comes online
-- [ ] Pi has internet access over cellular
-- [X] Router receives WAN connection from Pi
-- [X] Client PC can access internet through PCS
+A healthy system should show:
 
-## Field Usability Tests
+```text
+Fail: 0
+Warn: 0
+```
 
-- [x] Router WAN handoff recovers automatically after Pi reboot
-- [ ] All external ports are accessible
-- [ ] Switch positions are clearly labeled
-- [ ] System can be operated without opening enclosure
-- [ ] Cooling is adequate under normal load
-- [ ] File share works with expected logging software
+## PCS Status
 
-## Extra Scripts
+Run:
 
-- [x] PCS Pi-side self-test passes after reboot
-- [x] PCS status script reports client access information
+```bash
+./scripts/pcs-status.sh
+```
+
+Confirm these are present:
+
+```text
+Wi-Fi uplink wlan0:       connected
+Ethernet handoff eth0:    connected
+Router-side IP present:   yes (10.42.0.1/24)
+RTC:                      present
+Chrony/NTP:               active
+Samba:                    active
+Primary share:            present (PCS-Share)
+Backup share:             present (PCS-Backup)
+PCS Control Panel:        active
+Dashboard Redirect:       active
+```
+
+## Client Network Test
+
+From a Windows client connected to the PCS access point:
+
+```cmd
+ipconfig
+ping 10.42.0.1
+ping 8.8.8.8
+ping google.com
+```
+
+Expected client network settings:
+
+```text
+IPv4 Address:      10.42.0.x
+Subnet Mask:       255.255.255.0
+Default Gateway:   10.42.0.1
+```
+
+Expected ping results:
+
+- `10.42.0.1` replies from the Pi
+- `8.8.8.8` confirms internet routing
+- `google.com` confirms DNS
+
+## Web Dashboard Test
+
+From a PCS client, open:
+
+```text
+http://10.42.0.1
+```
+
+Expected behavior:
+
+```text
+http://10.42.0.1 redirects to http://10.42.0.1:8080
+```
+
+The dashboard should show status cards and local client info.
+
+Direct control panel URL:
+
+```text
+http://10.42.0.1:8080
+```
+
+## Cockpit Test
+
+From a PCS client, open:
+
+```text
+https://10.42.0.1:9090
+```
+
+Cockpit should load.
+
+## Samba Share Test
+
+From Windows File Explorer:
+
+```text
+\\10.42.0.1\PCS-Share
+\\10.42.0.1\PCS-Backup
+```
+
+Expected:
+
+- `PCS-Share` opens the USB primary share
+- `PCS-Backup` opens the SD-card backup mirror
+
+## NTP Test
+
+From Windows:
+
+```cmd
+w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
+```
+
+Expected:
+
+- Samples return successfully
+- Offset remains reasonably stable
+
+## Backup Sync Test
+
+From the Pi or PCS Control Panel, run the backup sync.
+
+Terminal command:
+
+```bash
+./scripts/sync-pcs-share-to-backup.sh
+```
+
+Expected:
+
+```text
+/mnt/pcs-usb/PCS-Share → /srv/pcs-share-backup
+```
+
+Confirm `LAST_SYNC.txt` updates:
+
+```bash
+cat /srv/pcs-share-backup/LAST_SYNC.txt
+```
+
+## USB Mount Test
+
+Check USB storage:
+
+```bash
+findmnt /mnt/pcs-usb
+mount | grep pcs-usb
+```
+
+Expected:
+
+```text
+/dev/sdX1 mounted on /mnt/pcs-usb
+```
+
+There should only be one mount entry for `/mnt/pcs-usb`.
+
+## Connected Client Visibility
+
+On the Pi:
+
+```bash
+ip neigh show dev eth0
+```
+
+Expected with AP/switch mode:
+
+```text
+10.42.0.x lladdr xx:xx:xx:xx:xx:xx REACHABLE
+```
+
+Old `FAILED` entries are usually stale neighbor entries.
+
+They can be cleared with:
+
+```bash
+sudo ip neigh flush dev eth0
+```
+
+## Reboot Test
+
+Run:
+
+```bash
+sudo reboot
+```
+
+After reboot:
+
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+./scripts/pcs-self-test.sh
+```
+
+Expected:
+
+```text
+PCS Pi-side self-test PASSED.
+```
+
+## Current Hardware Placeholder Expectations
+
+Before WWAN/GNSS hardware is installed, these are expected:
+
+```text
+No modem present yet
+gpsd inactive
+```
+
+These should not be treated as failures until the hardware is installed and configured.
