@@ -1,57 +1,86 @@
-# Bill of Materials
+# PCS Bill of Materials
 
-## Status Key
+This document tracks planned and purchased hardware for PCS.
 
-| Status | Meaning |
-|---|---|
-| Owned | Already had it before this project |
-| Purchased | Bought for this project |
-| Planned | Still need to buy / finalize |
-| TBD | Decision not final |
+Prices are rough planning values and may change.
 
-## Compute Hardware
+## Compute / Core Hardware
 
-| Item | Qty | Status | Price | Notes |
-|---|---:|---|---:|---|
-| Raspberry Pi 4 8GB | 1 | Owned | — | Main server hardware |
-| Router | 1 | Owned | — | Current router hardware; final role/config still TBD |
-| External flash drive | 1 | Planned | — | Removable storage for LAN file share |
+| Item | Purpose | Status |
+|---|---|---|
+| Raspberry Pi 4 8GB | Main PCS server/gateway | In use |
+| USB flash drive | Primary Samba file share storage | In use |
+| Actiontec T3200 | Temporary AP/switch for testing | In use |
+| Sierra Wireless EM7565 | Planned cellular modem | Pending setup |
+| M.2 WWAN to USB adapter | USB adapter for cellular modem | Pending |
+| External LTE antennas | Cellular signal improvement | Planned |
+| MHF4 to SMA pigtails | Modem antenna connections | Planned |
 
-## Networking / Cellular
+## Power Hardware
 
-| Item | Qty | Status | Price | Notes |
-|---|---:|---|---:|---|
-| Sierra Wireless EM7565 | 1 | Purchased | $25 | Cellular modem |
-| WWAN M.2 to USB adapter | 1 | Purchased | $33 | USB adapter for modem |
-| External LTE antennas | 2 | Planned | $13 | Cellular antennas |
-| MHF4 to SMA female pigtails | 5 | Purchased | $8 | Antenna adapter cables |
-| GPS antenna | 1 | Purchased | — | External GPS antenna for GNSS / NTP use |
-| Thermal pad, 100x100x0.5mm | 1 | Purchased | $8 | Modem / adapter thermal interface |
-| 9x9x5mm heatsinks | 20 | Planned | $7 | Small component heatsinks |
-
-## Power System
-
-| Item | Qty | Status | Price | Notes |
-|---|---:|---|---:|---|
-| Anderson Powerpole inlet | 1 | Planned | $15 | DC input |
-| Automotive blade fuse holders | 2 | Planned | $5 | Fuse holders |
-| Bussmann 3A blade fuses | 5 | Planned | $5 | Main 12V rail / branch protection |
-| 12V to 5V buck converters | 2 | Planned | $15 | 5V power for Pi / USB devices |
-| SPST switches | 4 | Planned | $6 | Auxiliary switching |
-| DPDT switches | 5 | Planned | $12 | Source switching / control |
-| Switched fused C14 inlet | 1 | Planned | $8 | AC grid input |
-| Internal 12V 3A PSU | 1 | Planned | $10 | Converts AC input to 12V DC |
+| Item | Purpose | Notes |
+|---|---|---|
+| Anderson Powerpole inlet | DC power input | Planned |
+| Switched/fused IEC C14 inlet | AC grid input | Planned |
+| 12 V 3 A internal PSU | AC to internal 12 V bus | Planned |
+| Automotive blade fuse holders | DC branch/input fusing | Planned |
+| 3 A blade fuses | 12 V bus/input protection | Planned |
+| DPDT center-off switch | AC/DC source selection | Prefer break-before-make |
+| 12 V to 5 V buck converter | Pi/modem 5 V rail | Planned |
 
 ## Enclosure / Mechanical
 
-| Item | Qty | Status | Price | Notes |
-|---|---:|---|---:|---|
-| PETG filament | TBD | Planned | — | Main enclosure material |
-| TPU filament | TBD | Planned | — | Bumpers, feet, or impact protection |
-| Mounting hardware | TBD | Planned | — | Screws, inserts, standoffs, labels, etc. |
+| Item | Purpose | Notes |
+|---|---|---|
+| 3D printed PETG enclosure | Main case | Planned |
+| TPU bumpers | Impact protection | Planned |
+| External antenna bulkheads | LTE/GPS antenna mounting | Planned |
+| Vents / airflow features | Cooling | Planned |
+| Switch and indicator holes | Operator interface | Planned |
 
-## Estimated Listed Cost
+## Thermal / Electronics Support
 
-Known listed cost total: **$170**
+| Item | Purpose | Notes |
+|---|---|---|
+| Thermal pad | Heat transfer for modem/adapter | Planned |
+| Small heatsinks | Cooling electronics | Planned |
+| USB hub or internal USB wiring | Device expansion if needed | TBD |
 
-This total only includes items with prices listed in this document. Items marked with `—` were already owned, purchased separately, or have not been priced yet.
+## Future / Optional Hardware
+
+| Item | Purpose | Status |
+|---|---|---|
+| GPS/GNSS receiver | GPS-backed time source | Planned |
+| External GPS antenna | Better GPS reception | Planned |
+| OLED/status display | Local status display | Optional |
+| Battery voltage monitor | Power telemetry | Optional |
+| OpenWRT router/AP | Final client Wi-Fi hardware | TBD |
+| Final removable storage | Larger or more rugged file storage | TBD |
+
+## Current Tested Hardware
+
+Current working test hardware:
+
+```text
+Raspberry Pi 4
+RTC module
+USB flash drive
+Actiontec T3200 as AP/switch
+Home Wi-Fi as temporary uplink
+```
+
+Current pending major hardware:
+
+```text
+Cellular modem
+WWAN USB adapter
+GPS/GNSS time source
+Final power system
+Final enclosure
+```
+
+## Notes
+
+This BOM is still evolving.
+
+The current software baseline does not require all final hardware to be installed. WWAN/cellular and GPS/GNSS setup will be documented once the hardware arrives and is tested.
