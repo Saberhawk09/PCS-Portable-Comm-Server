@@ -189,3 +189,25 @@ Checks:
 - GPSD placeholder status
 
 This script only validates the Pi side. Client-side checks such as Windows file share access, Cockpit access, and `w32tm` NTP testing should still be tested separately.
+
+## restart-pcs-services.sh
+
+Restarts core PCS services and refreshes the router WAN handoff profile.
+
+This script is intended to be used by the Cockpit/systemd button service:
+
+    pcs-restart-services.service
+
+Services handled:
+
+- Samba / `smbd`
+- Chrony
+- ModemManager
+- Avahi
+- Router WAN handoff profile `pcs-router-wan-share`
+
+The script intentionally does not restart NetworkManager or Cockpit itself, to avoid cutting off remote access during troubleshooting.
+
+For a full validation check after using the restart button, run:
+
+    ./scripts/pcs-self-test.sh
