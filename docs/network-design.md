@@ -1,84 +1,188 @@
-# Network Design
+# PCS Network Design
 
-PCS is designed around a simple field network layout:
+PCS uses the Raspberry Pi as the main client network gateway.
 
-- Cellular modem provides WAN connectivity
-- Raspberry Pi hosts server-side services
-- Dedicated router handles client networking
-- Client PCs connect over Ethernet or Wi-Fi
+The attached router/access point provides Wi-Fi and Ethernet access, while the Pi handles the client network, DHCP, routing, and local services.
 
-## Primary Network Layout
+## Current Design
 
 ```text
-LTE Antennas
-      │
-   WWAN Modem
-      │ USB
- Raspberry Pi
- ├── SMB File Share
- ├── GPSD
- ├── Chrony / NTP
- └── Ethernet WAN Output
-      │
- Dedicated Router
- ├── Wi-Fi
- ├── DHCP
- └── LAN
-      │
- Client PCs
+Client devices
+    ↓ Wi-Fi / LAN
+Access point / switch
+    ↓ LAN port
+Raspberry Pi eth0 - 10.42.0.1/24
+    ↓
+Raspberry Pi uplink - wlan0 now, cellular later
+    ↓
+Internet
+```
 
-## Router WAN Handoff Test
+## Client Network
 
-Before the cellular modem is available, PCS can simulate the final WAN handoff path by sharing the Pi's current Wi-Fi uplink out through Ethernet.
+PCS client network:
 
-Temporary test layout:
+```text
+10.42.0.0/24
+```
 
-    Internet over Pi Wi-Fi → Pi eth0 → Router WAN → Router clients
+Pi client-side IP:
 
-Future PCS layout:
+```text
+10.42.0.1
+```
 
-    Cellular modem → Pi → Pi eth0 → Router WAN → Router clients
+Expected client settings:
 
-This is handled by:
+```text
+IPv4 Address:      10.42.0.x
+Subnet Mask:       255.255.255.0
+Default Gateway:   10.42.0.1
+```
 
-    ./scripts/setup-router-wan-share.sh
+## Access Point / Switch Role
 
-The script creates a NetworkManager shared Ethernet profile:
+The access point should act as a bridge/switch, not as the main router.
 
-- Profile name: `pcs-router-wan-share`
-- Interface: `eth0`
-- Pi Ethernet address: `10.42.0.1/24`
-- IPv4 mode: shared
-- IPv6 mode: ignored
+Expected AP/router behavior:
 
-To activate after connecting the router WAN port to the Pi Ethernet port:
+```text
+DHCP server: disabled
+NAT/routing: disabled or bypassed
+Pi connected to AP/router LAN port
+```
 
-    sudo nmcli connection up pcs-router-wan-share
+Current tested AP:
 
-Expected result:
+```text
+Actiontec T3200
+LAN IP: 10.42.0.2
+DHCP: disabled
+```
 
-- The router WAN interface receives a `10.42.0.x` address from the Pi
-- Router clients should be able to reach the internet through the Pi's current uplink
+## Raspberry Pi Role
 
-This test does not require the WWAN modem. It only validates the Ethernet handoff side of the design.
+The Pi provides:
 
-## Client Access To Pi Services Through Router
+- Client-side network on `eth0`
+- DHCP service for clients
+- Routing/NAT to the uplink
+- Local Samba shares
+- LAN NTP service
+- Web dashboard/control panel
+- Cockpit access
 
-During router WAN handoff testing, clients behind the test router were able to access Pi-hosted services using the Pi's router-facing Ethernet address.
+Current NetworkManager connection:
 
-Confirmed working from a Windows client behind the Windstream test router:
+```text
+pcs-router-wan-share
+```
 
-- Ping to `10.42.0.1`
-- Samba access at `\\10.42.0.1\PCS-Share`
-- Cockpit access at `https://10.42.0.1:9090`
+The name is historical. It now functions as the PCS client LAN/AP handoff profile.
 
-The hostname `pcs-pi.local` did not resolve from behind the router. This is expected because `.local` / mDNS normally only works within the same local broadcast domain and usually does not cross a router WAN/LAN boundary.
+## Current Uplink
 
-For field use, the reliable access addresses are currently:
+Current pre-WWAN uplink:
 
-- File share: `\\10.42.0.1\PCS-Share`
-- Cockpit: `https://10.42.0.1:9090`
+```text
+wlan0 → home Wi-Fi/router → internet
+```
 
-During home testing, the Pi was reachable from the test-router client network at both `10.42.0.1` and the Pi's home Wi-Fi address `192.168.50.236`.
+Future uplink:
 
-For field use, documentation should prefer `10.42.0.1` because it is controlled by the PCS Ethernet handoff profile. The `192.168.50.236` address is only valid on the current home Wi-Fi network.
+```text
+cellular modem → internet
+```
+
+The client-side network should remain the same when the uplink changes.
+
+## Local Services
+
+PCS services are reachable at:
+
+```text
+10.42.0.1
+```
+
+Client URLs/services:
+
+```text
+PCS Dashboard:      http://10.42.0.1
+PCS Control Panel:  http://10.42.0.1:8080
+Cockpit:            https://10.42.0.1:9090
+Primary Share:      \\10.42.0.1\PCS-Share
+Backup Share:       \\10.42.0.1\PCS-Backup
+LAN NTP Server:     10.42.0.1
+```
+
+## Why AP/Switch Mode Is Preferred
+
+AP/switch mode lets the Pi see real client devices directly on `eth0`.
+
+This improves:
+
+- Connected client display
+- Troubleshooting
+- Dashboard accuracy
+- Simpler routing
+- Fewer NAT layers
+
+Useful command:
+
+```bash
+ip neigh show dev eth0
+```
+
+Example:
+
+```text
+10.42.0.232 lladdr 10:6f:d9:d9:71:cf REACHABLE
+```
+
+## Older NAT Test Layout
+
+Earlier testing used the router as a NAT router:
+
+```text
+Client devices
+    ↓
+Router Wi-Fi/LAN
+    ↓ router WAN
+Pi eth0 - 10.42.0.1
+```
+
+That worked, but the Pi mostly saw only the router WAN device instead of individual clients.
+
+The AP/switch layout is preferred for PCS.
+
+## Troubleshooting
+
+Check Pi network state:
+
+```bash
+nmcli device status
+ip -brief addr
+ip route
+```
+
+Check visible clients:
+
+```bash
+ip neigh show dev eth0
+```
+
+Check internet from Pi:
+
+```bash
+ping -c 3 8.8.8.8
+ping -c 3 google.com
+```
+
+Check from Windows client:
+
+```cmd
+ipconfig
+ping 10.42.0.1
+ping 8.8.8.8
+ping google.com
+```
