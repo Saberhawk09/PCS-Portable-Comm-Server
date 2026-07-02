@@ -17,6 +17,57 @@ Default test share details:
 - Access method: Samba user login
 - Tested client: Windows PC
 
+## Backup Share
+
+PCS also provides an SD-card backup share.
+
+Default backup share details:
+
+- Share name: `PCS-Backup`
+- Local path: `/srv/pcs-share-backup`
+- Purpose: backup mirror of the primary PCS file share
+- Access method: Samba user login
+
+Windows access path:
+
+    \\10.42.0.1\PCS-Backup
+
+The backup share is created by:
+
+    ./scripts/setup-samba-backup-share.sh
+
+## Manual Backup Sync
+
+The primary share can be manually mirrored to the backup share with:
+
+    ./scripts/sync-pcs-share-to-backup.sh
+
+Current sync direction:
+
+    /srv/pcs-share → /srv/pcs-share-backup
+
+The sync script creates or updates:
+
+    /srv/pcs-share-backup/LAST_SYNC.txt
+
+This file records the last backup sync time.
+
+Warning: the sync script uses a mirror-style sync. Files deleted from the primary share may also be deleted from the backup copy.
+
+## Current Share Layout
+
+Current pre-USB layout:
+
+    \\10.42.0.1\PCS-Share   → /srv/pcs-share
+    \\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
+
+Future final layout:
+
+    \\10.42.0.1\PCS-Share   → removable USB storage
+    \\10.42.0.1\PCS-Backup  → SD-card backup mirror
+
+The USB storage setup is not finalized yet.
+
 ## Confirmed Working
 
 Confirmed on 2026-07-01:

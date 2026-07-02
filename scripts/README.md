@@ -106,6 +106,47 @@ Or use the Pi IP address:
 
 This is a temporary proof-of-concept share. The final PCS file share may use removable storage.
 
+## setup-samba-backup-share.sh
+
+Creates the PCS SD-card backup Samba share.
+
+Run from the repository root:
+
+    ./scripts/setup-samba-backup-share.sh
+
+Default backup share details:
+
+- Share name: `PCS-Backup`
+- Local path: `/srv/pcs-share-backup`
+- Access: local Linux/Samba user credentials
+
+From Windows, access it with:
+
+    \\10.42.0.1\PCS-Backup
+
+This share is intended to hold a mirror copy of the primary PCS file share.
+
+## sync-pcs-share-to-backup.sh
+
+Manually mirrors the primary PCS file share to the SD-card backup share.
+
+Run from the repository root:
+
+    ./scripts/sync-pcs-share-to-backup.sh
+
+Default sync direction:
+
+    /srv/pcs-share → /srv/pcs-share-backup
+
+The sync uses `rsync --delete`, which means files deleted from the primary share will also be deleted from the backup mirror.
+
+This is intentionally one-way:
+
+- `PCS-Share` is the primary share
+- `PCS-Backup` is the backup mirror
+
+This avoids the complexity and risk of bidirectional sync.
+
 ## setup-router-wan-share.sh
 
 Creates a NetworkManager shared Ethernet profile for testing router WAN handoff.
