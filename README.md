@@ -37,6 +37,15 @@ This GitHub will also use a mix of my own writing and AI generated text. All tex
 - [Wiring Notes](hardware/wiring-notes.md)
 - [Enclosure Notes](hardware/enclosure-notes.md)
 
+## Quick Start: Raspberry Pi Baseline Setup
+
+After installing Raspberry Pi OS with desktop, 64-bit, clone this repository and run the PCS base setup script.
+
+```bash
+git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
+cd PCS-Portable-Comm-Server
+./scripts/setup-pcs-base.sh
+
 ## The Issue That Started This Project
 
 As usual, when multi-billion dollar companies fail to understand how to code their software properly, open source comes to the rescue yet again.
