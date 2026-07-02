@@ -56,17 +56,11 @@ Warning: the sync script uses a mirror-style sync. Files deleted from the primar
 
 ## Current Share Layout
 
-Current pre-USB layout:
+PCS currently uses USB storage as the primary file share and the Pi SD card as a backup mirror.
 
-    \\10.42.0.1\PCS-Share   → /srv/pcs-share
-    \\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
-
-Future final layout:
-
-    \\10.42.0.1\PCS-Share   → removable USB storage
-    \\10.42.0.1\PCS-Backup  → SD-card backup mirror
-
-The USB storage setup is not finalized yet.
+```text
+\\10.42.0.1\PCS-Share   → /mnt/pcs-usb/PCS-Share
+\\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
 
 ## Confirmed Working
 
