@@ -9,6 +9,7 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+USB_UUID_DEFAULT="340B-4403"
 
 echo
 echo "=== PCS Base Setup ==="
@@ -20,15 +21,19 @@ echo
 echo "It will run:"
 echo "  - Dependency installer"
 echo "  - RTC setup"
-echo "  - Router WAN handoff setup"
-echo "  - Temporary Samba test share setup"
+echo "  - Client LAN / AP handoff setup on eth0"
+echo "  - Samba bootstrap share setup"
+echo "  - Samba SD-card backup share setup"
+echo "  - Optional USB primary share setup, if USB storage is present"
 echo "  - Chrony LAN NTP setup"
 echo "  - Cockpit/systemd restart button install"
+echo "  - PCS Control Panel setup"
+echo "  - Port 80 dashboard redirect setup"
+echo "  - Final PCS status and self-test"
 echo
 echo "It will not configure:"
 echo "  - WWAN/cellular modem connection"
 echo "  - GPS/GNSS time source"
-echo "  - Final removable-storage Samba share"
 echo
 echo "Those require hardware that may not be installed yet."
 echo
@@ -44,6 +49,7 @@ case "${answer}" in
         ;;
 esac
 
+sudo -v
 cd "${REPO_DIR}"
 
 run_step() {
@@ -57,6 +63,26 @@ run_step() {
     echo
 
     bash -c "${command}"
+}
+
+run_optional_step() {
+    local name="$1"
+    local command="$2"
+
+    echo
+    echo "============================================================"
+    echo "OPTIONAL STEP: ${name}"
+    echo "============================================================"
+    echo
+
+    if bash -c "${command}"; then
+        echo
+        echo "Optional step completed: ${name}"
+    else
+        echo
+        echo "WARNING: Optional step failed or was skipped: ${name}"
+        echo "Continuing PCS base setup."
+    fi
 }
 
 ensure_executable() {
@@ -77,27 +103,64 @@ ensure_executable "scripts/install-dependencies.sh"
 ensure_executable "scripts/setup-rtc.sh"
 ensure_executable "scripts/setup-router-wan-share.sh"
 ensure_executable "scripts/setup-test-samba-share.sh"
+ensure_executable "scripts/setup-samba-backup-share.sh"
+ensure_executable "scripts/setup-usb-primary-share.sh"
 ensure_executable "scripts/setup-chrony-lan-ntp.sh"
 ensure_executable "scripts/restart-pcs-services.sh"
+ensure_executable "scripts/setup-pcs-control-panel.sh"
+ensure_executable "scripts/setup-dashboard-redirect.sh"
+ensure_executable "scripts/pcs-web-action.sh"
+ensure_executable "scripts/sync-pcs-share-to-backup.sh"
 ensure_executable "scripts/pcs-self-test.sh"
 ensure_executable "scripts/pcs-status.sh"
+
+if [[ -d "web/pcs-control-panel" ]]; then
+    chmod +x web/pcs-control-panel/*.py 2>/dev/null || true
+fi
 
 run_step "Install dependencies" "./scripts/install-dependencies.sh"
 
 run_step "Configure RTC" "./scripts/setup-rtc.sh"
 
-run_step "Configure router WAN handoff" "./scripts/setup-router-wan-share.sh"
+run_step "Configure client LAN/AP handoff on eth0" "./scripts/setup-router-wan-share.sh"
 
 echo
 echo "============================================================"
-echo "STEP: Configure temporary Samba test share"
+echo "STEP: Configure Samba bootstrap share"
 echo "============================================================"
 echo
-echo "This step will ask you to set or confirm a Samba password."
+echo "This step may ask you to set or confirm a Samba password."
 echo "This password is not stored in the repository."
 echo
 
 ./scripts/setup-test-samba-share.sh
+
+run_step "Configure Samba SD-card backup share" "./scripts/setup-samba-backup-share.sh"
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Configure USB primary Samba share"
+echo "============================================================"
+echo
+
+if sudo blkid -U "${USB_UUID_DEFAULT}" >/dev/null 2>&1; then
+    echo "Detected USB storage with UUID ${USB_UUID_DEFAULT}."
+    read -r -p "Configure this USB device as PCS-Share primary storage? [Y/n] " usb_answer
+
+    case "${usb_answer}" in
+        n|N|no|NO)
+            echo "Skipping USB primary share setup."
+            ;;
+        *)
+            ./scripts/setup-usb-primary-share.sh "${USB_UUID_DEFAULT}"
+            ;;
+    esac
+else
+    echo "USB storage with UUID ${USB_UUID_DEFAULT} was not detected."
+    echo "Skipping USB primary share setup."
+    echo "You can run this later:"
+    echo "  ./scripts/setup-usb-primary-share.sh"
+fi
 
 run_step "Configure Chrony LAN NTP" "./scripts/setup-chrony-lan-ntp.sh"
 
@@ -113,15 +176,19 @@ if [[ -f "systemd/pcs-restart-services.service" ]]; then
     sudo systemctl daemon-reload
 
     echo "Disabling pcs-restart-services.service for boot."
-    echo "It is intended to be started manually from Cockpit, not run automatically."
+    echo "It is intended to be started manually, not run automatically."
     sudo systemctl disable pcs-restart-services.service >/dev/null 2>&1 || true
 
-    echo "Installed Cockpit service button:"
-    echo "  Services → pcs-restart-services.service → Start"
+    echo "Installed service restart action:"
+    echo "  pcs-restart-services.service"
 else
     echo "WARNING: systemd/pcs-restart-services.service not found."
     echo "Skipping Cockpit/systemd restart button install."
 fi
+
+run_step "Install PCS Control Panel" "./scripts/setup-pcs-control-panel.sh"
+
+run_optional_step "Install port 80 dashboard redirect" "./scripts/setup-dashboard-redirect.sh"
 
 echo
 echo "============================================================"
@@ -149,10 +216,19 @@ fi
 echo
 echo "=== PCS Base Setup Complete ==="
 echo
-echo "Useful client access addresses from behind the PCS/test router:"
+echo "Useful client access addresses from behind the PCS access point:"
 echo
-echo "File share:"
+echo "PCS Dashboard:"
+echo "  http://10.42.0.1"
+echo
+echo "PCS Control Panel:"
+echo "  http://10.42.0.1:8080"
+echo
+echo "Primary file share:"
 echo "  \\\\10.42.0.1\\PCS-Share"
+echo
+echo "Backup file share:"
+echo "  \\\\10.42.0.1\\PCS-Backup"
 echo
 echo "Cockpit:"
 echo "  https://10.42.0.1:9090"
