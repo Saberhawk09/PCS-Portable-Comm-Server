@@ -345,11 +345,14 @@ else
 fi
 
 if command_exists curl; then
-    if curl -fsS --max-time 5 "${PCS_CONTROL_URL}" >/dev/null 2>&1; then
+    PCS_CONTROL_HTML="$(mktemp)"
+    if curl -fsS --max-time 20 "${PCS_CONTROL_URL}" -o "${PCS_CONTROL_HTML}" 2>/dev/null \
+        && grep -q "PCS Control Panel" "${PCS_CONTROL_HTML}"; then
         pass "PCS Control Panel HTTP check works at ${PCS_CONTROL_URL}"
     else
         fail "PCS Control Panel HTTP check failed at ${PCS_CONTROL_URL}"
     fi
+    rm -f "${PCS_CONTROL_HTML}"
 else
     skip "curl not found; skipping PCS Control Panel HTTP check"
 fi
