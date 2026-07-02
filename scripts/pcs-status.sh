@@ -19,6 +19,8 @@ PCS_HOSTNAME="$(hostname 2>/dev/null || echo pcs-pi)"
 PCS_CONTROL_SERVICE="pcs-control-panel.service"
 PCS_CONTROL_PORT="8080"
 PCS_CONTROL_URL="http://10.42.0.1:8080"
+PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
+PCS_DASHBOARD_REDIRECT_URL="http://10.42.0.1"
 
 echo "=== PCS System Status ==="
 echo
@@ -154,7 +156,7 @@ done
 echo
 
 echo "--- Key Services ---"
-for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket pcs-control-panel.service; do
+for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket pcs-control-panel.service pcs-dashboard-redirect.service; do
     echo
     echo "[$service]"
     echo -n "enabled: "
@@ -191,6 +193,7 @@ SAMBA_STATUS="unknown"
 COCKPIT_STATUS="unknown"
 CHRONY_STATUS="unknown"
 CONTROL_PANEL_STATUS="unknown"
+DASHBOARD_REDIRECT_STATUS="unknown"
 RTC_STATUS="unknown"
 PRIMARY_SHARE_STATUS="unknown"
 BACKUP_SHARE_STATUS="unknown"
@@ -257,6 +260,12 @@ else
     CONTROL_PANEL_STATUS="inactive"
 fi
 
+if systemctl is-active --quiet "${PCS_DASHBOARD_REDIRECT_SERVICE}"; then
+    DASHBOARD_REDIRECT_STATUS="active"
+else
+    DASHBOARD_REDIRECT_STATUS="inactive"
+fi
+
 if [[ -d "${PCS_SHARE_PATH}" ]] && testparm -s 2>/dev/null | grep -q "^\[${PCS_SHARE_NAME}\]"; then
     PRIMARY_SHARE_STATUS="present"
 else
@@ -288,6 +297,7 @@ echo "Backup share:             ${BACKUP_SHARE_STATUS} (${PCS_BACKUP_SHARE_NAME}
 echo "Last backup sync:         ${BACKUP_SYNC_STATUS}"
 echo "Cockpit:                  ${COCKPIT_STATUS}"
 echo "PCS Control Panel:        ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
+echo "Dashboard Redirect:       ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
 echo "WWAN modem:               ${MODEM_STATUS}"
 echo "GPSD:                     ${GPSD_STATUS}"
 echo

@@ -21,6 +21,9 @@ PCS_BACKUP_PATH="/srv/pcs-share-backup"
 PCS_CONTROL_SERVICE="pcs-control-panel.service"
 PCS_CONTROL_PORT="8080"
 PCS_CONTROL_URL="http://127.0.0.1:8080"
+PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
+PCS_DASHBOARD_REDIRECT_PORT="80"
+PCS_DASHBOARD_REDIRECT_HEALTH_URL="http://127.0.0.1/health"
 
 
 echo
@@ -349,6 +352,36 @@ if command_exists curl; then
     fi
 else
     skip "curl not found; skipping PCS Control Panel HTTP check"
+fi
+
+section "PCS Dashboard Redirect"
+
+if service_active "${PCS_DASHBOARD_REDIRECT_SERVICE}"; then
+    pass "${PCS_DASHBOARD_REDIRECT_SERVICE} is active"
+else
+    fail "${PCS_DASHBOARD_REDIRECT_SERVICE} is not active"
+fi
+
+if service_enabled "${PCS_DASHBOARD_REDIRECT_SERVICE}"; then
+    pass "${PCS_DASHBOARD_REDIRECT_SERVICE} is enabled"
+else
+    fail "${PCS_DASHBOARD_REDIRECT_SERVICE} is not enabled"
+fi
+
+if port_listening_tcp "${PCS_DASHBOARD_REDIRECT_PORT}"; then
+    pass "TCP port ${PCS_DASHBOARD_REDIRECT_PORT} appears to be listening"
+else
+    fail "TCP port ${PCS_DASHBOARD_REDIRECT_PORT} does not appear to be listening"
+fi
+
+if command_exists curl; then
+    if curl -fsS --max-time 5 "${PCS_DASHBOARD_REDIRECT_HEALTH_URL}" >/dev/null 2>&1; then
+        pass "PCS dashboard redirect health check works"
+    else
+        fail "PCS dashboard redirect health check failed"
+    fi
+else
+    skip "curl not found; skipping dashboard redirect HTTP check"
 fi
 
 section "Raspberry Pi Connect"
