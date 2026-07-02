@@ -13,7 +13,7 @@ Access point / switch
     ↓ LAN port
 Raspberry Pi eth0 - 10.42.0.1/24
     ↓
-Raspberry Pi uplink - wlan0 now, cellular later
+Raspberry Pi uplink - wlan0 currently, cellular data manual/optional
     ↓
 Internet
 ```
@@ -82,7 +82,7 @@ The name is historical. It now functions as the PCS client LAN/AP handoff profil
 
 ## Current Uplink
 
-Current pre-WWAN uplink:
+Current tested uplink:
 
 ```text
 wlan0 → home Wi-Fi/router → internet
