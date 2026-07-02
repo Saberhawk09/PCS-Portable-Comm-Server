@@ -720,6 +720,207 @@ def cellular_route_metric(profile_name="pcs-cellular-tmobile"):
     return f"IPv4 {ipv4_metric}, IPv6 {ipv6_metric}"
 
 
+def maidenhead_grid(lat, lon, precision=6):
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except Exception:
+        return "unknown"
+
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return "unknown"
+
+    lon += 180
+    lat += 90
+
+    # Maidenhead locator pairs:
+    # Field: 20 deg lon / 10 deg lat
+    # Square: 2 deg lon / 1 deg lat
+    # Subsquare: 5 min lon / 2.5 min lat
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWX"
+
+    field_lon = int(lon // 20)
+    field_lat = int(lat // 10)
+
+    lon -= field_lon * 20
+    lat -= field_lat * 10
+
+    square_lon = int(lon // 2)
+    square_lat = int(lat // 1)
+
+    lon -= square_lon * 2
+    lat -= square_lat * 1
+
+    subsquare_lon = int(lon / (2 / 24))
+    subsquare_lat = int(lat / (1 / 24))
+
+    grid = (
+        letters[field_lon]
+        + letters[field_lat]
+        + str(square_lon)
+        + str(square_lat)
+        + letters[subsquare_lon].lower()
+        + letters[subsquare_lat].lower()
+    )
+
+    return grid[:precision]
+
+def nmea_coord_to_decimal(value, hemisphere):
+    try:
+        raw = float(value)
+    except Exception:
+        return None
+
+    if not value or not hemisphere:
+        return None
+
+    degrees = int(raw // 100)
+    minutes = raw - (degrees * 100)
+    decimal = degrees + (minutes / 60)
+
+    if hemisphere.upper() in {"S", "W"}:
+        decimal *= -1
+
+    return decimal
+
+def parse_lat_lon_from_location_output(loc_out):
+    lat = None
+    lon = None
+
+    for line in loc_out.splitlines():
+        cleaned = line.strip().lower()
+
+        if "latitude:" in cleaned:
+            try:
+                lat = float(cleaned.split("latitude:", 1)[1].strip().split()[0])
+            except Exception:
+                pass
+
+        if "longitude:" in cleaned:
+            try:
+                lon = float(cleaned.split("longitude:", 1)[1].strip().split()[0])
+            except Exception:
+                pass
+
+    if lat is not None and lon is not None:
+        return lat, lon
+
+    # Fall back to NMEA RMC/GGA parsing.
+    for line in loc_out.splitlines():
+        stripped = line.strip()
+
+        if "$GPRMC" in stripped or "$GNRMC" in stripped:
+            sentence = stripped[stripped.find("$G"):]
+            parts = sentence.split(",")
+
+            if len(parts) >= 7:
+                nmea_lat = nmea_coord_to_decimal(parts[3], parts[4])
+                nmea_lon = nmea_coord_to_decimal(parts[5], parts[6])
+
+                if nmea_lat is not None and nmea_lon is not None:
+                    return nmea_lat, nmea_lon
+
+        if "$GPGGA" in stripped or "$GNGGA" in stripped:
+            sentence = stripped[stripped.find("$G"):]
+            parts = sentence.split(",")
+
+            if len(parts) >= 6:
+                nmea_lat = nmea_coord_to_decimal(parts[2], parts[3])
+                nmea_lon = nmea_coord_to_decimal(parts[4], parts[5])
+
+                if nmea_lat is not None and nmea_lon is not None:
+                    return nmea_lat, nmea_lon
+
+    return None, None
+
+def modem_gps_safe_info(modem_number):
+    info = {
+        "capabilities": "unknown",
+        "enabled": "unknown",
+        "signals": "unknown",
+        "refresh_rate": "unknown",
+        "gps_data": "not available",
+        "nmea": "not available",
+        "utc": "not available",
+        "coordinates": "not available",
+        "lat_lon": "not available",
+        "grid_square": "unknown",
+        "satellites": "unknown",
+        "fix_quality": "unknown",
+    }
+
+    if not modem_number:
+        return info
+
+    rc, status_out, _ = run(["mmcli", "-m", modem_number, "--location-status"], timeout=10)
+
+    if rc == 0 and status_out:
+        for line in status_out.splitlines():
+            cleaned = line.strip()
+
+            if "|" in cleaned:
+                cleaned = cleaned.split("|", 1)[1].strip()
+
+            if ":" not in cleaned:
+                continue
+
+            key, value = cleaned.split(":", 1)
+            key = key.strip().lower()
+            value = value.strip()
+
+            if key == "capabilities":
+                info["capabilities"] = value
+            elif key == "enabled":
+                info["enabled"] = value
+            elif key == "signals":
+                info["signals"] = value
+            elif key == "refresh rate":
+                info["refresh_rate"] = value
+
+    rc, loc_out, _ = run(["mmcli", "-m", modem_number, "--location-get"], timeout=10)
+
+    if rc == 0 and loc_out:
+        lower = loc_out.lower()
+
+        if "gps" in lower:
+            info["gps_data"] = "present"
+
+        if "$gp" in lower or "$gn" in lower or "nmea:" in lower:
+            info["nmea"] = "present"
+
+        if "utc:" in lower:
+            info["utc"] = "present"
+
+        lat, lon = parse_lat_lon_from_location_output(loc_out)
+
+        if lat is not None and lon is not None:
+            info["coordinates"] = "available"
+            info["lat_lon"] = f"{lat:.6f}, {lon:.6f}"
+            info["grid_square"] = maidenhead_grid(lat, lon)
+
+        # Pull non-sensitive fix/satellite hints from NMEA text.
+        for line in loc_out.splitlines():
+            stripped = line.strip()
+
+            if "$GPGGA" in stripped or "$GNGGA" in stripped:
+                parts = stripped.split(",")
+                if len(parts) > 7:
+                    fix_quality = parts[6] or "unknown"
+                    satellites = parts[7] or "unknown"
+
+                    fix_map = {
+                        "0": "no fix",
+                        "1": "GPS fix",
+                        "2": "DGPS fix",
+                        "4": "RTK fixed",
+                        "5": "RTK float",
+                    }
+
+                    info["fix_quality"] = fix_map.get(fix_quality, fix_quality)
+                    info["satellites"] = satellites
+
+    return info
+
 def public_wan_ip():
     for cmd in [
         ["curl", "-fsS", "--max-time", "5", "https://api.ipify.org"],
@@ -991,6 +1192,7 @@ cell_ip_state = wwan_ip_assignment_state()
 cell_profile_present = cellular_profile_exists()
 cell_route_metric = cellular_route_metric()
 gpsd_active = active("gpsd")
+gps_info = modem_gps_safe_info(modem_number)
 
 usb_rc, usb_out, _ = run(["lsusb"], timeout=5)
 usb_lower = usb_out.lower()
@@ -1031,7 +1233,8 @@ services_status = "ok" if all(core_services.values()) else "warn"
 cellular_registered = cell_info.get("registration") in {"home", "roaming"}
 cellular_connected = cell_nm.get("state") == "connected"
 cellular_status = "ok" if modem_present and (cellular_registered or cellular_connected) else "warn"
-gps_status = "ok" if gpsd_active and (gps_devices or pps_present or chrony_gps_source_present) else "warn"
+gps_has_modem_data = gps_info.get("gps_data") == "present"
+gps_status = "ok" if gps_has_modem_data or (gpsd_active and (gps_devices or pps_present or chrony_gps_source_present)) else "warn"
 
 cards = [
     {
@@ -1198,11 +1401,27 @@ cards = [
         "id": "gps",
         "title": "GPS / GNSS",
         "status": gps_status,
-        "summary": "GPS/GNSS source active" if gps_status == "ok" else "Waiting for GPS/GNSS setup",
+        "summary": (
+            "GPS fix available"
+            if gps_info.get("coordinates") == "available"
+            else "GPS data available"
+            if gps_has_modem_data
+            else "Waiting for GPS/GNSS fix"
+            if modem_present
+            else "Waiting for GPS/GNSS hardware"
+        ),
         "items": [
+            {"label": "Modem GPS", "value": "available" if modem_present else "not detected"},
+            {"label": "Enabled sources", "value": gps_info.get("enabled", "unknown")},
+            {"label": "GPS data", "value": gps_info.get("gps_data", "unknown")},
+            {"label": "Lat/Lon", "value": gps_info.get("lat_lon", "not available")},
+            {"label": "Grid square", "value": gps_info.get("grid_square", "unknown")},
+            {"label": "NMEA", "value": gps_info.get("nmea", "unknown")},
+            {"label": "UTC time", "value": gps_info.get("utc", "unknown")},
+            {"label": "Fix quality", "value": gps_info.get("fix_quality", "unknown")},
+            {"label": "Satellites", "value": gps_info.get("satellites", "unknown")},
+            {"label": "Refresh rate", "value": gps_info.get("refresh_rate", "unknown")},
             {"label": "gpsd", "value": "active" if gpsd_active else "inactive / not configured yet"},
-            {"label": "GPS serial devices", "value": ", ".join(gps_devices) if gps_devices else "none detected yet"},
-            {"label": "PPS device", "value": "/dev/pps0 present" if pps_present else "not detected yet"},
             {"label": "Chrony GPS/PPS source", "value": "present" if chrony_gps_source_present else "not configured yet"},
             {"label": "Future role", "value": "GPS-disciplined LAN NTP"},
         ],
