@@ -11,8 +11,8 @@ Prices are rough planning values and may change.
 | Raspberry Pi 4 8GB | Main PCS server/gateway | In use |
 | USB flash drive | Primary Samba file share storage | In use |
 | Actiontec T3200 | Temporary AP/switch for testing | In use |
-| Sierra Wireless EM7565 | Planned cellular modem | Pending setup |
-| M.2 WWAN to USB adapter | USB adapter for cellular modem | Pending |
+| Sierra Wireless EM7565 | Future cellular modem upgrade | Pending validation |
+| M.2 WWAN to USB adapter | USB adapter for cellular modem/GPS module | Tested with EM7455/DW5811e |
 | External LTE antennas | Cellular signal improvement | Planned |
 | MHF4 to SMA pigtails | Modem antenna connections | Planned |
 
@@ -50,8 +50,8 @@ Prices are rough planning values and may change.
 
 | Item | Purpose | Status |
 |---|---|---|
-| GPS/GNSS receiver | GPS-backed time source | Planned |
-| External GPS antenna | Better GPS reception | Planned |
+| Dell DW5811e / Sierra Wireless EM7455 GPS | GPS-backed time/location source via NMEA | Tested |
+| External GPS antenna | Better GPS reception | Tested |
 | OLED/status display | Local status display | Optional |
 | Battery voltage monitor | Power telemetry | Optional |
 | OpenWRT router/AP | Final client Wi-Fi hardware | TBD |
@@ -83,4 +83,4 @@ Final enclosure
 
 This BOM is still evolving.
 
-The current software baseline does not require all final hardware to be installed. WWAN/cellular and GPS/GNSS setup will be documented once the hardware arrives and is tested.
+The current software baseline can run without final hardware, but the EM7455/DW5811e WWAN modem and GPS NMEA path have now been tested. Future EM7565 validation, final power hardware, and final enclosure work remain.
