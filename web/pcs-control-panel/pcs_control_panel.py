@@ -27,6 +27,12 @@ ACTIONS = [
 
 ACTION_MAP = {name: (label, desc) for name, label, desc in ACTIONS}
 
+ACTION_GROUPS = [
+    ("Status", ["status", "self-test", "storage-status", "restart-logs"]),
+    ("Storage", ["sync-backup", "mount-usb", "safe-unmount-usb"]),
+    ("Services", ["restart-services", "restart-samba", "restart-chrony"]),
+]
+
 
 def run_dispatcher(action: str, timeout: int = 300) -> tuple[int, str]:
     try:
@@ -285,24 +291,44 @@ def render_client_info(dashboard: dict) -> str:
 
 
 
+
+def render_action_card(name: str) -> str:
+    label, desc = ACTION_MAP[name]
+    danger = name in {"safe-unmount-usb", "restart-services", "restart-samba", "restart-chrony"}
+    css_class = "danger" if danger else "normal"
+
+    return f"""
+    <form method="POST" action="/run" class="action-card">
+        <input type="hidden" name="action" value="{esc(name)}">
+        <button class="{css_class}" type="submit">{esc(label)}</button>
+        <p>{esc(desc)}</p>
+    </form>
+    """
+
+
+def render_action_groups() -> str:
+    groups = []
+
+    for title, action_names in ACTION_GROUPS:
+        cards = "".join(render_action_card(name) for name in action_names if name in ACTION_MAP)
+
+        groups.append(f"""
+        <section class="action-group">
+            <h3>{esc(title)}</h3>
+            <div class="grid">
+                {cards}
+            </div>
+        </section>
+        """)
+
+    return "".join(groups)
+
+
+
 def page(action_result: str = "", action_name: str = "", return_code: int | None = None) -> bytes:
     dashboard = get_dashboard()
 
-    buttons = []
-
-    for name, label, desc in ACTIONS:
-        danger = name in {"safe-unmount-usb", "restart-services", "restart-samba", "restart-chrony"}
-        css_class = "danger" if danger else "normal"
-
-        buttons.append(
-            f"""
-            <form method="POST" action="/run" class="action-card">
-                <input type="hidden" name="action" value="{esc(name)}">
-                <button class="{css_class}" type="submit">{esc(label)}</button>
-                <p>{esc(desc)}</p>
-            </form>
-            """
-        )
+    action_sections = render_action_groups()
 
     if action_result:
         result_block = f"""
@@ -629,6 +655,18 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             margin: 1.3rem 0 0.75rem;
         }}
 
+        .action-group {{
+            margin-bottom: 1.25rem;
+        }}
+
+        .action-group h3 {{
+            margin: 0 0 0.6rem;
+            color: var(--muted);
+            font-size: 1rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }}
+
         .grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -719,9 +757,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         {render_client_info(dashboard)}
 
         <h2 class="actions-title">Actions</h2>
-        <section class="grid">
-            {''.join(buttons)}
-        </section>
+        {action_sections}
 
         {result_block}
     </main>
@@ -736,9 +772,20 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
 
 class Handler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        self.end_headers()
+
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(page())
 
@@ -758,6 +805,9 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(page(output, label, code))
 
