@@ -1,94 +1,164 @@
-# Power System
+# PCS Power System
 
-The PCS power system is designed to support both grid power and field / emergency DC power.
+PCS is planned to support both emergency DC power and normal AC grid power.
 
-The system has two possible power sources:
+This document is a planning/reference document. Final wiring should be checked against actual part ratings, enclosure layout, fuse ratings, wire gauge, and safe AC wiring practices.
 
-* 12–24 VDC input through an Anderson Powerpole inlet
-* 120 VAC input through a switched and fused IEC C14 inlet
+## Planned Inputs
 
-Only one source should be selected at a time.
-
-## Power Source Selection
-
-Source selection is handled by a 6-pin DPDT on-off-on toggle switch.
-
-Planned switch orientation:
-
-| Switch Position | Selected Source                 |
-| --------------- | ------------------------------- |
-| Up              | DC input via Anderson Powerpole |
-| Center          | Off                             |
-| Down            | AC input via internal 12V PSU   |
-
-The AC input feeds an internal 12V 3A power supply. The DC input feeds the 12V system directly through the Anderson Powerpole inlet.
-
-The selected source feeds the internal 12V DC rail.
-
-## AC Input Path
+PCS is planned to support two power sources:
 
 ```text
-120 VAC inlet
-    ↓
-Switched / fused IEC C14 inlet
-    ↓
-Internal 12V 3A power supply
-    ↓
-DPDT source selector
-    ↓
-12V internal rail
+12–24 VDC input via Anderson Powerpole
+120 VAC input via fused/switched IEC C14 inlet
 ```
 
-## DC Input Path
+## Planned Internal Power Layout
 
 ```text
-12–24 VDC Anderson Powerpole inlet
-    ↓
+DC input / AC-derived 12 V
+        ↓
+Source select switch
+        ↓
+12 V internal bus
+        ↓
+Branch fusing
+        ↓
+Router / 12 V loads
+        ↓
+12 V → 5 V buck converter
+        ↓
+Raspberry Pi / USB modem hardware
+```
+
+## DC Input
+
+Planned DC input:
+
+```text
+Connector: Anderson Powerpole
+Input range: 12–24 VDC
+```
+
+The DC input should be fused close to the inlet.
+
+Current planning value:
+
+```text
+DC input fuse: 3 A
+```
+
+## AC Input
+
+Planned AC input:
+
+```text
+Connector: switched/fused IEC C14 inlet
+Internal PSU: 120 VAC → 12 VDC
+```
+
+The AC input should remain physically separated from low-voltage DC wiring inside the enclosure.
+
+## Source Switching
+
+The current planned source switch is a DPDT center-off toggle switch.
+
+Planned switch behavior:
+
+```text
+Up:     DC input
+Middle: Off
+Down:   AC-derived 12 V
+```
+
+Preferred switch type:
+
+```text
+DPDT
+Center-off
+Break-before-make
+Rated for expected DC current and voltage
+```
+
+A 6-terminal DPDT switch allows both positive and negative/source return conductors to be switched if desired.
+
+## Internal 12 V Bus
+
+Planned internal bus:
+
+```text
+Voltage: 12 VDC nominal
+Fuse:    3 A
+```
+
+The 12 V bus may power:
+
+- Router / access point hardware
+- 12 V accessories
+- 12 V to 5 V buck converter
+
+## 5 V Rail
+
+The 5 V rail is created from the 12 V bus with a buck converter.
+
+Planned use:
+
+- Raspberry Pi 4
+- WWAN modem USB adapter
+- Other 5 V accessories if needed
+
+Current planning estimate:
+
+```text
+Buck converter output: 5 V
+Maximum output:        5 A
+```
+
+## Estimated Loads
+
+Rough current estimates:
+
+```text
+Raspberry Pi 4:      ~1.5 A typical at 5 V
+WWAN USB adapter:    ~0.8 A peak at 5 V
+Router/AP:           TBD
+Estimated 5 V total: ~2.5–3.0 A
+```
+
+These are planning estimates. Final fuse sizing should be based on actual measured current draw and device ratings.
+
+## Fuse Planning
+
+Planned fuse locations:
+
+```text
 DC input fuse
-    ↓
-DPDT source selector
-    ↓
-12V internal rail
+AC inlet fuse
+12 V internal bus fuse
+Optional branch fuses for major loads
 ```
 
-## Internal 12V Rail
+Current known/planned value:
 
-The internal DC bus is treated as a 12V rail and is fused at 3A.
+```text
+12 V bus / DC input: 3 A
+```
 
-This rail may power:
+Final fuse sizing should protect the wiring and device branches, not just the load.
 
-* 12V router hardware, if used
-* 12V to 5V buck converter
-* Future 12V accessories, if added
+## Safety Notes
 
-## 5V Rail
+- Keep AC wiring physically separated from low-voltage DC wiring.
+- Use strain relief for AC and DC inlets.
+- Use appropriate wire gauge for each fused branch.
+- Fuse close to power entry points.
+- Avoid exposing AC terminals inside the enclosure.
+- Confirm switch ratings for DC use.
+- Prefer break-before-make source switching.
+- Do not connect AC-derived 12 V and external DC input together directly.
 
-A 12V to 5V buck converter provides the 5V rail.
+## Current Status
 
-The buck converter is rated for up to 5A output.
+The power system is still in the planning/build stage.
 
-The 5V rail is planned to power:
-
-* Raspberry Pi 4
-* USB WWAN modem adapter
-* Other low-voltage USB/server hardware as needed
-
-Estimated 5V draw:
-
-| Device         | Estimated Current |
-| -------------- | ----------------: |
-| Raspberry Pi 4 |      1.5A typical |
-| WWAN adapter   |         0.8A peak |
-| Router         |               TBD |
-
-Estimated total 5V draw is approximately 2.5–3.0A, not including any future accessories.
-
-## Notes / Safety Considerations
-
-The AC and DC inputs could technically be connected to live sources at the same time, but this should be avoided during normal use.
-
-The source selector switch should ideally be break-before-make so the AC-derived 12V supply and external DC input are never briefly tied together during switching.
-
-The DPDT switch allows both sides of the selected DC source to be switched, instead of only switching the positive rail.
-
-Final fuse placement and wire sizing should be verified before enclosure assembly.
+Software testing is currently being done from normal Raspberry Pi power, with the final enclosure power system still pending.
