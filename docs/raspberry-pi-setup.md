@@ -18,6 +18,21 @@ From the Pi:
 cd /home/pi/Projects/PCS-Portable-Comm-Server
 ```
 
+## Clone Location
+
+This repository should be cloned under `~/Projects` so scripts and service files match the expected path.
+
+```bash
+mkdir -p ~/Projects
+cd ~/Projects
+git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
+cd PCS-Portable-Comm-Server
+```
+
+Expected final path:
+
+```text
+/home/pi/Projects/PCS-Portable-Comm-Server
 ## Main Setup Script
 
 Run the PCS base setup script:
