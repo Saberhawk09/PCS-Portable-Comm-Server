@@ -25,6 +25,40 @@ Installs packages for:
 
 This script does not configure routing, Samba shares, GPSD, Chrony GPS sources, or modem profiles.
 
+## setup-pcs-base.sh
+
+Runs the full PCS baseline setup workflow on a fresh Raspberry Pi OS install.
+
+Run from the repository root:
+
+    ./scripts/setup-pcs-base.sh
+
+This script runs:
+
+- Dependency installation
+- RTC setup
+- Router WAN handoff setup
+- Temporary Samba test share setup
+- Chrony LAN NTP setup
+- Cockpit/systemd restart button installation
+- PCS status script
+- PCS self-test script
+
+This script does not configure:
+
+- WWAN/cellular modem connection
+- GPS/GNSS time source
+- Final removable-storage Samba share
+
+Those require hardware that may not be installed yet.
+
+After setup, recommended validation is:
+
+    sudo reboot
+    cd /home/pi/Projects/PCS-Portable-Comm-Server
+    ./scripts/pcs-self-test.sh
+    ./scripts/pcs-status.sh
+
 ## setup-rtc.sh
 
 Configures support for the PCS I2C RTC module.
