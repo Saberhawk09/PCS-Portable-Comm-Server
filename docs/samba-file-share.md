@@ -1,108 +1,143 @@
-# Samba File Share
+# PCS Samba File Share
 
-PCS will provide a LAN-accessible file share for client PCs.
+PCS provides local file sharing over Samba for clients connected to the PCS network.
 
-The final file share is expected to use removable storage, but a temporary test share has already been validated using local Pi storage.
+## Client Access
 
-## Temporary Test Share
+From a client connected to the PCS network:
 
-The temporary test share is created by:
-
-    ./scripts/setup-test-samba-share.sh
-
-Default test share details:
-
-- Share name: `PCS-Share`
-- Local path: `/srv/pcs-share`
-- Access method: Samba user login
-- Tested client: Windows PC
-
-## Backup Share
-
-PCS also provides an SD-card backup share.
-
-Default backup share details:
-
-- Share name: `PCS-Backup`
-- Local path: `/srv/pcs-share-backup`
-- Purpose: backup mirror of the primary PCS file share
-- Access method: Samba user login
-
-Windows access path:
-
-    \\10.42.0.1\PCS-Backup
-
-The backup share is created by:
-
-    ./scripts/setup-samba-backup-share.sh
-
-## Manual Backup Sync
-
-The primary share can be manually mirrored to the backup share with:
-
-    ./scripts/sync-pcs-share-to-backup.sh
-
-Current sync direction:
-
-    /srv/pcs-share → /srv/pcs-share-backup
-
-The sync script creates or updates:
-
-    /srv/pcs-share-backup/LAST_SYNC.txt
-
-This file records the last backup sync time.
-
-Warning: the sync script uses a mirror-style sync. Files deleted from the primary share may also be deleted from the backup copy.
+```text
+Primary share:  \\10.42.0.1\PCS-Share
+Backup share:   \\10.42.0.1\PCS-Backup
+```
 
 ## Current Share Layout
 
-PCS currently uses USB storage as the primary file share and the Pi SD card as a backup mirror.
+PCS currently uses removable USB storage as the primary file share and the Pi SD card as a backup mirror.
 
 ```text
 \\10.42.0.1\PCS-Share   → /mnt/pcs-usb/PCS-Share
 \\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
+```
 
-## Confirmed Working
+## Primary USB Share
 
-Confirmed on 2026-07-01:
+`PCS-Share` is the main field file share.
 
-- Samba installed successfully
-- Temporary share directory created at `/srv/pcs-share`
-- Share `PCS-Share` visible from Windows
-- Windows client login successful
-- Windows client could access the share
+Current tested USB device:
+
+```text
+Label:       LEXAR
+UUID:        340B-4403
+Filesystem: vfat
+Mount:       /mnt/pcs-usb
+Share path:  /mnt/pcs-usb/PCS-Share
+```
+
+Setup script:
+
+```bash
+./scripts/setup-usb-primary-share.sh
+```
+
+The setup script can use the default USB UUID:
+
+```bash
+./scripts/setup-usb-primary-share.sh
+```
+
+Or a device path:
+
+```bash
+./scripts/setup-usb-primary-share.sh /dev/sda1
+```
+
+Supported filesystems:
+
+```text
+vfat
+exfat
+ext4
+```
+
+## SD Card Backup Share
+
+`PCS-Backup` is the backup mirror stored on the Pi SD card.
+
+```text
+Share path: /srv/pcs-share-backup
+```
+
+Setup script:
+
+```bash
+./scripts/setup-samba-backup-share.sh
+```
+
+This share is intended to remain available if the USB stick is removed or fails.
+
+## Manual Backup Sync
+
+Sync USB primary storage to SD backup:
+
+```bash
+./scripts/sync-pcs-share-to-backup.sh
+```
+
+Sync direction:
+
+```text
+/mnt/pcs-usb/PCS-Share → /srv/pcs-share-backup
+```
+
+The sync script updates:
+
+```text
+/srv/pcs-share-backup/LAST_SYNC.txt
+```
+
+Warning: this is a mirror-style sync. Files deleted from the USB primary share may also be deleted from the SD backup.
+
+## Safe USB Removal
+
+Recommended terminal process:
+
+```bash
+./scripts/sync-pcs-share-to-backup.sh
+sudo systemctl stop smbd
+sudo umount /mnt/pcs-usb
+sudo udisksctl power-off -b /dev/sda
+sudo systemctl start smbd
+```
+
+The PCS web control panel also includes a safe USB unmount action:
+
+```text
+http://10.42.0.1
+```
 
 ## Windows Access
 
 From Windows File Explorer:
 
-    \\pcs-pi.local\PCS-Share
+```text
+\\10.42.0.1\PCS-Share
+\\10.42.0.1\PCS-Backup
+```
 
-If `.local` does not resolve, use the Pi IP address:
+If Windows asks for credentials, use the Pi/Samba user account.
 
-    \\<pi-ip-address>\PCS-Share
+Example:
 
-The Pi IP address can be checked with:
+```text
+Username: pi
+Password: Pi/Samba password
+```
 
-    hostname -I
+## Notes
 
-## Credentials
-
-Use the Samba username/password configured by:
-
-    sudo smbpasswd -a <username>
-
-Do not commit Samba passwords or real credentials to the repository.
-
-## Final Share Plan
-
-The final PCS file share should eventually move from `/srv/pcs-share` to removable storage.
-
-Pending final setup tasks:
-
-- Choose final external storage device
-- Decide mount point
-- Configure persistent mounting
-- Configure final Samba share path
-- Test read/write access from Windows clients
-- Document recovery/rebuild process
+- `PCS-Share` is the working field share.
+- `PCS-Backup` is the SD-card backup mirror.
+- The current USB stick is formatted as `vfat`, so Linux ownership and permission behavior is limited compared to `ext4`.
+- Samba still presents the share normally to network clients.
+- Future builds may use a different USB UUID, device path, or filesystem.
