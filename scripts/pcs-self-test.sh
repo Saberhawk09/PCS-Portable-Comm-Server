@@ -11,8 +11,12 @@ PCS_ETH_IFACE="eth0"
 PCS_WIFI_IFACE="wlan0"
 PCS_ETH_ADDR="10.42.0.1/24"
 PCS_NTP_NET="10.42.0.0/24"
+
 PCS_SAMBA_SHARE="PCS-Share"
 PCS_SAMBA_PATH="/srv/pcs-share"
+
+PCS_BACKUP_SHARE="PCS-Backup"
+PCS_BACKUP_PATH="/srv/pcs-share-backup"
 
 echo
 echo "=== PCS Pi-Side Self Test ==="
@@ -257,15 +261,33 @@ else
 fi
 
 if [[ -d "${PCS_SAMBA_PATH}" ]]; then
-    pass "Samba share path exists: ${PCS_SAMBA_PATH}"
+    pass "Samba primary share path exists: ${PCS_SAMBA_PATH}"
 else
-    fail "Samba share path missing: ${PCS_SAMBA_PATH}"
+    fail "Samba primary share path missing: ${PCS_SAMBA_PATH}"
 fi
 
 if testparm -s 2>/dev/null | grep -q "^\[${PCS_SAMBA_SHARE}\]"; then
     pass "Samba config contains [${PCS_SAMBA_SHARE}]"
 else
     fail "Samba config does not contain [${PCS_SAMBA_SHARE}]"
+fi
+
+if [[ -d "${PCS_BACKUP_PATH}" ]]; then
+    pass "Samba backup share path exists: ${PCS_BACKUP_PATH}"
+else
+    fail "Samba backup share path missing: ${PCS_BACKUP_PATH}"
+fi
+
+if testparm -s 2>/dev/null | grep -q "^\[${PCS_BACKUP_SHARE}\]"; then
+    pass "Samba config contains [${PCS_BACKUP_SHARE}]"
+else
+    fail "Samba config does not contain [${PCS_BACKUP_SHARE}]"
+fi
+
+if [[ -f "${PCS_BACKUP_PATH}/LAST_SYNC.txt" ]]; then
+    pass "Backup share has LAST_SYNC.txt"
+else
+    warn "Backup share does not have LAST_SYNC.txt yet"
 fi
 
 if port_listening_tcp 445; then

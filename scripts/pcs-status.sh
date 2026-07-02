@@ -7,8 +7,13 @@ PCS_WIFI_IFACE="wlan0"
 PCS_ROUTER_PROFILE="pcs-router-wan-share"
 PCS_ROUTER_IP="10.42.0.1"
 PCS_ROUTER_CIDR="10.42.0.1/24"
+
 PCS_SHARE_NAME="PCS-Share"
 PCS_SHARE_PATH="/srv/pcs-share"
+
+PCS_BACKUP_SHARE_NAME="PCS-Backup"
+PCS_BACKUP_SHARE_PATH="/srv/pcs-share-backup"
+
 PCS_HOSTNAME="$(hostname 2>/dev/null || echo pcs-pi)"
 
 echo "=== PCS System Status ==="
@@ -131,6 +136,19 @@ else
 fi
 echo
 
+echo "--- Samba Storage Paths ---"
+for path in "${PCS_SHARE_PATH}" "${PCS_BACKUP_SHARE_PATH}"; do
+    echo
+    echo "[${path}]"
+    if [[ -d "${path}" ]]; then
+        df -h "${path}" || true
+        ls -la "${path}" || true
+    else
+        echo "Missing"
+    fi
+done
+echo
+
 echo "--- Key Services ---"
 for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket; do
     echo
@@ -169,6 +187,9 @@ SAMBA_STATUS="unknown"
 COCKPIT_STATUS="unknown"
 CHRONY_STATUS="unknown"
 RTC_STATUS="unknown"
+PRIMARY_SHARE_STATUS="unknown"
+BACKUP_SHARE_STATUS="unknown"
+BACKUP_SYNC_STATUS="unknown"
 
 if command -v nmcli >/dev/null 2>&1; then
     WIFI_STATE="$(nmcli -t -f DEVICE,STATE device status | awk -F: -v dev="${PCS_WIFI_IFACE}" '$1 == dev {print $2}')"
@@ -225,6 +246,24 @@ else
     CHRONY_STATUS="inactive"
 fi
 
+if [[ -d "${PCS_SHARE_PATH}" ]] && testparm -s 2>/dev/null | grep -q "^\[${PCS_SHARE_NAME}\]"; then
+    PRIMARY_SHARE_STATUS="present"
+else
+    PRIMARY_SHARE_STATUS="missing"
+fi
+
+if [[ -d "${PCS_BACKUP_SHARE_PATH}" ]] && testparm -s 2>/dev/null | grep -q "^\[${PCS_BACKUP_SHARE_NAME}\]"; then
+    BACKUP_SHARE_STATUS="present"
+else
+    BACKUP_SHARE_STATUS="missing"
+fi
+
+if [[ -f "${PCS_BACKUP_SHARE_PATH}/LAST_SYNC.txt" ]]; then
+    BACKUP_SYNC_STATUS="$(cat "${PCS_BACKUP_SHARE_PATH}/LAST_SYNC.txt" 2>/dev/null || echo unknown)"
+else
+    BACKUP_SYNC_STATUS="no sync timestamp found"
+fi
+
 echo "Hostname:                 ${PCS_HOSTNAME}"
 echo "Wi-Fi uplink ${PCS_WIFI_IFACE}:       ${WIFI_STATE}"
 echo "Ethernet handoff ${PCS_ETH_IFACE}:    ${ETH_STATE}"
@@ -233,6 +272,9 @@ echo "Router-side IP present:   ${ETH_ADDR_FOUND} (${PCS_ROUTER_CIDR})"
 echo "RTC:                      ${RTC_STATUS}"
 echo "Chrony/NTP:               ${CHRONY_STATUS}"
 echo "Samba:                    ${SAMBA_STATUS}"
+echo "Primary share:            ${PRIMARY_SHARE_STATUS} (${PCS_SHARE_NAME})"
+echo "Backup share:             ${BACKUP_SHARE_STATUS} (${PCS_BACKUP_SHARE_NAME})"
+echo "Last backup sync:         ${BACKUP_SYNC_STATUS}"
 echo "Cockpit:                  ${COCKPIT_STATUS}"
 echo "WWAN modem:               ${MODEM_STATUS}"
 echo "GPSD:                     ${GPSD_STATUS}"
@@ -242,8 +284,11 @@ echo "--- PCS Client Access Info ---"
 echo
 echo "Use these from a client behind the PCS/test router:"
 echo
-echo "File share:"
+echo "Primary file share:"
 echo "  \\\\${PCS_ROUTER_IP}\\${PCS_SHARE_NAME}"
+echo
+echo "Backup file share:"
+echo "  \\\\${PCS_ROUTER_IP}\\${PCS_BACKUP_SHARE_NAME}"
 echo
 echo "Cockpit web UI:"
 echo "  https://${PCS_ROUTER_IP}:9090"
@@ -251,8 +296,11 @@ echo
 echo "LAN NTP server:"
 echo "  ${PCS_ROUTER_IP}"
 echo
-echo "Samba share path on Pi:"
+echo "Primary share path on Pi:"
 echo "  ${PCS_SHARE_PATH}"
+echo
+echo "Backup share path on Pi:"
+echo "  ${PCS_BACKUP_SHARE_PATH}"
 echo
 
 echo "--- Windows Client Test Commands ---"
@@ -267,8 +315,11 @@ echo
 echo "NTP:"
 echo "  w32tm /stripchart /computer:${PCS_ROUTER_IP} /samples:5 /dataonly"
 echo
-echo "File share:"
+echo "Primary file share:"
 echo "  explorer \\\\${PCS_ROUTER_IP}\\${PCS_SHARE_NAME}"
+echo
+echo "Backup file share:"
+echo "  explorer \\\\${PCS_ROUTER_IP}\\${PCS_BACKUP_SHARE_NAME}"
 echo
 
 echo "--- Current Test Topology ---"
@@ -284,6 +335,9 @@ echo "--- Notes ---"
 echo
 echo "- ${PCS_ROUTER_IP} is the stable router-side Pi address for PCS clients."
 echo "- ${PCS_HOSTNAME}.local may not resolve from behind the router because mDNS usually does not cross router WAN/LAN boundaries."
+echo "- ${PCS_SHARE_NAME} is the current primary/test share."
+echo "- ${PCS_BACKUP_SHARE_NAME} is the SD-card backup mirror share."
+echo "- Run ./scripts/sync-pcs-share-to-backup.sh to manually mirror the primary share to backup."
 echo "- No WWAN modem is expected until the EM7565 USB adapter is installed."
 echo "- GPSD is expected to remain inactive until GPS/GNSS setup is configured."
 echo
