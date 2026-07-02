@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-USB_UUID="${1:-340B-4403}"
+USB_INPUT="${1:-340B-4403}"
 USB_MOUNT="/mnt/pcs-usb"
 PRIMARY_SHARE_NAME="PCS-Share"
 PRIMARY_SHARE_PATH="${USB_MOUNT}/PCS-Share"
@@ -22,40 +22,42 @@ else
     ${SUDO} -v
 fi
 
-if ! command -v lsblk >/dev/null 2>&1; then
-    echo "ERROR: lsblk not found."
-    exit 1
-fi
+for cmd in lsblk blkid findmnt testparm rsync; do
+    if ! command -v "${cmd}" >/dev/null 2>&1; then
+        echo "ERROR: missing command: ${cmd}"
+        echo "Run ./scripts/install-dependencies.sh first."
+        exit 1
+    fi
+done
 
-if ! command -v blkid >/dev/null 2>&1; then
-    echo "ERROR: blkid not found."
-    exit 1
-fi
+if [[ "${USB_INPUT}" == /dev/* ]]; then
+    USB_DEVICE="${USB_INPUT}"
 
-if ! command -v findmnt >/dev/null 2>&1; then
-    echo "ERROR: findmnt not found."
-    exit 1
-fi
+    if [[ ! -b "${USB_DEVICE}" ]]; then
+        echo "ERROR: ${USB_DEVICE} is not a block device."
+        echo
+        echo "Available devices:"
+        lsblk -o NAME,MODEL,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS,RM
+        exit 1
+    fi
 
-if ! command -v testparm >/dev/null 2>&1; then
-    echo "ERROR: Samba/testparm not found. Run install-dependencies first."
-    exit 1
-fi
+    USB_UUID="$(${SUDO} blkid -s UUID -o value "${USB_DEVICE}" 2>/dev/null || true)"
 
-if ! command -v rsync >/dev/null 2>&1; then
-    echo "rsync not found. Installing rsync..."
-    ${SUDO} apt-get update
-    ${SUDO} apt-get install -y rsync
-fi
+    if [[ -z "${USB_UUID}" ]]; then
+        echo "ERROR: Could not find UUID for ${USB_DEVICE}"
+        exit 1
+    fi
+else
+    USB_UUID="${USB_INPUT}"
+    USB_DEVICE="$(${SUDO} blkid -U "${USB_UUID}" 2>/dev/null || true)"
 
-USB_DEVICE="$(${SUDO} blkid -U "${USB_UUID}" 2>/dev/null || true)"
-
-if [[ -z "${USB_DEVICE}" ]]; then
-    echo "ERROR: Could not find a block device with UUID ${USB_UUID}"
-    echo
-    echo "Available block devices:"
-    lsblk -o NAME,MODEL,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS,RM
-    exit 1
+    if [[ -z "${USB_DEVICE}" ]]; then
+        echo "ERROR: Could not find a block device with UUID ${USB_UUID}"
+        echo
+        echo "Available devices:"
+        lsblk -o NAME,MODEL,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS,RM
+        exit 1
+    fi
 fi
 
 USB_TYPE="$(${SUDO} blkid -s TYPE -o value "${USB_DEVICE}" 2>/dev/null || true)"
@@ -71,6 +73,7 @@ fi
 
 USB_TYPE="${USB_TYPE,,}"
 
+echo "USB input:    ${USB_INPUT}"
 echo "USB UUID:     ${USB_UUID}"
 echo "USB device:   ${USB_DEVICE}"
 echo "USB label:    ${USB_LABEL:-unknown}"
@@ -89,9 +92,8 @@ case "${USB_TYPE}" in
         ;;
     *)
         echo "ERROR: Unsupported filesystem type: ${USB_TYPE:-unknown}"
-        echo "Supported for this script: vfat, exfat, ext4"
+        echo "Supported: vfat, exfat, ext4"
         echo
-        echo "Debug info:"
         lsblk -o NAME,MODEL,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS,RM
         exit 1
         ;;
