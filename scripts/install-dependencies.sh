@@ -106,15 +106,15 @@ echo
 echo "Enabling useful baseline services where available..."
 
 SERVICES_TO_ENABLE=(
-    NetworkManager
-    ModemManager
-    avahi-daemon
-    chrony
+    NetworkManager.service
+    ModemManager.service
+    avahi-daemon.service
+    chrony.service
     cockpit.socket
 )
 
 for service in "${SERVICES_TO_ENABLE[@]}"; do
-    if systemctl list-unit-files | awk '{print $1}' | grep -qx "${service}"; then
+    if systemctl list-unit-files --no-legend "${service}" 2>/dev/null | awk '{print $1}' | grep -qx "${service}"; then
         echo "Enabling ${service}..."
         ${SUDO} systemctl enable --now "${service}" || true
     else
@@ -137,8 +137,8 @@ echo
 echo "PCS dependency installation complete."
 echo
 echo "Suggested next checks:"
-echo "  systemctl status ModemManager --no-pager"
-echo "  systemctl status chrony --no-pager"
+echo "  systemctl status ModemManager.service --no-pager"
+echo "  systemctl status chrony.service --no-pager"
 echo "  systemctl status cockpit.socket --no-pager"
 echo "  nmcli device status"
 echo "  lsusb"
@@ -146,5 +146,5 @@ echo
 echo "Cockpit should be available at:"
 echo "  https://pcs-pi.local:9090"
 echo "or:"
-echo "  https://<pi-ip-address>:9090"
+echo "  https://PI_IP_ADDRESS:9090"
 echo
