@@ -351,11 +351,123 @@ def uplink_route_info():
             info["source_ip"] = parts[idx + 1]
     return info
 
+def manual_client_names():
+    names = {}
+    path = "/home/pi/Projects/PCS-Portable-Comm-Server/config/local-client-names.tsv"
+
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+
+                if "\t" in line:
+                    key, name = line.split("\t", 1)
+                else:
+                    parts = line.split(maxsplit=1)
+                    if len(parts) != 2:
+                        continue
+                    key, name = parts
+
+                names[key.strip().lower()] = name.strip()
+    except FileNotFoundError:
+        pass
+
+    return names
+
+def dhcp_lease_names():
+    names = {}
+
+    lease_paths = [
+        "/var/lib/NetworkManager/dnsmasq-eth0.leases",
+        "/var/lib/NetworkManager/dnsmasq-wlan0.leases",
+        "/var/lib/NetworkManager/dnsmasq.leases",
+    ]
+
+    lease_paths.extend([
+        os.path.join("/var/lib/NetworkManager", name)
+        for name in os.listdir("/var/lib/NetworkManager")
+        if name.endswith(".leases")
+    ] if os.path.isdir("/var/lib/NetworkManager") else [])
+
+    for path in lease_paths:
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        mac = parts[1].lower()
+                        ip = parts[2]
+                        hostname = parts[3]
+
+                        if hostname and hostname != "*":
+                            names[ip.lower()] = hostname
+                            names[mac] = hostname
+        except FileNotFoundError:
+            continue
+        except PermissionError:
+            continue
+
+    return names
+
+def reverse_dns_name(ip):
+    rc, out, _ = run(["getent", "hosts", ip], timeout=3)
+    if rc != 0 or not out:
+        return ""
+
+    parts = out.split()
+    if len(parts) >= 2:
+        return parts[1].split(".")[0]
+
+    return ""
+
+def netbios_name(ip):
+    if shutil.which("nmblookup") is None:
+        return ""
+
+    rc, out, _ = run(["nmblookup", "-A", ip], timeout=4)
+    if rc != 0 or not out:
+        return ""
+
+    for line in out.splitlines():
+        line = line.strip()
+        if "<00>" in line and "GROUP" not in line:
+            return line.split()[0]
+
+    return ""
+
+def resolve_client_name(ip, mac, manual_names, lease_names):
+    ip_key = ip.lower()
+    mac_key = mac.lower()
+
+    for source in (manual_names, lease_names):
+        if ip_key in source:
+            return source[ip_key]
+        if mac_key in source:
+            return source[mac_key]
+
+    dns_name = reverse_dns_name(ip)
+    if dns_name:
+        return dns_name
+
+    nb_name = netbios_name(ip)
+    if nb_name:
+        return nb_name
+
+    if mac:
+        return mac
+
+    return ip
+
 def router_side_clients():
     rc, out, _ = run(["ip", "neigh", "show", "dev", "eth0"], timeout=4)
     clients = []
     if rc != 0:
         return clients
+
+    manual_names = manual_client_names()
+    lease_names = dhcp_lease_names()
 
     for line in out.splitlines():
         parts = line.split()
@@ -372,10 +484,13 @@ def router_side_clients():
                 mac = parts[idx + 1]
 
         if ip.startswith("10.42.0."):
+            friendly_name = resolve_client_name(ip, mac, manual_names, lease_names)
+
             clients.append({
                 "ip": ip,
                 "mac": mac,
                 "state": state,
+                "name": friendly_name,
             })
 
     return clients

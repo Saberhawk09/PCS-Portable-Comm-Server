@@ -1,0 +1,11 @@
+# PCS local client friendly names
+#
+# Format:
+# ip_or_mac<TAB>friendly_name
+#
+# Examples:
+# 10.42.0.2	Actiontec T3200 AP
+# 10.42.0.123	Field Laptop
+# aa:bb:cc:dd:ee:ff	Field Laptop
+
+10.42.0.2	Actiontec T3200 AP

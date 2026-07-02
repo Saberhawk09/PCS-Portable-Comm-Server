@@ -210,14 +210,15 @@ def render_client_info(dashboard: dict) -> str:
     if clients:
         client_rows = []
         for client in clients:
+            name = esc(client.get("name", "unknown"))
             ip = esc(client.get("ip", "unknown"))
             mac = esc(client.get("mac", "unknown"))
             state = esc(client.get("state", "unknown"))
             client_rows.append(
                 f"""
                 <div class="copy-line">
-                    <span>{ip}</span>
-                    <code>{mac} · {state}</code>
+                    <span>{name}</span>
+                    <code>{ip} · {mac} · {state}</code>
                 </div>
                 """
             )

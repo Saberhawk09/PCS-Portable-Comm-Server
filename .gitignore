@@ -32,3 +32,4 @@ local-config/
 private-config/
 secrets/notes/system-snapshots/
 notes/system-snapshots/
+config/local-client-names.tsv
