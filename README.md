@@ -43,7 +43,7 @@ Some documents may still be placeholders while the project is being built out.
 
 ## Current Status
 
-The pre-WWAN software baseline is working and rebuild-tested.
+The core PCS software baseline is working and rebuild-tested.
 
 Currently working:
 
@@ -58,14 +58,18 @@ Currently working:
 - PCS Control Panel dashboard
 - Port 80 redirect to the dashboard
 - Pi-side self-test/status scripts
+- WWAN modem detection and manual cellular profile
+- EM7455/DW5811e GPS NMEA on `/dev/ttyUSB1`
+- `gpsd` receiving WWAN GPS NMEA
+- Chrony seeing the GPS source for LAN NTP
 
 Still planned:
 
-- Cellular modem setup
-- GPS/GNSS setup
-- GPS-disciplined Chrony
 - Final enclosure
 - Final power system
+- External LTE/GPS antenna mounting
+- Future EM7565 validation
+- Full SD-card wipe/rebuild repeatability test
 
 ## Main Setup
 
