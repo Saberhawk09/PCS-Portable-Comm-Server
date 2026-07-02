@@ -558,12 +558,44 @@ mm_rc, mm_out, _ = run(["mmcli", "-L"], timeout=5)
 modem_present = "/Modem/" in mm_out
 gpsd_active = active("gpsd")
 
+usb_rc, usb_out, _ = run(["lsusb"], timeout=5)
+usb_lower = usb_out.lower()
+
+wwan_usb_present = any(term in usb_lower for term in [
+    "sierra",
+    "qualcomm",
+    "wwan",
+    "modem",
+    "mbim",
+    "qmi",
+])
+
+gps_device_candidates = [
+    "/dev/ttyACM0",
+    "/dev/ttyACM1",
+    "/dev/ttyUSB0",
+    "/dev/ttyUSB1",
+    "/dev/ttyAMA0",
+    "/dev/serial0",
+]
+
+gps_devices = [dev for dev in gps_device_candidates if path_exists(dev)]
+pps_present = path_exists("/dev/pps0")
+
+chrony_sources_rc, chrony_sources_out, _ = run(["chronyc", "sources"], timeout=5)
+chrony_gps_source_present = any(term in chrony_sources_out.upper() for term in [
+    "GPS",
+    "PPS",
+    "NMEA",
+])
+
 network_status = "ok" if wifi_ok and eth_ok and internet_ok and dns_ok and eth_ip_ok else "bad"
 storage_status = "ok" if usb_mount and primary_share_ok and backup_share_ok and last_sync else "warn"
 time_status = "ok" if chrony_active and clock_sync == "yes" else "warn"
 samba_status = "ok" if smbd_active and primary_share_ok and backup_share_ok else "bad"
 services_status = "ok" if all(core_services.values()) else "warn"
-hardware_status = "warn" if not modem_present or not gpsd_active else "ok"
+cellular_status = "ok" if modem_present else "warn"
+gps_status = "ok" if gpsd_active and (gps_devices or pps_present or chrony_gps_source_present) else "warn"
 
 cards = [
     {
@@ -632,16 +664,32 @@ cards = [
         "items": [{"label": name, "value": "active" if ok else "inactive"} for name, ok in core_services.items()],
     },
     {
-        "id": "hardware",
-        "title": "Hardware placeholders",
-        "status": hardware_status,
-        "summary": "Waiting for WWAN/GNSS hardware" if hardware_status == "warn" else "Hardware online",
+        "id": "cellular",
+        "title": "Cellular / WWAN",
+        "status": cellular_status,
+        "summary": "Cellular modem detected" if modem_present else "Waiting for WWAN modem hardware",
         "items": [
+            {"label": "ModemManager", "value": "active" if active("ModemManager") else "inactive"},
             {"label": "WWAN modem", "value": "detected" if modem_present else "not detected yet"},
-            {"label": "GPSD", "value": "active" if gpsd_active else "inactive / not configured yet"},
-            {"label": "Expected state", "value": "modem and GPS pending until hardware arrives"},
+            {"label": "USB adapter hint", "value": "possible WWAN USB device seen" if wwan_usb_present else "not detected yet"},
+            {"label": "Connection", "value": "not configured yet" if not modem_present else "ready for setup"},
+            {"label": "Future role", "value": "primary internet uplink"},
         ],
     },
+    {
+        "id": "gps",
+        "title": "GPS / GNSS",
+        "status": gps_status,
+        "summary": "GPS/GNSS source active" if gps_status == "ok" else "Waiting for GPS/GNSS setup",
+        "items": [
+            {"label": "gpsd", "value": "active" if gpsd_active else "inactive / not configured yet"},
+            {"label": "GPS serial devices", "value": ", ".join(gps_devices) if gps_devices else "none detected yet"},
+            {"label": "PPS device", "value": "/dev/pps0 present" if pps_present else "not detected yet"},
+            {"label": "Chrony GPS/PPS source", "value": "present" if chrony_gps_source_present else "not configured yet"},
+            {"label": "Future role", "value": "GPS-disciplined LAN NTP"},
+        ],
+    },
+
 ]
 
 overall = "ok"
