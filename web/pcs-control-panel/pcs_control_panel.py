@@ -408,7 +408,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         main {{
             padding: 1.25rem;
-            max-width: 1400px;
+            max-width: 1850px;
             margin: 0 auto;
         }}
 
@@ -486,8 +486,8 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         .dashboard-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 0.85rem;
             margin-bottom: 1.25rem;
         }}
 
@@ -495,7 +495,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             background: rgba(23, 27, 34, 0.92);
             border: 1px solid var(--border);
             border-radius: 18px;
-            padding: 1rem;
+            padding: 0.9rem;
             box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
         }}
 
@@ -606,8 +606,8 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         .client-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+            gap: 0.85rem;
         }}
 
         .client-card {{
@@ -669,8 +669,8 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         .grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 0.85rem;
         }}
 
         .action-card {{
@@ -735,7 +735,21 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             padding: 1rem;
             border-radius: 10px;
             overflow-x: auto;
-            max-height: 55vh;
+            max-height: 45vh;
+        }}
+
+        @media (min-width: 1500px) {{
+            .dashboard-grid {{
+                grid-template-columns: repeat(6, minmax(0, 1fr));
+            }}
+
+            .client-grid {{
+                grid-template-columns: repeat(6, minmax(0, 1fr));
+            }}
+
+            .grid {{
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }}
         }}
 
         footer {{
