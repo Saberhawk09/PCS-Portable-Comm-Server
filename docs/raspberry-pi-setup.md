@@ -202,20 +202,77 @@ Warn: 0
 PCS Pi-side self-test PASSED.
 ```
 
-## Hardware Not Configured Yet
+## EM7455 / DW5811e GPS NMEA Setup
 
-The following are expected to be missing until hardware arrives:
+PCS can use the Dell DW5811e / Sierra Wireless EM7455 WWAN modem as a GPS/GNSS time and location source.
 
-```text
-WWAN/cellular modem
-GPS/GNSS receiver
-GPSD active configuration
-GPS-disciplined Chrony source
-```
-
-Before that hardware is installed, the self-test expects:
+The tested GPS path is:
 
 ```text
-No modem present yet
-gpsd inactive
+EM7455 / DW5811e GPS
+    ↓
+/dev/ttyUSB1 NMEA at 115200 baud
+    ↓
+gpsd
+    ↓
+Chrony SHM refclock 0
+    ↓
+PCS LAN NTP server at 10.42.0.1
 ```
+
+This setup does not change `AT!USBCOMP`. The tested USB composition already exposes:
+
+```text
+diag,nmea,modem,mbim
+```
+
+The GPS starter service enables GPS through ModemManager and sends `GPS_START` to `/dev/ttyUSB1`, which wakes the NMEA stream for `gpsd`.
+
+Run this after the WWAN adapter, EM7455/DW5811e modem, and GPS antenna are installed:
+
+```bash
+./scripts/setup-em7455-gps-nmea.sh
+```
+
+Expected services after setup:
+
+```bash
+systemctl status pcs-em7455-gps-nmea.service --no-pager -l
+systemctl status gpsd.service --no-pager -l
+chronyc sources -v
+```
+
+Expected results:
+
+```text
+pcs-em7455-gps-nmea.service: active (exited)
+gpsd.service: active (running)
+gpsd device: /dev/ttyUSB1
+Chrony GPS source: present with nonzero reach
+```
+
+The GPS dashboard may display live latitude/longitude and Maidenhead grid square. Do not post screenshots or raw GPS output publicly unless sharing location is acceptable.
+
+## Cellular / WWAN Data Setup
+
+PCS currently uses a manual NetworkManager cellular profile for T-Mobile testing:
+
+```text
+Connection name: pcs-cellular-tmobile
+APN: fast.t-mobile.com
+Autoconnect: disabled
+Route metric: higher than Wi-Fi
+```
+
+Cellular data is intentionally manual for now. The modem can provide GPS while cellular data is disconnected.
+
+Useful commands:
+
+```bash
+nmcli device status
+mmcli -L
+sudo nmcli connection up pcs-cellular-tmobile
+sudo nmcli connection down pcs-cellular-tmobile
+```
+
+The control panel also includes buttons for cellular status, connect, disconnect, and cellular-only internet testing.
