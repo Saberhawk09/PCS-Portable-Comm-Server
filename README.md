@@ -72,7 +72,8 @@ Still planned:
 Clone the repository:
 
 ```bash
-mkdir Projects && cd projects
+mkdir -p ~/Projects
+cd ~/Projects
 git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
 cd PCS-Portable-Comm-Server
 ```
