@@ -53,6 +53,9 @@ Confirmed working:
 - Chrony `rtcsync` confirmed enabled
 - Windows client behind test router successfully queried NTP at `10.42.0.1`
 - Windows `w32tm /stripchart` received valid samples from the Pi
+- PCS Pi-side self-test script passed after reboot
+- PCS status script updated with quick summary and client access information
+- Post-reboot self-test result: 37 pass, 0 warn, 0 fail, 0 skip
 
 RTC verification:
 
@@ -91,6 +94,8 @@ Current notes:
 - Current LAN NTP test uses Chrony with internet NTP plus local clock fallback
 - RTC seeds the system clock at boot and is kept updated through `rtcsync`
 - Future final NTP setup should use GPS/GNSS from the WWAN modem as the preferred time source
+- `./scripts/pcs-self-test.sh` can be used as the main Pi-side validation command
+- `./scripts/pcs-status.sh` can be used for detailed status and client access information
 
 Next planned checks:
 
