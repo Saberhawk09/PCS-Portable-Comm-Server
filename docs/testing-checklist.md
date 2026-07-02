@@ -47,6 +47,8 @@ Ethernet handoff eth0:    connected
 Router-side IP present:   yes (10.42.0.1/24)
 RTC:                      present
 Chrony/NTP:               active
+GPSD:                     active if EM7455 GPS is configured
+EM7455 GPS:               NMEA present if WWAN GPS is configured
 Samba:                    active
 Primary share:            present (PCS-Share)
 Backup share:             present (PCS-Backup)
@@ -220,13 +222,47 @@ Expected:
 PCS Pi-side self-test PASSED.
 ```
 
-## Current Hardware Placeholder Expectations
+## WWAN / GPS Expectations
 
-Before WWAN/GNSS hardware is installed, these are expected:
+PCS now supports the tested Dell DW5811e / Sierra Wireless EM7455 GPS path:
 
 ```text
-No modem present yet
-gpsd inactive
+EM7455 / DW5811e GPS
+    ↓
+/dev/ttyUSB1 NMEA at 115200 baud
+    ↓
+gpsd
+    ↓
+Chrony SHM refclock 0
+    ↓
+PCS LAN NTP server at 10.42.0.1
 ```
 
-These should not be treated as failures until the hardware is installed and configured.
+When the EM7455/DW5811e modem and GPS antenna are installed and configured, these are expected:
+
+```text
+ModemManager detects modem
+cdc-wdm0 exists
+wwan0 exists
+/dev/ttyUSB1 exists
+pcs-em7455-gps-nmea.service enabled
+pcs-em7455-gps-nmea.service active/exited
+gpsd active
+gpsd receiving NMEA
+Chrony GPS source present
+Chrony GPS source reach nonzero
+```
+
+Useful checks:
+
+```bash
+mmcli -L
+nmcli device status
+systemctl status pcs-em7455-gps-nmea.service --no-pager -l
+systemctl status gpsd.service --no-pager -l
+chronyc sources -v
+./scripts/pcs-status.sh
+./scripts/pcs-self-test.sh
+```
+
+If the WWAN/GPS hardware is not installed, modem/GPS-related warnings may be expected. With the EM7455/DW5811e GPS setup installed and working, `gpsd inactive` is no longer expected.
