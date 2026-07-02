@@ -127,7 +127,7 @@ For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
 ## Expected Hardware / Network State
 
-Current pre-WWAN test layout:
+Current tested network layout:
 
 ```text
 Client devices
@@ -136,7 +136,7 @@ Access point / switch
     ↓ LAN port
 Raspberry Pi eth0 - 10.42.0.1/24
     ↓
-Raspberry Pi uplink - wlan0 now, cellular later
+Raspberry Pi uplink - wlan0 currently, cellular data manual/optional
     ↓
 Internet
 ```
@@ -257,9 +257,7 @@ Current tested hardware:
 
 Planned hardware:
 
-- Cellular modem
-- WWAN USB adapter
-- GPS/GNSS receiver
+- Future EM7565 modem validation
 - Final power system
 - Final enclosure
 - External antennas
