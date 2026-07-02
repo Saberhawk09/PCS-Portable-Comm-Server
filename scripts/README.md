@@ -1,288 +1,274 @@
-# Scripts
+# PCS Scripts
 
-This folder contains setup and diagnostic scripts for PCS.
+This folder contains setup, maintenance, status, and operator scripts for PCS.
 
-## install-dependencies.sh
+Run scripts from the repository root:
 
-Installs baseline PCS software dependencies on a fresh Raspberry Pi OS install.
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+```
 
-Run from the repository root:
+## Main Setup
 
-    ./scripts/install-dependencies.sh
+### setup-pcs-base.sh
 
-Installs packages for:
+Runs the baseline PCS setup workflow.
 
-- General system utilities
-- Hardware inspection
-- NetworkManager
-- ModemManager
-- QMI / MBIM modem tools
-- Samba / SMB
-- GPSD
-- Chrony
-- Cockpit
-- WireGuard tools
+```bash
+./scripts/setup-pcs-base.sh
+```
 
-This script does not configure routing, Samba shares, GPSD, Chrony GPS sources, or modem profiles.
+This installs/configures:
 
-## setup-pcs-base.sh
+- Dependencies
+- RTC
+- Client LAN/AP handoff on `eth0`
+- Samba shares
+- Chrony LAN NTP
+- PCS restart service
+- PCS Control Panel
+- Dashboard redirect
+- Final status/self-test checks
 
-Runs the full PCS baseline setup workflow on a fresh Raspberry Pi OS install.
+## Dependencies
 
-Run from the repository root:
+### install-dependencies.sh
 
-    ./scripts/setup-pcs-base.sh
+Installs baseline packages used by PCS.
 
-This script runs:
+```bash
+./scripts/install-dependencies.sh
+```
 
-- Dependency installation
-- RTC setup
-- Router WAN handoff setup
-- Temporary Samba test share setup
-- Chrony LAN NTP setup
-- Cockpit/systemd restart button installation
-- PCS status script
-- PCS self-test script
+Includes tools for networking, Samba, Chrony, GPSD, ModemManager, Cockpit, and general diagnostics.
 
-This script does not configure:
+## Time / RTC / NTP
 
-- WWAN/cellular modem connection
-- GPS/GNSS time source
-- Final removable-storage Samba share
+### setup-rtc.sh
 
-Those require hardware that may not be installed yet.
+Configures the Raspberry Pi RTC overlay and I2C support.
 
-After setup, recommended validation is:
+```bash
+./scripts/setup-rtc.sh
+```
 
-    sudo reboot
-    cd /home/pi/Projects/PCS-Portable-Comm-Server
-    ./scripts/pcs-self-test.sh
-    ./scripts/pcs-status.sh
+### setup-chrony-lan-ntp.sh
 
-## setup-rtc.sh
+Configures Chrony to serve NTP to PCS clients on:
 
-Configures support for the PCS I2C RTC module.
+```text
+10.42.0.1
+```
 
-Run from the repository root:
+Windows test:
 
-    ./scripts/setup-rtc.sh
+```cmd
+w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
+```
 
-The script:
+## Network
 
-- Backs up `/boot/firmware/config.txt`
-- Enables I2C if needed
-- Adds the DS1307-compatible RTC overlay if needed
-- Avoids modifying HDMI/display settings
+### setup-router-wan-share.sh
 
-Reboot after running this script on a fresh install.
+Configures the Pi `eth0` client-side network profile.
 
-Verify RTC operation with:
+Current role:
 
-    ls /dev/rtc*
-    dmesg | grep -i rtc
-    timedatectl
+```text
+Pi eth0: 10.42.0.1/24
+```
 
-## setup-test-samba-share.sh
+This profile is currently used as the PCS client LAN/AP handoff.
 
-Creates a temporary Samba test share for validating LAN file sharing.
+The name still references router WAN sharing, but the current preferred topology uses the attached router/AP as a bridge/AP/switch.
 
-Run from the repository root:
+## Samba Storage
 
-    ./scripts/setup-test-samba-share.sh
+### setup-test-samba-share.sh
 
-Default share details:
+Creates the initial `PCS-Share` Samba share.
 
-- Share name: `PCS-Share`
-- Local path: `/srv/pcs-share`
-- Access: local Linux/Samba user credentials
+This is still useful as a bootstrap step.
 
-From Windows, try:
+### setup-samba-backup-share.sh
 
-    \\pcs-pi.local\PCS-Share
+Creates the SD-card backup share:
 
-Or use the Pi IP address:
+```text
+\\10.42.0.1\PCS-Backup → /srv/pcs-share-backup
+```
 
-    \\<pi-ip-address>\PCS-Share
+### setup-usb-primary-share.sh
 
-This is a temporary proof-of-concept share. The final PCS file share may use removable storage.
+Configures removable USB storage as the primary Samba share:
 
-## setup-samba-backup-share.sh
+```text
+\\10.42.0.1\PCS-Share → /mnt/pcs-usb/PCS-Share
+```
 
-Creates the PCS SD-card backup Samba share.
+Default USB UUID:
 
-Run from the repository root:
+```text
+340B-4403
+```
 
-    ./scripts/setup-samba-backup-share.sh
+Usage by default UUID:
 
-Default backup share details:
+```bash
+./scripts/setup-usb-primary-share.sh
+```
 
-- Share name: `PCS-Backup`
-- Local path: `/srv/pcs-share-backup`
-- Access: local Linux/Samba user credentials
+Usage by device path:
 
-From Windows, access it with:
+```bash
+./scripts/setup-usb-primary-share.sh /dev/sda1
+```
 
-    \\10.42.0.1\PCS-Backup
+Supported filesystems:
 
-This share is intended to hold a mirror copy of the primary PCS file share.
+```text
+vfat
+exfat
+ext4
+```
 
-## sync-pcs-share-to-backup.sh
+### sync-pcs-share-to-backup.sh
 
-Manually mirrors the primary PCS file share to the SD-card backup share.
+Mirrors the USB primary share to the SD-card backup share.
 
-Run from the repository root:
+```bash
+./scripts/sync-pcs-share-to-backup.sh
+```
 
-    ./scripts/sync-pcs-share-to-backup.sh
+Sync direction:
 
-Default sync direction:
+```text
+/mnt/pcs-usb/PCS-Share → /srv/pcs-share-backup
+```
 
-    /srv/pcs-share → /srv/pcs-share-backup
+Warning: this is a mirror-style sync. Files deleted from the USB primary share may also be deleted from the backup mirror.
 
-The sync uses `rsync --delete`, which means files deleted from the primary share will also be deleted from the backup mirror.
+## PCS Control Panel
 
-This is intentionally one-way:
+### setup-pcs-control-panel.sh
 
-- `PCS-Share` is the primary share
-- `PCS-Backup` is the backup mirror
+Installs the PCS Control Panel web interface.
 
-This avoids the complexity and risk of bidirectional sync.
+```bash
+./scripts/setup-pcs-control-panel.sh
+```
 
-## setup-router-wan-share.sh
+Control Panel URL:
 
-Creates a NetworkManager shared Ethernet profile for testing router WAN handoff.
+```text
+http://10.42.0.1:8080
+```
 
-Run from the repository root:
+### setup-dashboard-redirect.sh
 
-    ./scripts/setup-router-wan-share.sh
+Installs the port 80 redirect service.
 
-Default profile details:
+```bash
+./scripts/setup-dashboard-redirect.sh
+```
 
-- Profile name: `pcs-router-wan-share`
-- Interface: `eth0`
-- Pi Ethernet address: `10.42.0.1/24`
-- IPv4 mode: shared
-- IPv6 mode: ignored
+Dashboard URL:
 
-This allows the Pi to share its current uplink out through Ethernet.
+```text
+http://10.42.0.1
+```
 
-Temporary test layout:
+This redirects to:
 
-    Internet over Pi Wi-Fi → Pi eth0 → Router WAN → Router clients
+```text
+http://10.42.0.1:8080
+```
 
-Future PCS layout:
+### pcs-web-action.sh
 
-    Cellular modem → Pi → Pi eth0 → Router WAN → Router clients
+Allowlisted action dispatcher used by the web control panel.
 
-To activate the profile after connecting the router WAN port to the Pi Ethernet port:
+Installed live path:
 
-    sudo nmcli connection up pcs-router-wan-share
+```text
+/usr/local/sbin/pcs-web-action
+```
 
-To disable it:
+Repository source:
 
-    sudo nmcli connection down pcs-router-wan-share
+```text
+scripts/pcs-web-action.sh
+```
 
-To delete the profile:
+This script should not run arbitrary user-provided shell commands.
 
-    sudo nmcli connection delete pcs-router-wan-share
+## Service Restart
 
-This script does not configure the WWAN modem. It only prepares the Ethernet handoff side.
+### restart-pcs-services.sh
 
-## pcs-status.sh
+Restarts core PCS services and prints quick status output.
 
-Prints a PCS system status report.
+```bash
+./scripts/restart-pcs-services.sh
+```
 
-Run from the repository root:
+Usually started through:
 
-    ./scripts/pcs-status.sh
+```text
+pcs-restart-services.service
+```
 
-Reports:
+## Status and Testing
 
-- Hostname
-- OS version
-- Hardware model
-- Kernel version
-- Uptime
-- Time / NTP / RTC status
-- NetworkManager devices
-- IP addresses
-- Routes
-- DNS configuration
+### pcs-status.sh
+
+Prints detailed PCS system status.
+
+```bash
+./scripts/pcs-status.sh
+```
+
+Includes:
+
+- Host info
+- Time / RTC / Chrony
+- Network state
 - USB devices
-- I2C bus status
-- ModemManager status
-- Key service states
-- Raspberry Pi Connect status
+- Samba shares
+- Storage paths
+- Services
+- Client access info
 
-## setup-chrony-lan-ntp.sh
+### pcs-self-test.sh
 
-Configures Chrony to serve NTP to clients on the PCS router-side network.
+Runs a Pi-side validation test.
 
-Run from the repository root:
+```bash
+./scripts/pcs-self-test.sh
+```
 
-    ./scripts/setup-chrony-lan-ntp.sh
+Expected healthy result:
 
-Default NTP server address for router-side clients:
+```text
+PCS Pi-side self-test PASSED.
+```
 
-    10.42.0.1
+This is the main quick test after setup, reboot, or major changes.
 
-The script:
+## Typical Validation
 
-- Backs up `/etc/chrony/chrony.conf`
-- Allows NTP clients on `10.42.0.0/24`
-- Preserves or enables RTC synchronization through `rtcsync`
-- Enables local fallback with `local stratum 10`
-- Restarts Chrony
+After setup or changes:
 
-Test from Windows:
+```bash
+./scripts/pcs-self-test.sh
+./scripts/pcs-status.sh
+```
 
-    w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
+From a Windows client:
 
-This does not configure GPS/GNSS as a Chrony source yet.
-
-## pcs-self-test.sh
-
-Runs a Pi-side PCS validation test.
-
-Run from the repository root:
-
-    ./scripts/pcs-self-test.sh
-
-Checks:
-
-- Hostname and OS
-- Git working tree status
-- RTC presence
-- NTP synchronization
-- Chrony LAN NTP configuration
-- NetworkManager device state
-- Router WAN handoff profile
-- Internet and DNS connectivity
-- Samba service and share configuration
-- Cockpit service
-- Raspberry Pi Connect status
-- ModemManager status
-- GPSD placeholder status
-
-This script only validates the Pi side. Client-side checks such as Windows file share access, Cockpit access, and `w32tm` NTP testing should still be tested separately.
-
-## restart-pcs-services.sh
-
-Restarts core PCS services and refreshes the router WAN handoff profile.
-
-This script is intended to be used by the Cockpit/systemd button service:
-
-    pcs-restart-services.service
-
-Services handled:
-
-- Samba / `smbd`
-- Chrony
-- ModemManager
-- Avahi
-- Router WAN handoff profile `pcs-router-wan-share`
-
-The script intentionally does not restart NetworkManager or Cockpit itself, to avoid cutting off remote access during troubleshooting.
-
-For a full validation check after using the restart button, run:
-
-    ./scripts/pcs-self-test.sh
+```cmd
+ping 10.42.0.1
+ping 8.8.8.8
+ping google.com
+w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
+```
