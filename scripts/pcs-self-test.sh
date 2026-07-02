@@ -405,7 +405,7 @@ else
     skip "rpi-connect command not found"
 fi
 
-section "Modem / GPS Placeholders"
+section "WWAN / GPS"
 
 if service_active ModemManager; then
     pass "ModemManager is active"
@@ -423,10 +423,45 @@ if command_exists mmcli; then
     MODEM_LIST="$(mmcli -L 2>&1 || true)"
     echo "${MODEM_LIST}"
 
-    if echo "${MODEM_LIST}" | grep -q "No modems were found"; then
-        pass "No modem present yet, as expected before WWAN adapter arrives"
-    elif echo "${MODEM_LIST}" | grep -q "/Modem/"; then
-        pass "ModemManager detected a modem"
+    if echo "${MODEM_LIST}" | grep -q "/Modem/"; then
+        pass "ModemManager detected a WWAN modem"
+
+        MODEM_NUM="$(echo "${MODEM_LIST}" | sed -n 's#.*Modem/\([0-9]\+\).*#\1#p' | head -n 1)"
+
+        if [[ -n "${MODEM_NUM}" ]]; then
+            MODEM_SAFE="$(mmcli -m "${MODEM_NUM}" 2>/dev/null | grep -Ei "state:|power state:|access tech:|signal quality:|operator name:|registration:|packet service state:" || true)"
+
+            if echo "${MODEM_SAFE}" | grep -qi "state:.*registered\|state:.*connected\|state:.*enabled"; then
+                pass "WWAN modem state is usable"
+            else
+                warn "WWAN modem detected, but state may not be ready"
+            fi
+
+            if echo "${MODEM_SAFE}" | grep -qi "registration:.*home\|registration:.*roaming"; then
+                pass "WWAN modem is registered on cellular network"
+            else
+                warn "WWAN modem is not registered on cellular network"
+            fi
+
+            ACCESS_TECH="$(echo "${MODEM_SAFE}" | sed -n 's/.*access tech:[[:space:]]*//Ip' | head -n 1)"
+            if [[ -n "${ACCESS_TECH}" ]]; then
+                pass "WWAN access tech reported: ${ACCESS_TECH}"
+            else
+                warn "WWAN access tech not reported"
+            fi
+
+            SIGNAL_QUALITY="$(echo "${MODEM_SAFE}" | sed -n 's/.*signal quality:[[:space:]]*//Ip' | head -n 1)"
+            if [[ -n "${SIGNAL_QUALITY}" ]]; then
+                pass "WWAN signal quality reported: ${SIGNAL_QUALITY}"
+            else
+                warn "WWAN signal quality not reported"
+            fi
+        else
+            warn "Could not determine ModemManager modem number"
+        fi
+
+    elif echo "${MODEM_LIST}" | grep -q "No modems were found"; then
+        warn "No WWAN modem detected; expected only if adapter/card is not installed"
     else
         fail "Unexpected ModemManager output"
     fi
@@ -434,11 +469,43 @@ else
     fail "mmcli command missing"
 fi
 
+if nmcli device status 2>/dev/null | awk '$2 == "gsm" { found=1 } END { exit found ? 0 : 1 }'; then
+    pass "NetworkManager sees a GSM/WWAN device"
+else
+    warn "NetworkManager does not currently show a GSM/WWAN device"
+fi
+
+if [[ -e /dev/cdc-wdm0 ]]; then
+    pass "/dev/cdc-wdm0 exists"
+else
+    warn "/dev/cdc-wdm0 not present"
+fi
+
+if ip link show wwan0 >/dev/null 2>&1; then
+    pass "wwan0 network interface exists"
+else
+    warn "wwan0 network interface not present"
+fi
+
+if nmcli -t -f NAME connection show 2>/dev/null | grep -qx "pcs-cellular-tmobile"; then
+    pass "Cellular NetworkManager profile exists: pcs-cellular-tmobile"
+
+    AUTOCONNECT="$(nmcli -g connection.autoconnect connection show pcs-cellular-tmobile 2>/dev/null || true)"
+    if [[ "${AUTOCONNECT}" == "no" ]]; then
+        pass "Cellular profile autoconnect is disabled for manual control"
+    else
+        warn "Cellular profile autoconnect is not disabled"
+    fi
+else
+    skip "Cellular NetworkManager profile not created yet"
+fi
+
 if service_active gpsd; then
-    skip "gpsd is active; GPS hardware/config may be under test"
+    warn "gpsd is active; GPS/GNSS setup may be partially configured"
 else
     pass "gpsd inactive, expected before GPS/GNSS setup"
 fi
+
 
 section "Summary"
 
