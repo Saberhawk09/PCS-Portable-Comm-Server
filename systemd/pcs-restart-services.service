@@ -1,0 +1,14 @@
+[Unit]
+Description=PCS Restart Core Services
+Documentation=https://github.com/Saberhawk09/PCS-Portable-Comm-Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pi/Projects/PCS-Portable-Comm-Server
+ExecStart=/home/pi/Projects/PCS-Portable-Comm-Server/scripts/restart-pcs-services.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target
