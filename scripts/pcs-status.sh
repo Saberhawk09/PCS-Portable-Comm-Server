@@ -82,7 +82,7 @@ echo
 
 echo "--- Active Network Connections ---"
 if command -v nmcli >/dev/null 2>&1; then
-    nmcli connection show --active
+    timeout 8 nmcli --wait 5 connection show --active || echo "nmcli active connection check timed out or failed"
 else
     echo "nmcli not available"
 fi

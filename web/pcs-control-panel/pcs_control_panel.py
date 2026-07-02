@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import html
+import json
 import os
 import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,16 +28,13 @@ ACTIONS = [
 ACTION_MAP = {name: (label, desc) for name, label, desc in ACTIONS}
 
 
-def run_action(action: str) -> tuple[int, str]:
-    if action not in ACTION_MAP:
-        return 2, f"Unknown action: {action}\n"
-
+def run_dispatcher(action: str, timeout: int = 300) -> tuple[int, str]:
     try:
         result = subprocess.run(
             ["sudo", "-n", DISPATCHER, action],
             text=True,
             capture_output=True,
-            timeout=300,
+            timeout=timeout,
         )
         output = ""
         if result.stdout:
@@ -52,7 +50,243 @@ def run_action(action: str) -> tuple[int, str]:
         return 1, f"ERROR: {exc}\n"
 
 
+def get_dashboard() -> dict:
+    code, output = run_dispatcher("dashboard-json", timeout=30)
+
+    if code != 0:
+        return {
+            "generated_at": "unknown",
+            "overall": "bad",
+            "cards": [
+                {
+                    "id": "dashboard",
+                    "title": "Dashboard",
+                    "status": "bad",
+                    "summary": "Dashboard data failed to load",
+                    "items": [
+                        {"label": "Exit code", "value": str(code)},
+                        {"label": "Output", "value": output[-500:] or "no output"},
+                    ],
+                }
+            ],
+        }
+
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return {
+            "generated_at": "unknown",
+            "overall": "bad",
+            "cards": [
+                {
+                    "id": "dashboard",
+                    "title": "Dashboard",
+                    "status": "bad",
+                    "summary": "Dashboard JSON was invalid",
+                    "items": [
+                        {"label": "Output", "value": output[-500:] or "no output"},
+                    ],
+                }
+            ],
+        }
+
+
+def run_action(action: str) -> tuple[int, str]:
+    if action not in ACTION_MAP:
+        return 2, f"Unknown action: {action}\n"
+
+    return run_dispatcher(action)
+
+
+def esc(value) -> str:
+    return html.escape(str(value))
+
+
+def status_label(status: str) -> str:
+    return {
+        "ok": "OK",
+        "warn": "WARN",
+        "bad": "BAD",
+    }.get(status, status.upper())
+
+
+def render_metric(metric: dict) -> str:
+    label = esc(metric.get("label", "Metric"))
+    value = metric.get("value")
+    suffix = esc(metric.get("suffix", ""))
+
+    if value is None:
+        percent = 0
+        text = "unknown"
+    else:
+        try:
+            percent = max(0, min(100, float(value)))
+            text = f"{percent:g}{suffix}"
+        except Exception:
+            percent = 0
+            text = esc(value)
+
+    return f"""
+    <div class="metric">
+        <div class="metric-row">
+            <span>{label}</span>
+            <span>{text}</span>
+        </div>
+        <div class="bar">
+            <div class="bar-fill" style="width: {percent}%;"></div>
+        </div>
+    </div>
+    """
+
+
+def render_card(card: dict) -> str:
+    status = esc(card.get("status", "warn"))
+    title = esc(card.get("title", "Card"))
+    summary = esc(card.get("summary", ""))
+
+    items_html = []
+    for item in card.get("items", []):
+        items_html.append(
+            f"""
+            <div class="item">
+                <span class="item-label">{esc(item.get("label", ""))}</span>
+                <span class="item-value">{esc(item.get("value", ""))}</span>
+            </div>
+            """
+        )
+
+    metrics_html = []
+    for metric in card.get("metrics", []):
+        metrics_html.append(render_metric(metric))
+
+    return f"""
+    <article class="dash-card {status}">
+        <div class="card-top">
+            <h2>{title}</h2>
+            <span class="badge {status}">{status_label(status)}</span>
+        </div>
+        <p class="summary">{summary}</p>
+        <div class="metrics">
+            {''.join(metrics_html)}
+        </div>
+        <div class="items">
+            {''.join(items_html)}
+        </div>
+    </article>
+    """
+
+
+def render_dashboard(dashboard: dict) -> str:
+    overall = esc(dashboard.get("overall", "warn"))
+    generated = esc(dashboard.get("generated_at", "unknown"))
+
+    cards = "".join(render_card(card) for card in dashboard.get("cards", []))
+
+    return f"""
+    <section class="overview {overall}">
+        <div>
+            <h2>System overview</h2>
+            <p>Generated at {generated}</p>
+        </div>
+        <span class="overall-badge {overall}">{status_label(overall)}</span>
+    </section>
+
+    <section class="dashboard-grid">
+        {cards}
+    </section>
+    """
+
+
+
+def render_client_info(dashboard: dict) -> str:
+    info = dashboard.get("client_info", {})
+
+    router_ip = esc(info.get("router_ip", "10.42.0.1"))
+    wan_public_ip = esc(info.get("wan_public_ip", "unavailable"))
+    uplink_interface = esc(info.get("uplink_interface", "unknown"))
+    uplink_source_ip = esc(info.get("uplink_source_ip", "unknown"))
+    clients = info.get("router_side_clients", [])
+
+    if clients:
+        client_rows = []
+        for client in clients:
+            ip = esc(client.get("ip", "unknown"))
+            mac = esc(client.get("mac", "unknown"))
+            state = esc(client.get("state", "unknown"))
+            client_rows.append(
+                f"""
+                <div class="copy-line">
+                    <span>{ip}</span>
+                    <code>{mac} · {state}</code>
+                </div>
+                """
+            )
+        clients_html = "".join(client_rows)
+    else:
+        clients_html = """
+        <div class="copy-line">
+            <span>No router-side clients visible</span>
+            <code>None seen on eth0</code>
+        </div>
+        """
+
+    return f"""
+    <section class="client-info">
+        <div class="client-info-top">
+            <div>
+                <h2>Local client info</h2>
+                <p>Use these addresses from a laptop or phone connected behind the PCS/test router.</p>
+            </div>
+            <span class="client-pill">{router_ip}</span>
+        </div>
+
+        <div class="client-grid">
+            <div class="client-card">
+                <h3>File shares</h3>
+                <div class="copy-line"><span>Primary USB share</span><code>\\\\10.42.0.1\\PCS-Share</code></div>
+                <div class="copy-line"><span>SD backup share</span><code>\\\\10.42.0.1\\PCS-Backup</code></div>
+            </div>
+
+            <div class="client-card">
+                <h3>Web interfaces</h3>
+                <div class="copy-line"><span>PCS Control Panel</span><code>http://10.42.0.1:8080</code></div>
+                <div class="copy-line"><span>Cockpit</span><code>https://10.42.0.1:9090</code></div>
+            </div>
+
+            <div class="client-card">
+                <h3>WAN / uplink</h3>
+                <div class="copy-line"><span>WAN/public IP</span><code>{wan_public_ip}</code></div>
+                <div class="copy-line"><span>Uplink interface</span><code>{uplink_interface}</code></div>
+                <div class="copy-line"><span>Uplink source IP</span><code>{uplink_source_ip}</code></div>
+            </div>
+
+            <div class="client-card">
+                <h3>Time service</h3>
+                <div class="copy-line"><span>LAN NTP server</span><code>10.42.0.1</code></div>
+                <div class="copy-line"><span>Windows NTP test</span><code>w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly</code></div>
+            </div>
+
+            <div class="client-card">
+                <h3>Quick Windows tests</h3>
+                <div class="copy-line"><span>Internet</span><code>ping 8.8.8.8</code></div>
+                <div class="copy-line"><span>DNS</span><code>ping google.com</code></div>
+                <div class="copy-line"><span>Pi access</span><code>ping 10.42.0.1</code></div>
+            </div>
+
+            <div class="client-card">
+                <h3>Router-side clients seen by Pi</h3>
+                {clients_html}
+                <p class="client-note">Note: clients behind the router NAT may only appear as the router WAN device.</p>
+            </div>
+        </div>
+    </section>
+    """
+
+
+
 def page(action_result: str = "", action_name: str = "", return_code: int | None = None) -> bytes:
+    dashboard = get_dashboard()
+
     buttons = []
 
     for name, label, desc in ACTIONS:
@@ -62,9 +296,9 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         buttons.append(
             f"""
             <form method="POST" action="/run" class="action-card">
-                <input type="hidden" name="action" value="{html.escape(name)}">
-                <button class="{css_class}" type="submit">{html.escape(label)}</button>
-                <p>{html.escape(desc)}</p>
+                <input type="hidden" name="action" value="{esc(name)}">
+                <button class="{css_class}" type="submit">{esc(label)}</button>
+                <p>{esc(desc)}</p>
             </form>
             """
         )
@@ -72,15 +306,15 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
     if action_result:
         result_block = f"""
         <section class="output">
-            <h2>Result: {html.escape(action_name)} <span class="code">exit {return_code}</span></h2>
-            <pre>{html.escape(action_result)}</pre>
+            <h2>Result: {esc(action_name)} <span class="code">exit {return_code}</span></h2>
+            <pre>{esc(action_result)}</pre>
         </section>
         """
     else:
         result_block = """
         <section class="output muted">
             <h2>No action run yet</h2>
-            <p>Choose a button above. Output will appear here.</p>
+            <p>Use the dashboard for a quick health check, or choose a command button for detailed output.</p>
         </section>
         """
 
@@ -93,33 +327,51 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
     <style>
         :root {{
             color-scheme: dark;
-            --bg: #101216;
-            --panel: #181b21;
-            --panel2: #20242c;
-            --text: #e8eaf0;
-            --muted: #a9b0bd;
+            --bg: #0e1117;
+            --panel: #171b22;
+            --panel2: #1f2530;
+            --panel3: #11151c;
+            --text: #e9edf5;
+            --muted: #9fa8b8;
+            --border: #303846;
+            --ok: #8de38d;
+            --ok-bg: rgba(141, 227, 141, 0.13);
+            --warn: #ffd166;
+            --warn-bg: rgba(255, 209, 102, 0.14);
+            --bad: #ff7b7b;
+            --bad-bg: rgba(255, 123, 123, 0.14);
             --accent: #78a6ff;
-            --danger: #ff7b7b;
-            --ok: #9ee493;
-            --border: #303642;
+            --button-text: #07111f;
+        }}
+
+        * {{
+            box-sizing: border-box;
         }}
 
         body {{
             margin: 0;
             font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: var(--bg);
+            background:
+                radial-gradient(circle at top left, rgba(120, 166, 255, 0.16), transparent 28rem),
+                radial-gradient(circle at bottom right, rgba(141, 227, 141, 0.08), transparent 24rem),
+                var(--bg);
             color: var(--text);
         }}
 
         header {{
             padding: 1.25rem;
             border-bottom: 1px solid var(--border);
-            background: var(--panel);
+            background: rgba(23, 27, 34, 0.92);
+            position: sticky;
+            top: 0;
+            backdrop-filter: blur(12px);
+            z-index: 10;
         }}
 
         header h1 {{
             margin: 0;
-            font-size: 1.5rem;
+            font-size: 1.65rem;
+            letter-spacing: 0.02em;
         }}
 
         header p {{
@@ -129,8 +381,251 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         main {{
             padding: 1.25rem;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
+        }}
+
+        .overview {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 1rem 1.15rem;
+            margin-bottom: 1rem;
+        }}
+
+        .overview h2 {{
+            margin: 0;
+        }}
+
+        .overview p {{
+            margin: 0.25rem 0 0;
+            color: var(--muted);
+        }}
+
+        .overall-badge,
+        .badge {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+        }}
+
+        .overall-badge {{
+            min-width: 5rem;
+            padding: 0.55rem 0.8rem;
+        }}
+
+        .badge {{
+            min-width: 3.7rem;
+            padding: 0.35rem 0.55rem;
+            font-size: 0.75rem;
+        }}
+
+        .ok {{
+            border-color: rgba(141, 227, 141, 0.45);
+        }}
+
+        .warn {{
+            border-color: rgba(255, 209, 102, 0.5);
+        }}
+
+        .bad {{
+            border-color: rgba(255, 123, 123, 0.55);
+        }}
+
+        .badge.ok,
+        .overall-badge.ok {{
+            background: var(--ok-bg);
+            color: var(--ok);
+        }}
+
+        .badge.warn,
+        .overall-badge.warn {{
+            background: var(--warn-bg);
+            color: var(--warn);
+        }}
+
+        .badge.bad,
+        .overall-badge.bad {{
+            background: var(--bad-bg);
+            color: var(--bad);
+        }}
+
+        .dashboard-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }}
+
+        .dash-card {{
+            background: rgba(23, 27, 34, 0.92);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 1rem;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+        }}
+
+        .card-top {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }}
+
+        .card-top h2 {{
+            margin: 0;
+            font-size: 1.05rem;
+        }}
+
+        .summary {{
+            margin: 0.6rem 0 0.85rem;
+            color: var(--muted);
+        }}
+
+        .items {{
+            display: grid;
+            gap: 0.45rem;
+        }}
+
+        .item {{
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding-top: 0.45rem;
+        }}
+
+        .item-label {{
+            color: var(--muted);
+        }}
+
+        .item-value {{
+            text-align: right;
+            overflow-wrap: anywhere;
+        }}
+
+        .metrics {{
+            display: grid;
+            gap: 0.7rem;
+            margin-bottom: 0.85rem;
+        }}
+
+        .metric-row {{
+            display: flex;
+            justify-content: space-between;
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }}
+
+        .bar {{
+            height: 0.65rem;
+            background: var(--panel3);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            overflow: hidden;
+        }}
+
+        .bar-fill {{
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--ok));
+            border-radius: inherit;
+        }}
+
+        .client-info {{
+            background: rgba(23, 27, 34, 0.92);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 1rem;
+            margin-bottom: 1.25rem;
+        }}
+
+        .client-info-top {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }}
+
+        .client-info h2,
+        .client-info h3 {{
+            margin: 0;
+        }}
+
+        .client-info p {{
+            margin: 0.35rem 0 0;
+            color: var(--muted);
+        }}
+
+        .client-pill {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            padding: 0.55rem 0.85rem;
+            background: rgba(120, 166, 255, 0.15);
+            color: var(--accent);
+            font-weight: 800;
+            white-space: nowrap;
+        }}
+
+        .client-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 1rem;
+        }}
+
+        .client-card {{
+            background: rgba(17, 21, 28, 0.75);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 14px;
+            padding: 0.9rem;
+        }}
+
+        .client-card h3 {{
+            font-size: 1rem;
+            margin-bottom: 0.7rem;
+        }}
+
+        .copy-line {{
+            display: grid;
+            gap: 0.25rem;
+            padding-top: 0.55rem;
+            margin-top: 0.55rem;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }}
+
+        .copy-line span {{
+            color: var(--muted);
+            font-size: 0.9rem;
+        }}
+
+        .copy-line code {{
+            display: block;
+            background: #090c11;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.45rem 0.55rem;
+            overflow-wrap: anywhere;
+        }}
+
+        .client-note {{
+            color: var(--muted);
+            font-size: 0.85rem;
+            margin: 0.75rem 0 0;
+            line-height: 1.35;
+        }}
+
+        .actions-title {{
+            margin: 1.3rem 0 0.75rem;
         }}
 
         .grid {{
@@ -140,7 +635,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         }}
 
         .action-card {{
-            background: var(--panel);
+            background: rgba(23, 27, 34, 0.9);
             border: 1px solid var(--border);
             border-radius: 14px;
             padding: 1rem;
@@ -152,17 +647,17 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             border-radius: 10px;
             padding: 0.75rem 1rem;
             font-size: 1rem;
-            font-weight: 700;
+            font-weight: 800;
             cursor: pointer;
         }}
 
         button.normal {{
             background: var(--accent);
-            color: #08101f;
+            color: var(--button-text);
         }}
 
         button.danger {{
-            background: var(--danger);
+            background: var(--bad);
             color: #240707;
         }}
 
@@ -174,7 +669,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         .output {{
             margin-top: 1.25rem;
-            background: var(--panel2);
+            background: rgba(31, 37, 48, 0.92);
             border: 1px solid var(--border);
             border-radius: 14px;
             padding: 1rem;
@@ -197,10 +692,11 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         pre {{
             white-space: pre-wrap;
             word-break: break-word;
-            background: #0b0d11;
+            background: #090c11;
             padding: 1rem;
             border-radius: 10px;
             overflow-x: auto;
+            max-height: 55vh;
         }}
 
         footer {{
@@ -217,6 +713,11 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
     </header>
 
     <main>
+        {render_dashboard(dashboard)}
+
+        {render_client_info(dashboard)}
+
+        <h2 class="actions-title">Actions</h2>
         <section class="grid">
             {''.join(buttons)}
         </section>
