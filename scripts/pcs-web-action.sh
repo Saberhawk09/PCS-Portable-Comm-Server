@@ -221,6 +221,7 @@ dashboard_json() {
     python3 - <<'PY'
 import json
 import os
+import re
 import time
 import shutil
 import subprocess
@@ -563,6 +564,162 @@ def web_admin_status():
     }
 
 
+def modem_number_from_list(mm_list_output):
+    for line in mm_list_output.splitlines():
+        if "/Modem/" in line:
+            tail = line.split("/Modem/", 1)[1].strip()
+            number = ""
+            for ch in tail:
+                if ch.isdigit():
+                    number += ch
+                else:
+                    break
+            return number
+    return ""
+
+def modem_safe_info(modem_number):
+    info = {
+        "manufacturer": "unknown",
+        "model": "unknown",
+        "firmware": "unknown",
+        "hardware": "unknown",
+        "state": "unknown",
+        "power_state": "unknown",
+        "access_tech": "unknown",
+        "signal_quality": "unknown",
+        "operator_name": "unknown",
+        "registration": "unknown",
+        "packet_service": "unknown",
+        "ports": "unknown",
+    }
+
+    if not modem_number:
+        return info
+
+    rc, out, _ = run(["mmcli", "-m", modem_number], timeout=10)
+    if rc != 0 or not out:
+        return info
+
+    allowed = {
+        "manufacturer": "manufacturer",
+        "model": "model",
+        "firmware revision": "firmware",
+        "h/w revision": "hardware",
+        "state": "state",
+        "power state": "power_state",
+        "access tech": "access_tech",
+        "signal quality": "signal_quality",
+        "operator name": "operator_name",
+        "registration": "registration",
+        "packet service state": "packet_service",
+        "ports": "ports",
+    }
+
+    blocked_keys = {
+        "equipment id",
+        "imei",
+        "own",
+        "own numbers",
+        "subscriber id",
+        "sim iccid",
+        "primary sim path",
+        "sim slot paths",
+        "device id",
+        "primary port",
+    }
+
+    for line in out.splitlines():
+        cleaned = line.strip()
+
+        if "|" in cleaned:
+            cleaned = cleaned.split("|", 1)[1].strip()
+
+        if ":" not in cleaned:
+            continue
+
+        key, value = cleaned.split(":", 1)
+        key = key.strip().lower()
+        value = value.strip()
+
+        if key in blocked_keys:
+            continue
+
+        if key in allowed and value:
+            info[allowed[key]] = value
+
+    return info
+
+def gsm_nm_status():
+    status = {
+        "device": "none",
+        "state": "not present",
+        "connection": "none",
+    }
+
+    rc, out, _ = run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device", "status"], timeout=5)
+    if rc != 0:
+        return status
+
+    for line in out.splitlines():
+        parts = line.split(":", 3)
+        if len(parts) < 4:
+            continue
+
+        device, dev_type, state, connection = parts
+
+        if dev_type == "gsm":
+            status["device"] = device or "unknown"
+            status["state"] = state or "unknown"
+            status["connection"] = connection or "none"
+            return status
+
+    return status
+
+def wwan_ip_assignment_state():
+    rc, out, _ = run(["ip", "-br", "addr", "show", "wwan0"], timeout=4)
+    if rc != 0 or not out:
+        return "no wwan0 address"
+
+    has_ipv4 = False
+    has_ipv6 = False
+
+    for token in out.split():
+        if "/" not in token:
+            continue
+
+        if ":" in token:
+            has_ipv6 = True
+        elif token[0].isdigit():
+            has_ipv4 = True
+
+    if has_ipv4 and has_ipv6:
+        return "IPv4 + IPv6 assigned"
+    if has_ipv4:
+        return "IPv4 assigned"
+    if has_ipv6:
+        return "IPv6 assigned"
+
+    return "no IP assigned"
+
+def cellular_profile_exists(profile_name="pcs-cellular-tmobile"):
+    rc, out, _ = run(["nmcli", "-t", "-f", "NAME", "connection", "show"], timeout=5)
+    if rc != 0:
+        return False
+    return profile_name in out.splitlines()
+
+def cellular_route_metric(profile_name="pcs-cellular-tmobile"):
+    if not cellular_profile_exists(profile_name):
+        return "profile missing"
+
+    rc4, out4, _ = run(["nmcli", "-g", "ipv4.route-metric", "connection", "show", profile_name], timeout=5)
+    rc6, out6, _ = run(["nmcli", "-g", "ipv6.route-metric", "connection", "show", profile_name], timeout=5)
+
+    ipv4_metric = out4.strip() if rc4 == 0 and out4.strip() else "unknown"
+    ipv6_metric = out6.strip() if rc6 == 0 and out6.strip() else "unknown"
+
+    return f"IPv4 {ipv4_metric}, IPv6 {ipv6_metric}"
+
+
 def public_wan_ip():
     for cmd in [
         ["curl", "-fsS", "--max-time", "5", "https://api.ipify.org"],
@@ -827,6 +984,12 @@ core_services = {
 
 mm_rc, mm_out, _ = run(["mmcli", "-L"], timeout=5)
 modem_present = "/Modem/" in mm_out
+modem_number = modem_number_from_list(mm_out)
+cell_info = modem_safe_info(modem_number)
+cell_nm = gsm_nm_status()
+cell_ip_state = wwan_ip_assignment_state()
+cell_profile_present = cellular_profile_exists()
+cell_route_metric = cellular_route_metric()
 gpsd_active = active("gpsd")
 
 usb_rc, usb_out, _ = run(["lsusb"], timeout=5)
@@ -865,7 +1028,9 @@ storage_status = "ok" if usb_mount and primary_share_ok and backup_share_ok and 
 time_status = "ok" if chrony_active and clock_sync == "yes" else "warn"
 samba_status = "ok" if smbd_active and primary_share_ok and backup_share_ok else "bad"
 services_status = "ok" if all(core_services.values()) else "warn"
-cellular_status = "ok" if modem_present else "warn"
+cellular_registered = cell_info.get("registration") in {"home", "roaming"}
+cellular_connected = cell_nm.get("state") == "connected"
+cellular_status = "ok" if modem_present and (cellular_registered or cellular_connected) else "warn"
 gps_status = "ok" if gpsd_active and (gps_devices or pps_present or chrony_gps_source_present) else "warn"
 
 cards = [
@@ -1005,13 +1170,28 @@ cards = [
         "id": "cellular",
         "title": "Cellular / WWAN",
         "status": cellular_status,
-        "summary": "Cellular modem detected" if modem_present else "Waiting for WWAN modem hardware",
+        "summary": (
+            "Cellular connected"
+            if cellular_connected
+            else "Cellular registered"
+            if cellular_registered
+            else "Waiting for WWAN connection"
+            if modem_present
+            else "Waiting for WWAN modem hardware"
+        ),
         "items": [
             {"label": "ModemManager", "value": "active" if active("ModemManager") else "inactive"},
             {"label": "WWAN modem", "value": "detected" if modem_present else "not detected yet"},
-            {"label": "USB adapter hint", "value": "possible WWAN USB device seen" if wwan_usb_present else "not detected yet"},
-            {"label": "Connection", "value": "not configured yet" if not modem_present else "ready for setup"},
-            {"label": "Future role", "value": "primary internet uplink"},
+            {"label": "Model", "value": cell_info.get("model", "unknown")},
+            {"label": "Hardware", "value": cell_info.get("hardware", "unknown")},
+            {"label": "NetworkManager", "value": f"{cell_nm.get('device')} / {cell_nm.get('state')}"},
+            {"label": "Profile", "value": cell_nm.get("connection") or "none"},
+            {"label": "Operator", "value": cell_info.get("operator_name", "unknown")},
+            {"label": "Registration", "value": cell_info.get("registration", "unknown")},
+            {"label": "Access tech", "value": cell_info.get("access_tech", "unknown")},
+            {"label": "Signal quality", "value": cell_info.get("signal_quality", "unknown")},
+            {"label": "WWAN IP", "value": cell_ip_state},
+            {"label": "Route metric", "value": cell_route_metric},
         ],
     },
     {
