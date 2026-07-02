@@ -1,0 +1,13 @@
+[Unit]
+Description=PCS EM7455 GPS NMEA Starter
+After=ModemManager.service
+Wants=ModemManager.service
+Before=gpsd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/pcs-em7455-gps-nmea-start.py
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
