@@ -20,7 +20,7 @@ Example use cases:
 
 ## Current Working Baseline
 
-The current pre-WWAN baseline provides:
+The current tested baseline provides:
 
 - Raspberry Pi gateway at `10.42.0.1`
 - Client LAN/AP handoff through `eth0`
@@ -43,7 +43,7 @@ Access point / switch
     ↓ LAN port
 Raspberry Pi eth0 - 10.42.0.1/24
     ↓
-Raspberry Pi uplink - wlan0 now, cellular later
+Raspberry Pi uplink - wlan0 currently, cellular data manual/optional
     ↓
 Internet
 ```
@@ -64,8 +64,8 @@ LAN NTP Server:     10.42.0.1
 Planned future features include:
 
 - Cellular internet uplink
-- GPS/GNSS receiver
-- GPS-disciplined Chrony/NTP
+- EM7455/DW5811e GPS NMEA through gpsd
+- Chrony GPS source for LAN NTP
 - Final enclosure
 - Final power switching and fusing
 - External antennas
@@ -86,6 +86,6 @@ PCS should be:
 
 ## Current Status
 
-The project is currently in the pre-WWAN software baseline stage.
+The project is currently in a tested WWAN/GPS software baseline stage.
 
-The main software stack is working and documented. Cellular modem and GPS/GNSS setup are waiting on hardware.
+The main software stack is working and documented. EM7455/DW5811e modem detection, manual cellular profile, GPS NMEA through gpsd, and Chrony GPS source are tested. Future EM7565 validation and final enclosure/power work remain.
