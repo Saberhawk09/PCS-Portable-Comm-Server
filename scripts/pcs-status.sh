@@ -548,8 +548,9 @@ echo "- ${PCS_SHARE_NAME} is the current primary/test share."
 echo "- ${PCS_BACKUP_SHARE_NAME} is the SD-card backup mirror share."
 echo "- Run ./scripts/sync-pcs-share-to-backup.sh to manually mirror the primary share to backup."
 echo "- PCS Control Panel is available at http://${PCS_ROUTER_IP}:${PCS_CONTROL_PORT} on the router-side network."
-echo "- No WWAN modem is expected until the EM7565 USB adapter is installed."
-echo "- GPSD is expected to remain inactive until GPS/GNSS setup is configured."
+echo "- EM7455/DW5811e WWAN modem and GPS NMEA are supported and tested."
+echo "- GPSD is expected to be active when EM7455 GPS setup is installed."
+echo "- Future EM7565 modem validation is still pending."
 echo
 
 echo "=== End PCS Status ==="
