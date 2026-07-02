@@ -137,3 +137,29 @@ Reports:
 - ModemManager status
 - Key service states
 - Raspberry Pi Connect status
+
+## setup-chrony-lan-ntp.sh
+
+Configures Chrony to serve NTP to clients on the PCS router-side network.
+
+Run from the repository root:
+
+    ./scripts/setup-chrony-lan-ntp.sh
+
+Default NTP server address for router-side clients:
+
+    10.42.0.1
+
+The script:
+
+- Backs up `/etc/chrony/chrony.conf`
+- Allows NTP clients on `10.42.0.0/24`
+- Preserves or enables RTC synchronization through `rtcsync`
+- Enables local fallback with `local stratum 10`
+- Restarts Chrony
+
+Test from Windows:
+
+    w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
+
+This does not configure GPS/GNSS as a Chrony source yet.
