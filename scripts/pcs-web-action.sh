@@ -1402,28 +1402,27 @@ cards = [
         "title": "GPS / GNSS",
         "status": gps_status,
         "summary": (
-            "GPS fix available"
-            if gps_info.get("coordinates") == "available"
-            else "GPS data available"
-            if gps_has_modem_data
-            else "Waiting for GPS/GNSS fix"
+            "EM7455 NMEA GPS feeding gpsd and Chrony"
+            if gpsd_active and chrony_gps_source_present
+            else "EM7455 GPS available, waiting for Chrony GPS source"
+            if gpsd_active
+            else "Waiting for EM7455 NMEA GPS data"
             if modem_present
             else "Waiting for GPS/GNSS hardware"
         ),
         "items": [
-            {"label": "Modem GPS", "value": "available" if modem_present else "not detected"},
-            {"label": "Enabled sources", "value": gps_info.get("enabled", "unknown")},
-            {"label": "GPS data", "value": gps_info.get("gps_data", "unknown")},
+            {"label": "GPS path", "value": "EM7455 NMEA → gpsd → Chrony"},
+            {"label": "Starter service", "value": "active/exited" if active("pcs-em7455-gps-nmea") else "inactive or missing"},
+            {"label": "NMEA port", "value": "/dev/ttyUSB1 present" if os.path.exists("/dev/ttyUSB1") else "/dev/ttyUSB1 missing"},
+            {"label": "gpsd", "value": "active" if gpsd_active else "inactive"},
+            {"label": "NMEA", "value": gps_info.get("nmea", "unknown")},
             {"label": "Lat/Lon", "value": gps_info.get("lat_lon", "not available")},
             {"label": "Grid square", "value": gps_info.get("grid_square", "unknown")},
-            {"label": "NMEA", "value": gps_info.get("nmea", "unknown")},
             {"label": "UTC time", "value": gps_info.get("utc", "unknown")},
             {"label": "Fix quality", "value": gps_info.get("fix_quality", "unknown")},
             {"label": "Satellites", "value": gps_info.get("satellites", "unknown")},
-            {"label": "Refresh rate", "value": gps_info.get("refresh_rate", "unknown")},
-            {"label": "gpsd", "value": "active" if gpsd_active else "inactive / not configured yet"},
-            {"label": "Chrony GPS/PPS source", "value": "present" if chrony_gps_source_present else "not configured yet"},
-            {"label": "Future role", "value": "GPS-disciplined LAN NTP"},
+            {"label": "Chrony GPS source", "value": "present" if chrony_gps_source_present else "not shown"},
+            {"label": "ModemManager GPS", "value": gps_info.get("enabled", "unknown")},
         ],
     },
 
