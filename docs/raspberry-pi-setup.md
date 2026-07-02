@@ -1,203 +1,206 @@
 # Raspberry Pi Setup
 
-This document tracks the planned Raspberry Pi software setup for PCS.
+This document covers the Raspberry Pi software baseline for PCS.
 
-The Raspberry Pi is responsible for server-side services, while the router handles client networking.
+The current tested system is a Raspberry Pi 4 running Debian/Raspberry Pi OS.
 
-## Target System
+## Repository Location
 
-Planned starting point:
+Current working repository path:
 
-- Raspberry Pi 4 8GB
-- Raspberry Pi OS with desktop, 64-bit
-- SSH enabled
-- Raspberry Pi Connect enabled
-- I2C RTC enabled
-- System fully updated before service configuration
+```text
+/home/pi/Projects/PCS-Portable-Comm-Server
+```
 
-## Planned Pi Roles
+From the Pi:
 
-- Cellular WAN connection through the WWAN modem
-- LAN file share from removable storage
-- GPS receiver access through the modem GNSS function
-- GPS-disciplined time using GPSD and Chrony
-- Ethernet connection to the router WAN port
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+```
 
-## Initial Setup Checklist
+## Main Setup Script
 
-- [ ] Flash Raspberry Pi OS with desktop, 64-bit, to SD card
-- [ ] Enable SSH
-- [ ] Set hostname
-- [ ] Set username and password
-- [ ] Boot Pi
-- [ ] Confirm Raspberry Pi Connect remote shell
-- [ ] Confirm Raspberry Pi Connect screen sharing
-- [ ] Update system packages
-- [ ] Confirm Ethernet connection
-- [ ] Confirm Wi-Fi connection, if used during setup
-- [ ] Confirm I2C RTC is detected
-- [ ] Confirm USB WWAN modem is detected
-- [ ] Confirm external storage is detected
-- [ ] Confirm GPS / GNSS function is visible
+Run the PCS base setup script:
 
-## Dependency Installation
+```bash
+./scripts/setup-pcs-base.sh
+```
 
-After installing Raspberry Pi OS with desktop, 64-bit, clone this repository and run the dependency installer.
+This configures the current PCS baseline:
 
-Commands:
-
-    git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
-    cd PCS-Portable-Comm-Server
-    ./scripts/install-dependencies.sh
-
-The installer adds baseline PCS packages for:
-
-- General system utilities
-- Hardware inspection tools
-- NetworkManager
-- ModemManager
-- QMI / MBIM modem tools
-- Samba / SMB
-- GPSD
-- Chrony
+- Dependencies
+- RTC support
+- Client LAN/AP handoff on `eth0`
+- Samba shares
+- Chrony LAN NTP
 - Cockpit
-- WireGuard tools
+- PCS Control Panel
+- Dashboard redirect
+- Self-test/status tooling
 
-The installer does not configure routing, Samba shares, GPSD, Chrony GPS sources, or modem profiles.
+## Network Role
 
-## Status Script
+The Pi acts as the client network gateway.
 
-After dependencies are installed, the PCS status script can be used to collect useful system information.
+Current client-side address:
 
-Command:
+```text
+10.42.0.1/24
+```
 
-    ./scripts/pcs-status.sh
+Current client-side interface:
 
-The status script reports:
+```text
+eth0
+```
 
-- Hostname
-- OS version
-- Kernel version
-- Uptime
-- Time / NTP / RTC status
-- NetworkManager devices
-- IP addresses
-- Routes
-- DNS configuration
-- USB devices
-- I2C bus status
-- ModemManager modem list
-- Key service states
-- Raspberry Pi Connect status
+Current uplink interface:
 
-## Planned Services
+```text
+wlan0
+```
 
-| Service | Purpose | Status |
-|---|---|---|
-| NetworkManager | Network and connection management | Installed |
-| ModemManager | WWAN modem control | Installed |
-| Samba / SMB | LAN file share | Installed |
-| GPSD | GPS data service | Installed |
-| Chrony | NTP time discipline | Installed |
-| Cockpit | Web management UI | Installed |
-| Pi-hole / AdGuard | DNS filtering | Future |
-| WireGuard | VPN access | Future |
+The current NetworkManager profile is:
 
-## Cellular WAN
+```text
+pcs-router-wan-share
+```
 
-The WWAN modem will provide internet access.
-
-Planned hardware:
-
-- Sierra Wireless EM7565
-- M.2 WWAN to USB adapter
-- External LTE antennas
-- MHF4 to SMA antenna pigtails
-
-The Pi may provide WAN output to the router over Ethernet.
-
-Exact modem configuration will be added once the WWAN adapter is available for testing.
-
-## LAN File Share
-
-The Pi will host a LAN-accessible file share from removable storage.
-
-Possible uses:
-
-- Shared logging files
-- Configuration backups
-- Field documents
-- Radio software files
-- Offline reference material
-
-A temporary local test share may be used before final removable storage is installed.
-
-## GPS / NTP
-
-The modem GNSS receiver will be used as the GPS source.
-
-Planned software stack:
-
-- GPSD for GPS data
-- Chrony for NTP discipline
-
-The goal is to provide reliable local network time even when normal internet NTP is unavailable.
+Despite the name, this profile currently serves the PCS client LAN/AP side.
 
 ## RTC
 
-The Pi currently has an I2C RTC attached.
+The Pi uses an RTC so the system clock has a useful fallback when offline.
 
-Confirmed working:
+Check RTC status:
 
-- RTC detected as /dev/rtc0
-- DS1307-compatible driver loaded
-- System clock can be set from RTC
-- RTC is kept in UTC, not local time
+```bash
+timedatectl
+ls -l /dev/rtc*
+```
 
-The working RTC config is backed up on the Pi as:
+Expected:
 
-    /boot/firmware/config.txt.pcs-rtc-working
+```text
+RTC in local TZ: no
+/dev/rtc0 exists
+```
 
-## RTC Setup
+## Chrony / LAN NTP
 
-If the PCS I2C RTC module is installed, run the RTC setup script after installing dependencies.
+Chrony provides time service to PCS clients.
 
-Command:
+PCS LAN NTP server:
 
-    ./scripts/setup-rtc.sh
+```text
+10.42.0.1
+```
 
-The script:
+Check Chrony:
 
-- Backs up `/boot/firmware/config.txt`
-- Enables I2C if needed
-- Adds the DS1307-compatible RTC overlay if needed
-- Avoids modifying HDMI/display settings
+```bash
+chronyc tracking
+chronyc sources -v
+```
 
-Reboot after running the script on a fresh install, then verify with:
+Windows test:
 
-    ls /dev/rtc*
-    dmesg | grep -i rtc
-    timedatectl
+```cmd
+w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
+```
 
-## Current Tested Status
+## Samba
 
-Confirmed working on the PCS test Pi:
+Current share layout:
 
-- Raspberry Pi Connect remote shell
-- Raspberry Pi Connect screen sharing
-- Local SSH
-- I2C RTC
-- NTP synchronization
-- Chrony active
-- NetworkManager active
-- ModemManager active
-- Avahi active as pcs-pi.local
-- Cockpit web UI reachable from Windows on port 9090
-- PCS dependency installer tested successfully
-- PCS status script tested successfully
+```text
+\\10.42.0.1\PCS-Share   → /mnt/pcs-usb/PCS-Share
+\\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
+```
 
-## Notes
+Check Samba:
 
-Avoid changing display or HDMI settings unless Raspberry Pi Connect screen sharing breaks again.
+```bash
+testparm -s
+systemctl status smbd --no-pager
+```
 
-Exact routing, modem, Samba, GPSD, and Chrony configuration commands will be added as each subsystem is tested.
+## PCS Control Panel
+
+Dashboard URL:
+
+```text
+http://10.42.0.1
+```
+
+Direct control panel URL:
+
+```text
+http://10.42.0.1:8080
+```
+
+Check services:
+
+```bash
+systemctl status pcs-control-panel.service --no-pager -l
+systemctl status pcs-dashboard-redirect.service --no-pager -l
+```
+
+## Validation
+
+After setup or reboot:
+
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+git status
+./scripts/pcs-self-test.sh
+./scripts/pcs-status.sh
+```
+
+Expected:
+
+```text
+nothing to commit, working tree clean
+PCS Pi-side self-test PASSED.
+```
+
+## Reboot Test
+
+Run:
+
+```bash
+sudo reboot
+```
+
+After the Pi returns:
+
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+./scripts/pcs-self-test.sh
+```
+
+Expected:
+
+```text
+Fail: 0
+Warn: 0
+PCS Pi-side self-test PASSED.
+```
+
+## Hardware Not Configured Yet
+
+The following are expected to be missing until hardware arrives:
+
+```text
+WWAN/cellular modem
+GPS/GNSS receiver
+GPSD active configuration
+GPS-disciplined Chrony source
+```
+
+Before that hardware is installed, the self-test expects:
+
+```text
+No modem present yet
+gpsd inactive
+```
