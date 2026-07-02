@@ -47,3 +47,8 @@ This checklist tracks basic validation tests for PCS hardware, networking, and s
 - [ ] System can be operated without opening enclosure
 - [ ] Cooling is adequate under normal load
 - [ ] File share works with expected logging software
+
+## Extra Scripts
+
+- [x] PCS Pi-side self-test passes after reboot
+- [x] PCS status script reports client access information
