@@ -83,3 +83,22 @@ Current blockers:
 - GPS/GNSS source configuration
 - Final removable-storage Samba share
 - Power hardware and enclosure build
+
+## 2026-07-01 - Fresh Install Rebuild Test Passed
+
+Performed a full reinstall/rebuild test of the PCS Raspberry Pi software baseline.
+
+Confirmed:
+
+- Fresh OS install could be configured from the GitHub repository
+- `setup-pcs-base.sh` completed successfully
+- Pi-side self-test passed after reinstall
+- Router WAN handoff worked after reinstall
+- Windows client behind test router had internet access
+- Windows client could ping the Pi at `10.42.0.1`
+- Windows client could use PCS LAN NTP at `10.42.0.1`
+- RTC, Samba, Chrony, Cockpit, and Raspberry Pi Connect were working
+
+Result:
+
+Pre-WWAN software baseline is reproducible from the repository.
