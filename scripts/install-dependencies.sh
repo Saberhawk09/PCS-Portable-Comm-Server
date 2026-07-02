@@ -100,7 +100,7 @@ ${SUDO} apt-get update
 
 echo
 echo "Installing packages..."
-${SUDO} DEBIAN_FRONTEND=noninteractive apt-get install -y "${ALL_PACKAGES[@]}"
+${SUDO} env DEBIAN_FRONTEND=noninteractive apt-get install -y "${ALL_PACKAGES[@]}"
 
 echo
 echo "Enabling useful baseline services where available..."
