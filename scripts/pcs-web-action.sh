@@ -1362,6 +1362,87 @@ cellular_disconnect() {
 }
 
 
+cellular_test_internet() {
+    echo "=== PCS Cellular Internet Test ==="
+    echo
+
+    echo "--- GSM device state ---"
+    if nmcli device status 2>/dev/null | awk '$2 == "gsm" { found=1 } END { exit found ? 0 : 1 }'; then
+        nmcli device status | awk '$2 == "gsm" { print $1, $2, $3, $4 }'
+    else
+        echo "No GSM/WWAN device shown by NetworkManager."
+        echo "Result: FAIL"
+        return 1
+    fi
+
+    echo
+    echo "--- WWAN interface state ---"
+    if ip link show wwan0 >/dev/null 2>&1; then
+        echo "wwan0: present"
+    else
+        echo "wwan0: missing"
+        echo "Result: FAIL"
+        return 1
+    fi
+
+    if ip -br addr show wwan0 2>/dev/null | awk 'NF > 2 { found=1 } END { exit found ? 0 : 1 }'; then
+        echo "wwan0 IP assignment: present / hidden"
+    else
+        echo "wwan0 IP assignment: missing"
+        echo "Result: FAIL"
+        return 1
+    fi
+
+    echo
+    echo "--- Cellular route check ---"
+    if ip route show default 2>/dev/null | grep -q "dev wwan0"; then
+        echo "wwan0 default route: present"
+    else
+        echo "wwan0 default route: missing"
+        echo "Result: FAIL"
+        return 1
+    fi
+
+    echo
+    echo "--- Cellular ping test ---"
+    PING_OUTPUT="$(ping -I wwan0 -c 3 -W 4 8.8.8.8 2>&1 || true)"
+
+    if echo "${PING_OUTPUT}" | grep -q " 0% packet loss"; then
+        echo "Ping via wwan0: PASS"
+        echo "${PING_OUTPUT}" | grep -E "packets transmitted|packet loss|rtt" || true
+    else
+        echo "Ping via wwan0: FAIL"
+        echo "${PING_OUTPUT}" | grep -E "packets transmitted|packet loss|rtt|Network is unreachable|unknown host|Destination" || true
+        echo "Result: FAIL"
+        return 1
+    fi
+
+    echo
+    echo "--- Cellular HTTPS test ---"
+    HTTP_CODE="$(curl --interface wwan0 -4 --max-time 20 --silent --show-error --output /dev/null --write-out "%{http_code}" https://api.ipify.org 2>/tmp/pcs-cellular-curl.err || true)"
+
+    if [[ "${HTTP_CODE}" == "200" ]]; then
+        echo "HTTPS via wwan0: PASS"
+        echo "Public IP: assigned / hidden"
+    else
+        echo "HTTPS via wwan0: FAIL"
+        echo "HTTP code: ${HTTP_CODE:-none}"
+        if [[ -s /tmp/pcs-cellular-curl.err ]]; then
+            echo "curl error:"
+            cat /tmp/pcs-cellular-curl.err
+        fi
+        rm -f /tmp/pcs-cellular-curl.err
+        echo "Result: FAIL"
+        return 1
+    fi
+
+    rm -f /tmp/pcs-cellular-curl.err
+
+    echo
+    echo "Result: PASS"
+    echo "Cellular internet access through wwan0 is working."
+}
+
 case "${ACTION}" in
     cellular-status)
         cellular_safe_status
@@ -1373,6 +1454,10 @@ case "${ACTION}" in
 
     cellular-disconnect)
         cellular_disconnect
+        ;;
+
+    cellular-test)
+        cellular_test_internet
         ;;
 
     dashboard-json)
