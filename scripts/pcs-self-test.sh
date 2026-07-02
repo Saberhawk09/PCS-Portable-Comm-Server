@@ -500,10 +500,66 @@ else
     skip "Cellular NetworkManager profile not created yet"
 fi
 
-if service_active gpsd; then
-    warn "gpsd is active; GPS/GNSS setup may be partially configured"
+if service_enabled pcs-em7455-gps-nmea; then
+    pass "EM7455 GPS NMEA starter service is enabled"
 else
-    pass "gpsd inactive, expected before GPS/GNSS setup"
+    warn "EM7455 GPS NMEA starter service is not enabled"
+fi
+
+if service_active pcs-em7455-gps-nmea; then
+    pass "EM7455 GPS NMEA starter has completed successfully"
+else
+    warn "EM7455 GPS NMEA starter service is not active/exited"
+fi
+
+if [[ -e /dev/ttyUSB1 ]]; then
+    pass "EM7455 NMEA serial port exists: /dev/ttyUSB1"
+else
+    warn "EM7455 NMEA serial port missing: /dev/ttyUSB1"
+fi
+
+if service_active gpsd; then
+    pass "gpsd is active"
+else
+    warn "gpsd is not active"
+fi
+
+if service_enabled gpsd; then
+    pass "gpsd is enabled"
+else
+    warn "gpsd is not enabled"
+fi
+
+if command_exists gpspipe; then
+    if timeout 10 gpspipe -r 2>/dev/null | grep -qm1 '^\$G'; then
+        pass "gpsd is receiving NMEA data"
+    else
+        warn "gpsd did not report NMEA data during quick check"
+    fi
+else
+    warn "gpspipe command missing"
+fi
+
+if grep -Rqi "refclock SHM 0 refid GPS" /etc/chrony /etc/chrony/conf.d 2>/dev/null; then
+    pass "Chrony GPS SHM refclock is configured"
+else
+    warn "Chrony GPS SHM refclock is not configured"
+fi
+
+CHRONY_GPS_SOURCE="$(chronyc sources -v 2>/dev/null | awk '$2 == "GPS" { print }' || true)"
+
+if [[ -n "${CHRONY_GPS_SOURCE}" ]]; then
+    pass "Chrony sees GPS source"
+
+    CHRONY_GPS_REACH="$(echo "${CHRONY_GPS_SOURCE}" | awk '{ print $5 }' | head -n 1)"
+
+    if [[ "${CHRONY_GPS_REACH}" =~ ^[0-9]+$ ]] && [[ "${CHRONY_GPS_REACH}" -gt 0 ]]; then
+        pass "Chrony GPS source has nonzero reach: ${CHRONY_GPS_REACH}"
+    else
+        warn "Chrony GPS source exists but reach is zero or unknown"
+    fi
+else
+    warn "Chrony does not currently show GPS source"
 fi
 
 
