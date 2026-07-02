@@ -102,3 +102,62 @@ Confirmed:
 Result:
 
 Pre-WWAN software baseline is reproducible from the repository.
+
+## 2026-07-02 - Pre-WWAN Software Baseline Complete
+
+Reached a clean pre-WWAN software baseline for PCS.
+
+### Confirmed Working
+
+- Raspberry Pi 4 acting as PCS client network gateway at `10.42.0.1`
+- Actiontec T3200 configured as AP/switch-style client access point
+- T3200 LAN IP set to `10.42.0.2`
+- T3200 DHCP disabled
+- Pi connected to T3200 LAN port
+- Clients receive `10.42.0.x` addresses directly from the Pi
+- Client internet routing works through Pi uplink
+- Chrony LAN NTP working on `10.42.0.1`
+- RTC present and configured for UTC
+- Samba primary share moved to USB storage
+- Samba backup share stored on Pi SD card
+- USB primary share syncs to SD backup mirror
+- PCS Control Panel dashboard working on port `8080`
+- Port 80 dashboard redirect working at `http://10.42.0.1`
+- Local client info added to dashboard
+- Friendly client name map support added
+- `pcs-self-test.sh` updated to check dashboard redirect
+- Documentation expanded across README and docs folder
+
+### Current Client Access
+
+```text
+PCS Dashboard:      http://10.42.0.1
+PCS Control Panel:  http://10.42.0.1:8080
+Cockpit:            https://10.42.0.1:9090
+Primary Share:      \\10.42.0.1\PCS-Share
+Backup Share:       \\10.42.0.1\PCS-Backup
+LAN NTP Server:     10.42.0.1
+```
+
+### Latest Clean Self-Test
+
+```text
+Pass: 48
+Warn: 0
+Fail: 0
+Skip: 0
+
+PCS Pi-side self-test PASSED.
+```
+
+### Current Status
+
+PCS is now in a stable pre-WWAN baseline state.
+
+The main things waiting on hardware are:
+
+- WWAN/cellular modem setup
+- GPS/GNSS setup
+- GPS-disciplined Chrony source
+- Final power system
+- Final enclosure
