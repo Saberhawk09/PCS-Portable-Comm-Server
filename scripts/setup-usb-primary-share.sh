@@ -140,7 +140,13 @@ UUID=${USB_UUID} ${USB_MOUNT} ${USB_TYPE} ${FSTAB_OPTIONS} 0 0
 EOF
 
 echo "Mounting USB..."
-${SUDO} mount "${USB_MOUNT}"
+${SUDO} systemctl daemon-reload || true
+
+if findmnt "${USB_MOUNT}" >/dev/null 2>&1; then
+    echo "${USB_MOUNT} is already mounted. Skipping mount."
+else
+    ${SUDO} mount "${USB_MOUNT}"
+fi
 
 if ! findmnt "${USB_MOUNT}" >/dev/null 2>&1; then
     echo "ERROR: ${USB_MOUNT} is not mounted."
@@ -160,7 +166,7 @@ echo
 echo "Copying existing primary share contents to USB, if present..."
 
 if [[ -d "${OLD_PRIMARY_PATH}" ]]; then
-    ${SUDO} rsync -avh "${OLD_PRIMARY_PATH}/" "${PRIMARY_SHARE_PATH}/" || true
+    ${SUDO} rsync -rtvh --modify-window=2 "${OLD_PRIMARY_PATH}/" "${PRIMARY_SHARE_PATH}/" || true
     ${SUDO} chown -R "${PCS_USER}:${PCS_USER}" "${PRIMARY_SHARE_PATH}" || true
 else
     echo "Old primary path not found: ${OLD_PRIMARY_PATH}"
