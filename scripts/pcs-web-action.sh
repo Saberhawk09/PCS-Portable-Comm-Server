@@ -324,6 +324,101 @@ def ping_ok(target):
     rc, _, _ = run(["ping", "-c", "1", "-W", "2", target], timeout=4)
     return rc == 0
 
+def system_load():
+    try:
+        with open("/proc/loadavg", "r", encoding="utf-8") as f:
+            parts = f.read().split()
+        return float(parts[0]), float(parts[1]), float(parts[2])
+    except Exception:
+        return 0.0, 0.0, 0.0
+
+def memory_usage():
+    values = {}
+
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                key, raw = line.split(":", 1)
+                values[key] = int(raw.strip().split()[0])
+    except Exception:
+        return {"used_mb": 0, "total_mb": 0, "percent": 0}
+
+    total = values.get("MemTotal", 0)
+    available = values.get("MemAvailable", 0)
+    used = max(total - available, 0)
+
+    if total <= 0:
+        percent = 0
+    else:
+        percent = round((used / total) * 100, 1)
+
+    return {
+        "used_mb": round(used / 1024),
+        "total_mb": round(total / 1024),
+        "percent": percent,
+    }
+
+def root_disk_usage():
+    try:
+        stat = os.statvfs("/")
+        total = stat.f_blocks * stat.f_frsize
+        free = stat.f_bavail * stat.f_frsize
+        used = max(total - free, 0)
+
+        if total <= 0:
+            percent = 0
+        else:
+            percent = round((used / total) * 100, 1)
+
+        return {
+            "used_gb": round(used / (1024 ** 3), 1),
+            "total_gb": round(total / (1024 ** 3), 1),
+            "percent": percent,
+        }
+    except Exception:
+        return {"used_gb": 0, "total_gb": 0, "percent": 0}
+
+def uptime_pretty():
+    try:
+        with open("/proc/uptime", "r", encoding="utf-8") as f:
+            seconds = int(float(f.read().split()[0]))
+    except Exception:
+        return "unknown"
+
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+
+    if days:
+        return f"{days}d {hours}h {minutes}m"
+    if hours:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
+
+def cpu_temperature():
+    paths = [
+        "/sys/class/thermal/thermal_zone0/temp",
+    ]
+
+    for path in paths:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = f.read().strip()
+
+            if raw:
+                c = round(int(raw) / 1000, 1)
+                f_temp = round((c * 9 / 5) + 32, 1)
+                return f"{c}°C / {f_temp}°F"
+        except Exception:
+            continue
+
+    rc, out, _ = run(["vcgencmd", "measure_temp"], timeout=3)
+    if rc == 0 and out:
+        return out.replace("temp=", "").strip()
+
+    return "unavailable"
+
+
 def public_wan_ip():
     for cmd in [
         ["curl", "-fsS", "--max-time", "5", "https://api.ipify.org"],
@@ -530,6 +625,20 @@ wan_ip = public_wan_ip()
 uplink_info = uplink_route_info()
 router_clients = router_side_clients()
 
+load1, load5, load15 = system_load()
+cpu_cores = os.cpu_count() or 1
+memory = memory_usage()
+root_disk = root_disk_usage()
+uptime = uptime_pretty()
+cpu_temp = cpu_temperature()
+
+system_warn = (
+    memory.get("percent", 0) >= 85
+    or root_disk.get("percent", 0) >= 85
+    or load1 >= (cpu_cores * 1.5)
+)
+system_status = "warn" if system_warn else "ok"
+
 chrony = chrony_tracking()
 chrony_active = active("chrony")
 clock_sync = timedate_value("System clock synchronized")
@@ -598,6 +707,20 @@ cellular_status = "ok" if modem_present else "warn"
 gps_status = "ok" if gpsd_active and (gps_devices or pps_present or chrony_gps_source_present) else "warn"
 
 cards = [
+    {
+        "id": "system-stats",
+        "title": "System Stats",
+        "status": system_status,
+        "summary": "System resources normal" if system_status == "ok" else "System resource warning",
+        "items": [
+            {"label": "Uptime", "value": uptime},
+            {"label": "CPU load", "value": f"{load1:.2f}, {load5:.2f}, {load15:.2f}"},
+            {"label": "CPU cores", "value": str(cpu_cores)},
+            {"label": "RAM used", "value": f"{memory['used_mb']} / {memory['total_mb']} MB ({memory['percent']}%)"},
+            {"label": "Root disk used", "value": f"{root_disk['used_gb']} / {root_disk['total_gb']} GB ({root_disk['percent']}%)"},
+            {"label": "CPU temp", "value": cpu_temp},
+        ],
+    },
     {
         "id": "network",
         "title": "Network",
