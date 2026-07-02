@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-PRIMARY_SHARE="/srv/pcs-share"
+PRIMARY_SHARE="/mnt/pcs-usb/PCS-Share"
 BACKUP_SHARE="/srv/pcs-share-backup"
 PCS_USER="${SUDO_USER:-$USER}"
 
@@ -24,8 +24,15 @@ if ! command -v rsync >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! findmnt /mnt/pcs-usb >/dev/null 2>&1; then
+    echo "ERROR: USB primary storage is not mounted at /mnt/pcs-usb"
+    echo "Run:"
+    echo "  ./scripts/setup-usb-primary-share.sh"
+    exit 1
+fi
+
 if [[ ! -d "${PRIMARY_SHARE}" ]]; then
-    echo "ERROR: Primary share missing: ${PRIMARY_SHARE}"
+    echo "ERROR: Primary USB share missing: ${PRIMARY_SHARE}"
     exit 1
 fi
 
@@ -40,10 +47,10 @@ echo "Backup share:  ${BACKUP_SHARE}"
 echo
 
 echo "Sync mode:"
-echo "  Primary → Backup"
+echo "  USB Primary → SD Backup"
 echo
 echo "WARNING:"
-echo "  Files deleted from the primary share will also be deleted from the backup mirror."
+echo "  Files deleted from the USB primary share will also be deleted from the SD backup mirror."
 echo
 
 read -r -p "Continue with sync? [y/N] " answer
@@ -59,13 +66,14 @@ esac
 
 echo
 echo "Running rsync..."
-${SUDO} rsync -avh --delete \
-    --exclude "README.txt" \
+${SUDO} rsync -rtvh --delete \
+    --modify-window=2 \
+    --exclude "LAST_SYNC.txt" \
     "${PRIMARY_SHARE}/" \
     "${BACKUP_SHARE}/"
 
 echo
-echo "Fixing ownership and permissions..."
+echo "Fixing ownership and permissions on SD backup..."
 ${SUDO} chown -R "${PCS_USER}:${PCS_USER}" "${BACKUP_SHARE}"
 ${SUDO} chmod -R u+rwX,g+rwX,o-rwx "${BACKUP_SHARE}"
 ${SUDO} find "${BACKUP_SHARE}" -type d -exec chmod 2775 {} \;
@@ -77,6 +85,9 @@ ${SUDO} chown "${PCS_USER}:${PCS_USER}" "${BACKUP_SHARE}/LAST_SYNC.txt"
 
 echo
 echo "Backup sync complete."
+echo
+echo "Primary share:"
+echo "  \\\\10.42.0.1\\PCS-Share"
 echo
 echo "Backup share:"
 echo "  \\\\10.42.0.1\\PCS-Backup"

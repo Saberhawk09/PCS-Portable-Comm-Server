@@ -9,7 +9,7 @@ PCS_ROUTER_IP="10.42.0.1"
 PCS_ROUTER_CIDR="10.42.0.1/24"
 
 PCS_SHARE_NAME="PCS-Share"
-PCS_SHARE_PATH="/srv/pcs-share"
+PCS_SHARE_PATH="/mnt/pcs-usb/PCS-Share"
 
 PCS_BACKUP_SHARE_NAME="PCS-Backup"
 PCS_BACKUP_SHARE_PATH="/srv/pcs-share-backup"

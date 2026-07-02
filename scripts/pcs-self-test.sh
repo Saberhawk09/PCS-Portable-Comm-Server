@@ -13,7 +13,7 @@ PCS_ETH_ADDR="10.42.0.1/24"
 PCS_NTP_NET="10.42.0.0/24"
 
 PCS_SAMBA_SHARE="PCS-Share"
-PCS_SAMBA_PATH="/srv/pcs-share"
+PCS_SAMBA_PATH="/mnt/pcs-usb/PCS-Share"
 
 PCS_BACKUP_SHARE="PCS-Backup"
 PCS_BACKUP_PATH="/srv/pcs-share-backup"
