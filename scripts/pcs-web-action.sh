@@ -221,6 +221,7 @@ dashboard_json() {
     python3 - <<'PY'
 import json
 import os
+import time
 import shutil
 import subprocess
 from datetime import datetime
@@ -417,6 +418,149 @@ def cpu_temperature():
         return out.replace("temp=", "").strip()
 
     return "unavailable"
+
+
+def default_route_details():
+    rc, out, _ = run(["ip", "route", "show", "default"], timeout=4)
+    info = {"interface": "", "gateway": "", "raw": out.strip()}
+
+    if rc != 0 or not out.strip():
+        return info
+
+    parts = out.split()
+    if "dev" in parts:
+        idx = parts.index("dev")
+        if idx + 1 < len(parts):
+            info["interface"] = parts[idx + 1]
+
+    if "via" in parts:
+        idx = parts.index("via")
+        if idx + 1 < len(parts):
+            info["gateway"] = parts[idx + 1]
+
+    return info
+
+def dns_servers():
+    servers = []
+
+    try:
+        with open("/etc/resolv.conf", "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("nameserver"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        servers.append(parts[1])
+    except Exception:
+        pass
+
+    return servers
+
+def eth0_address():
+    rc, out, _ = run(["ip", "-brief", "addr", "show", "eth0"], timeout=4)
+    if rc != 0:
+        return ""
+
+    for token in out.split():
+        if token.startswith("10.42.0."):
+            return token
+
+    return ""
+
+def nm_connection_method(connection_name):
+    rc, out, _ = run(["nmcli", "-g", "ipv4.method", "connection", "show", connection_name], timeout=5)
+    if rc == 0 and out.strip():
+        return out.strip()
+    return "unknown"
+
+def count_files(path):
+    if not os.path.isdir(path):
+        return 0
+
+    total = 0
+    try:
+        for _, _, files in os.walk(path):
+            total += len(files)
+    except Exception:
+        return 0
+
+    return total
+
+def human_age(seconds):
+    if seconds is None:
+        return "unknown"
+
+    seconds = int(seconds)
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+
+    if days:
+        return f"{days}d {hours}h ago"
+    if hours:
+        return f"{hours}h {minutes}m ago"
+    return f"{minutes}m ago"
+
+def backup_health():
+    primary = "/mnt/pcs-usb/PCS-Share"
+    backup = "/srv/pcs-share-backup"
+    last_sync = os.path.join(backup, "LAST_SYNC.txt")
+
+    primary_present = os.path.isdir(primary)
+    backup_present = os.path.isdir(backup)
+
+    primary_files = count_files(primary)
+    backup_files = count_files(backup)
+
+    last_sync_text = "missing"
+    last_sync_age = None
+
+    if os.path.isfile(last_sync):
+        try:
+            with open(last_sync, "r", encoding="utf-8", errors="replace") as f:
+                last_sync_text = f.read().strip() or "present"
+            last_sync_age = time.time() - os.path.getmtime(last_sync)
+        except Exception:
+            last_sync_text = "unreadable"
+
+    stale = last_sync_age is None or last_sync_age > 86400
+
+    status = "ok"
+    if not primary_present or not backup_present or stale:
+        status = "warn"
+
+    return {
+        "status": status,
+        "primary_present": primary_present,
+        "backup_present": backup_present,
+        "primary_files": primary_files,
+        "backup_files": backup_files,
+        "last_sync_text": last_sync_text,
+        "last_sync_age": human_age(last_sync_age),
+    }
+
+def tcp_port_listening(port):
+    rc, out, _ = run(["ss", "-ltn"], timeout=4)
+    if rc != 0:
+        return False
+
+    needles = [
+        f":{port} ",
+        f":{port}\n",
+        f":{port}\t",
+    ]
+
+    return any(needle in out for needle in needles)
+
+def web_admin_status():
+    return {
+        "control_panel_active": active("pcs-control-panel.service"),
+        "redirect_active": active("pcs-dashboard-redirect.service"),
+        "cockpit_active": active("cockpit.socket"),
+        "port_80": tcp_port_listening(80),
+        "port_8080": tcp_port_listening(8080),
+        "port_9090": tcp_port_listening(9090),
+    }
 
 
 def public_wan_ip():
@@ -639,6 +783,24 @@ system_warn = (
 )
 system_status = "warn" if system_warn else "ok"
 
+route_details = default_route_details()
+dns_list = dns_servers()
+eth0_ip = eth0_address()
+eth0_method = nm_connection_method("pcs-router-wan-share")
+backup_info = backup_health()
+web_admin = web_admin_status()
+
+uplink_status = "ok" if route_details.get("interface") else "warn"
+client_lan_status = "ok" if eth0_ip.startswith("10.42.0.1/") else "warn"
+web_admin_status_value = "ok" if (
+    web_admin["control_panel_active"]
+    and web_admin["redirect_active"]
+    and web_admin["cockpit_active"]
+    and web_admin["port_80"]
+    and web_admin["port_8080"]
+    and web_admin["port_9090"]
+) else "warn"
+
 chrony = chrony_tracking()
 chrony_active = active("chrony")
 clock_sync = timedate_value("System clock synchronized")
@@ -707,6 +869,59 @@ cellular_status = "ok" if modem_present else "warn"
 gps_status = "ok" if gpsd_active and (gps_devices or pps_present or chrony_gps_source_present) else "warn"
 
 cards = [
+    {
+        "id": "uplink-details",
+        "title": "Uplink Details",
+        "status": uplink_status,
+        "summary": "Internet uplink route present" if uplink_status == "ok" else "No default uplink route detected",
+        "items": [
+            {"label": "Default interface", "value": route_details.get("interface") or "unknown"},
+            {"label": "Gateway", "value": route_details.get("gateway") or "unknown"},
+            {"label": "Source IP", "value": uplink_info.get("source_ip") or "unknown"},
+            {"label": "Public IP", "value": wan_ip or "unavailable"},
+            {"label": "DNS servers", "value": ", ".join(dns_list) if dns_list else "unknown"},
+        ],
+    },
+    {
+        "id": "client-lan",
+        "title": "Client LAN / DHCP",
+        "status": client_lan_status,
+        "summary": "PCS client LAN active" if client_lan_status == "ok" else "PCS client LAN warning",
+        "items": [
+            {"label": "eth0 address", "value": eth0_ip or "missing"},
+            {"label": "DHCP mode", "value": eth0_method},
+            {"label": "Visible clients", "value": str(len(router_clients))},
+            {"label": "Client gateway", "value": "10.42.0.1"},
+            {"label": "AP / switch IP", "value": "10.42.0.2 expected"},
+        ],
+    },
+    {
+        "id": "backup-health",
+        "title": "Backup Health",
+        "status": backup_info["status"],
+        "summary": "Backup mirror recently updated" if backup_info["status"] == "ok" else "Backup mirror needs attention",
+        "items": [
+            {"label": "Primary share", "value": "present" if backup_info["primary_present"] else "missing"},
+            {"label": "Backup share", "value": "present" if backup_info["backup_present"] else "missing"},
+            {"label": "Primary file count", "value": str(backup_info["primary_files"])},
+            {"label": "Backup file count", "value": str(backup_info["backup_files"])},
+            {"label": "Last sync age", "value": backup_info["last_sync_age"]},
+        ],
+    },
+    {
+        "id": "web-admin",
+        "title": "Web / Admin Interfaces",
+        "status": web_admin_status_value,
+        "summary": "Web/admin interfaces active" if web_admin_status_value == "ok" else "One or more web/admin checks failed",
+        "items": [
+            {"label": "Dashboard redirect", "value": "active" if web_admin["redirect_active"] else "inactive"},
+            {"label": "Control panel", "value": "active" if web_admin["control_panel_active"] else "inactive"},
+            {"label": "Cockpit", "value": "active" if web_admin["cockpit_active"] else "inactive"},
+            {"label": "Port 80", "value": "listening" if web_admin["port_80"] else "not listening"},
+            {"label": "Port 8080", "value": "listening" if web_admin["port_8080"] else "not listening"},
+            {"label": "Port 9090", "value": "listening" if web_admin["port_9090"] else "not listening"},
+        ],
+    },
     {
         "id": "system-stats",
         "title": "System Stats",
