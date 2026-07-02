@@ -4,7 +4,7 @@ A portable communications server built around a Raspberry Pi 4 with dedicated ro
 
 What started as an annoyance caused by Windows networking has evolved into my first end-to-end hardware and software project.
 
-## Warning, AI generatede code
+## Warning, AI generated code
 
 I'm a highschool dropout working at a convenience store, of course I'm using AI to help me code. 
 
