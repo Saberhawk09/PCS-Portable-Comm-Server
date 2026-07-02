@@ -163,3 +163,29 @@ Test from Windows:
     w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
 
 This does not configure GPS/GNSS as a Chrony source yet.
+
+## pcs-self-test.sh
+
+Runs a Pi-side PCS validation test.
+
+Run from the repository root:
+
+    ./scripts/pcs-self-test.sh
+
+Checks:
+
+- Hostname and OS
+- Git working tree status
+- RTC presence
+- NTP synchronization
+- Chrony LAN NTP configuration
+- NetworkManager device state
+- Router WAN handoff profile
+- Internet and DNS connectivity
+- Samba service and share configuration
+- Cockpit service
+- Raspberry Pi Connect status
+- ModemManager status
+- GPSD placeholder status
+
+This script only validates the Pi side. Client-side checks such as Windows file share access, Cockpit access, and `w32tm` NTP testing should still be tested separately.
