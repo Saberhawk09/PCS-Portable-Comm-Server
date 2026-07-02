@@ -26,16 +26,17 @@ echo "  - Samba bootstrap share setup"
 echo "  - Samba SD-card backup share setup"
 echo "  - Optional USB primary share setup, if USB storage is present"
 echo "  - Chrony LAN NTP setup"
+echo "  - Optional EM7455/DW5811e NMEA GPS setup, if WWAN GPS hardware is present"
 echo "  - Cockpit/systemd restart button install"
 echo "  - PCS Control Panel setup"
 echo "  - Port 80 dashboard redirect setup"
 echo "  - Final PCS status and self-test"
 echo
-echo "It will not configure:"
-echo "  - WWAN/cellular modem connection"
-echo "  - GPS/GNSS time source"
+echo "It will not automatically configure:"
+echo "  - Cellular data autoconnect"
+echo "  - Future EM7565-specific settings"
 echo
-echo "Those require hardware that may not be installed yet."
+echo "EM7455/DW5811e GPS can be configured as an optional hardware step if the modem is present."
 echo
 
 read -r -p "Continue with PCS base setup? [y/N] " answer
@@ -109,6 +110,8 @@ ensure_executable "scripts/setup-chrony-lan-ntp.sh"
 ensure_executable "scripts/restart-pcs-services.sh"
 ensure_executable "scripts/setup-pcs-control-panel.sh"
 ensure_executable "scripts/setup-dashboard-redirect.sh"
+ensure_executable "scripts/setup-em7455-gps-nmea.sh"
+ensure_executable "scripts/pcs-em7455-gps-nmea-start.py"
 ensure_executable "scripts/pcs-web-action.sh"
 ensure_executable "scripts/sync-pcs-share-to-backup.sh"
 ensure_executable "scripts/pcs-self-test.sh"
@@ -163,6 +166,37 @@ else
 fi
 
 run_step "Configure Chrony LAN NTP" "./scripts/setup-chrony-lan-ntp.sh"
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Configure EM7455/DW5811e NMEA GPS"
+echo "============================================================"
+echo
+echo "This optional step configures:"
+echo "  - EM7455/DW5811e GPS NMEA on /dev/ttyUSB1"
+echo "  - gpsd reading /dev/ttyUSB1"
+echo "  - Chrony reading gpsd SHM refclock 0"
+echo
+echo "Use this only when the EM7455/DW5811e WWAN modem and GPS antenna are installed."
+echo
+
+if [[ -x "./scripts/setup-em7455-gps-nmea.sh" ]]; then
+    read -r -p "Configure EM7455/DW5811e NMEA GPS now? [y/N] " gps_answer
+
+    case "${gps_answer}" in
+        y|Y|yes|YES)
+            ./scripts/setup-em7455-gps-nmea.sh
+            ;;
+        *)
+            echo "Skipping EM7455/DW5811e NMEA GPS setup."
+            echo "You can run this later:"
+            echo "  ./scripts/setup-em7455-gps-nmea.sh"
+            ;;
+    esac
+else
+    echo "WARNING: scripts/setup-em7455-gps-nmea.sh not found or not executable."
+    echo "Skipping EM7455/DW5811e NMEA GPS setup."
+fi
 
 echo
 echo "============================================================"
