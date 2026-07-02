@@ -1,6 +1,6 @@
 # PCS Project Overview
 
-PCS stands for Portable Communication Server.
+PCS stands for Portable Comm Server.
 
 It is a field-deployable networking appliance built around a Raspberry Pi 4.
 
