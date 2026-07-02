@@ -48,6 +48,11 @@ Confirmed working:
 - Windows PC was also able to reach the Pi using its home Wi-Fi address `192.168.50.236`
 - Internet traffic path is confirmed as: Windows PC → test router Wi-Fi → test router WAN → Pi Ethernet → Pi Wi-Fi → home router → internet
 - For portable PCS field use, the preferred stable client access address remains `10.42.0.1`, because `192.168.50.236` is specific to the current home network
+- LAN NTP service tested successfully
+- Chrony configured to allow NTP clients on `10.42.0.0/24`
+- Chrony `rtcsync` confirmed enabled
+- Windows client behind test router successfully queried NTP at `10.42.0.1`
+- Windows `w32tm /stripchart` received valid samples from the Pi
 
 RTC verification:
 
@@ -83,6 +88,9 @@ Current notes:
 - Router WAN handoff autostart is handled by NetworkManager connection autoconnect
 - Current tested router handoff path is Pi Wi-Fi uplink to Pi Ethernet shared output
 - Final PCS uplink is expected to change from Wi-Fi to cellular modem later
+- Current LAN NTP test uses Chrony with internet NTP plus local clock fallback
+- RTC seeds the system clock at boot and is kept updated through `rtcsync`
+- Future final NTP setup should use GPS/GNSS from the WWAN modem as the preferred time source
 
 Next planned checks:
 
