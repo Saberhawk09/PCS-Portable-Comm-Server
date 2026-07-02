@@ -39,25 +39,6 @@ Start here:
 
 Some documents may still be placeholders while the project is being built out.
 
-## Quick Client Access
-
-From a device connected to the PCS network:
-
-```text
-PCS Dashboard:      http://10.42.0.1
-PCS Control Panel:  http://10.42.0.1:8080
-Cockpit:            https://10.42.0.1:9090
-Primary Share:      \\10.42.0.1\PCS-Share
-Backup Share:       \\10.42.0.1\PCS-Backup
-LAN NTP Server:     10.42.0.1
-```
-
-Windows NTP test:
-
-```cmd
-w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
-```
-
 ## Main Setup
 
 Clone the repository:
@@ -86,6 +67,25 @@ Expected result:
 
 ```text
 PCS Pi-side self-test PASSED.
+```
+
+## Quick Client Access
+
+From a device connected to the PCS network:
+
+```text
+PCS Dashboard:      http://10.42.0.1
+PCS Control Panel:  http://10.42.0.1:8080
+Cockpit:            https://10.42.0.1:9090
+Primary Share:      \\10.42.0.1\PCS-Share
+Backup Share:       \\10.42.0.1\PCS-Backup
+LAN NTP Server:     10.42.0.1
+```
+
+Windows NTP test:
+
+```cmd
+w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
 ```
 
 ## Important Scripts
