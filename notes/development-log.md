@@ -56,3 +56,30 @@ Software setup and configuration can begin once a dedicated Raspberry Pi SD card
 - First successful file share test
 - First successful client network test
 - First successful cellular WAN test
+
+## 2026-07-01 - Pre-WWAN Software Baseline Complete
+
+Completed the pre-WWAN Raspberry Pi software bring-up phase.
+
+Confirmed working:
+
+- Raspberry Pi OS Desktop 64-bit baseline
+- Raspberry Pi Connect remote shell and screen sharing
+- I2C RTC
+- Chrony/NTP with RTC sync and local fallback
+- LAN NTP service on `10.42.0.1`
+- Router WAN handoff over Ethernet using `pcs-router-wan-share`
+- Windows client internet access through Pi and test router
+- Samba test share at `\\10.42.0.1\PCS-Share`
+- Cockpit access at `https://10.42.0.1:9090`
+- Cockpit/systemd PCS service restart button
+- PCS status script
+- PCS Pi-side self-test script
+- Central PCS base setup script
+
+Current blockers:
+
+- WWAN adapter / EM7565 cellular testing
+- GPS/GNSS source configuration
+- Final removable-storage Samba share
+- Power hardware and enclosure build
