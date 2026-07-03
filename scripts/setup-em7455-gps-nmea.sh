@@ -96,17 +96,79 @@ sudo mmcli --scan-modems >/dev/null 2>&1 || true
 
 MODEM_FOUND=0
 
-for i in $(seq 1 24); do
-    if mmcli -L 2>/dev/null | grep -q "/Modem/"; then
-        MODEM_FOUND=1
-        echo "ModemManager detected modem."
-        break
+wait_for_modemmanager_modem() {
+    local attempts="$1"
+    local label="$2"
+
+    MODEM_FOUND=0
+
+    for i in $(seq 1 "${attempts}"); do
+        if mmcli -L 2>/dev/null | grep -q "/Modem/"; then
+            MODEM_FOUND=1
+            echo "ModemManager detected modem."
+            return 0
+        fi
+
+        echo "Waiting for ModemManager modem detection (${label})... ${i}/${attempts}"
+        sudo mmcli --scan-modems >/dev/null 2>&1 || true
+        sleep 5
+    done
+
+    return 1
+}
+
+soft_reset_wwan_usb_device() {
+    echo
+    echo "--- Soft-reset WWAN USB device ---"
+
+    if [[ ! -e /dev/cdc-wdm0 ]]; then
+        echo "Cannot soft-reset modem: /dev/cdc-wdm0 is missing."
+        return 1
     fi
 
-    echo "Waiting for ModemManager modem detection... ${i}/24"
-    sudo mmcli --scan-modems >/dev/null 2>&1 || true
+    local iface_path
+    local usb_device_path
+
+    iface_path="$(readlink -f /sys/class/usbmisc/cdc-wdm0/device 2>/dev/null || true)"
+
+    if [[ -z "${iface_path}" ]]; then
+        echo "Cannot resolve sysfs path for /dev/cdc-wdm0."
+        return 1
+    fi
+
+    usb_device_path="${iface_path%:*}"
+
+    if [[ ! -e "${usb_device_path}/authorized" ]]; then
+        echo "Cannot find USB authorized control at:"
+        echo "  ${usb_device_path}/authorized"
+        return 1
+    fi
+
+    echo "Soft-disconnecting modem USB device:"
+    echo "  ${usb_device_path}"
+
+    echo 0 | sudo tee "${usb_device_path}/authorized" >/dev/null
     sleep 5
-done
+
+    echo "Soft-reconnecting modem USB device."
+    echo 1 | sudo tee "${usb_device_path}/authorized" >/dev/null
+    sleep 20
+
+    sudo systemctl restart ModemManager
+    sleep 10
+    sudo mmcli --scan-modems >/dev/null 2>&1 || true
+}
+
+if ! wait_for_modemmanager_modem 12 "initial"; then
+    echo
+    echo "ModemManager did not detect modem during initial wait."
+    echo "Kernel USB devices may exist while ModemManager still fails to claim the modem."
+    echo "Trying a software USB replug before failing..."
+
+    if soft_reset_wwan_usb_device; then
+        wait_for_modemmanager_modem 24 "after USB soft reset" || true
+    fi
+fi
 
 if [[ "${MODEM_FOUND}" -ne 1 ]]; then
     echo "ERROR: ModemManager did not detect the modem."
@@ -114,6 +176,9 @@ if [[ "${MODEM_FOUND}" -ne 1 ]]; then
     echo "  lsusb"
     echo "  ls -l /dev/ttyUSB* /dev/cdc-wdm*"
     echo "  journalctl -u ModemManager -n 120 --no-pager"
+    echo
+    echo "Manual recovery that previously worked:"
+    echo "  unplug/replug the WWAN USB adapter, then rerun this script"
     exit 1
 fi
 
