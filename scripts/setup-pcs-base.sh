@@ -185,7 +185,15 @@ if [[ -x "./scripts/setup-em7455-gps-nmea.sh" ]]; then
 
     case "${gps_answer}" in
         y|Y|yes|YES)
-            ./scripts/setup-em7455-gps-nmea.sh
+            if ./scripts/setup-em7455-gps-nmea.sh; then
+                echo "EM7455/DW5811e NMEA GPS setup completed."
+            else
+                echo
+                echo "WARNING: EM7455/DW5811e NMEA GPS setup failed."
+                echo "Continuing PCS base setup so dashboard/control panel installation can still complete."
+                echo "You can retry GPS setup later with:"
+                echo "  ./scripts/setup-em7455-gps-nmea.sh"
+            fi
             ;;
         *)
             echo "Skipping EM7455/DW5811e NMEA GPS setup."
