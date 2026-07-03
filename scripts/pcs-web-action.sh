@@ -1364,7 +1364,7 @@ cards = [
     },
     {
         "id": "services",
-        "title": "Core services",
+        "title": "Core Services",
         "status": services_status,
         "summary": "Core services active" if services_status == "ok" else "One or more services need attention",
         "items": [{"label": name, "value": "active" if ok else "inactive"} for name, ok in core_services.items()],
@@ -1427,6 +1427,24 @@ cards = [
     },
 
 ]
+
+card_order = [
+    "system-stats",
+    "services",
+    "storage",
+    "web-admin",
+    "samba",
+    "backup-health",
+    "network",
+    "cellular",
+    "uplink-details",
+    "client-lan",
+    "time",
+    "gps",
+]
+
+card_rank = {card_id: index for index, card_id in enumerate(card_order)}
+cards.sort(key=lambda card: card_rank.get(card.get("id", ""), len(card_order)))
 
 overall = "ok"
 if any(card["status"] == "bad" for card in cards):
@@ -1661,6 +1679,55 @@ cellular_test_internet() {
     echo "Cellular internet access through wwan0 is working."
 }
 
+
+sync_time_now() {
+    header "Sync Time Now"
+
+    echo "Chrony will poll configured sources and choose the best available time source."
+    echo "This may use internet NTP, GPS, or local fallback depending on current conditions."
+    echo
+
+    echo "--- Chrony tracking before sync ---"
+    chronyc tracking || true
+
+    echo
+    echo "--- Chrony sources before sync ---"
+    chronyc sources -v || true
+
+    echo
+    echo "--- Requesting fresh Chrony samples ---"
+    chronyc burst 4/4 || true
+
+    echo
+    echo "Waiting briefly for fresh samples..."
+    sleep 10
+
+    echo
+    echo "--- Stepping system clock if Chrony decides it is needed ---"
+    chronyc makestep || true
+
+    echo
+    echo "--- Waiting for synchronized state ---"
+    chronyc waitsync 30 0.5 0.0 2 || true
+
+    if [[ -e /dev/rtc0 ]]; then
+        echo
+        echo "--- Writing synchronized system time to RTC ---"
+        hwclock --systohc --utc || true
+    else
+        echo
+        echo "--- RTC not present; skipping RTC write ---"
+    fi
+
+    echo
+    echo "--- Chrony tracking after sync ---"
+    chronyc tracking || true
+
+    echo
+    echo "--- Chrony sources after sync ---"
+    chronyc sources -v || true
+}
+
 case "${ACTION}" in
     cellular-status)
         cellular_safe_status
@@ -1734,6 +1801,10 @@ case "${ACTION}" in
         header "Restart Samba"
         systemctl restart smbd
         systemctl status smbd --no-pager -l || true
+        ;;
+
+    sync-time)
+        sync_time_now
         ;;
 
     restart-chrony)

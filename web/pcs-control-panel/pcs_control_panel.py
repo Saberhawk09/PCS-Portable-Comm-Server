@@ -25,6 +25,7 @@ ACTIONS = [
     ("safe-unmount-usb", "Safely Unmount USB", "Sync backup, stop Samba, unmount USB, restart Samba."),
     ("restart-services", "Restart PCS Services", "Restart core PCS services through systemd."),
     ("restart-samba", "Restart Samba", "Restart Samba only."),
+    ("sync-time", "Sync Time Now", "Poll Chrony sources, step the system clock if needed, and update the RTC."),
     ("restart-chrony", "Restart Chrony", "Restart Chrony only."),
     ("restart-logs", "Restart Logs", "Show recent PCS restart service logs."),
 ]
@@ -35,7 +36,8 @@ ACTION_GROUPS = [
     ("Status", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
     ("Storage", ["sync-backup", "mount-usb", "safe-unmount-usb"]),
-    ("Services", ["restart-services", "restart-samba", "restart-chrony"]),
+    ("Services", ["restart-services", "restart-samba"]),
+    ("Time / NTP", ["sync-time", "restart-chrony"]),
 ]
 
 
