@@ -1374,15 +1374,27 @@ cards = [
         "title": "Cellular / WWAN",
         "status": cellular_status,
         "summary": (
-            "Cellular connected"
+            "OK - Cell Connection Active"
             if cellular_connected
-            else "Cellular registered"
+            else "OK - Modem Healthy / Cellular Manual"
             if cellular_registered
-            else "Waiting for WWAN connection"
+            else "WARN - Modem Detected / Not Registered"
             if modem_present
             else "Waiting for WWAN modem hardware"
         ),
         "items": [
+            {
+                "label": "PCS cellular state",
+                "value": (
+                    "OK - Cell Connection Active"
+                    if cellular_connected
+                    else "OK - Modem Healthy / Cellular Manual"
+                    if cellular_registered
+                    else "WARN - Modem Detected / Not Registered"
+                    if modem_present
+                    else "No WWAN modem detected"
+                ),
+            },
             {"label": "ModemManager", "value": "active" if active("ModemManager") else "inactive"},
             {"label": "WWAN modem", "value": "detected" if modem_present else "not detected yet"},
             {"label": "Model", "value": cell_info.get("model", "unknown")},
