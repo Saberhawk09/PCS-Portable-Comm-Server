@@ -125,6 +125,17 @@ Warn: 0
 
 For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
+### Cellular Connection Note
+
+Cellular data is intentionally configured for manual control.
+
+After a fresh setup, the WWAN modem and GPS may be detected and configured, but the cellular data connection will not be active until it is manually connected from the PCS Control Panel. PCS Self Test will also show a warn/skip for the cellular profile if it has not been manually toggled on at least once.
+
+Open the PCS Control Panel:
+
+```text
+http://10.42.0.1:8080
+
 ## Expected Hardware / Network State
 
 Current tested network layout:
