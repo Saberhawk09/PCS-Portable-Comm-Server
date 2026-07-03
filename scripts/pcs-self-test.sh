@@ -195,49 +195,74 @@ fi
 
 section "Network"
 
-if command_exists nmcli; then
-    nmcli device status
-    echo
+nmcli device status || true
+echo
 
-    if nmcli device status | grep -qE "^${PCS_WIFI_IFACE}[[:space:]]+wifi[[:space:]]+connected"; then
-        pass "${PCS_WIFI_IFACE} is connected"
-    else
-        fail "${PCS_WIFI_IFACE} is not connected"
-    fi
+WIFI_CONNECTED=0
+CELLULAR_CONNECTED=0
 
-    if nmcli device status | grep -qE "^${PCS_ETH_IFACE}[[:space:]]+ethernet[[:space:]]+connected[[:space:]]+pcs-router-wan-share"; then
-        pass "${PCS_ETH_IFACE} is connected using pcs-router-wan-share"
-    else
-        fail "${PCS_ETH_IFACE} is not connected using pcs-router-wan-share"
-    fi
+if nmcli -t -f DEVICE,STATE device status 2>/dev/null | awk -F: '$1 == "wlan0" && $2 == "connected" { found=1 } END { exit !found }'; then
+    WIFI_CONNECTED=1
+    pass "Wi-Fi uplink wlan0 is connected"
 else
-    fail "nmcli command missing"
+    echo "[INFO] Wi-Fi uplink wlan0 is disconnected"
 fi
 
-if ip -4 addr show dev "${PCS_ETH_IFACE}" | grep -q "${PCS_ETH_ADDR}"; then
-    pass "${PCS_ETH_IFACE} has ${PCS_ETH_ADDR}"
+if nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null | awk -F: '$2 == "gsm" && $3 == "connected" { found=1 } END { exit !found }'; then
+    CELLULAR_CONNECTED=1
+    pass "Cellular/WWAN uplink is connected"
 else
-    fail "${PCS_ETH_IFACE} does not have ${PCS_ETH_ADDR}"
+    echo "[INFO] Cellular/WWAN uplink is disconnected"
 fi
 
-if ip route | grep -q "default .* ${PCS_WIFI_IFACE}"; then
-    pass "Default route uses ${PCS_WIFI_IFACE}"
+if [[ "${WIFI_CONNECTED}" -eq 1 || "${CELLULAR_CONNECTED}" -eq 1 ]]; then
+    pass "At least one internet uplink is connected"
 else
-    fail "Default route does not appear to use ${PCS_WIFI_IFACE}"
+    fail "No internet uplink is connected"
 fi
 
-if ip route | grep -q "10.42.0.0/24 dev ${PCS_ETH_IFACE}"; then
-    pass "PCS router-side route exists on ${PCS_ETH_IFACE}"
+if nmcli -t -f DEVICE,STATE,CONNECTION device status 2>/dev/null | awk -F: '$1 == "eth0" && $2 == "connected" && $3 == "pcs-router-wan-share" { found=1 } END { exit !found }'; then
+    pass "eth0 is connected using pcs-router-wan-share"
 else
-    fail "PCS router-side route missing on ${PCS_ETH_IFACE}"
+    fail "eth0 is not connected using pcs-router-wan-share"
 fi
 
-ROUTER_NEIGHBORS="$(ip neigh show dev "${PCS_ETH_IFACE}" | grep -E '^10\.42\.0\.' || true)"
+if ip -4 addr show eth0 2>/dev/null | grep -q "10.42.0.1/24"; then
+    pass "eth0 has 10.42.0.1/24"
+else
+    fail "eth0 does not have 10.42.0.1/24"
+fi
+
+DEFAULT_IFACE="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
+
+case "${DEFAULT_IFACE}" in
+    wlan0)
+        pass "Default route uses Wi-Fi uplink wlan0"
+        ;;
+    wwan0|cdc-wdm0)
+        pass "Default route uses cellular uplink ${DEFAULT_IFACE}"
+        ;;
+    "")
+        fail "No default route is present"
+        ;;
+    *)
+        fail "Default route uses unexpected interface: ${DEFAULT_IFACE}"
+        ;;
+esac
+
+if ip route show 10.42.0.0/24 2>/dev/null | grep -q "dev eth0"; then
+    pass "PCS router-side route exists on eth0"
+else
+    fail "PCS router-side route missing on eth0"
+fi
+
+ROUTER_NEIGHBORS="$(ip neigh show dev eth0 2>/dev/null | grep -E '^10\.42\.0\.' || true)"
+
 if [[ -n "${ROUTER_NEIGHBORS}" ]]; then
-    pass "At least one router-side neighbor exists on ${PCS_ETH_IFACE}"
+    pass "At least one router-side neighbor exists on eth0"
     echo "${ROUTER_NEIGHBORS}"
 else
-    skip "No router-side neighbor currently visible on ${PCS_ETH_IFACE}"
+    fail "No router-side neighbors found on eth0"
 fi
 
 section "Internet / DNS"

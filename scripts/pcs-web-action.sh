@@ -1236,6 +1236,23 @@ cellular_status = "ok" if modem_present and (cellular_registered or cellular_con
 gps_has_modem_data = gps_info.get("gps_data") == "present"
 gps_status = "ok" if gps_has_modem_data or (gpsd_active and (gps_devices or pps_present or chrony_gps_source_present)) else "warn"
 
+
+# BEGIN PCS ACTIVE UPLINK MODE
+active_uplink_ok = bool(default_iface) and default_iface not in {"lo"}
+
+active_uplink_label = (
+    "Wi-Fi"
+    if default_iface == "wlan0"
+    else "Cellular / WWAN"
+    if default_iface == "wwan0"
+    else default_iface
+    if default_iface
+    else "unknown"
+)
+
+network_status = "ok" if active_uplink_ok and eth_ok and eth_ip_ok and internet_ok and dns_ok else "bad"
+# END PCS ACTIVE UPLINK MODE
+
 cards = [
     {
         "id": "uplink-details",
@@ -1308,8 +1325,13 @@ cards = [
         "id": "network",
         "title": "Network",
         "status": network_status,
-        "summary": "Online and router handoff active" if network_status == "ok" else "Network needs attention",
+        "summary": (
+            f"Online via {active_uplink_label} and router handoff active"
+            if network_status == "ok"
+            else "Network needs attention"
+        ),
         "items": [
+            {"label": "Active uplink", "value": active_uplink_label},
             {"label": "Wi-Fi uplink", "value": f"{'connected' if wifi_ok else 'not connected'} ({wifi_conn or 'unknown'})"},
             {"label": "Ethernet handoff", "value": f"{'connected' if eth_ok else 'not connected'} ({eth_conn or 'unknown'})"},
             {"label": "Router-side IP", "value": "10.42.0.1/24 present" if eth_ip_ok else "missing"},
