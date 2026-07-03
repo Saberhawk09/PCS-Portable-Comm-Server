@@ -125,7 +125,7 @@ Warn: 0
 
 For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
-### Cellular Connection Note
+## Cellular Connection Note
 
 Cellular data is intentionally configured for manual control.
 
