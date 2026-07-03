@@ -159,9 +159,14 @@ detect_usb_storage_candidates() {
         parent_hotplug="${hotplug}"
 
         if [[ "${type}" == "part" && -n "${pkname}" ]]; then
-            parent_tran="$(lsblk -dnro TRAN "/dev/${pkname}" 2>/dev/null || true)"
-            parent_rm="$(lsblk -dnro RM "/dev/${pkname}" 2>/dev/null || true)"
-            parent_hotplug="$(lsblk -dnro HOTPLUG "/dev/${pkname}" 2>/dev/null || true)"
+            parent_device="${pkname}"
+            if [[ "${parent_device}" != /dev/* ]]; then
+                parent_device="/dev/${parent_device}"
+            fi
+
+            parent_tran="$(lsblk -dnro TRAN "${parent_device}" 2>/dev/null || true)"
+            parent_rm="$(lsblk -dnro RM "${parent_device}" 2>/dev/null || true)"
+            parent_hotplug="$(lsblk -dnro HOTPLUG "${parent_device}" 2>/dev/null || true)"
         fi
 
         if [[ "${parent_tran}" == "usb" || "${parent_rm}" == "1" || "${parent_hotplug}" == "1" ]]; then
@@ -176,7 +181,21 @@ if sudo blkid -U "${USB_UUID_DEFAULT}" >/dev/null 2>&1; then
     USB_DEVICE="$(sudo blkid -U "${USB_UUID_DEFAULT}")"
     USB_DEVICE_REASON="matched default UUID ${USB_UUID_DEFAULT}"
 else
-    mapfile -t USB_CANDIDATES < <(detect_usb_storage_candidates | sort -u)
+    USB_CANDIDATES=()
+
+    for usb_scan_attempt in $(seq 1 12); do
+        udevadm settle --timeout=5 >/dev/null 2>&1 || true
+        mapfile -t USB_CANDIDATES < <(detect_usb_storage_candidates | sort -u)
+
+        if [[ "${#USB_CANDIDATES[@]}" -gt 0 ]]; then
+            break
+        fi
+
+        if [[ "${usb_scan_attempt}" -lt 12 ]]; then
+            echo "No USB storage filesystem detected yet; waiting... ${usb_scan_attempt}/12"
+            sleep 5
+        fi
+    done
 
     if [[ "${#USB_CANDIDATES[@]}" -eq 1 ]]; then
         USB_DEVICE="${USB_CANDIDATES[0]}"

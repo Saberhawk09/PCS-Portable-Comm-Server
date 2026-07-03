@@ -127,7 +127,8 @@ soft_reset_wwan_usb_device() {
     fi
 
     local iface_path
-    local usb_device_path
+    local search_path
+    local usb_device_path=""
 
     iface_path="$(readlink -f /sys/class/usbmisc/cdc-wdm0/device 2>/dev/null || true)"
 
@@ -136,11 +137,21 @@ soft_reset_wwan_usb_device() {
         return 1
     fi
 
-    usb_device_path="${iface_path%:*}"
+    search_path="${iface_path}"
 
-    if [[ ! -e "${usb_device_path}/authorized" ]]; then
-        echo "Cannot find USB authorized control at:"
-        echo "  ${usb_device_path}/authorized"
+    while [[ -n "${search_path}" && "${search_path}" != "/" ]]; do
+        if [[ -e "${search_path}/authorized" && -e "${search_path}/idVendor" && -e "${search_path}/idProduct" ]]; then
+            usb_device_path="${search_path}"
+            break
+        fi
+
+        search_path="$(dirname "${search_path}")"
+    done
+
+    if [[ -z "${usb_device_path}" ]]; then
+        echo "Cannot find USB device authorized control."
+        echo "Resolved cdc-wdm0 sysfs path:"
+        echo "  ${iface_path}"
         return 1
     fi
 
@@ -152,12 +163,20 @@ soft_reset_wwan_usb_device() {
 
     echo "Soft-reconnecting modem USB device."
     echo 1 | sudo tee "${usb_device_path}/authorized" >/dev/null
-    sleep 20
+
+    echo "Waiting for modem device nodes to return..."
+    for i in $(seq 1 24); do
+        if [[ -e /dev/cdc-wdm0 && -e /dev/ttyUSB1 ]]; then
+            break
+        fi
+        sleep 5
+    done
 
     sudo systemctl restart ModemManager
     sleep 10
     sudo mmcli --scan-modems >/dev/null 2>&1 || true
 }
+
 
 if ! wait_for_modemmanager_modem 12 "initial"; then
     echo
