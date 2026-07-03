@@ -89,13 +89,39 @@ sudo systemctl enable pcs-em7455-gps-nmea.service
 sudo systemctl enable gpsd.service
 
 echo
-echo "--- Start GPS starter, gpsd, and Chrony ---"
+echo "--- Wait for ModemManager to detect WWAN modem ---"
 sudo systemctl restart ModemManager
-sleep 45
+sleep 10
+sudo mmcli --scan-modems >/dev/null 2>&1 || true
 
+MODEM_FOUND=0
+
+for i in $(seq 1 24); do
+    if mmcli -L 2>/dev/null | grep -q "/Modem/"; then
+        MODEM_FOUND=1
+        echo "ModemManager detected modem."
+        break
+    fi
+
+    echo "Waiting for ModemManager modem detection... ${i}/24"
+    sudo mmcli --scan-modems >/dev/null 2>&1 || true
+    sleep 5
+done
+
+if [[ "${MODEM_FOUND}" -ne 1 ]]; then
+    echo "ERROR: ModemManager did not detect the modem."
+    echo "Check USB modem enumeration:"
+    echo "  lsusb"
+    echo "  ls -l /dev/ttyUSB* /dev/cdc-wdm*"
+    echo "  journalctl -u ModemManager -n 120 --no-pager"
+    exit 1
+fi
+
+echo "--- Start GPS starter, gpsd, and Chrony ---"
+sudo systemctl restart chrony
+sudo systemctl reset-failed pcs-em7455-gps-nmea.service 2>/dev/null || true
 sudo systemctl restart pcs-em7455-gps-nmea.service
 sudo systemctl restart gpsd.service
-sudo systemctl restart chrony
 
 echo
 echo "--- Waiting for gpsd and Chrony samples ---"
@@ -154,7 +180,16 @@ if count == 0:
 PY
 
 if command -v gpspipe >/dev/null 2>&1; then
-    timeout 20 gpspipe -r 2>/dev/null | python3 /tmp/pcs-redact-nmea.py
+    GPSPIPE_OUTPUT="$(mktemp)"
+
+    if timeout 20 gpspipe -r > "${GPSPIPE_OUTPUT}" 2>/dev/null; then
+        true
+    else
+        echo "gpspipe quick check ended after timeout or returned nonzero; continuing."
+    fi
+
+    python3 /tmp/pcs-redact-nmea.py < "${GPSPIPE_OUTPUT}"
+    rm -f "${GPSPIPE_OUTPUT}"
 else
     echo "gpspipe not available."
 fi
