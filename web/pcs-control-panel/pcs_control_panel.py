@@ -16,6 +16,9 @@ ACTIONS = [
     ("status", "PCS Status", "Show full PCS status output."),
     ("self-test", "PCS Self-Test", "Run the Pi-side validation test."),
     ("storage-status", "Storage Status", "Show USB/SD/Samba storage state."),
+    ("wifi-status", "Wi-Fi Status", "Show Wi-Fi uplink status and default route."),
+    ("wifi-connect", "Connect Wi-Fi Uplink", "Reconnect the saved Wi-Fi uplink profile."),
+    ("wifi-disconnect", "Disconnect Wi-Fi Uplink", "Disconnect the Pi from Wi-Fi so PCS can run on cellular."),
     ("cellular-status", "Cellular Status", "Show WWAN modem and cellular connection state."),
     ("cellular-connect", "Connect Cellular", "Bring up the manual cellular data connection."),
     ("cellular-disconnect", "Disconnect Cellular", "Bring down the manual cellular data connection."),
@@ -34,6 +37,7 @@ ACTION_MAP = {name: (label, desc) for name, label, desc in ACTIONS}
 
 ACTION_GROUPS = [
     ("Status", ["status", "self-test", "storage-status", "restart-logs"]),
+    ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
     ("Storage", ["sync-backup", "mount-usb", "safe-unmount-usb"]),
     ("Services", ["restart-services", "restart-samba"]),

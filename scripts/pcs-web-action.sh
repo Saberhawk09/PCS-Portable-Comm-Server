@@ -1740,7 +1740,104 @@ sync_time_now() {
     chronyc sources -v || true
 }
 
+
+wifi_uplink_connection() {
+    local active_conn
+    active_conn="$(nmcli -t -f DEVICE,TYPE,CONNECTION device status 2>/dev/null \
+        | awk -F: '$1 == "wlan0" && $2 == "wifi" { print $3; exit }')"
+
+    if [[ -n "${active_conn}" && "${active_conn}" != "--" ]]; then
+        echo "${active_conn}"
+        return 0
+    fi
+
+    nmcli -t -f NAME,TYPE,AUTOCONNECT connection show 2>/dev/null \
+        | awk -F: '$2 == "wifi" && $3 == "yes" { print $1; exit }'
+}
+
+wifi_status() {
+    header "Wi-Fi Uplink Status"
+
+    echo "--- NetworkManager device status ---"
+    nmcli device status || true
+
+    echo
+    echo "--- Wi-Fi radio ---"
+    nmcli radio wifi || true
+
+    echo
+    echo "--- wlan0 address ---"
+    ip -br addr show wlan0 || true
+
+    echo
+    echo "--- Default route ---"
+    ip route | grep '^default' || true
+
+    echo
+    echo "--- Saved Wi-Fi uplink candidate ---"
+    WIFI_CONN="$(wifi_uplink_connection || true)"
+    echo "${WIFI_CONN:-none detected}"
+}
+
+wifi_connect() {
+    header "Connect Wi-Fi Uplink"
+
+    WIFI_CONN="$(wifi_uplink_connection || true)"
+
+    echo "Turning Wi-Fi radio on..."
+    nmcli radio wifi on || true
+    sleep 3
+
+    if [[ -z "${WIFI_CONN}" ]]; then
+        echo "ERROR: no saved Wi-Fi uplink connection was detected."
+        echo "Known Wi-Fi profiles:"
+        nmcli -f NAME,TYPE,AUTOCONNECT connection show | grep -E 'wifi|NAME' || true
+        return 1
+    fi
+
+    echo "Connecting Wi-Fi profile:"
+    echo "  ${WIFI_CONN}"
+    nmcli connection up "${WIFI_CONN}"
+
+    echo
+    wifi_status
+}
+
+wifi_disconnect() {
+    header "Disconnect Wi-Fi Uplink"
+
+    ACTIVE_WIFI="$(nmcli -t -f DEVICE,TYPE,CONNECTION device status 2>/dev/null \
+        | awk -F: '$1 == "wlan0" && $2 == "wifi" { print $3; exit }')"
+
+    if [[ -n "${ACTIVE_WIFI}" && "${ACTIVE_WIFI}" != "--" ]]; then
+        echo "Disconnecting active Wi-Fi profile:"
+        echo "  ${ACTIVE_WIFI}"
+        nmcli connection down "${ACTIVE_WIFI}" || true
+    else
+        echo "No active Wi-Fi connection on wlan0."
+    fi
+
+    echo
+    echo "Leaving Wi-Fi radio on so saved profiles can reconnect manually later."
+    echo "Use Connect Wi-Fi Uplink to bring the uplink back."
+
+    echo
+    wifi_status
+}
+
 case "${ACTION}" in
+    wifi-status)
+        wifi_status
+        ;;
+
+    wifi-connect)
+        wifi_connect
+        ;;
+
+    wifi-disconnect)
+        wifi_disconnect
+        ;;
+
     cellular-status)
         cellular_safe_status
         ;;
