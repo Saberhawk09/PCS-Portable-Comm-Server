@@ -146,8 +146,74 @@ echo "OPTIONAL STEP: Configure USB primary Samba share"
 echo "============================================================"
 echo
 
+USB_DEVICE=""
+USB_DEVICE_REASON=""
+
+detect_usb_storage_candidates() {
+    while read -r name type fstype pkname rm hotplug tran; do
+        [[ -z "${name}" ]] && continue
+        [[ -z "${fstype}" ]] && continue
+
+        parent_tran="${tran}"
+        parent_rm="${rm}"
+        parent_hotplug="${hotplug}"
+
+        if [[ "${type}" == "part" && -n "${pkname}" ]]; then
+            parent_tran="$(lsblk -dnro TRAN "/dev/${pkname}" 2>/dev/null || true)"
+            parent_rm="$(lsblk -dnro RM "/dev/${pkname}" 2>/dev/null || true)"
+            parent_hotplug="$(lsblk -dnro HOTPLUG "/dev/${pkname}" 2>/dev/null || true)"
+        fi
+
+        if [[ "${parent_tran}" == "usb" || "${parent_rm}" == "1" || "${parent_hotplug}" == "1" ]]; then
+            echo "${name}"
+        fi
+    done < <(lsblk -rpno NAME,TYPE,FSTYPE,PKNAME,RM,HOTPLUG,TRAN 2>/dev/null)
+}
+
+echo "Scanning for USB storage..."
+
 if sudo blkid -U "${USB_UUID_DEFAULT}" >/dev/null 2>&1; then
-    echo "Detected USB storage with UUID ${USB_UUID_DEFAULT}."
+    USB_DEVICE="$(sudo blkid -U "${USB_UUID_DEFAULT}")"
+    USB_DEVICE_REASON="matched default UUID ${USB_UUID_DEFAULT}"
+else
+    mapfile -t USB_CANDIDATES < <(detect_usb_storage_candidates | sort -u)
+
+    if [[ "${#USB_CANDIDATES[@]}" -eq 1 ]]; then
+        USB_DEVICE="${USB_CANDIDATES[0]}"
+        USB_DEVICE_REASON="only detected removable/USB storage filesystem"
+    elif [[ "${#USB_CANDIDATES[@]}" -gt 1 ]]; then
+        echo "Multiple removable/USB storage filesystems were detected:"
+        echo
+
+        for i in "${!USB_CANDIDATES[@]}"; do
+            device="${USB_CANDIDATES[$i]}"
+            printf "  %s) %s\n" "$((i + 1))" "${device}"
+            lsblk -no NAME,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS "${device}" 2>/dev/null || true
+        done
+
+        echo
+        read -r -p "Select USB filesystem number for PCS-Share, or press Enter to skip: " usb_choice
+
+        if [[ "${usb_choice}" =~ ^[0-9]+$ ]] \
+            && (( usb_choice >= 1 )) \
+            && (( usb_choice <= ${#USB_CANDIDATES[@]} )); then
+            USB_DEVICE="${USB_CANDIDATES[$((usb_choice - 1))]}"
+            USB_DEVICE_REASON="selected from detected removable/USB storage filesystems"
+        else
+            echo "No valid USB filesystem selected."
+        fi
+    fi
+fi
+
+if [[ -n "${USB_DEVICE}" ]]; then
+    echo
+    echo "USB storage candidate:"
+    echo "  Device: ${USB_DEVICE}"
+    echo "  Reason: ${USB_DEVICE_REASON}"
+    echo
+    lsblk -o NAME,PATH,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS,MODEL,TRAN "${USB_DEVICE}" 2>/dev/null || true
+    echo
+
     read -r -p "Configure this USB device as PCS-Share primary storage? [Y/n] " usb_answer
 
     case "${usb_answer}" in
@@ -155,14 +221,14 @@ if sudo blkid -U "${USB_UUID_DEFAULT}" >/dev/null 2>&1; then
             echo "Skipping USB primary share setup."
             ;;
         *)
-            ./scripts/setup-usb-primary-share.sh "${USB_UUID_DEFAULT}"
+            ./scripts/setup-usb-primary-share.sh "${USB_DEVICE}"
             ;;
     esac
 else
-    echo "USB storage with UUID ${USB_UUID_DEFAULT} was not detected."
+    echo "No removable/USB storage filesystem was detected."
     echo "Skipping USB primary share setup."
-    echo "You can run this later:"
-    echo "  ./scripts/setup-usb-primary-share.sh"
+    echo "You can run this later with a specific device, for example:"
+    echo "  ./scripts/setup-usb-primary-share.sh /dev/sda1"
 fi
 
 run_step "Configure Chrony LAN NTP" "./scripts/setup-chrony-lan-ntp.sh"
