@@ -122,6 +122,7 @@ The self-test should show:
 Fail: 0
 Warn: 0
 ```
+However you may see warns/skips if the cellular profile has never been activated. See below.
 
 For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
