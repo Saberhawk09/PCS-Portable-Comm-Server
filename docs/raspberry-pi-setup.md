@@ -276,3 +276,22 @@ sudo nmcli connection down pcs-cellular-tmobile
 ```
 
 The control panel also includes buttons for cellular status, connect, disconnect, and cellular-only internet testing.
+
+## External Sierra Modem Reference
+
+PCS currently does not automatically rewrite Sierra modem firmware identity, carrier PRI, or USB composition.
+
+For deeper Sierra EM7455/EM7565 modem setup notes, see:
+
+https://github.com/danielewood/sierra-wireless-modems
+
+Use external modem flashing or identity-change instructions carefully.
+
+PCS setup scripts currently assume the modem already exposes the needed Linux interfaces:
+
+- cdc-wdm0
+- wwan0
+- /dev/ttyUSB1 for NMEA GPS
+- /dev/ttyUSB2 for AT commands
+
+A future PCS modem setup script may add a read-only modem readiness check first. Automatic modem configuration should remain separate from the base PCS installer.
