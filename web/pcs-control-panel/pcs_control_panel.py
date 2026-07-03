@@ -792,6 +792,10 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
     return body.encode("utf-8")
 
 
+class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_response(200)
