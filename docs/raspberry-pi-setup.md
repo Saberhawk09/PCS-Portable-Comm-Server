@@ -1,26 +1,36 @@
 # Raspberry Pi Setup
 
-This document covers the Raspberry Pi software baseline for PCS.
+This document describes the Raspberry Pi side of PCS.
 
-The current tested system is a Raspberry Pi 4 running Debian/Raspberry Pi OS.
+The Raspberry Pi is the main PCS server and network controller. It provides LAN services, file sharing, time service, modem/GPS support, the PCS Control Panel, and system status tools.
 
-## Repository Location
+## Expected Pi Role
 
-Current working repository path:
+The Pi provides:
 
-```text
+- PCS LAN gateway at `10.42.0.1`
+- DHCP/DNS for PCS clients
+- LAN routing and optional internet sharing
+- Samba file shares
+- Chrony LAN NTP
+- Raspberry Pi RTC support
+- GPSD support for WWAN GNSS
+- PCS Control Panel
+- dashboard redirect
+- Cockpit access
+- status and self-test scripts
+
+The Linksys EA4500 running OpenWrt acts as the access point and switch at `10.42.0.2`.
+
+## Repository Path
+
+The expected repository path on the Pi is:
+
+```bash
 /home/pi/Projects/PCS-Portable-Comm-Server
 ```
 
-From the Pi:
-
-```bash
-cd /home/pi/Projects/PCS-Portable-Comm-Server
-```
-
-## Clone Location
-
-This repository should be cloned under `~/Projects` so scripts and service files match the expected path.
+Clone with:
 
 ```bash
 mkdir -p ~/Projects
@@ -29,141 +39,36 @@ git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
 cd PCS-Portable-Comm-Server
 ```
 
-Expected final path:
+## Base Setup
 
-```text
-/home/pi/Projects/PCS-Portable-Comm-Server
-## Main Setup Script
-
-Run the PCS base setup script:
+Run the base setup script:
 
 ```bash
 ./scripts/setup-pcs-base.sh
 ```
 
-This configures the current PCS baseline:
+The base setup configures the PCS software baseline, including:
 
-- Dependencies
-- RTC support
-- Client LAN/AP handoff on `eth0`
+- required packages
+- Pi Ethernet LAN profile
 - Samba shares
+- USB primary share support
+- SD-card backup share
 - Chrony LAN NTP
+- RTC support
 - Cockpit
 - PCS Control Panel
-- Dashboard redirect
-- Self-test/status tooling
+- dashboard redirect
+- status/self-test tooling
+- systemd service support
 
-## Network Role
-
-The Pi acts as the client network gateway.
-
-Current client-side address:
-
-```text
-10.42.0.1/24
-```
-
-Current client-side interface:
-
-```text
-eth0
-```
-
-Current uplink interface:
-
-```text
-wlan0
-```
-
-The current NetworkManager profile is:
-
-```text
-pcs-router-wan-share
-```
-
-Despite the name, this profile currently serves the PCS client LAN/AP side.
-
-## RTC
-
-The Pi uses an RTC so the system clock has a useful fallback when offline.
-
-Check RTC status:
+After setup completes, reboot:
 
 ```bash
-timedatectl
-ls -l /dev/rtc*
+sudo reboot
 ```
 
-Expected:
-
-```text
-RTC in local TZ: no
-/dev/rtc0 exists
-```
-
-## Chrony / LAN NTP
-
-Chrony provides time service to PCS clients.
-
-PCS LAN NTP server:
-
-```text
-10.42.0.1
-```
-
-Check Chrony:
-
-```bash
-chronyc tracking
-chronyc sources -v
-```
-
-Windows test:
-
-```cmd
-w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
-```
-
-## Samba
-
-Current share layout:
-
-```text
-\\10.42.0.1\PCS-Share   → /mnt/pcs-usb/PCS-Share
-\\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
-```
-
-Check Samba:
-
-```bash
-testparm -s
-systemctl status smbd --no-pager
-```
-
-## PCS Control Panel
-
-Dashboard URL:
-
-```text
-http://10.42.0.1
-```
-
-Direct control panel URL:
-
-```text
-http://10.42.0.1:8080
-```
-
-Check services:
-
-```bash
-systemctl status pcs-control-panel.service --no-pager -l
-systemctl status pcs-dashboard-redirect.service --no-pager -l
-```
-
-## Validation
-
-After setup or reboot:
+After reboot:
 
 ```bash
 cd /home/pi/Projects/PCS-Portable-Comm-Server
@@ -179,119 +84,221 @@ nothing to commit, working tree clean
 PCS Pi-side self-test PASSED.
 ```
 
-## Reboot Test
-
-Run:
-
-```bash
-sudo reboot
-```
-
-After the Pi returns:
-
-```bash
-cd /home/pi/Projects/PCS-Portable-Comm-Server
-./scripts/pcs-self-test.sh
-```
-
-Expected:
+Expected self-test summary:
 
 ```text
 Fail: 0
 Warn: 0
-PCS Pi-side self-test PASSED.
 ```
 
-## EM7455 / DW5811e GPS NMEA Setup
+Warnings may appear if the cellular profile has never been manually activated. Cellular data is intentionally manual.
 
-PCS can use the Dell DW5811e / Sierra Wireless EM7455 WWAN modem as a GPS/GNSS time and location source.
+## Network Configuration
 
-The tested GPS path is:
+Current PCS LAN:
 
 ```text
-EM7455 / DW5811e GPS
-    ↓
-/dev/ttyUSB1 NMEA at 115200 baud
-    ↓
-gpsd
-    ↓
-Chrony SHM refclock 0
-    ↓
-PCS LAN NTP server at 10.42.0.1
+PCS subnet:             10.42.0.0/24
+Raspberry Pi eth0:      10.42.0.1
+OpenWrt AP / switch:    10.42.0.2
+Client DHCP range:      10.42.0.x
 ```
 
-This setup does not change `AT!USBCOMP`. The tested USB composition already exposes:
+Expected client settings:
 
 ```text
-diag,nmea,modem,mbim
+IPv4 Address:      10.42.0.x
+Subnet Mask:       255.255.255.0
+Default Gateway:   10.42.0.1
+DNS Server:        10.42.0.1
+NTP Server:        10.42.0.1
 ```
 
-The GPS starter service enables GPS through ModemManager and sends `GPS_START` to `/dev/ttyUSB1`, which wakes the NMEA stream for `gpsd`.
+Physical connection:
 
-Run this after the WWAN adapter, EM7455/DW5811e modem, and GPS antenna are installed:
+```text
+Raspberry Pi eth0 → Linksys EA4500 LAN port
+```
+
+The access point should have DHCP disabled. The Pi should be the only DHCP server on the PCS LAN.
+
+## Client Access
+
+From a device connected to the PCS network:
+
+```text
+PCS Dashboard:      http://10.42.0.1
+PCS Control Panel:  http://10.42.0.1:8080
+Cockpit:            https://10.42.0.1:9090
+Primary Share:      \\10.42.0.1\PCS-Share
+Backup Share:       \\10.42.0.1\PCS-Backup
+LAN NTP Server:     10.42.0.1
+OpenWrt AP:         http://10.42.0.2
+```
+
+## Storage Layout
+
+Current Samba storage:
+
+```text
+\\10.42.0.1\PCS-Share   → /mnt/pcs-usb/PCS-Share
+\\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
+```
+
+`PCS-Share` is the primary working field share on removable USB storage.
+
+`PCS-Backup` is the SD-card backup mirror.
+
+Manual sync:
+
+```bash
+./scripts/sync-pcs-share-to-backup.sh
+```
+
+## Time Services
+
+PCS uses Chrony to provide LAN NTP service.
+
+LAN clients should use:
+
+```text
+10.42.0.1
+```
+
+Windows NTP test:
+
+```cmd
+w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
+```
+
+The Pi also has RTC support so it can boot with sane time before GPS or internet time is available.
+
+## GPS / GNSS
+
+PCS supports WWAN GNSS through Sierra Wireless / Semtech modem NMEA output.
+
+Current tested behavior:
+
+```text
+GPS NMEA: /dev/ttyUSB1
+gpsd:     receives WWAN GPS NMEA
+Chrony:   sees GPS source for LAN NTP
+```
+
+The WWAN modem must be manually configured before use.
+
+GPS setup script:
 
 ```bash
 ./scripts/setup-em7455-gps-nmea.sh
 ```
 
-Expected services after setup:
+Despite the script name, the PCS project has validated both EM7455 and EM7565-style behavior.
 
-```bash
-systemctl status pcs-em7455-gps-nmea.service --no-pager -l
-systemctl status gpsd.service --no-pager -l
-chronyc sources -v
-```
+## Cellular Data
 
-Expected results:
+Cellular data is intentionally manual.
 
-```text
-pcs-em7455-gps-nmea.service: active (exited)
-gpsd.service: active (running)
-gpsd device: /dev/ttyUSB1
-Chrony GPS source: present with nonzero reach
-```
+The modem and GPS may be detected and configured, but the cellular data connection is not expected to auto-connect after setup.
 
-The GPS dashboard may display live latitude/longitude and Maidenhead grid square. Do not post screenshots or raw GPS output publicly unless sharing location is acceptable.
-
-## Cellular / WWAN Data Setup
-
-PCS currently uses a manual NetworkManager cellular profile for T-Mobile testing:
+Use the PCS Control Panel:
 
 ```text
-Connection name: pcs-cellular-tmobile
-APN: fast.t-mobile.com
-Autoconnect: disabled
-Route metric: higher than Wi-Fi
+http://10.42.0.1:8080
 ```
 
-Cellular data is intentionally manual for now. The modem can provide GPS while cellular data is disconnected.
+Manual cellular control avoids:
 
-Useful commands:
+- surprise data usage
+- unwanted reconnect behavior
+- confusing automatic state changes
+- field troubleshooting headaches
+
+PCS should remain useful without cellular service.
+
+Local LAN, Samba, dashboard, Cockpit, RTC, and LAN NTP should still function without internet.
+
+## Cockpit
+
+Cockpit is available at:
+
+```text
+https://10.42.0.1:9090
+```
+
+Use Cockpit for system inspection and manual service management when needed.
+
+## Dashboard / Control Panel
+
+Dashboard redirect:
+
+```text
+http://10.42.0.1
+```
+
+PCS Control Panel:
+
+```text
+http://10.42.0.1:8080
+```
+
+The Control Panel is the preferred operator interface for PCS service control and status.
+
+## Useful Commands
+
+Run from the repository root:
 
 ```bash
-nmcli device status
-mmcli -L
-sudo nmcli connection up pcs-cellular-tmobile
-sudo nmcli connection down pcs-cellular-tmobile
+./scripts/pcs-self-test.sh
+./scripts/pcs-status.sh
+./scripts/restart-pcs-services.sh
+./scripts/sync-pcs-share-to-backup.sh
 ```
 
-The control panel also includes buttons for cellular status, connect, disconnect, and cellular-only internet testing.
+Check key services:
 
-## External Sierra Modem Reference
+```bash
+systemctl status chrony
+systemctl status smbd
+systemctl status gpsd
+systemctl status cockpit
+```
 
-PCS currently does not automatically rewrite Sierra modem firmware identity, carrier PRI, or USB composition.
+Check network state:
 
-For deeper Sierra EM7455/EM7565 modem setup notes, see:
+```bash
+ip addr
+ip route
+nmcli con show
+nmcli dev status
+```
 
-https://github.com/danielewood/sierra-wireless-modems
+Check clients seen by the Pi:
 
-Use external modem flashing or identity-change instructions carefully.
+```bash
+ip neigh show dev eth0
+```
 
-PCS setup scripts currently assume the modem already exposes the needed Linux interfaces:
+Clear stale neighbor entries:
 
-- cdc-wdm0
-- wwan0
-- /dev/ttyUSB1 for NMEA GPS
-- /dev/ttyUSB2 for AT commands
+```bash
+sudo ip neigh flush dev eth0
+```
 
-A future PCS modem setup script may add a read-only modem readiness check first. Automatic modem configuration should remain separate from the base PCS installer.
+## Reboot Validation
+
+After every major setup change:
+
+```bash
+sudo reboot
+```
+
+Then:
+
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+./scripts/pcs-self-test.sh
+./scripts/pcs-status.sh
+```
+
+A healthy baseline should pass Pi-side self-test with no failures.

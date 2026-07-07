@@ -1,91 +1,45 @@
-# PCS Project Overview
+# Project Overview
 
-PCS stands for Portable Comm Server.
+PCS, or Portable Comm Server, is a portable field networking appliance built around a Raspberry Pi 4, a USB WWAN modem, and a dedicated access point/switch.
 
-It is a field-deployable networking appliance built around a Raspberry Pi 4.
+The project began after a Field Day networking failure caused by relying on Windows hotspot behavior for shared logging. The goal is to provide a purpose-built field network for amateur radio events, emergency communications exercises, portable operations, and other situations where multiple client computers need a reliable local network.
 
-The goal is to provide local networking, file sharing, time service, monitoring, and eventually cellular internet/GPS-backed time in one portable box.
+PCS is intended to provide:
 
-## Purpose
+- reliable wired and wireless LAN connectivity
+- local file sharing for logging computers
+- cellular internet access when available
+- GPS-backed network time
+- web-based system monitoring and control
+- simple operation by non-technical users
+- future rugged enclosure and field power support
 
-PCS is designed for portable operations where multiple client devices need a reliable local network.
+## Current Project Status
 
-Example use cases:
+PCS is no longer just a planning project. The core software baseline is working and has passed field testing.
 
-- Amateur radio Field Day logging
-- Emergency communications exercises
-- Portable network demos
-- Temporary LAN file sharing
-- Field operations where normal internet/networking is unreliable
+Current focus:
 
-## Current Working Baseline
+- polish the software
+- improve reliability and error handling
+- clean up startup behavior
+- bring documentation up to date
+- prepare the repository for a usable release
 
-The current tested baseline provides:
+## Current Tested Hardware
 
-- Raspberry Pi gateway at `10.42.0.1`
-- Client LAN/AP handoff through `eth0`
-- Internet sharing through the Pi uplink
-- USB primary Samba file share
-- SD-card Samba backup mirror
-- Chrony LAN NTP server
-- RTC support
-- Cockpit web UI
-- PCS Control Panel dashboard
-- Port 80 redirect to dashboard
-- Pi-side self-test and status scripts
+Current tested hardware includes:
 
-## Current Test Layout
+- Raspberry Pi 4
+- Raspberry Pi I2C RTC module
+- USB WWAN enclosure
+- Sierra Wireless / Semtech EM7565 LTE modem with heatsink
+- Linksys EA4500 running OpenWrt
+- USB flash drive for primary Samba storage
+- external GNSS antenna
+- LTE antennas / modem antennas as available
 
-```text
-Client devices
-    ↓ Wi-Fi / LAN
-Access point / switch
-    ↓ LAN port
-Raspberry Pi eth0 - 10.42.0.1/24
-    ↓
-Raspberry Pi uplink - wlan0 currently, cellular data manual/optional
-    ↓
-Internet
-```
-
-## Current Client Access
+The Linksys EA4500 is reachable on the PCS LAN at:
 
 ```text
-PCS Dashboard:      http://10.42.0.1
-PCS Control Panel:  http://10.42.0.1:8080
-Cockpit:            https://10.42.0.1:9090
-Primary Share:      \\10.42.0.1\PCS-Share
-Backup Share:       \\10.42.0.1\PCS-Backup
-LAN NTP Server:     10.42.0.1
-```
-
-## Planned Final Features
-
-Planned future features include:
-
-- Cellular internet uplink
-- EM7455/DW5811e GPS NMEA through gpsd
-- Chrony GPS source for LAN NTP
-- Final enclosure
-- Final power switching and fusing
-- External antennas
-- LTE signal/status display
-- Possible battery/voltage monitoring
-
-## Design Philosophy
-
-PCS should be:
-
-- Reliable
-- Portable
-- Easy to operate
-- Rebuildable from scripts
-- Well documented
-- Useful without internet
-- Capable of using cellular internet when available
-
-## Current Status
-
-The project is currently in a tested WWAN/GPS software baseline stage.
-
-The main software stack is working and documented. EM7455/DW5811e modem detection, manual cellular profile, GPS NMEA through gpsd, and Chrony GPS source are tested. Future EM7565 validation and final enclosure/power work remain.
+10.42.0.2

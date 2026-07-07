@@ -1,117 +1,211 @@
-# PCS Testing Checklist
+# Testing Checklist
 
-This checklist is used after setup, reboot, or major configuration changes.
+This checklist validates the current PCS build after setup, reboot, or major changes.
 
-## Pi-Side Validation
+## Pi-Side Quick Test
 
-Run from the repository root:
+From the repository root:
 
 ```bash
 cd /home/pi/Projects/PCS-Portable-Comm-Server
-git status
 ./scripts/pcs-self-test.sh
 ```
 
-Expected Git result:
-
-```text
-nothing to commit, working tree clean
-```
-
-Expected self-test result:
+Expected:
 
 ```text
 PCS Pi-side self-test PASSED.
-```
-
-A healthy system should show:
-
-```text
 Fail: 0
 Warn: 0
 ```
 
-## PCS Status
+Warnings may appear if the cellular profile has not been manually activated yet.
 
-Run:
+Then run:
 
 ```bash
 ./scripts/pcs-status.sh
 ```
 
-Confirm these are present:
+Review the output for service, network, storage, modem, GPS, Chrony, and share status.
 
-```text
-Wi-Fi uplink wlan0:       connected
-Ethernet handoff eth0:    connected
-Router-side IP present:   yes (10.42.0.1/24)
-RTC:                      present
-Chrony/NTP:               active
-GPSD:                     active if EM7455 GPS is configured
-EM7455 GPS:               NMEA present if WWAN GPS is configured
-Samba:                    active
-Primary share:            present (PCS-Share)
-Backup share:             present (PCS-Backup)
-PCS Control Panel:        active
-Dashboard Redirect:       active
+## Git State
+
+From the repo root:
+
+```bash
+git status
 ```
 
-## Client Network Test
+Expected:
 
-From a Windows client connected to the PCS access point:
+```text
+nothing to commit, working tree clean
+```
+
+## Reboot Test
+
+Reboot:
+
+```bash
+sudo reboot
+```
+
+After the Pi comes back:
+
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+./scripts/pcs-self-test.sh
+./scripts/pcs-status.sh
+```
+
+Expected:
+
+```text
+PCS Pi-side self-test PASSED.
+```
+
+PCS should come back without manual service startup.
+
+## Network Test From Pi
+
+Check addresses:
+
+```bash
+ip addr
+ip route
+```
+
+Expected PCS LAN address:
+
+```text
+10.42.0.1/24
+```
+
+Ping OpenWrt AP:
+
+```bash
+ping -c 4 10.42.0.2
+```
+
+Expected:
+
+```text
+10.42.0.2 replies
+```
+
+Check neighbor table:
+
+```bash
+ip neigh show dev eth0
+```
+
+Stale entries can be cleared with:
+
+```bash
+sudo ip neigh flush dev eth0
+```
+
+## Windows Client Network Test
+
+Connect a Windows client to the PCS Wi-Fi or Ethernet.
+
+Run:
 
 ```cmd
 ipconfig
-ping 10.42.0.1
-ping 8.8.8.8
-ping google.com
 ```
 
-Expected client network settings:
+Expected:
 
 ```text
 IPv4 Address:      10.42.0.x
 Subnet Mask:       255.255.255.0
 Default Gateway:   10.42.0.1
+DNS Server:        10.42.0.1
 ```
 
-Expected ping results:
+Ping PCS:
 
-- `10.42.0.1` replies from the Pi
-- `8.8.8.8` confirms internet routing
-- `google.com` confirms DNS
+```cmd
+ping 10.42.0.1
+```
 
-## Web Dashboard Test
+Expected:
 
-From a PCS client, open:
+```text
+Reply from 10.42.0.1
+```
+
+Ping OpenWrt AP:
+
+```cmd
+ping 10.42.0.2
+```
+
+Expected:
+
+```text
+Reply from 10.42.0.2
+```
+
+## Internet Test
+
+Only test this when an uplink is expected to be active.
+
+From Windows:
+
+```cmd
+ping 8.8.8.8
+ping google.com
+```
+
+Expected with active uplink:
+
+```text
+8.8.8.8 replies
+google.com resolves and replies
+```
+
+If cellular data is disconnected, internet tests may fail. That does not mean PCS LAN services are broken.
+
+## Dashboard / Control Panel Test
+
+From a PCS client browser:
 
 ```text
 http://10.42.0.1
 ```
 
-Expected behavior:
+Expected:
 
 ```text
-http://10.42.0.1 redirects to http://10.42.0.1:8080
+Redirects to PCS Control Panel
 ```
 
-The dashboard should show status cards and local client info.
-
-Direct control panel URL:
+Direct Control Panel URL:
 
 ```text
 http://10.42.0.1:8080
 ```
 
-## Cockpit Test
+Expected:
 
-From a PCS client, open:
+```text
+PCS Control Panel loads
+```
+
+Cockpit:
 
 ```text
 https://10.42.0.1:9090
 ```
 
-Cockpit should load.
+Expected:
+
+```text
+Cockpit login page loads
+```
 
 ## Samba Share Test
 
@@ -119,15 +213,96 @@ From Windows File Explorer:
 
 ```text
 \\10.42.0.1\PCS-Share
+```
+
+Expected:
+
+```text
+Primary share opens
+```
+
+Backup share:
+
+```text
 \\10.42.0.1\PCS-Backup
 ```
 
 Expected:
 
-- `PCS-Share` opens the USB primary share
-- `PCS-Backup` opens the SD-card backup mirror
+```text
+Backup share opens
+```
 
-## NTP Test
+Command Prompt:
+
+```cmd
+net view \\10.42.0.1
+```
+
+Expected:
+
+```text
+PCS-Share
+PCS-Backup
+```
+
+## File Write Test
+
+On a Windows client:
+
+1. Open `\\10.42.0.1\PCS-Share`
+2. Create a test file
+3. Edit the test file
+4. Save it
+5. Delete it
+
+Expected:
+
+```text
+Create, edit, save, and delete all work
+```
+
+## Backup Sync Test
+
+Create a test file in:
+
+```text
+\\10.42.0.1\PCS-Share
+```
+
+On the Pi:
+
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+./scripts/sync-pcs-share-to-backup.sh
+```
+
+Then check:
+
+```text
+\\10.42.0.1\PCS-Backup
+```
+
+Expected:
+
+```text
+The test file appears in PCS-Backup
+```
+
+## Chrony / NTP Test
+
+On the Pi:
+
+```bash
+chronyc sources -v
+chronyc tracking
+```
+
+Expected:
+
+```text
+Chrony is running and serving time
+```
 
 From Windows:
 
@@ -137,132 +312,175 @@ w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
 
 Expected:
 
-- Samples return successfully
-- Offset remains reasonably stable
-
-## Backup Sync Test
-
-From the Pi or PCS Control Panel, run the backup sync.
-
-Terminal command:
-
-```bash
-./scripts/sync-pcs-share-to-backup.sh
-```
-
-Expected:
-
 ```text
-/mnt/pcs-usb/PCS-Share → /srv/pcs-share-backup
+Replies from 10.42.0.1
 ```
 
-Confirm `LAST_SYNC.txt` updates:
-
-```bash
-cat /srv/pcs-share-backup/LAST_SYNC.txt
-```
-
-## USB Mount Test
-
-Check USB storage:
-
-```bash
-findmnt /mnt/pcs-usb
-mount | grep pcs-usb
-```
-
-Expected:
-
-```text
-/dev/sdX1 mounted on /mnt/pcs-usb
-```
-
-There should only be one mount entry for `/mnt/pcs-usb`.
-
-## Connected Client Visibility
+## RTC Test
 
 On the Pi:
 
 ```bash
-ip neigh show dev eth0
-```
-
-Expected with AP/switch mode:
-
-```text
-10.42.0.x lladdr xx:xx:xx:xx:xx:xx REACHABLE
-```
-
-Old `FAILED` entries are usually stale neighbor entries.
-
-They can be cleared with:
-
-```bash
-sudo ip neigh flush dev eth0
-```
-
-## Reboot Test
-
-Run:
-
-```bash
-sudo reboot
-```
-
-After reboot:
-
-```bash
-cd /home/pi/Projects/PCS-Portable-Comm-Server
-./scripts/pcs-self-test.sh
+ls /dev/rtc*
+timedatectl
+dmesg | grep -i rtc
 ```
 
 Expected:
 
 ```text
-PCS Pi-side self-test PASSED.
+RTC device exists
+System time is sane after reboot
 ```
 
-## WWAN / GPS Expectations
+## GPSD Test
 
-PCS now supports the tested Dell DW5811e / Sierra Wireless EM7455 GPS path:
+On the Pi:
+
+```bash
+systemctl status gpsd
+```
+
+If GPS tools are installed:
+
+```bash
+cgps
+```
+
+Expected when GPS is working:
 
 ```text
-EM7455 / DW5811e GPS
-    ↓
-/dev/ttyUSB1 NMEA at 115200 baud
-    ↓
-gpsd
-    ↓
-Chrony SHM refclock 0
-    ↓
-PCS LAN NTP server at 10.42.0.1
+gpsd is running
+NMEA data is received
+Satellite/fix data appears when antenna has sky view
 ```
 
-When the EM7455/DW5811e modem and GPS antenna are installed and configured, these are expected:
+## Modem Detection Test
 
-```text
-ModemManager detects modem
-cdc-wdm0 exists
-wwan0 exists
-/dev/ttyUSB1 exists
-pcs-em7455-gps-nmea.service enabled
-pcs-em7455-gps-nmea.service active/exited
-gpsd active
-gpsd receiving NMEA
-Chrony GPS source present
-Chrony GPS source reach nonzero
-```
-
-Useful checks:
+On the Pi:
 
 ```bash
 mmcli -L
-nmcli device status
-systemctl status pcs-em7455-gps-nmea.service --no-pager -l
-systemctl status gpsd.service --no-pager -l
-chronyc sources -v
-./scripts/pcs-status.sh
-./scripts/pcs-self-test.sh
 ```
 
-If the WWAN/GPS hardware is not installed, modem/GPS-related warnings may be expected. With the EM7455/DW5811e GPS setup installed and working, `gpsd inactive` is no longer expected.
+Expected:
+
+```text
+A Sierra Wireless / Semtech modem is listed
+```
+
+Inspect modem:
+
+```bash
+mmcli -m 0
+```
+
+If multiple modems or modem numbers are present, adjust the modem number.
+
+## Cellular Manual Control Test
+
+Open:
+
+```text
+http://10.42.0.1:8080
+```
+
+Use the PCS Control Panel to manually connect cellular data.
+
+Then test:
+
+```bash
+ip route
+ping -c 4 8.8.8.8
+ping -c 4 google.com
+```
+
+Expected when connected:
+
+```text
+Default route through active uplink
+8.8.8.8 replies
+DNS resolves
+```
+
+Disconnect cellular data from the Control Panel when finished.
+
+## OpenWrt AP Test
+
+From a client:
+
+```text
+http://10.42.0.2
+```
+
+Expected:
+
+```text
+OpenWrt management page loads
+```
+
+Confirm:
+
+```text
+DHCP disabled on OpenWrt
+LAN IP is 10.42.0.2
+Gateway/DNS point to 10.42.0.1 if configured
+```
+
+## Service Status Test
+
+On the Pi:
+
+```bash
+systemctl status smbd
+systemctl status chrony
+systemctl status gpsd
+systemctl status cockpit
+```
+
+If PCS services are installed:
+
+```bash
+systemctl list-units | grep pcs
+```
+
+Expected:
+
+```text
+Required services are active or intentionally inactive
+```
+
+## Full Field Test
+
+Before using PCS for an event:
+
+- [ ] PCS boots cleanly
+- [ ] Pi self-test passes
+- [ ] OpenWrt AP reachable at `10.42.0.2`
+- [ ] Client receives `10.42.0.x` address
+- [ ] Client can ping `10.42.0.1`
+- [ ] Client can open Control Panel
+- [ ] Client can open `PCS-Share`
+- [ ] Client can write to `PCS-Share`
+- [ ] Backup sync works
+- [ ] Client can access `PCS-Backup`
+- [ ] Windows NTP test works
+- [ ] GPS source appears in Chrony when antenna has sky view
+- [ ] Cellular can be manually connected if needed
+- [ ] Cellular can be manually disconnected
+- [ ] System survives reboot and returns to working state
+
+## Pass Criteria
+
+PCS is ready for field use when:
+
+```text
+Pi self-test passes
+Control Panel loads
+Clients receive PCS LAN addresses
+Samba shares work
+NTP works
+Backup sync works
+OpenWrt AP is reachable
+Internet works when uplink is intentionally active
+```
