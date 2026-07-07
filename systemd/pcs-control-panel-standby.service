@@ -1,0 +1,17 @@
+[Unit]
+Description=PCS Control Panel Standby Legacy Interface
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Projects/PCS-Portable-Comm-Server
+Environment=PCS_CONTROL_HOST=0.0.0.0
+Environment=PCS_CONTROL_PORT=18089
+ExecStart=/usr/bin/python3 /opt/pcs-control-panel-standby/pcs_control_panel_legacy.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

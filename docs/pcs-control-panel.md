@@ -16,26 +16,45 @@ http://10.42.0.1:8080
 
 The port 80 dashboard URL redirects to the control panel on port 8080.
 
+Legacy standby control panel URL:
+
+```text
+http://10.42.0.1:18089
+```
+
+The standby service keeps the previous local UI available while the default panel moves forward.
+
 ## Purpose
 
 The control panel provides a simple local interface for checking system health and running common PCS actions without remembering terminal commands.
 
 It is intended for trusted local PCS clients only.
 
-Do not expose this interface to the public internet.
+Keep this interface on the trusted PCS LAN.
 
 ## Services
 
-The control panel uses two systemd services:
+The control panel uses three systemd services:
 
 ```text
 pcs-control-panel.service
 pcs-dashboard-redirect.service
+pcs-control-panel-standby.service
 ```
 
 `pcs-control-panel.service` runs the main web interface on port 8080.
 
 `pcs-dashboard-redirect.service` runs a small port 80 redirect service.
+
+`pcs-control-panel-standby.service` runs the preserved legacy UI on port 18089.
+
+The legacy standby UI is tracked in the repo at:
+
+```text
+web/pcs-control-panel/pcs_control_panel_legacy.py
+```
+
+The installer copies that file to `/opt/pcs-control-panel-standby/` so reinstalls keep the same standby UI instead of taking a new snapshot by accident.
 
 ## Setup Scripts
 
@@ -70,16 +89,24 @@ The web app does not run arbitrary shell commands. It only calls known PCS actio
 Available actions include:
 
 ```text
-PCS Status
-PCS Self-Test
-Storage Status
-Sync USB -> SD Backup
-Mount USB Share
-Safely Unmount USB
+View PCS Status
+Run Self-Test
+View Storage
+View Wi-Fi
+Connect Wi-Fi
+Disconnect Wi-Fi
+View Cellular
+Connect Cellular
+Disconnect Cellular
+Test Cellular
+Sync USB to SD Backup
+Mount USB Storage
+Unmount USB Safely
 Restart PCS Services
 Restart Samba
+Sync Time Now
 Restart Chrony
-Restart Logs
+View Restart Logs
 ```
 
 ## Dashboard Cards
@@ -87,17 +114,20 @@ Restart Logs
 The dashboard shows quick status cards for:
 
 ```text
+System stats
+Core services
 Network
 Storage
+Web/admin interfaces
 Time / NTP
 Samba
-Core services
-Hardware placeholders
+Cellular / WWAN
+GPS / GNSS
 ```
 
 These cards are intended to give a quick field-health overview before using the detailed action buttons.
 
-## Local Client Info
+## Field Access
 
 The dashboard includes local client information:
 
@@ -158,12 +188,19 @@ Check service status:
 ```bash
 systemctl status pcs-control-panel.service --no-pager -l
 systemctl status pcs-dashboard-redirect.service --no-pager -l
+systemctl status pcs-control-panel-standby.service --no-pager -l
 ```
 
 Test the main control panel locally:
 
 ```bash
 curl -I http://127.0.0.1:8080
+```
+
+Test the standby control panel locally:
+
+```bash
+curl -I http://127.0.0.1:18089
 ```
 
 Test the port 80 redirect:
@@ -188,4 +225,5 @@ If the control panel hangs or behaves strangely, restart it:
 
 ```bash
 sudo systemctl restart pcs-control-panel.service
+sudo systemctl restart pcs-control-panel-standby.service
 ```

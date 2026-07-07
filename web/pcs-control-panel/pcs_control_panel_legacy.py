@@ -13,30 +13,30 @@ PORT = int(os.environ.get("PCS_CONTROL_PORT", "8080"))
 DISPATCHER = "/usr/local/sbin/pcs-web-action"
 
 ACTIONS = [
-    ("status", "View PCS Status", "Show the full PCS status report."),
-    ("self-test", "Run Self-Test", "Run the Pi-side health validation."),
-    ("storage-status", "View Storage", "Show USB, SD backup, and Samba state."),
-    ("wifi-status", "View Wi-Fi", "Show Wi-Fi uplink status and the default route."),
-    ("wifi-connect", "Connect Wi-Fi", "Reconnect the saved Wi-Fi uplink profile."),
-    ("wifi-disconnect", "Disconnect Wi-Fi", "Disconnect the Pi from Wi-Fi for offline or cellular-only operation."),
-    ("cellular-status", "View Cellular", "Show WWAN modem and cellular connection state."),
+    ("status", "PCS Status", "Show full PCS status output."),
+    ("self-test", "PCS Self-Test", "Run the Pi-side validation test."),
+    ("storage-status", "Storage Status", "Show USB/SD/Samba storage state."),
+    ("wifi-status", "Wi-Fi Status", "Show Wi-Fi uplink status and default route."),
+    ("wifi-connect", "Connect Wi-Fi Uplink", "Reconnect the saved Wi-Fi uplink profile."),
+    ("wifi-disconnect", "Disconnect Wi-Fi Uplink", "Disconnect the Pi from Wi-Fi so PCS can run on cellular."),
+    ("cellular-status", "Cellular Status", "Show WWAN modem and cellular connection state."),
     ("cellular-connect", "Connect Cellular", "Bring up the manual cellular data connection."),
     ("cellular-disconnect", "Disconnect Cellular", "Bring down the manual cellular data connection."),
-    ("cellular-test", "Test Cellular", "Test cellular-only internet through wwan0."),
-    ("sync-backup", "Sync USB to SD Backup", "Mirror the USB primary share to the SD backup."),
-    ("mount-usb", "Mount USB Storage", "Mount the USB primary share and restart Samba."),
-    ("safe-unmount-usb", "Unmount USB Safely", "Sync backup, stop Samba, unmount USB, then restart Samba."),
+    ("cellular-test", "Test Cellular Internet", "Test cellular-only internet access through wwan0."),
+    ("sync-backup", "Sync USB → SD Backup", "Mirror USB primary share to SD backup."),
+    ("mount-usb", "Mount USB Share", "Mount USB primary storage and restart Samba."),
+    ("safe-unmount-usb", "Safely Unmount USB", "Sync backup, stop Samba, unmount USB, restart Samba."),
     ("restart-services", "Restart PCS Services", "Restart core PCS services through systemd."),
     ("restart-samba", "Restart Samba", "Restart Samba only."),
     ("sync-time", "Sync Time Now", "Poll Chrony sources, step the system clock if needed, and update the RTC."),
     ("restart-chrony", "Restart Chrony", "Restart Chrony only."),
-    ("restart-logs", "View Restart Logs", "Show recent PCS restart service logs."),
+    ("restart-logs", "Restart Logs", "Show recent PCS restart service logs."),
 ]
 
 ACTION_MAP = {name: (label, desc) for name, label, desc in ACTIONS}
 
 ACTION_GROUPS = [
-    ("Health", ["status", "self-test", "storage-status", "restart-logs"]),
+    ("Status", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
     ("Storage", ["sync-backup", "mount-usb", "safe-unmount-usb"]),
@@ -202,8 +202,8 @@ def render_dashboard(dashboard: dict) -> str:
     return f"""
     <section class="overview {overall}">
         <div>
-            <h2>Health Overview</h2>
-            <p>Last refreshed {generated}</p>
+            <h2>System overview</h2>
+            <p>Generated at {generated}</p>
         </div>
         <span class="overall-badge {overall}">{status_label(overall)}</span>
     </section>
@@ -235,7 +235,7 @@ def render_client_info(dashboard: dict) -> str:
                 f"""
                 <div class="copy-line">
                     <span>{name}</span>
-                    <code>{ip} / {mac} / {state}</code>
+                    <code>{ip} · {mac} · {state}</code>
                 </div>
                 """
             )
@@ -243,8 +243,8 @@ def render_client_info(dashboard: dict) -> str:
     else:
         clients_html = """
         <div class="copy-line">
-            <span>No additional LAN clients visible</span>
-            <code>Only the OpenWrt AP/router is currently visible</code>
+            <span>No router-side clients visible</span>
+            <code>None seen on eth0</code>
         </div>
         """
 
@@ -252,8 +252,8 @@ def render_client_info(dashboard: dict) -> str:
     <section class="client-info">
         <div class="client-info-top">
             <div>
-                <h2>Field Access</h2>
-                <p>Use these addresses from devices connected to the PCS LAN or OpenWrt AP.</p>
+                <h2>Local client info</h2>
+                <p>Use these addresses from a laptop or phone connected behind the PCS/test router.</p>
             </div>
             <span class="client-pill">{router_ip}</span>
         </div>
@@ -294,7 +294,7 @@ def render_client_info(dashboard: dict) -> str:
             <div class="client-card">
                 <h3>Router-side clients seen by Pi</h3>
                 {clients_html}
-                <p class="client-note">Clients behind router NAT may appear only as the router WAN device.</p>
+                <p class="client-note">Note: clients behind the router NAT may only appear as the router WAN device.</p>
             </div>
         </div>
     </section>
@@ -351,8 +351,8 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
     else:
         result_block = """
         <section class="output muted">
-            <h2>No command run yet</h2>
-            <p>Use the health cards for a quick read, or run an operator command for detailed output.</p>
+            <h2>No action run yet</h2>
+            <p>Use the dashboard for a quick health check, or choose a command button for detailed output.</p>
         </section>
         """
 
@@ -365,21 +365,21 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
     <style>
         :root {{
             color-scheme: dark;
-            --bg: #101214;
-            --panel: #181b1f;
-            --panel2: #20252a;
-            --panel3: #0c0e10;
-            --text: #edf0f2;
-            --muted: #a6adb5;
-            --border: #313840;
-            --ok: #6ee7a8;
-            --ok-bg: rgba(110, 231, 168, 0.12);
-            --warn: #f3c969;
-            --warn-bg: rgba(243, 201, 105, 0.13);
-            --bad: #f27878;
-            --bad-bg: rgba(242, 120, 120, 0.13);
-            --accent: #7fb4ff;
-            --button-text: #071015;
+            --bg: #0e1117;
+            --panel: #171b22;
+            --panel2: #1f2530;
+            --panel3: #11151c;
+            --text: #e9edf5;
+            --muted: #9fa8b8;
+            --border: #303846;
+            --ok: #8de38d;
+            --ok-bg: rgba(141, 227, 141, 0.13);
+            --warn: #ffd166;
+            --warn-bg: rgba(255, 209, 102, 0.14);
+            --bad: #ff7b7b;
+            --bad-bg: rgba(255, 123, 123, 0.14);
+            --accent: #78a6ff;
+            --button-text: #07111f;
         }}
 
         * {{
@@ -389,24 +389,27 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         body {{
             margin: 0;
             font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            line-height: 1.45;
-            background: var(--bg);
+            background:
+                radial-gradient(circle at top left, rgba(120, 166, 255, 0.16), transparent 28rem),
+                radial-gradient(circle at bottom right, rgba(141, 227, 141, 0.08), transparent 24rem),
+                var(--bg);
             color: var(--text);
         }}
 
         header {{
-            padding: 1rem 1.25rem;
+            padding: 1.25rem;
             border-bottom: 1px solid var(--border);
-            background: rgba(16, 18, 20, 0.96);
+            background: rgba(23, 27, 34, 0.92);
             position: sticky;
             top: 0;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(12px);
             z-index: 10;
         }}
 
         header h1 {{
             margin: 0;
-            font-size: 1.45rem;
+            font-size: 1.65rem;
+            letter-spacing: 0.02em;
         }}
 
         header p {{
@@ -416,7 +419,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         main {{
             padding: 1.25rem;
-            max-width: 1600px;
+            max-width: 1850px;
             margin: 0 auto;
         }}
 
@@ -427,7 +430,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             gap: 1rem;
             background: var(--panel);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 18px;
             padding: 1rem 1.15rem;
             margin-bottom: 1rem;
         }}
@@ -448,6 +451,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             justify-content: center;
             border-radius: 999px;
             font-weight: 800;
+            letter-spacing: 0.04em;
         }}
 
         .overall-badge {{
@@ -499,10 +503,11 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         }}
 
         .dash-card {{
-            background: var(--panel);
+            background: rgba(23, 27, 34, 0.92);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 18px;
             padding: 0.9rem;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
         }}
 
         .card-top {{
@@ -573,7 +578,11 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         }}
 
         .client-info {{
-            margin: 1.4rem 0 1.25rem;
+            background: rgba(23, 27, 34, 0.92);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 1rem;
+            margin-bottom: 1.25rem;
         }}
 
         .client-info-top {{
@@ -581,7 +590,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             align-items: center;
             justify-content: space-between;
             gap: 1rem;
-            margin-bottom: 0.75rem;
+            margin-bottom: 1rem;
         }}
 
         .client-info h2,
@@ -600,7 +609,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             justify-content: center;
             border-radius: 999px;
             padding: 0.55rem 0.85rem;
-            background: rgba(127, 180, 255, 0.13);
+            background: rgba(120, 166, 255, 0.15);
             color: var(--accent);
             font-weight: 800;
             white-space: nowrap;
@@ -613,9 +622,9 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         }}
 
         .client-card {{
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            background: rgba(17, 21, 28, 0.75);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 14px;
             padding: 0.9rem;
         }}
 
@@ -639,9 +648,9 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         .copy-line code {{
             display: block;
-            background: var(--panel3);
+            background: #090c11;
             border: 1px solid var(--border);
-            border-radius: 6px;
+            border-radius: 8px;
             padding: 0.45rem 0.55rem;
             overflow-wrap: anywhere;
         }}
@@ -654,7 +663,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         }}
 
         .actions-title {{
-            margin: 1.3rem 0 0.65rem;
+            margin: 1.3rem 0 0.75rem;
         }}
 
         .action-group {{
@@ -665,6 +674,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             margin: 0 0 0.6rem;
             color: var(--muted);
             font-size: 1rem;
+            letter-spacing: 0.04em;
             text-transform: uppercase;
         }}
 
@@ -675,35 +685,20 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         }}
 
         .action-card {{
-            background: var(--panel);
+            background: rgba(23, 27, 34, 0.9);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 0.85rem;
+            border-radius: 14px;
+            padding: 1rem;
         }}
 
         button {{
             width: 100%;
             border: 0;
-            border-radius: 6px;
-            padding: 0.7rem 0.85rem;
-            font-family: inherit;
-            font-size: 0.98rem;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
             font-weight: 800;
             cursor: pointer;
-            transition: filter 120ms ease, transform 120ms ease;
-        }}
-
-        button:hover {{
-            filter: brightness(1.08);
-        }}
-
-        button:active {{
-            transform: translateY(1px);
-        }}
-
-        button:focus-visible {{
-            outline: 2px solid var(--text);
-            outline-offset: 2px;
         }}
 
         button.normal {{
@@ -724,9 +719,9 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         .output {{
             margin-top: 1.25rem;
-            background: var(--panel2);
+            background: rgba(31, 37, 48, 0.92);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 14px;
             padding: 1rem;
         }}
 
@@ -747,43 +742,24 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
         pre {{
             white-space: pre-wrap;
             word-break: break-word;
-            background: var(--panel3);
+            background: #090c11;
             padding: 1rem;
-            border-radius: 6px;
+            border-radius: 10px;
             overflow-x: auto;
             max-height: 45vh;
         }}
 
         @media (min-width: 1500px) {{
             .dashboard-grid {{
-                grid-template-columns: repeat(4, minmax(0, 1fr));
+                grid-template-columns: repeat(6, minmax(0, 1fr));
             }}
 
             .client-grid {{
-                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-template-columns: repeat(6, minmax(0, 1fr));
             }}
 
             .grid {{
                 grid-template-columns: repeat(4, minmax(0, 1fr));
-            }}
-        }}
-
-        @media (max-width: 720px) {{
-            header,
-            main {{
-                padding-left: 0.9rem;
-                padding-right: 0.9rem;
-            }}
-
-            .overview,
-            .client-info-top {{
-                align-items: flex-start;
-                flex-direction: column;
-            }}
-
-            .overall-badge,
-            .client-pill {{
-                align-self: flex-start;
             }}
         }}
 
@@ -797,7 +773,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 <body>
     <header>
         <h1>PCS Control Panel</h1>
-        <p>Local field dashboard and operator controls</p>
+        <p>Portable Communication Server local operator panel</p>
     </header>
 
     <main>
@@ -805,14 +781,14 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         {render_client_info(dashboard)}
 
-        <h2 class="actions-title">Operator Commands</h2>
+        <h2 class="actions-title">Actions</h2>
         {action_sections}
 
         {result_block}
     </main>
 
     <footer>
-        PCS local panel. Keep this interface on the trusted PCS LAN.
+        PCS local panel. Do not expose this interface to the public internet.
     </footer>
 </body>
 </html>

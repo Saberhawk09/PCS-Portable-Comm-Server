@@ -410,7 +410,7 @@ def cpu_temperature():
             if raw:
                 c = round(int(raw) / 1000, 1)
                 f_temp = round((c * 9 / 5) + 32, 1)
-                return f"{c}°C / {f_temp}°F"
+                return f"{c} C / {f_temp} F"
         except Exception:
             continue
 
@@ -1396,11 +1396,11 @@ cards = [
         "title": "Cellular / WWAN",
         "status": cellular_status,
         "summary": (
-            "OK - Cell Connection Active"
+            "Cellular data connected"
             if cellular_connected
-            else "OK - Modem Healthy / Cellular Manual"
+            else "Modem ready; cellular data is manual"
             if cellular_registered
-            else "WARN - Modem Detected / Not Registered"
+            else "Modem detected; waiting for network registration"
             if modem_present
             else "Waiting for WWAN modem hardware"
         ),
@@ -1408,11 +1408,11 @@ cards = [
             {
                 "label": "PCS cellular state",
                 "value": (
-                    "OK - Cell Connection Active"
+                    "Cellular data connected"
                     if cellular_connected
-                    else "OK - Modem Healthy / Cellular Manual"
+                    else "Modem ready; cellular data is manual"
                     if cellular_registered
-                    else "WARN - Modem Detected / Not Registered"
+                    else "Modem detected; waiting for network registration"
                     if modem_present
                     else "No WWAN modem detected"
                 ),
@@ -1436,16 +1436,16 @@ cards = [
         "title": "GPS / GNSS",
         "status": gps_status,
         "summary": (
-            "EM7455 NMEA GPS feeding gpsd and Chrony"
+            "WWAN NMEA GPS feeding gpsd and Chrony"
             if gpsd_active and chrony_gps_source_present
-            else "EM7455 GPS available, waiting for Chrony GPS source"
+            else "WWAN GPS available, waiting for Chrony GPS source"
             if gpsd_active
-            else "Waiting for EM7455 NMEA GPS data"
+            else "Waiting for WWAN NMEA GPS data"
             if modem_present
             else "Waiting for GPS/GNSS hardware"
         ),
         "items": [
-            {"label": "GPS path", "value": "EM7455 NMEA → gpsd → Chrony"},
+            {"label": "GPS path", "value": "WWAN NMEA -> gpsd -> Chrony"},
             {"label": "Starter service", "value": "active/exited" if active("pcs-em7455-gps-nmea") else "inactive or missing"},
             {"label": "NMEA port", "value": "/dev/ttyUSB1 present" if os.path.exists("/dev/ttyUSB1") else "/dev/ttyUSB1 missing"},
             {"label": "gpsd", "value": "active" if gpsd_active else "inactive"},
