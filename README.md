@@ -14,10 +14,10 @@ This GitHub will also use a mix of my own writing and AI generated text. All tex
 
 ## Project Goals
 
-- Reliable LAN routing
+- Reliable LAN communication between connected clients
 - Cellular internet connectivity for connected clients
-- GPS-disciplined NTP server
-- LAN file share
+- NMEA GPS-disciplined NTP server for connected clients
+- LAN file share reachable by all connected clients
 - Rugged field deployment
 - Emergency/grid power capable
 - Easy operation by non-technical users
@@ -47,28 +47,26 @@ The core PCS software baseline is working and rebuild-tested.
 
 Currently working:
 
-- Raspberry Pi gateway at `10.42.0.1`
-- Client LAN/AP handoff through `eth0`
-- Actiontec T3200 test AP/switch mode
-- USB primary Samba share
-- SD-card Samba backup mirror
-- Chrony LAN NTP
-- RTC support
-- Cockpit
-- PCS Control Panel dashboard
-- Port 80 redirect to the dashboard
+- Reliable post reboot behavior - The whole PCS system starts up with no user input when the Pi is powered.
+- Browser accessable PCS control panel at `10.42.0.1` with redirect for port 80
 - Pi-side self-test/status scripts
-- WWAN modem detection and manual cellular profile
-- EM7455/DW5811e GPS NMEA on `/dev/ttyUSB1`
+- Client LAN/AP handoff through the Pi's ethernet interface
+- Linksys EA4500 OpenWRT operating as the AP/switch 
+- USB primary Samba share with SD-card backup mirror
+- Chrony LAN NTP Server
+- I2C RTC support
+- PCS Control Panel dashboard
+- Validated Sierra Wireless EM7455 and EM7565 functionality - The attached cell modem MUST be configured manually first.
+- GPS NMEA exposed on /dev/ttyUSB1
 - `gpsd` receiving WWAN GPS NMEA
 - Chrony seeing the GPS source for LAN NTP
+
 
 Still planned:
 
 - Final enclosure
 - Final power system
 - External LTE/GPS antenna mounting
-- Future EM7565 validation
 - Full SD-card wipe/rebuild repeatability test
 
 ## Main Setup
@@ -130,7 +128,7 @@ For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
 Cellular data is intentionally configured for manual control.
 
-After a fresh setup, the WWAN modem and GPS may be detected and configured, but the cellular data connection will not be active until it is manually connected from the PCS Control Panel. PCS Self Test will also show a warn/skip for the cellular profile if it has not been manually toggled on at least once.
+After a fresh setup, the WWAN modem and GPS should be detected and configured, but the cellular data connection will not be active until it is manually connected from the PCS Control Panel. PCS Self Test will also show a warn/skip for the cellular profile if it has not been manually toggled on at least once.
 
 Open the PCS Control Panel:
 
@@ -162,7 +160,7 @@ Pi eth0:           10.42.0.1
 Cable:             Pi eth0 → AP/router LAN port
 ```
 
-The access point may claim it has no internet access. That is okay if connected clients route through the Pi successfully.
+The access point may claim it has no internet access. That is expected if the cellular profile is disabled or does not have service. Internet access is intentionally optional with PCS.
 
 For more detail, see [Network Topology](docs/network-topology.md) and [Network Design](docs/network-design.md).
 
@@ -264,12 +262,11 @@ Current tested hardware:
 - Raspberry Pi 4
 - RTC module
 - USB flash drive
-- Actiontec T3200 used as AP/switch
-- Home Wi-Fi as temporary uplink
+- Linksys EA4500 running OpenWRT used as AP/switch
+- Sierra Wireless EM7455 and EM7565 cellular modems
 
 Planned hardware:
 
-- Future EM7565 modem validation
 - Final power system
 - Final enclosure
 - External antennas
