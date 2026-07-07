@@ -11,8 +11,10 @@ PCS_ETH_IFACE="eth0"
 PCS_WIFI_IFACE="wlan0"
 PCS_ETH_ADDR="10.42.0.1/24"
 PCS_NTP_NET="10.42.0.0/24"
+PCS_OPENWRT_AP_ADDR="10.42.0.2"
 
 PCS_SAMBA_SHARE="PCS-Share"
+PCS_USB_MOUNT="/mnt/pcs-usb"
 PCS_SAMBA_PATH="/mnt/pcs-usb/PCS-Share"
 
 PCS_BACKUP_SHARE="PCS-Backup"
@@ -24,6 +26,23 @@ PCS_CONTROL_URL="http://127.0.0.1:8080"
 PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
 PCS_DASHBOARD_REDIRECT_PORT="80"
 PCS_DASHBOARD_REDIRECT_HEALTH_URL="http://127.0.0.1/health"
+
+TMP_FILES=()
+
+make_temp_file() {
+    local tmp_file
+    tmp_file="$(mktemp)"
+    TMP_FILES+=("${tmp_file}")
+    echo "${tmp_file}"
+}
+
+cleanup_temp_files() {
+    if [[ "${#TMP_FILES[@]}" -gt 0 ]]; then
+        rm -f "${TMP_FILES[@]}"
+    fi
+}
+
+trap cleanup_temp_files EXIT
 
 
 echo
@@ -157,9 +176,10 @@ else
 fi
 
 if command_exists chronyc; then
-    if chronyc tracking >/tmp/pcs-chronyc-tracking.txt 2>/dev/null; then
+    CHRONY_TRACKING_FILE="$(make_temp_file)"
+    if chronyc tracking >"${CHRONY_TRACKING_FILE}" 2>/dev/null; then
         pass "chronyc tracking works"
-        grep -E "Stratum|Reference ID|Leap status|System time" /tmp/pcs-chronyc-tracking.txt || true
+        grep -E "Stratum|Reference ID|Leap status|System time" "${CHRONY_TRACKING_FILE}" || true
     else
         fail "chronyc tracking failed"
     fi
@@ -201,11 +221,11 @@ echo
 WIFI_CONNECTED=0
 CELLULAR_CONNECTED=0
 
-if nmcli -t -f DEVICE,STATE device status 2>/dev/null | awk -F: '$1 == "wlan0" && $2 == "connected" { found=1 } END { exit !found }'; then
+if nmcli -t -f DEVICE,STATE device status 2>/dev/null | awk -F: -v dev="${PCS_WIFI_IFACE}" '$1 == dev && $2 == "connected" { found=1 } END { exit !found }'; then
     WIFI_CONNECTED=1
-    pass "Wi-Fi uplink wlan0 is connected"
+    pass "Wi-Fi uplink ${PCS_WIFI_IFACE} is connected"
 else
-    echo "[INFO] Wi-Fi uplink wlan0 is disconnected"
+    echo "[INFO] Wi-Fi uplink ${PCS_WIFI_IFACE} is disconnected"
 fi
 
 if nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null | awk -F: '$2 == "gsm" && $3 == "connected" { found=1 } END { exit !found }'; then
@@ -218,65 +238,86 @@ fi
 if [[ "${WIFI_CONNECTED}" -eq 1 || "${CELLULAR_CONNECTED}" -eq 1 ]]; then
     pass "At least one internet uplink is connected"
 else
-    fail "No internet uplink is connected"
+    warn "No internet uplink is connected; PCS offline LAN services can still be healthy"
 fi
 
-if nmcli -t -f DEVICE,STATE,CONNECTION device status 2>/dev/null | awk -F: '$1 == "eth0" && $2 == "connected" && $3 == "pcs-router-wan-share" { found=1 } END { exit !found }'; then
-    pass "eth0 is connected using pcs-router-wan-share"
+if nmcli -t -f DEVICE,STATE,CONNECTION device status 2>/dev/null | awk -F: -v dev="${PCS_ETH_IFACE}" '$1 == dev && $2 == "connected" && $3 == "pcs-router-wan-share" { found=1 } END { exit !found }'; then
+    pass "${PCS_ETH_IFACE} is connected using pcs-router-wan-share"
 else
-    fail "eth0 is not connected using pcs-router-wan-share"
+    fail "${PCS_ETH_IFACE} is not connected using pcs-router-wan-share"
 fi
 
-if ip -4 addr show eth0 2>/dev/null | grep -q "10.42.0.1/24"; then
-    pass "eth0 has 10.42.0.1/24"
+if ip -4 addr show "${PCS_ETH_IFACE}" 2>/dev/null | grep -q "${PCS_ETH_ADDR}"; then
+    pass "${PCS_ETH_IFACE} has ${PCS_ETH_ADDR}"
 else
-    fail "eth0 does not have 10.42.0.1/24"
+    fail "${PCS_ETH_IFACE} does not have ${PCS_ETH_ADDR}"
 fi
 
 DEFAULT_IFACE="$(ip route show default 2>/dev/null | awk '{print $5; exit}')"
 
 case "${DEFAULT_IFACE}" in
-    wlan0)
-        pass "Default route uses Wi-Fi uplink wlan0"
+    "${PCS_WIFI_IFACE}")
+        pass "Default route uses Wi-Fi uplink ${PCS_WIFI_IFACE}"
         ;;
     wwan0|cdc-wdm0)
         pass "Default route uses cellular uplink ${DEFAULT_IFACE}"
         ;;
     "")
-        fail "No default route is present"
+        warn "No default route is present; expected when PCS is running as offline LAN only"
         ;;
     *)
-        fail "Default route uses unexpected interface: ${DEFAULT_IFACE}"
+        warn "Default route uses unexpected interface: ${DEFAULT_IFACE}"
         ;;
 esac
 
-if ip route show 10.42.0.0/24 2>/dev/null | grep -q "dev eth0"; then
-    pass "PCS router-side route exists on eth0"
+if ip route show 10.42.0.0/24 2>/dev/null | grep -q "dev ${PCS_ETH_IFACE}"; then
+    pass "PCS LAN route exists on ${PCS_ETH_IFACE}"
 else
-    fail "PCS router-side route missing on eth0"
+    fail "PCS LAN route missing on ${PCS_ETH_IFACE}"
 fi
 
-ROUTER_NEIGHBORS="$(ip neigh show dev eth0 2>/dev/null | grep -E '^10\.42\.0\.' || true)"
+if ping -c 1 -W 2 "${PCS_OPENWRT_AP_ADDR}" >/dev/null 2>&1; then
+    pass "OpenWrt AP responds at ${PCS_OPENWRT_AP_ADDR}"
+else
+    fail "OpenWrt AP does not respond at ${PCS_OPENWRT_AP_ADDR}"
+fi
+
+ROUTER_NEIGHBORS="$(ip neigh show dev "${PCS_ETH_IFACE}" 2>/dev/null | awk '$1 ~ /^10\.42\.0\./ && $NF != "FAILED" && $NF != "INCOMPLETE"' || true)"
+CLIENT_NEIGHBORS=""
+if [[ -n "${ROUTER_NEIGHBORS}" ]]; then
+    CLIENT_NEIGHBORS="$(printf '%s\n' "${ROUTER_NEIGHBORS}" | grep -Ev "^${PCS_OPENWRT_AP_ADDR//./\\.}[[:space:]]" || true)"
+fi
 
 if [[ -n "${ROUTER_NEIGHBORS}" ]]; then
-    pass "At least one router-side neighbor exists on eth0"
+    pass "At least one PCS LAN neighbor exists on ${PCS_ETH_IFACE}"
     echo "${ROUTER_NEIGHBORS}"
 else
-    fail "No router-side neighbors found on eth0"
+    warn "No PCS LAN neighbors found on ${PCS_ETH_IFACE}"
+fi
+
+if [[ -n "${CLIENT_NEIGHBORS}" ]]; then
+    pass "Additional PCS client neighbors are visible on ${PCS_ETH_IFACE}"
+    echo "${CLIENT_NEIGHBORS}"
+else
+    echo "[INFO] No additional PCS client neighbors are visible on ${PCS_ETH_IFACE}"
 fi
 
 section "Internet / DNS"
 
-if ping -c 2 -W 3 8.8.8.8 >/dev/null 2>&1; then
-    pass "Internet IP ping works: 8.8.8.8"
+if [[ "${WIFI_CONNECTED}" -eq 0 && "${CELLULAR_CONNECTED}" -eq 0 && -z "${DEFAULT_IFACE}" ]]; then
+    skip "No connected/default uplink; skipping internet and DNS ping checks"
 else
-    fail "Internet IP ping failed: 8.8.8.8"
-fi
+    if ping -c 2 -W 3 8.8.8.8 >/dev/null 2>&1; then
+        pass "Internet IP ping works: 8.8.8.8"
+    else
+        warn "Internet IP ping failed: 8.8.8.8"
+    fi
 
-if ping -c 2 -W 5 google.com >/dev/null 2>&1; then
-    pass "DNS and internet hostname ping work: google.com"
-else
-    fail "DNS or hostname ping failed: google.com"
+    if ping -c 2 -W 5 google.com >/dev/null 2>&1; then
+        pass "DNS and internet hostname ping work: google.com"
+    else
+        warn "DNS or hostname ping failed: google.com"
+    fi
 fi
 
 section "Samba"
@@ -295,6 +336,8 @@ fi
 
 if [[ -d "${PCS_SAMBA_PATH}" ]]; then
     pass "Samba primary share path exists: ${PCS_SAMBA_PATH}"
+elif ! findmnt "${PCS_USB_MOUNT}" >/dev/null 2>&1; then
+    fail "Samba primary share path missing because USB storage is not mounted at ${PCS_USB_MOUNT}"
 else
     fail "Samba primary share path missing: ${PCS_SAMBA_PATH}"
 fi
@@ -416,15 +459,18 @@ section "Raspberry Pi Connect"
 
 if command_exists rpi-connect; then
     CONNECT_DOCTOR_OUTPUT="$(rpi-connect doctor 2>&1 || true)"
+    CONNECT_STATUS_OUTPUT="$(rpi-connect status 2>&1 || true)"
     echo "${CONNECT_DOCTOR_OUTPUT}"
 
-    if echo "${CONNECT_DOCTOR_OUTPUT}" | grep -q "Wayland compositor available"; then
+    if printf '%s\n' "${CONNECT_DOCTOR_OUTPUT}" | grep -Eq "Wayland compositor available$"; then
         pass "Raspberry Pi Connect sees Wayland compositor"
     else
         fail "Raspberry Pi Connect does not see Wayland compositor"
     fi
 
-    if echo "${CONNECT_DOCTOR_OUTPUT}" | grep -q "Screen sharing services enabled and active"; then
+    if printf '%s\n' "${CONNECT_STATUS_OUTPUT}" | grep -Eiq "not running|not signed in|signed out|not connected|no account|run rpi-connect on|run rpi-connect signin"; then
+        pass "Raspberry Pi Connect account is not connected; screen sharing is not expected"
+    elif printf '%s\n' "${CONNECT_DOCTOR_OUTPUT}" | grep -Eq "Screen sharing services enabled and active$"; then
         pass "Raspberry Pi Connect screen sharing services are active"
     else
         fail "Raspberry Pi Connect screen sharing services are not active"
@@ -529,21 +575,21 @@ else
 fi
 
 if service_enabled pcs-em7455-gps-nmea; then
-    pass "EM7455 GPS NMEA starter service is enabled"
+    pass "WWAN GPS NMEA starter service is enabled: pcs-em7455-gps-nmea"
 else
-    warn "EM7455 GPS NMEA starter service is not enabled"
+    warn "WWAN GPS NMEA starter service is not enabled: pcs-em7455-gps-nmea"
 fi
 
 if service_active pcs-em7455-gps-nmea; then
-    pass "EM7455 GPS NMEA starter has completed successfully"
+    pass "WWAN GPS NMEA starter has completed successfully"
 else
-    warn "EM7455 GPS NMEA starter service is not active/exited"
+    warn "WWAN GPS NMEA starter service is not active/exited"
 fi
 
 if [[ -e /dev/ttyUSB1 ]]; then
-    pass "EM7455 NMEA serial port exists: /dev/ttyUSB1"
+    pass "WWAN GPS NMEA serial port exists: /dev/ttyUSB1"
 else
-    warn "EM7455 NMEA serial port missing: /dev/ttyUSB1"
+    warn "WWAN GPS NMEA serial port missing: /dev/ttyUSB1"
 fi
 
 if service_active gpsd; then
@@ -559,8 +605,21 @@ else
 fi
 
 if command_exists gpspipe; then
-    if timeout 10 gpspipe -r 2>/dev/null | grep -qm1 '^\$G'; then
+    GPSPIPE_SAMPLE_FILE="$(make_temp_file)"
+    timeout 15 gpspipe -r -n 40 >"${GPSPIPE_SAMPLE_FILE}" 2>/dev/null || true
+
+    if grep -qm1 '^\$G' "${GPSPIPE_SAMPLE_FILE}"; then
         pass "gpsd is receiving NMEA data"
+
+        if awk -F, '
+            /^\$..RMC/ && $3 == "A" { found=1 }
+            /^\$..GGA/ && $7 ~ /^[1-9]/ { found=1 }
+            END { exit found ? 0 : 1 }
+        ' "${GPSPIPE_SAMPLE_FILE}"; then
+            pass "gpsd NMEA includes a valid GPS fix"
+        else
+            warn "gpsd NMEA is present, but no valid GPS fix was seen during quick check"
+        fi
     else
         warn "gpsd did not report NMEA data during quick check"
     fi
