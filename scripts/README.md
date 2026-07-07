@@ -54,11 +54,11 @@ Configures the Raspberry Pi RTC overlay and I2C support.
 
 ### setup-em7455-gps-nmea.sh
 
-Configures the tested EM7455/DW5811e GPS path:
+Configures the tested EM7455 / EM7565-style GPS path:
 
-EM7455/DW5811e -> /dev/ttyUSB1 NMEA -> gpsd -> Chrony
+EM7455/EM7565 -> /dev/ttyUSB1 NMEA -> gpsd -> Chrony
 
-Run after the WWAN USB adapter, EM7455/DW5811e modem, and GPS antenna are installed:
+Run after the WWAN USB adapter, modem, and GPS antenna are installed:
 
 ./scripts/setup-em7455-gps-nmea.sh
 
@@ -69,6 +69,8 @@ This installs/configures:
 - Chrony SHM refclock 0 for GPS-backed LAN NTP
 
 It does not change AT!USBCOMP.
+
+For EM7565 GPS troubleshooting, check for active antenna bias at the GPS SMA. The known-good PCS bench setup measured about 3.1-3.3 V. If NMEA is present but GPS cannot get a fix, check `AT+WANT=1`, GPSSEL/RF path selection, and the MHF4-to-SMA pigtail before changing gpsd or Chrony.
 
 ### pcs-em7455-gps-nmea-start.py
 

@@ -92,6 +92,7 @@ The current software baseline includes:
 - Raspberry Pi RTC support
 - Sierra Wireless EM7455 / EM7565 modem support
 - WWAN GPS NMEA path
+- EM7565 active GPS antenna bias/pigtail path validated
 - gpsd support
 - Chrony GPS source support
 - Cockpit access
@@ -181,7 +182,7 @@ PCS should be:
 The current build works, but the following items are still planned or not final:
 
 - final enclosure
-- final power system
+- final power system implementation using the documented 24 V -> regulated 12 V -> regulated 5 V architecture
 - external antenna mounting
 - battery voltage monitoring hardware
 - low-voltage alarm / safe shutdown hardware

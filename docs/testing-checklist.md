@@ -355,6 +355,28 @@ NMEA data is received
 Satellite/fix data appears when antenna has sky view
 ```
 
+Raw NMEA test:
+
+```bash
+gpspipe -r -n 40
+```
+
+Expected valid-fix indicators:
+
+```text
+$GPRMC,...,A,...
+$GPGGA,...,1,...
+```
+
+If NMEA appears but there is no valid fix, check the active GPS antenna path:
+
+```text
+GPS SMA bias: about 3.1-3.3 VDC
+MHF4 GPS pigtail: seated, correct connector, DC-continuous
+AT+WANT: enabled for GNSS antenna power
+GPSSEL/RF path: matches the SMA being used
+```
+
 ## Modem Detection Test
 
 On the Pi:

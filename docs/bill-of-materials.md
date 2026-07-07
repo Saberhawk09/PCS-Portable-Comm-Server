@@ -31,15 +31,17 @@
 | ----------------------------- | --: | --------- | ----: | --------------------------------- |
 | Anderson Powerpole inlet      |   1 | Purchased |   $15 | DC input                          |
 | Automotive blade fuse holders |   2 | Purchased |    $5 | Fuse holders                      |
-| Bussmann 3A blade fuses       |   5 | Purchased |    $5 | Main 12V rail / branch protection |
-| 12V to 5V buck converters     |   2 | Purchased |   $15 | 5V power for Pi / USB devices     |
+| Bussmann 3A blade fuses       |   5 | Purchased |    $5 | 12 V and converter branch fusing  |
+| 7.5A slow-blow fuse           |   1 | Planned   |     - | Main selected-DC input fuse       |
 | SPST switches                 |   4 | Purchased |    $6 | Auxiliary switching               |
-| DPDT switches                 |   5 | Purchased |   $12 | Source switching / control        |
+| DPDT center-off switch        |   1 | Purchased |   $12 | AC/DC source selection            |
 | Switched fused C14 inlet      |   1 | Purchased |    $8 | AC grid input                     |
-| Internal 12V 3A PSU           |   1 | Purchased |   $10 | Converts AC input to 12V DC       |
+| Mean Well LRS-100-24          |   1 | Planned   |     - | 120 VAC to 24 VDC, 108 W          |
+| SparkFun COM-18732            |   1 | Planned   |     - | 8-36 V input to regulated 12 V    |
+| Mean Well PSD-30A-5           |   1 | Planned   |     - | Regulated 12 V to 5 V, 5 A        |
 
 ## Estimated Listed Cost
 
-Known listed cost total: **$149**
+Known listed cost total: **$120**
 
 This total only includes items with prices listed in this document. Items marked with `-` were already owned or purchased separately, so their prices are not included.

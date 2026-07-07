@@ -34,6 +34,7 @@ Start here:
 - [Network Topology](docs/network-topology.md)
 - [Network Design](docs/network-design.md)
 - [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
+- [EM7565 GPS / GNSS Notes](docs/em7565-gps-notes.md)
 - [Samba File Share](docs/samba-file-share.md)
 - [PCS Control Panel](docs/pcs-control-panel.md)
 - [Testing Checklist](docs/testing-checklist.md)
@@ -60,12 +61,13 @@ Currently working:
 - GPS NMEA exposed on /dev/ttyUSB1
 - `gpsd` receiving WWAN GPS NMEA
 - Chrony seeing the GPS source for LAN NTP
+- EM7565 active GPS antenna path validated after confirming GPS SMA bias voltage and replacing/fixing the MHF4 pigtail path
 
 
 Still planned:
 
 - Final enclosure
-- Final power system
+- Final power system implementation using the current 24 V -> regulated 12 V -> regulated 5 V architecture
 - External LTE/GPS antenna mounting
 - Full SD-card wipe/rebuild repeatability test
 
@@ -268,7 +270,7 @@ Current tested hardware:
 
 Planned hardware:
 
-- Final power system
+- Final power system build using the documented 24 V supply, regulated 12 V bus, and 5 V converter architecture
 - Final enclosure
 - External antennas
 

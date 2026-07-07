@@ -195,6 +195,19 @@ GPS setup script:
 
 Despite the script name, the PCS project has validated both EM7455 and EM7565-style behavior.
 
+Current EM7565 GPS baseline:
+
+```text
+GPS/NMEA port:      /dev/ttyUSB1
+Expected GPS bias:  about 3.1-3.3 V at the GPS SMA
+Active antenna:     requires GNSS antenna power, such as AT+WANT=1
+Known issue found:  bad/open/poorly seated MHF4 GPS pigtail can allow NMEA but prevent a valid fix
+```
+
+If NMEA appears but GPS never gets a valid fix, check the active GPS antenna bias voltage and the MHF4-to-SMA pigtail before changing gpsd or Chrony.
+
+For more detail, see [EM7565 GPS / GNSS Notes](em7565-gps-notes.md).
+
 ## Cellular Data
 
 Cellular data is intentionally manual.
