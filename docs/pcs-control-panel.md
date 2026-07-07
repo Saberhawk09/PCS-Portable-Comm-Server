@@ -73,7 +73,7 @@ Available actions include:
 PCS Status
 PCS Self-Test
 Storage Status
-Sync USB → SD Backup
+Sync USB -> SD Backup
 Mount USB Share
 Safely Unmount USB
 Restart PCS Services
@@ -146,7 +146,7 @@ config/local-client-names.example.tsv
 Example format:
 
 ```text
-10.42.0.2	Actiontec T3200 AP
+10.42.0.2	Linksys EA4500 OpenWrt AP
 10.42.0.123	Field Laptop
 aa:bb:cc:dd:ee:ff	Field Laptop
 ```

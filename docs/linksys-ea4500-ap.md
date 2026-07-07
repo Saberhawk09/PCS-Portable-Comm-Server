@@ -1,73 +1,174 @@
-# Linksys EA4500 Access Point Setup
+# Linksys EA4500 OpenWrt AP Setup
 
-PCS currently uses a Linksys EA4500 v1 as a stock-firmware Wi-Fi access point and Ethernet switch.
+The Linksys EA4500 is used in PCS as an OpenWrt-managed access point, Ethernet switch, and bridge device.
 
-The EA4500 is not acting as the router in the current PCS layout. The Raspberry Pi handles routing, DHCP/NAT sharing, DNS forwarding, dashboard, Samba, NTP, WWAN, and GPS services.
+It is not the main router in the current PCS design.
 
-## Current PCS AP Layout
+The Raspberry Pi is the PCS gateway and service host at:
 
-Client devices
-    -> Wi-Fi / Ethernet
-Linksys EA4500 v1
-    -> LAN port, not WAN port
-Raspberry Pi eth0
-    -> PCS services and upstream internet
+```text
+10.42.0.1
+```
 
-## Addressing
+The EA4500 OpenWrt management address is:
 
-Raspberry Pi / PCS server: 10.42.0.1
-Linksys EA4500 LAN IP:    10.42.0.2
-Client DHCP range:         10.42.0.x
-Gateway for clients:       10.42.0.1
-DNS for clients:           10.42.0.1
+```text
+10.42.0.2
+```
 
-## Linksys Settings
+## Current Role
 
-LAN IP:       10.42.0.2
-DHCP server:  disabled
-WAN port:     unused
-Cable:        Pi eth0 to Linksys LAN port
-Wi-Fi:        enabled
+The EA4500 provides:
 
-## Raspberry Pi Ethernet Profile
+- Wi-Fi access for PCS clients
+- Ethernet switching
+- LAN bridge between clients and the Raspberry Pi
+- OpenWrt management interface
 
-The Pi Ethernet port must use the PCS shared profile:
+The EA4500 should not provide:
 
-eth0 connection: pcs-router-wan-share
-IPv4 method:     shared
-IPv4 address:    10.42.0.1/24
+- DHCP
+- DNS
+- NAT
+- PCS firewall routing
+- primary WAN/cellular routing
 
-Do not use netplan-eth0 for normal PCS AP operation. netplan-eth0 may provide the same static IP, but it does not provide the NetworkManager shared-mode DHCP/NAT behavior.
+Those functions are handled by the Raspberry Pi.
 
-## Quick Checks
+## Physical Connection
 
-On the Pi:
+Use a LAN port on the EA4500.
 
-nmcli device status
-nmcli -f NAME,TYPE,AUTOCONNECT,DEVICE connection show
-ip -br addr show eth0
-./scripts/pcs-self-test.sh
+```text
+Raspberry Pi eth0 -> EA4500 LAN port
+```
+
+The WAN/Internet port is not required for the current PCS layout unless OpenWrt is explicitly configured to include it in the LAN bridge.
+
+## IP Configuration
+
+EA4500 OpenWrt LAN configuration:
+
+```text
+LAN IP address:  10.42.0.2
+Subnet mask:     255.255.255.0
+Gateway:         10.42.0.1
+DNS:             10.42.0.1
+DHCP server:     disabled
+```
+
+The Pi Ethernet interface:
+
+```text
+Pi eth0:          10.42.0.1/24
+```
+
+Expected PCS clients:
+
+```text
+Client IP range:  10.42.0.100 - 10.42.0.200
+Gateway:          10.42.0.1
+DNS:              10.42.0.1
+```
+
+## OpenWrt DHCP
+
+DHCP must be disabled on the EA4500.
+
+The Pi should be the only DHCP server on the PCS LAN.
+
+If DHCP is enabled on both the Pi and EA4500, clients may receive inconsistent network settings.
+
+Symptoms of duplicate DHCP include:
+
+- clients getting wrong gateway
+- clients unable to access `10.42.0.1`
+- clients unable to resolve DNS
+- dashboard not showing clients correctly
+- inconsistent behavior after reconnecting Wi-Fi
+
+## OpenWrt Wireless
+
+Configure Wi-Fi normally in OpenWrt.
+
+Recommended settings:
+
+```text
+SSID:        PCS or club-specific name
+Security:   WPA2/WPA3 as supported by client devices
+Password:   field-safe shared password
+Network:    LAN bridge
+```
+
+For maximum compatibility with older laptops, WPA2-Personal may be the safest option.
+
+## OpenWrt LAN Bridge
+
+The OpenWrt LAN bridge should include:
+
+- wired LAN ports used by clients
+- Wi-Fi interfaces used by clients
+- the port connected to the Raspberry Pi
+
+The exact OpenWrt interface names may vary depending on version/build.
+
+## Management Access
+
+From a PCS client:
+
+```text
+http://10.42.0.2
+```
+
+From the Pi:
+
+```bash
+ping 10.42.0.2
+```
 
 Expected:
 
-eth0 connected pcs-router-wan-share
-pcs-router-wan-share autoconnect yes
-netplan-eth0 autoconnect no
-eth0 has 10.42.0.1/24
+```text
+10.42.0.2 replies
+```
 
-From a Windows client connected to the Linksys Wi-Fi:
+## Client Test
 
+From a Windows client connected to the EA4500 Wi-Fi or Ethernet:
+
+```cmd
 ipconfig
+```
+
+Expected:
+
+```text
+IPv4 Address:      10.42.0.x
+Subnet Mask:       255.255.255.0
+Default Gateway:   10.42.0.1
+DNS Server:        10.42.0.1
+```
+
+Then test:
+
+```cmd
 ping 10.42.0.1
-ping 8.8.8.8
-ping google.com
+ping 10.42.0.2
+```
 
-Expected client settings:
+Expected:
 
-IP address: 10.42.0.x
-Gateway:    10.42.0.1
-DNS:        10.42.0.1
+```text
+10.42.0.1 replies from the Pi
+10.42.0.2 replies from the EA4500
+```
 
-If a client receives a 192.168.x.x address, the Linksys DHCP server is probably still enabled.
+Internet tests such as `ping 8.8.8.8` only work when the Pi has an active uplink.
 
-If a client receives no address, verify that eth0 is connected using pcs-router-wan-share.
+## Important Notes
+
+The EA4500 may show no internet access in OpenWrt or client devices if the Pi cellular/uplink connection is disabled.
+
+That is not necessarily a failure.
+
+PCS is designed to work as an offline LAN server even without internet.

@@ -119,7 +119,7 @@ This is still useful as a bootstrap step.
 Creates the SD-card backup share:
 
 ```text
-\\10.42.0.1\PCS-Backup → /srv/pcs-share-backup
+\\10.42.0.1\PCS-Backup -> /srv/pcs-share-backup
 ```
 
 ### setup-usb-primary-share.sh
@@ -127,7 +127,7 @@ Creates the SD-card backup share:
 Configures removable USB storage as the primary Samba share:
 
 ```text
-\\10.42.0.1\PCS-Share → /mnt/pcs-usb/PCS-Share
+\\10.42.0.1\PCS-Share -> /mnt/pcs-usb/PCS-Share
 ```
 
 Default USB UUID:
@@ -167,7 +167,7 @@ Mirrors the USB primary share to the SD-card backup share.
 Sync direction:
 
 ```text
-/mnt/pcs-usb/PCS-Share → /srv/pcs-share-backup
+/mnt/pcs-usb/PCS-Share -> /srv/pcs-share-backup
 ```
 
 Warning: this is a mirror-style sync. Files deleted from the USB primary share may also be deleted from the backup mirror.

@@ -9,7 +9,7 @@ This document is a planning/reference document. Final wiring should be checked a
 PCS is planned to support two power sources:
 
 ```text
-12–24 VDC input via Anderson Powerpole
+12-24 VDC input via Anderson Powerpole
 120 VAC input via fused/switched IEC C14 inlet
 ```
 
@@ -17,17 +17,17 @@ PCS is planned to support two power sources:
 
 ```text
 DC input / AC-derived 12 V
-        ↓
+        |
 Source select switch
-        ↓
+        |
 12 V internal bus
-        ↓
+        |
 Branch fusing
-        ↓
+        |
 Router / 12 V loads
-        ↓
-12 V → 5 V buck converter
-        ↓
+        |
+12 V -> 5 V buck converter
+        |
 Raspberry Pi / USB modem hardware
 ```
 
@@ -37,7 +37,7 @@ Planned DC input:
 
 ```text
 Connector: Anderson Powerpole
-Input range: 12–24 VDC
+Input range: 12-24 VDC
 ```
 
 The DC input should be fused close to the inlet.
@@ -54,7 +54,7 @@ Planned AC input:
 
 ```text
 Connector: switched/fused IEC C14 inlet
-Internal PSU: 120 VAC → 12 VDC
+Internal PSU: 120 VAC -> 12 VDC
 ```
 
 The AC input should remain physically separated from low-voltage DC wiring inside the enclosure.
@@ -122,7 +122,7 @@ Rough current estimates:
 Raspberry Pi 4:      ~1.5 A typical at 5 V
 WWAN USB adapter:    ~0.8 A peak at 5 V
 Router/AP:           TBD
-Estimated 5 V total: ~2.5–3.0 A
+Estimated 5 V total: ~2.5-3.0 A
 ```
 
 These are planning estimates. Final fuse sizing should be based on actual measured current draw and device ratings.

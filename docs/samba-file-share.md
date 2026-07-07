@@ -16,8 +16,8 @@ PCS currently provides two Samba shares:
 Filesystem mapping:
 
 ```text
-PCS-Share   → /mnt/pcs-usb/PCS-Share
-PCS-Backup  → /srv/pcs-share-backup
+PCS-Share   -> /mnt/pcs-usb/PCS-Share
+PCS-Backup  -> /srv/pcs-share-backup
 ```
 
 ## Share Roles
@@ -125,7 +125,7 @@ Run:
 Sync direction:
 
 ```text
-/mnt/pcs-usb/PCS-Share → /srv/pcs-share-backup
+/mnt/pcs-usb/PCS-Share -> /srv/pcs-share-backup
 ```
 
 Warning: this is mirror-style sync.

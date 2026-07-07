@@ -47,11 +47,11 @@ The core PCS software baseline is working and rebuild-tested.
 
 Currently working:
 
-- Reliable post reboot behavior - The whole PCS system starts up with no user input when the Pi is powered.
-- Browser accessable PCS control panel at `10.42.0.1` with redirect for port 80
+- Reliable post-reboot behavior - The whole PCS system starts up with no user input when the Pi is powered.
+- Browser-accessible PCS control panel at `10.42.0.1` with redirect for port 80
 - Pi-side self-test/status scripts
 - Client LAN/AP handoff through the Pi's ethernet interface
-- Linksys EA4500 OpenWRT operating as the AP/switch 
+- Linksys EA4500 OpenWrt operating as the AP/switch
 - USB primary Samba share with SD-card backup mirror
 - Chrony LAN NTP Server
 - I2C RTC support
@@ -134,6 +134,7 @@ Open the PCS Control Panel:
 
 ```text
 http://10.42.0.1:8080
+```
 
 ## Expected Hardware / Network State
 
@@ -141,13 +142,13 @@ Current tested network layout:
 
 ```text
 Client devices
-    ↓ Wi-Fi / LAN
-Access point / switch
-    ↓ LAN port
+    | Wi-Fi / LAN
+Linksys EA4500 OpenWrt AP / switch
+    | LAN port
 Raspberry Pi eth0 - 10.42.0.1/24
-    ↓
-Raspberry Pi uplink - wlan0 currently, cellular data manual/optional
-    ↓
+    |
+Raspberry Pi uplink - wlan0 during testing, cellular data manual/optional
+    |
 Internet
 ```
 
@@ -157,7 +158,7 @@ Expected access point settings:
 AP/router DHCP:    disabled
 AP/router LAN IP:  10.42.0.2
 Pi eth0:           10.42.0.1
-Cable:             Pi eth0 → AP/router LAN port
+Cable:             Pi eth0 -> EA4500 LAN port
 ```
 
 The access point may claim it has no internet access. That is expected if the cellular profile is disabled or does not have service. Internet access is intentionally optional with PCS.
@@ -227,8 +228,8 @@ For more detail, see [PCS Control Panel](docs/pcs-control-panel.md) and [Samba F
 ## Current Storage Layout
 
 ```text
-\\10.42.0.1\PCS-Share   → /mnt/pcs-usb/PCS-Share
-\\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
+\\10.42.0.1\PCS-Share   -> /mnt/pcs-usb/PCS-Share
+\\10.42.0.1\PCS-Backup  -> /srv/pcs-share-backup
 ```
 
 `PCS-Share` is the primary field share on removable USB storage.
@@ -262,7 +263,7 @@ Current tested hardware:
 - Raspberry Pi 4
 - RTC module
 - USB flash drive
-- Linksys EA4500 running OpenWRT used as AP/switch
+- Linksys EA4500 running OpenWrt used as AP/switch
 - Sierra Wireless EM7455 and EM7565 cellular modems
 
 Planned hardware:

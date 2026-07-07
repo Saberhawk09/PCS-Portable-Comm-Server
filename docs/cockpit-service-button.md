@@ -12,7 +12,7 @@ The service is:
 
 In Cockpit, open:
 
-    Services → pcs-restart-services.service → Start
+    Services -> pcs-restart-services.service -> Start
 
 Because this is a one-shot service, it normally appears as inactive after it finishes. That is expected.
 
@@ -24,7 +24,7 @@ The restart script handles:
 - Chrony
 - ModemManager
 - Avahi
-- Router WAN handoff profile
+- PCS LAN/AP handoff profile
 
 It intentionally avoids restarting NetworkManager and Cockpit itself to reduce the chance of breaking remote access.
 

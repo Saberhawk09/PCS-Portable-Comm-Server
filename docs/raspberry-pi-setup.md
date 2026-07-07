@@ -117,7 +117,7 @@ NTP Server:        10.42.0.1
 Physical connection:
 
 ```text
-Raspberry Pi eth0 → Linksys EA4500 LAN port
+Raspberry Pi eth0 -> Linksys EA4500 LAN port
 ```
 
 The access point should have DHCP disabled. The Pi should be the only DHCP server on the PCS LAN.
@@ -141,8 +141,8 @@ OpenWrt AP:         http://10.42.0.2
 Current Samba storage:
 
 ```text
-\\10.42.0.1\PCS-Share   → /mnt/pcs-usb/PCS-Share
-\\10.42.0.1\PCS-Backup  → /srv/pcs-share-backup
+\\10.42.0.1\PCS-Share   -> /mnt/pcs-usb/PCS-Share
+\\10.42.0.1\PCS-Backup  -> /srv/pcs-share-backup
 ```
 
 `PCS-Share` is the primary working field share on removable USB storage.
