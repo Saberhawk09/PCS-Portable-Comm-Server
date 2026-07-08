@@ -606,6 +606,7 @@ def modem_safe_info(modem_number):
         "model": "model",
         "firmware revision": "firmware",
         "h/w revision": "hardware",
+        "hardware revision": "hardware",
         "state": "state",
         "power state": "power_state",
         "access tech": "access_tech",
@@ -649,6 +650,75 @@ def modem_safe_info(modem_number):
             info[allowed[key]] = value
 
     return info
+
+def wwan_usb_info(usb_output, model_hint=""):
+    info = {
+        "id": "",
+        "description": "",
+    }
+
+    if not usb_output:
+        return info
+
+    model_hint = (model_hint or "").lower()
+    terms = [
+        "sierra",
+        "semtech",
+        "qualcomm",
+        "em7455",
+        "em7565",
+        "snapdragon",
+        "wwan",
+        "modem",
+        "mbim",
+        "qmi",
+    ]
+
+    candidates = []
+    for line in usb_output.splitlines():
+        lowered = line.lower()
+        if not any(term in lowered for term in terms):
+            continue
+
+        match = re.search(r"\bID\s+([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\s+(.+)$", line)
+        if match:
+            usb_id = match.group(1).lower()
+            description = match.group(2).strip()
+        else:
+            usb_id = ""
+            description = line.strip()
+
+        candidates.append({
+            "id": usb_id,
+            "description": description,
+            "line": line.strip(),
+        })
+
+    if not candidates:
+        return info
+
+    if model_hint and model_hint != "unknown":
+        for candidate in candidates:
+            if model_hint in candidate["description"].lower() or model_hint in candidate["line"].lower():
+                return {
+                    "id": candidate["id"],
+                    "description": candidate["description"],
+                }
+
+    preferred_terms = ["sierra", "semtech", "em7565", "em7455", "snapdragon"]
+    for candidate in candidates:
+        lowered = candidate["description"].lower()
+        if any(term in lowered for term in preferred_terms):
+            return {
+                "id": candidate["id"],
+                "description": candidate["description"],
+            }
+
+    candidate = candidates[0]
+    return {
+        "id": candidate["id"],
+        "description": candidate["description"],
+    }
 
 def gsm_nm_status():
     status = {
@@ -927,6 +997,94 @@ def modem_gps_safe_info(modem_number):
 
     return info
 
+def gpsd_nmea_safe_info():
+    info = {
+        "capabilities": "gpsd",
+        "enabled": "gpsd NMEA",
+        "signals": "unknown",
+        "refresh_rate": "unknown",
+        "gps_data": "not available",
+        "nmea": "not available",
+        "utc": "not available",
+        "coordinates": "not available",
+        "lat_lon": "not available",
+        "grid_square": "unknown",
+        "satellites": "unknown",
+        "fix_quality": "unknown",
+    }
+
+    if not shutil.which("gpspipe"):
+        return info
+
+    rc, out, _ = run(["gpspipe", "-r", "-n", "12"], timeout=6)
+    if rc != 0 or not out:
+        return info
+
+    fix_map = {
+        "0": "no fix",
+        "1": "GPS fix",
+        "2": "DGPS fix",
+        "4": "RTK fixed",
+        "5": "RTK float",
+        "6": "estimated",
+    }
+
+    for raw_line in out.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("$G"):
+            continue
+
+        info["gps_data"] = "present"
+        info["nmea"] = "present"
+
+        parts = line.split(",")
+        sentence_type = parts[0][-3:] if parts and len(parts[0]) >= 3 else ""
+
+        if sentence_type == "RMC" and len(parts) >= 10:
+            if parts[1]:
+                info["utc"] = f"{parts[1][0:2]}:{parts[1][2:4]}:{parts[1][4:6]} UTC"
+
+            if parts[2] == "A":
+                info["fix_quality"] = "active fix"
+            elif parts[2] == "V" and info["fix_quality"] == "unknown":
+                info["fix_quality"] = "no fix"
+
+            lat = nmea_coord_to_decimal(parts[3], parts[4])
+            lon = nmea_coord_to_decimal(parts[5], parts[6])
+
+            if lat is not None and lon is not None:
+                info["coordinates"] = "available"
+                info["lat_lon"] = f"{lat:.6f}, {lon:.6f}"
+                info["grid_square"] = maidenhead_grid(lat, lon)
+
+        elif sentence_type == "GGA" and len(parts) >= 8:
+            if parts[1]:
+                info["utc"] = f"{parts[1][0:2]}:{parts[1][2:4]}:{parts[1][4:6]} UTC"
+
+            fix_quality = parts[6] or "unknown"
+            satellites = parts[7] or "unknown"
+            info["fix_quality"] = fix_map.get(fix_quality, fix_quality)
+            info["satellites"] = satellites
+
+            lat = nmea_coord_to_decimal(parts[2], parts[3])
+            lon = nmea_coord_to_decimal(parts[4], parts[5])
+
+            if lat is not None and lon is not None:
+                info["coordinates"] = "available"
+                info["lat_lon"] = f"{lat:.6f}, {lon:.6f}"
+                info["grid_square"] = maidenhead_grid(lat, lon)
+
+    return info
+
+def merge_gps_info(primary, preferred):
+    empty_values = {"", "unknown", "not available"}
+
+    for key, value in preferred.items():
+        if str(value) not in empty_values:
+            primary[key] = value
+
+    return primary
+
 def public_wan_ip():
     for cmd in [
         ["curl", "-fsS", "--max-time", "5", "https://api.ipify.org"],
@@ -1198,19 +1356,37 @@ cell_ip_state = cellular_ip_assignment_state(cell_nm.get("ip_iface"))
 cell_profile_present = cellular_profile_exists()
 cell_route_metric = cellular_route_metric()
 gpsd_active = active("gpsd")
-gps_info = modem_gps_safe_info(modem_number)
+gps_info = merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info())
 
 usb_rc, usb_out, _ = run(["lsusb"], timeout=5)
 usb_lower = usb_out.lower()
+wwan_usb = wwan_usb_info(usb_out, cell_info.get("model", ""))
 
 wwan_usb_present = any(term in usb_lower for term in [
     "sierra",
+    "semtech",
     "qualcomm",
+    "em7455",
+    "em7565",
+    "snapdragon",
     "wwan",
     "modem",
     "mbim",
     "qmi",
 ])
+
+if wwan_usb.get("description"):
+    model_value = cell_info.get("model", "unknown")
+    model_lower = str(model_value).lower()
+    usb_description = wwan_usb["description"]
+
+    if model_lower in {"", "unknown"} or (
+        len(str(model_value)) <= 12 and model_lower in usb_description.lower()
+    ):
+        cell_info["model"] = usb_description
+
+    if cell_info.get("hardware", "unknown") == "unknown" and wwan_usb.get("id"):
+        cell_info["hardware"] = f"USB {wwan_usb['id']}"
 
 gps_device_candidates = [
     "/dev/ttyACM0",
@@ -1462,7 +1638,10 @@ cards = [
             {"label": "Fix quality", "value": gps_info.get("fix_quality", "unknown")},
             {"label": "Satellites", "value": gps_info.get("satellites", "unknown")},
             {"label": "Chrony GPS source", "value": "present" if chrony_gps_source_present else "not shown"},
-            {"label": "ModemManager GPS", "value": gps_info.get("enabled", "unknown")},
+            {
+                "label": "Dashboard GPS source",
+                "value": "gpsd NMEA" if gps_info.get("nmea") == "present" else f"ModemManager {gps_info.get('enabled', 'unknown')}",
+            },
         ],
     },
 
@@ -1558,7 +1737,7 @@ cellular_safe_status() {
         echo
         echo "--- Safe modem summary ---"
         mmcli -m "${modem_num}" 2>/dev/null \
-            | grep -Ei "manufacturer:|model:|firmware revision:|h/w revision:|state:|power state:|access tech:|signal quality:|operator name:|registration:|packet service state:|ports:" \
+            | grep -Ei "manufacturer:|model:|firmware revision:|h/w revision:|hardware revision:|state:|power state:|access tech:|signal quality:|operator name:|registration:|packet service state:|ports:" \
             | sed -E \
                 -e 's/(equipment id: ).*/\1[REDACTED]/I' \
                 -e 's/(imei: ).*/\1[REDACTED]/I' \

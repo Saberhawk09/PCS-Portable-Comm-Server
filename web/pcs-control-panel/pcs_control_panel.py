@@ -757,7 +757,7 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
 
         @media (min-width: 1500px) {{
             .dashboard-grid {{
-                grid-template-columns: repeat(4, minmax(0, 1fr));
+                grid-template-columns: repeat(6, minmax(0, 1fr));
             }}
 
             .client-grid {{
