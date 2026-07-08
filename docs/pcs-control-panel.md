@@ -106,6 +106,7 @@ Restart PCS Services
 Restart Samba
 Sync Time Now
 Restart Chrony
+Restart GPSD
 View Restart Logs
 ```
 

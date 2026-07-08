@@ -39,6 +39,7 @@ Allowed actions:
   restart-services
   restart-samba
   restart-chrony
+  restart-gpsd
   restart-logs
 EOF
 }
@@ -1879,6 +1880,40 @@ sync_time_now() {
     chronyc sources -v || true
 }
 
+restart_gpsd_path() {
+    header "Restart GPSD / WWAN NMEA"
+
+    echo "Reasserting modem GPS/NMEA mode before restarting gpsd."
+    echo
+
+    if systemctl cat pcs-em7455-gps-nmea.service >/dev/null 2>&1; then
+        systemctl restart pcs-em7455-gps-nmea.service || true
+        systemctl status pcs-em7455-gps-nmea.service --no-pager -l || true
+    else
+        echo "WARNING: pcs-em7455-gps-nmea.service is not installed."
+    fi
+
+    echo
+    echo "--- Restarting gpsd ---"
+    systemctl restart gpsd.service
+    systemctl status gpsd.service --no-pager -l || true
+
+    echo
+    echo "--- gpsd NMEA quick check ---"
+    if command -v gpspipe >/dev/null 2>&1; then
+        if timeout 12 gpspipe -r -n 5 2>/dev/null | grep -q '^\$G'; then
+            echo "gpsd NMEA: present / location hidden"
+        else
+            echo "gpsd NMEA: not seen during quick check"
+        fi
+    else
+        echo "gpspipe is not installed; skipping quick NMEA check."
+    fi
+
+    echo
+    echo "GPSD restart complete."
+}
+
 
 wifi_uplink_connection() {
     local active_conn
@@ -2060,6 +2095,10 @@ case "${ACTION}" in
         systemctl restart chrony
         systemctl status chrony --no-pager -l || true
         chronyc tracking || true
+        ;;
+
+    restart-gpsd)
+        restart_gpsd_path
         ;;
 
     restart-logs)

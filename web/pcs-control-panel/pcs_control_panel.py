@@ -30,6 +30,7 @@ ACTIONS = [
     ("restart-samba", "Restart Samba", "Restart Samba only."),
     ("sync-time", "Sync Time Now", "Poll Chrony sources, step the system clock if needed, and update the RTC."),
     ("restart-chrony", "Restart Chrony", "Restart Chrony only."),
+    ("restart-gpsd", "Restart GPSD", "Reassert WWAN NMEA mode and restart gpsd."),
     ("restart-logs", "View Restart Logs", "Show recent PCS restart service logs."),
 ]
 
@@ -41,7 +42,7 @@ ACTION_GROUPS = [
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
     ("Storage", ["sync-backup", "mount-usb", "safe-unmount-usb"]),
     ("Services", ["restart-services", "restart-samba"]),
-    ("Time / NTP", ["sync-time", "restart-chrony"]),
+    ("Time / GPS", ["sync-time", "restart-chrony", "restart-gpsd"]),
 ]
 
 
@@ -305,7 +306,7 @@ def render_client_info(dashboard: dict) -> str:
 
 def render_action_card(name: str) -> str:
     label, desc = ACTION_MAP[name]
-    danger = name in {"safe-unmount-usb", "restart-services", "restart-samba", "restart-chrony"}
+    danger = name in {"safe-unmount-usb", "restart-services", "restart-samba", "restart-chrony", "restart-gpsd"}
     css_class = "danger" if danger else "normal"
 
     return f"""
