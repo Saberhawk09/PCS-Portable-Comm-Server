@@ -106,6 +106,8 @@ Pi eth0: 10.42.0.1/24
 
 This profile is currently used as the PCS client LAN/AP handoff.
 
+The script disables generated competing `eth0` profiles such as `netplan-eth0`, gives the PCS shared profile a higher autoconnect priority, and activates it immediately when link is present.
+
 The name still references router WAN sharing, but the current preferred topology uses the attached router/AP as a bridge/AP/switch.
 
 ## Samba Storage

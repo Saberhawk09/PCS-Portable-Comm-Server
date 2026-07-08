@@ -198,3 +198,5 @@ Useful scripts from the repository root:
 ```
 
 Note: some script names still use older wording such as `router-wan-share`. In the current design, this refers to the PCS LAN/client handoff path through the Pi Ethernet interface.
+
+On fresh installs, Raspberry Pi OS may create a generated `netplan-eth0` NetworkManager profile. The setup script disables that competing profile and activates `pcs-router-wan-share` so `eth0` comes up as `10.42.0.1/24` with NetworkManager shared IPv4 forwarding.
