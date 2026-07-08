@@ -162,25 +162,25 @@ The remaining hardware-dependent items are:
 - Final power system
 - Final enclosure
 
-## 2026-07-02 - EM7455 WWAN/GPS Baseline Complete
+## 2026-07-02 - WWAN/GPS Baseline Complete
 
-Validated the Dell DW5811e / Sierra Wireless EM7455 WWAN modem through the M.2 USB adapter.
+Validated the Sierra Wireless WWAN modem through the M.2 USB adapter.
 
 Working baseline:
 
-- ModemManager detects the EM7455/DW5811e modem
+- ModemManager detects the WWAN modem
 - NetworkManager has a manual T-Mobile cellular profile
 - Cellular data can be connected, disconnected, and tested from the PCS Control Panel
-- EM7455 GPS NMEA is available on /dev/ttyUSB1 at 115200 baud
-- pcs-em7455-gps-nmea.service starts the GPS NMEA stream
+- WWAN modem GPS NMEA is available on /dev/ttyUSB1 at 115200 baud
+- pcs-wwan-gps-nmea.service starts the GPS NMEA stream
 - gpsd reads /dev/ttyUSB1
 - Chrony sees the GPS source through SHM refclock 0
-- PCS dashboard shows the EM7455 NMEA to gpsd to Chrony GPS path
+- PCS dashboard shows the WWAN modem NMEA to gpsd to Chrony GPS path
 - Pi-side self-test passes with no warnings or failures
 
 Final tested GPS path:
 
-EM7455/DW5811e GPS -> /dev/ttyUSB1 NMEA -> gpsd -> Chrony -> PCS LAN NTP
+WWAN modem GPS -> /dev/ttyUSB1 NMEA -> gpsd -> Chrony -> PCS LAN NTP
 
 This replaces the earlier temporary ModemManager location bridge approach.
 

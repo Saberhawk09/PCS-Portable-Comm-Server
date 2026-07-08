@@ -33,3 +33,4 @@ private-config/
 secrets/notes/system-snapshots/
 notes/system-snapshots/
 config/local-client-names.tsv
+config/pcs-install.conf

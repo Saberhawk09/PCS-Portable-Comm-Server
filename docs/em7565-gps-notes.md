@@ -2,7 +2,7 @@
 
 This document captures the current known-good PCS GPS/GNSS behavior for the EM7565 modem path.
 
-The script names still reference EM7455 in some places, but the current PCS build has validated EM7565-style behavior using the same NMEA/gpsd/Chrony software path.
+The PCS build uses a generic WWAN NMEA/gpsd/Chrony software path for modem GPS.
 
 ## Known-Good Baseline
 

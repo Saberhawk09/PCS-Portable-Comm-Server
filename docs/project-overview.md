@@ -90,7 +90,7 @@ The current software baseline includes:
 - manual backup sync
 - Chrony LAN NTP server
 - Raspberry Pi RTC support
-- Sierra Wireless EM7455 / EM7565 modem support
+- Sierra Wireless WWAN modem support
 - WWAN GPS NMEA path
 - EM7565 active GPS antenna bias/pigtail path validated
 - gpsd support

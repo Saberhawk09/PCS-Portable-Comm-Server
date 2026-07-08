@@ -10,28 +10,33 @@ fi
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-STARTER_SRC="${REPO_DIR}/scripts/pcs-em7455-gps-nmea-start.py"
-SERVICE_SRC="${REPO_DIR}/systemd/pcs-em7455-gps-nmea.service"
+STARTER_SRC="${REPO_DIR}/scripts/pcs-wwan-gps-nmea-start.py"
+SERVICE_SRC="${REPO_DIR}/systemd/pcs-wwan-gps-nmea.service"
 
 GPSD_DEFAULT="/etc/default/gpsd"
 CHRONY_DROPIN_DIR="/etc/chrony/conf.d"
-CHRONY_DROPIN="${CHRONY_DROPIN_DIR}/pcs-em7455-gps.conf"
+CHRONY_DROPIN="${CHRONY_DROPIN_DIR}/pcs-wwan-gps.conf"
 
 echo
-echo "=== PCS EM7455 NMEA GPS to gpsd to Chrony Setup ==="
+echo "=== PCS WWAN modem NMEA GPS to gpsd to Chrony Setup ==="
 echo
 echo "This configures:"
-echo "  - EM7455/DW5811e GPS NMEA on /dev/ttyUSB1"
+echo "  - WWAN modem GPS NMEA on /dev/ttyUSB1"
 echo "  - gpsd reading /dev/ttyUSB1"
 echo "  - Chrony reading gpsd SHM refclock 0"
 echo
 echo "This does not change AT!USBCOMP."
 echo
 
-read -r -p "Continue with EM7455 NMEA GPS setup? [y/N] " answer
+if [[ "${PCS_ASSUME_YES:-}" == "1" || "${PCS_WWAN_GPS_CONFIRM:-}" == "yes" ]]; then
+    answer="yes"
+    echo "Continue with WWAN modem NMEA GPS setup? [Y/N] yes"
+else
+    read -r -p "Continue with WWAN modem NMEA GPS setup? [Y/N] " answer
+fi
 
 case "${answer}" in
-    y|Y|yes|YES)
+    y|Y|yes|YES|Yes)
         ;;
     *)
         echo "Aborted."
@@ -45,16 +50,16 @@ sudo apt update
 sudo apt install -y gpsd gpsd-clients chrony
 
 echo
-echo "--- Installing EM7455 GPS starter ---"
-sudo install -o root -g root -m 0755 "${STARTER_SRC}" /usr/local/sbin/pcs-em7455-gps-nmea-start.py
-sudo install -o root -g root -m 0644 "${SERVICE_SRC}" /etc/systemd/system/pcs-em7455-gps-nmea.service
+echo "--- Installing WWAN modem GPS starter ---"
+sudo install -o root -g root -m 0755 "${STARTER_SRC}" /usr/local/sbin/pcs-wwan-gps-nmea-start.py
+sudo install -o root -g root -m 0644 "${SERVICE_SRC}" /etc/systemd/system/pcs-wwan-gps-nmea.service
 
 echo
 echo "--- Configuring gpsd ---"
-sudo cp "${GPSD_DEFAULT}" "${GPSD_DEFAULT}.pcs-em7455.bak.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+sudo cp "${GPSD_DEFAULT}" "${GPSD_DEFAULT}.pcs-wwan.bak.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
 
 sudo tee "${GPSD_DEFAULT}" >/dev/null <<'EOF'
-# PCS EM7455/DW5811e GPS configuration
+# PCS WWAN modem GPS configuration
 START_DAEMON="true"
 GPSD_OPTIONS="-n"
 DEVICES="/dev/ttyUSB1"
@@ -67,7 +72,7 @@ echo "--- Configuring Chrony gpsd SHM source ---"
 sudo mkdir -p "${CHRONY_DROPIN_DIR}"
 
 sudo tee "${CHRONY_DROPIN}" >/dev/null <<'EOF'
-# PCS EM7455/DW5811e GPS via gpsd
+# PCS WWAN modem GPS via gpsd
 # gpsd publishes NMEA time to SHM 0.
 # This is GPS NMEA timing without PPS.
 refclock SHM 0 refid GPS precision 1e-1 poll 4 delay 0.2
@@ -85,7 +90,7 @@ sudo systemctl stop gpsd.service 2>/dev/null || true
 echo
 echo "--- Enable services ---"
 sudo systemctl enable ModemManager
-sudo systemctl enable pcs-em7455-gps-nmea.service
+sudo systemctl enable pcs-wwan-gps-nmea.service
 sudo systemctl enable gpsd.service
 
 echo
@@ -203,8 +208,8 @@ fi
 
 echo "--- Start GPS starter, gpsd, and Chrony ---"
 sudo systemctl restart chrony
-sudo systemctl reset-failed pcs-em7455-gps-nmea.service 2>/dev/null || true
-sudo systemctl restart pcs-em7455-gps-nmea.service
+sudo systemctl reset-failed pcs-wwan-gps-nmea.service 2>/dev/null || true
+sudo systemctl restart pcs-wwan-gps-nmea.service
 sudo systemctl restart gpsd.service
 
 echo
@@ -212,8 +217,8 @@ echo "--- Waiting for gpsd and Chrony samples ---"
 sleep 45
 
 echo
-echo "--- EM7455 GPS starter status ---"
-systemctl status pcs-em7455-gps-nmea.service --no-pager -l || true
+echo "--- WWAN modem GPS starter status ---"
+systemctl status pcs-wwan-gps-nmea.service --no-pager -l || true
 
 echo
 echo "--- gpsd status ---"
@@ -293,4 +298,4 @@ echo "--- Chrony tracking ---"
 chronyc tracking || true
 
 echo
-echo "=== PCS EM7455 NMEA GPS setup complete ==="
+echo "=== PCS WWAN modem NMEA GPS setup complete ==="

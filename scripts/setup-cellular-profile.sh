@@ -2,9 +2,17 @@
 
 set -Eeuo pipefail
 
-CONNECTION_NAME="pcs-cellular-tmobile"
-CELLULAR_APN="fast.t-mobile.com"
-ROUTE_METRIC="900"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
+
+if [[ -f "${INSTALL_CONFIG}" ]]; then
+    # shellcheck source=/dev/null
+    source "${INSTALL_CONFIG}"
+fi
+
+CONNECTION_NAME="${PCS_CELLULAR_PROFILE:-pcs-cellular-profile}"
+CELLULAR_APN="${PCS_CELLULAR_APN:-fast.t-mobile.com}"
+ROUTE_METRIC="${PCS_CELLULAR_ROUTE_METRIC:-900}"
 
 echo
 echo "=== PCS Cellular Profile Setup ==="
@@ -26,7 +34,7 @@ echo "  Name: ${CONNECTION_NAME}"
 echo "  APN:  ${CELLULAR_APN}"
 echo
 
-if nmcli -t -f NAME connection show | grep -qx "${CONNECTION_NAME}"; then
+if nmcli -t -f NAME connection show | grep -Fxq -- "${CONNECTION_NAME}"; then
     echo "Existing ${CONNECTION_NAME} profile found. Updating it..."
 else
     echo "Creating ${CONNECTION_NAME} profile..."

@@ -52,19 +52,19 @@ Configures the Raspberry Pi RTC overlay and I2C support.
 ./scripts/setup-rtc.sh
 ```
 
-### setup-em7455-gps-nmea.sh
+### setup-wwan-gps-nmea.sh
 
-Configures the tested EM7455 / EM7565-style GPS path:
+Configures the tested WWAN modem-style GPS path:
 
-EM7455/EM7565 -> /dev/ttyUSB1 NMEA -> gpsd -> Chrony
+WWAN modem -> /dev/ttyUSB1 NMEA -> gpsd -> Chrony
 
 Run after the WWAN USB adapter, modem, and GPS antenna are installed:
 
-./scripts/setup-em7455-gps-nmea.sh
+./scripts/setup-wwan-gps-nmea.sh
 
 This installs/configures:
 
-- pcs-em7455-gps-nmea.service
+- pcs-wwan-gps-nmea.service
 - gpsd on /dev/ttyUSB1
 - Chrony SHM refclock 0 for GPS-backed LAN NTP
 
@@ -72,9 +72,9 @@ It does not change AT!USBCOMP.
 
 For EM7565 GPS troubleshooting, check for active antenna bias at the GPS SMA. The known-good PCS bench setup measured about 3.1-3.3 V. If NMEA is present but GPS cannot get a fix, check `AT+WANT=1`, GPSSEL/RF path selection, and the MHF4-to-SMA pigtail before changing gpsd or Chrony.
 
-### pcs-em7455-gps-nmea-start.py
+### pcs-wwan-gps-nmea-start.py
 
-Helper used by pcs-em7455-gps-nmea.service.
+Helper used by pcs-wwan-gps-nmea.service.
 
 It enables modem GPS through ModemManager, sends GPS_START to /dev/ttyUSB1, and verifies that NMEA output is present. It hides live location in service logs.
 
@@ -115,10 +115,16 @@ The name still references router WAN sharing, but the current preferred topology
 Creates or updates the manual T-Mobile cellular profile:
 
 ```text
-pcs-cellular-tmobile
+pcs-cellular-profile
 ```
 
 The profile uses APN `fast.t-mobile.com`, route metric `900`, and autoconnect disabled. Cellular data is connected manually from the PCS Control Panel.
+
+Fresh installs default to `pcs-cellular-profile`. Override the name, APN, or
+route metric in `config/pcs-install.conf` with `PCS_CELLULAR_PROFILE`,
+`PCS_CELLULAR_APN`, and `PCS_CELLULAR_ROUTE_METRIC`. Older installs that still
+have `pcs-cellular-tmobile` remain supported by the status, self-test, and web
+action scripts.
 
 ## Samba Storage
 

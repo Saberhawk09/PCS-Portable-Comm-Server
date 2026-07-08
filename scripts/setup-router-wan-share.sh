@@ -37,10 +37,15 @@ echo
 echo "This does not modify Wi-Fi credentials or cellular settings."
 echo
 
-read -r -p "Continue? [y/N] " answer
+if [[ "${PCS_ASSUME_YES:-}" == "1" || "${PCS_ROUTER_WAN_SHARE_CONFIRM:-}" == "yes" ]]; then
+    answer="yes"
+    echo "Continue? [Y/N] yes"
+else
+    read -r -p "Continue? [Y/N] " answer
+fi
 
 case "${answer}" in
-    y|Y|yes|YES)
+    y|Y|yes|YES|Yes)
         ;;
     *)
         echo "Aborted."

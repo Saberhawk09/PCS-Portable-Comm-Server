@@ -7,6 +7,18 @@ USB_MOUNT="/mnt/pcs-usb"
 PRIMARY_SHARE="/mnt/pcs-usb/PCS-Share"
 BACKUP_SHARE="/srv/pcs-share-backup"
 PCS_USER="pi"
+INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
+
+if [[ -f "${INSTALL_CONFIG}" ]]; then
+    # shellcheck source=/dev/null
+    source "${INSTALL_CONFIG}"
+fi
+
+CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
+LEGACY_CELLULAR_PROFILE="pcs-cellular-tmobile"
+CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${CELLULAR_PROFILE_DEFAULT}}"
+CELLULAR_APN="${PCS_CELLULAR_APN:-fast.t-mobile.com}"
+CELLULAR_ROUTE_METRIC="${PCS_CELLULAR_ROUTE_METRIC:-900}"
 
 ACTION="${1:-}"
 
@@ -49,6 +61,23 @@ ensure_repo() {
         echo "ERROR: repo directory missing: ${REPO_DIR}"
         exit 1
     fi
+}
+
+cellular_profile_name() {
+    local configured="${CELLULAR_PROFILE:-${CELLULAR_PROFILE_DEFAULT}}"
+
+    if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${configured}"; then
+        echo "${configured}"
+        return 0
+    fi
+
+    if [[ "${configured}" != "${LEGACY_CELLULAR_PROFILE}" ]] \
+        && nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${LEGACY_CELLULAR_PROFILE}"; then
+        echo "${LEGACY_CELLULAR_PROFILE}"
+        return 0
+    fi
+
+    echo "${configured}"
 }
 
 ensure_usb_mounted() {
@@ -223,14 +252,47 @@ dashboard_json() {
 import json
 import os
 import re
+import shlex
 import time
 import shutil
 import subprocess
 from datetime import datetime
 
+INSTALL_CONFIG = "/home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf"
 USB_MOUNT = "/mnt/pcs-usb"
 PRIMARY_SHARE = "/mnt/pcs-usb/PCS-Share"
 BACKUP_SHARE = "/srv/pcs-share-backup"
+CELLULAR_PROFILE_DEFAULT = "pcs-cellular-profile"
+LEGACY_CELLULAR_PROFILE = "pcs-cellular-tmobile"
+
+def install_config():
+    config = {}
+
+    try:
+        with open(INSTALL_CONFIG, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+
+                key, raw_value = stripped.split("=", 1)
+                key = key.strip()
+
+                try:
+                    parts = shlex.split(raw_value, comments=False, posix=True)
+                    value = parts[0] if parts else ""
+                except Exception:
+                    value = raw_value.strip().strip("\"'")
+
+                if key:
+                    config[key] = value
+    except Exception:
+        pass
+
+    return config
+
+CONFIG = install_config()
+CELLULAR_PROFILE = CONFIG.get("PCS_CELLULAR_PROFILE", CELLULAR_PROFILE_DEFAULT)
 
 def run(cmd, timeout=8):
     try:
@@ -314,6 +376,23 @@ def nm_device_connected(device, expected_connection=None):
                 return state == "connected" and connection == expected_connection, connection
             return state == "connected", connection
     return False, ""
+
+def nm_profile_names():
+    rc, out, _ = run(["nmcli", "-t", "-f", "NAME", "connection", "show"], timeout=5)
+    if rc != 0:
+        return []
+    return out.splitlines()
+
+def cellular_profile_name():
+    names = nm_profile_names()
+
+    if CELLULAR_PROFILE in names:
+        return CELLULAR_PROFILE
+
+    if CELLULAR_PROFILE != LEGACY_CELLULAR_PROFILE and LEGACY_CELLULAR_PROFILE in names:
+        return LEGACY_CELLULAR_PROFILE
+
+    return CELLULAR_PROFILE
 
 def ip_has_address(device, cidr):
     rc, out, _ = run(["ip", "-4", "addr", "show", "dev", device], timeout=4)
@@ -665,7 +744,7 @@ def wwan_usb_info(usb_output, model_hint=""):
         "sierra",
         "semtech",
         "qualcomm",
-        "em7455",
+        "wwan",
         "em7565",
         "snapdragon",
         "wwan",
@@ -705,7 +784,7 @@ def wwan_usb_info(usb_output, model_hint=""):
                     "description": candidate["description"],
                 }
 
-    preferred_terms = ["sierra", "semtech", "em7565", "em7455", "snapdragon"]
+    preferred_terms = ["sierra", "semtech", "em7565", "wwan", "snapdragon"]
     for candidate in candidates:
         lowered = candidate["description"].lower()
         if any(term in lowered for term in preferred_terms):
@@ -777,13 +856,10 @@ def cellular_ip_assignment_state(ip_iface):
 
     return f"{ip_iface}: no IP assigned"
 
-def cellular_profile_exists(profile_name="pcs-cellular-tmobile"):
-    rc, out, _ = run(["nmcli", "-t", "-f", "NAME", "connection", "show"], timeout=5)
-    if rc != 0:
-        return False
-    return profile_name in out.splitlines()
+def cellular_profile_exists(profile_name):
+    return profile_name in nm_profile_names()
 
-def cellular_route_metric(profile_name="pcs-cellular-tmobile"):
+def cellular_route_metric(profile_name):
     if not cellular_profile_exists(profile_name):
         return "profile missing"
 
@@ -1490,8 +1566,9 @@ modem_number = modem_number_from_list(mm_out)
 cell_info = modem_safe_info(modem_number)
 cell_nm = gsm_nm_status()
 cell_ip_state = cellular_ip_assignment_state(cell_nm.get("ip_iface"))
-cell_profile_present = cellular_profile_exists()
-cell_route_metric = cellular_route_metric()
+cell_profile_name = cellular_profile_name()
+cell_profile_present = cellular_profile_exists(cell_profile_name)
+cell_route_metric = cellular_route_metric(cell_profile_name)
 gpsd_active = active("gpsd")
 gps_info = merge_gps_info(merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
 
@@ -1503,7 +1580,7 @@ wwan_usb_present = any(term in usb_lower for term in [
     "sierra",
     "semtech",
     "qualcomm",
-    "em7455",
+    "wwan",
     "em7565",
     "snapdragon",
     "wwan",
@@ -1775,7 +1852,7 @@ cards = [
         ),
         "items": [
             {"label": "GPS path", "value": "WWAN NMEA -> gpsd -> Chrony"},
-            {"label": "Starter service", "value": "active/exited" if active("pcs-em7455-gps-nmea") else "inactive or missing"},
+            {"label": "Starter service", "value": "active/exited" if active("pcs-wwan-gps-nmea") else "inactive or missing"},
             {"label": "NMEA port", "value": "/dev/ttyUSB1 present" if os.path.exists("/dev/ttyUSB1") else "/dev/ttyUSB1 missing"},
             {"label": "gpsd", "value": "active" if gpsd_active else "inactive"},
             {"label": "NMEA", "value": gps_info.get("nmea", "unknown")},
@@ -1901,12 +1978,14 @@ cellular_safe_status() {
 
     echo
     echo "--- Cellular profile ---"
-    if nmcli -t -f NAME connection show | grep -qx "pcs-cellular-tmobile"; then
-        nmcli connection show "pcs-cellular-tmobile" \
+    local cell_con
+    cell_con="$(cellular_profile_name)"
+    if nmcli -t -f NAME connection show | grep -Fxq -- "${cell_con}"; then
+        nmcli connection show "${cell_con}" \
             | grep -E "connection.id|connection.autoconnect|gsm.apn|ipv4.method|ipv6.method|ipv4.route-metric|ipv6.route-metric" \
             || true
     else
-        echo "pcs-cellular-tmobile profile does not exist yet"
+        echo "${cell_con} profile does not exist yet"
     fi
 
     echo
@@ -1932,23 +2011,23 @@ cellular_safe_status() {
 }
 
 cellular_ensure_profile() {
-    local cell_con="pcs-cellular-tmobile"
-    local cell_apn="fast.t-mobile.com"
+    local cell_con
+    cell_con="$(cellular_profile_name)"
 
-    if nmcli -t -f NAME connection show | grep -qx "${cell_con}"; then
+    if nmcli -t -f NAME connection show | grep -Fxq -- "${cell_con}"; then
         echo "Connection ${cell_con} already exists. Updating it."
     else
         echo "Creating connection ${cell_con}."
-        nmcli connection add type gsm ifname "*" con-name "${cell_con}" apn "${cell_apn}"
+        nmcli connection add type gsm ifname "*" con-name "${cell_con}" apn "${CELLULAR_APN}"
     fi
 
     nmcli connection modify "${cell_con}" \
-        gsm.apn "${cell_apn}" \
+        gsm.apn "${CELLULAR_APN}" \
         connection.autoconnect no \
         ipv4.method auto \
         ipv6.method auto \
-        ipv4.route-metric 900 \
-        ipv6.route-metric 900
+        ipv4.route-metric "${CELLULAR_ROUTE_METRIC}" \
+        ipv6.route-metric "${CELLULAR_ROUTE_METRIC}"
 }
 
 cellular_nm_state() {
@@ -1994,13 +2073,14 @@ cellular_connection_up() {
 }
 
 cellular_connect() {
-    local cell_con="pcs-cellular-tmobile"
+    local cell_con
     local cell_iface
     local gsm_state
 
     echo "=== PCS Cellular Connect ==="
     echo
     cellular_ensure_profile
+    cell_con="$(cellular_profile_name)"
 
     echo
     gsm_state="$(cellular_nm_state)"
@@ -2054,7 +2134,8 @@ cellular_connect() {
 }
 
 cellular_disconnect() {
-    local cell_con="pcs-cellular-tmobile"
+    local cell_con
+    cell_con="$(cellular_profile_name)"
 
     echo "=== PCS Cellular Disconnect ==="
     echo
@@ -2212,11 +2293,11 @@ restart_gpsd_path() {
     echo "Reasserting modem GPS/NMEA mode before restarting gpsd."
     echo
 
-    if systemctl cat pcs-em7455-gps-nmea.service >/dev/null 2>&1; then
-        systemctl restart pcs-em7455-gps-nmea.service || true
-        systemctl status pcs-em7455-gps-nmea.service --no-pager -l || true
+    if systemctl cat pcs-wwan-gps-nmea.service >/dev/null 2>&1; then
+        systemctl restart pcs-wwan-gps-nmea.service || true
+        systemctl status pcs-wwan-gps-nmea.service --no-pager -l || true
     else
-        echo "WARNING: pcs-em7455-gps-nmea.service is not installed."
+        echo "WARNING: pcs-wwan-gps-nmea.service is not installed."
     fi
 
     echo

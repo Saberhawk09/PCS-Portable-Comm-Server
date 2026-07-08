@@ -22,6 +22,35 @@ PCS_CONTROL_URL="http://10.42.0.1:8080"
 PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
 PCS_DASHBOARD_REDIRECT_URL="http://10.42.0.1"
 
+REPO_DIR="/home/pi/Projects/PCS-Portable-Comm-Server"
+INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
+
+if [[ -f "${INSTALL_CONFIG}" ]]; then
+    # shellcheck source=/dev/null
+    source "${INSTALL_CONFIG}"
+fi
+
+PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
+PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
+PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
+
+pcs_cellular_profile_name() {
+    local configured="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
+
+    if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${configured}"; then
+        echo "${configured}"
+        return 0
+    fi
+
+    if [[ "${configured}" != "${PCS_CELLULAR_PROFILE_LEGACY}" ]] \
+        && nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_PROFILE_LEGACY}"; then
+        echo "${PCS_CELLULAR_PROFILE_LEGACY}"
+        return 0
+    fi
+
+    echo "${configured}"
+}
+
 echo "=== PCS System Status ==="
 echo
 
@@ -178,12 +207,13 @@ fi
 
 echo
 echo "[Cellular profile]"
-if nmcli -t -f NAME connection show 2>/dev/null | grep -qx "pcs-cellular-tmobile"; then
-    nmcli connection show "pcs-cellular-tmobile" \
+PCS_CELLULAR_PROFILE_ACTIVE="$(pcs_cellular_profile_name)"
+if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_PROFILE_ACTIVE}"; then
+    nmcli connection show "${PCS_CELLULAR_PROFILE_ACTIVE}" \
         | grep -E "connection.id|connection.autoconnect|gsm.apn|ipv4.method|ipv6.method|ipv4.route-metric|ipv6.route-metric" \
         || true
 else
-    echo "pcs-cellular-tmobile profile does not exist"
+    echo "${PCS_CELLULAR_PROFILE_ACTIVE} profile does not exist"
 fi
 
 echo
@@ -214,20 +244,20 @@ fi
 echo
 echo "--- GPS / GNSS ---"
 
-echo "[EM7455 GPS NMEA starter]"
-if systemctl is-enabled --quiet pcs-em7455-gps-nmea.service 2>/dev/null; then
-    echo "pcs-em7455-gps-nmea.service enabled: yes"
+echo "[WWAN modem GPS NMEA starter]"
+if systemctl is-enabled --quiet pcs-wwan-gps-nmea.service 2>/dev/null; then
+    echo "pcs-wwan-gps-nmea.service enabled: yes"
 else
-    echo "pcs-em7455-gps-nmea.service enabled: no"
+    echo "pcs-wwan-gps-nmea.service enabled: no"
 fi
 
-if systemctl is-active --quiet pcs-em7455-gps-nmea.service 2>/dev/null; then
-    echo "pcs-em7455-gps-nmea.service state: active/exited"
+if systemctl is-active --quiet pcs-wwan-gps-nmea.service 2>/dev/null; then
+    echo "pcs-wwan-gps-nmea.service state: active/exited"
 else
-    echo "pcs-em7455-gps-nmea.service state: inactive or missing"
+    echo "pcs-wwan-gps-nmea.service state: inactive or missing"
 fi
 
-systemctl status pcs-em7455-gps-nmea.service --no-pager -l 2>/dev/null \
+systemctl status pcs-wwan-gps-nmea.service --no-pager -l 2>/dev/null \
     | grep -E "Active:|NMEA output detected|GPS NMEA starter complete|Sent GPS_START|ModemManager modem detected" \
     || true
 
@@ -550,8 +580,8 @@ echo "- ${PCS_SHARE_NAME} is the current primary/test share."
 echo "- ${PCS_BACKUP_SHARE_NAME} is the SD-card backup mirror share."
 echo "- Run ./scripts/sync-pcs-share-to-backup.sh to manually mirror the primary share to backup."
 echo "- PCS Control Panel is available at http://${PCS_ROUTER_IP}:${PCS_CONTROL_PORT} on the router-side network."
-echo "- EM7455/DW5811e WWAN modem and GPS NMEA are supported and tested."
-echo "- GPSD is expected to be active when EM7455 GPS setup is installed."
+echo "- WWAN modem and GPS NMEA are supported and tested."
+echo "- GPSD is expected to be active when WWAN modem GPS setup is installed."
 echo "- Future EM7565 modem validation is still pending."
 echo
 

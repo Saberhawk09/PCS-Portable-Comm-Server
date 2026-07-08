@@ -152,7 +152,7 @@ def nmea_seen() -> bool:
 
 
 def main() -> int:
-    log("PCS EM7455 GPS NMEA starter beginning.")
+    log("PCS WWAN modem GPS NMEA starter beginning.")
 
     if not wait_for_modem():
         return 1
@@ -164,7 +164,7 @@ def main() -> int:
 
     nmea_seen()
 
-    log("PCS EM7455 GPS NMEA starter complete.")
+    log("PCS WWAN modem GPS NMEA starter complete.")
     return 0
 
 

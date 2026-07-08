@@ -2,7 +2,7 @@
 
 Known-good Sierra Wireless WWAN card settings for PCS.
 
-This document covers the known-good baseline for the Sierra Wireless EM7565 and EM7455/EM74xx family cards used with PCS. It is not meant to be a universal cellular modem guide. It records the settings that have actually worked for this project.
+This document covers the known-good baseline for the Sierra Wireless EM7565 and related WWAN cards used with PCS. It is not meant to be a universal cellular modem guide. It records the settings that have actually worked for this project.
 
 ## Current PCS WWAN design
 
@@ -34,7 +34,7 @@ LAN subnet: 10.42.0.0/24
 Pi LAN IP: 10.42.0.1
 OpenWrt AP/router IP: 10.42.0.2
 WWAN interface: wwan0
-WWAN profile: pcs-cellular-tmobile
+WWAN profile: pcs-cellular-profile
 WWAN APN: fast.t-mobile.com
 GPS NMEA port: /dev/ttyUSB1
 gpsd: active
@@ -292,22 +292,22 @@ Satellites: <n> in view / <n> used
 Chrony GPS source: present
 ```
 
-## EM7455 / EM74xx known-good baseline
+## WWAN modem / EM74xx known-good baseline
 
-The EM7455 is in the same project support family as the EM74xx/MC74xx cards and uses the older EM74xx AT command set. PCS service names still say `em7455` because the original GPS starter was written around the EM7455/DW5811e path.
+PCS uses a generic WWAN GPS service path for modem NMEA, gpsd, and Chrony.
 
 ### Hardware
 
 Known-good assumptions:
 
 ```text
-Card: Sierra Wireless EM7455 or Dell DW5811e/EM7455 variant
+Card: Sierra Wireless WWAN modem
 Mode: MBIM
 GNSS NMEA: /dev/ttyUSB1, depending on composition/host
 GPS antenna: external active GNSS antenna preferred
 ```
 
-The EM7455 uses:
+The WWAN modem uses:
 
 ```text
 W_DISABLE1#  WWAN/radio disable
@@ -340,9 +340,9 @@ AT!USBCOMP=1,1,100D
 AT!RESET
 ```
 
-On EM74xx/EM7455, config type `1` is the normal generic USB composition type.
+On EM74xx-style cards, config type `1` is the normal generic USB composition type.
 
-### Core EM7455 AT baseline
+### Core WWAN modem AT baseline
 
 ```text
 ATE1
@@ -380,7 +380,7 @@ AT!GPSNMEASENTENCE?
 !GPSNMEASENTENCE: 0xCF
 ```
 
-If the EM7455 is already working with a different sentence mask, do not change it just for fun. Use `00CF` as the PCS troubleshooting/known-good mask when gpsd/cgps fix reporting is unstable.
+If the WWAN modem is already working with a different sentence mask, do not change it just for fun. Use `00CF` as the PCS troubleshooting/known-good mask when gpsd/cgps fix reporting is unstable.
 
 ## NetworkManager cellular profile
 
@@ -389,7 +389,7 @@ PCS uses NetworkManager and ModemManager.
 Current T-Mobile known-good profile:
 
 ```text
-connection.id: pcs-cellular-tmobile
+connection.id: pcs-cellular-profile
 gsm.apn: fast.t-mobile.com
 connection.autoconnect: no
 ipv4.method: auto
@@ -398,16 +398,21 @@ ipv4.route-metric: 900
 ipv6.route-metric: 900
 ```
 
+Fresh installs default to `pcs-cellular-profile`. Older installs may still use
+the legacy `pcs-cellular-tmobile` profile name; PCS status, self-test, and web
+actions will use the legacy profile if it already exists. Override the
+fresh-install name in `config/pcs-install.conf` with `PCS_CELLULAR_PROFILE`.
+
 Manual connect:
 
 ```bash
-nmcli connection up pcs-cellular-tmobile
+nmcli connection up pcs-cellular-profile
 ```
 
 Manual disconnect:
 
 ```bash
-nmcli connection down pcs-cellular-tmobile
+nmcli connection down pcs-cellular-profile
 ```
 
 Status:
@@ -423,7 +428,7 @@ ip route
 Expected connected state:
 
 ```text
-cdc-wdm0       gsm       connected    pcs-cellular-tmobile
+cdc-wdm0       gsm       connected    pcs-cellular-profile
 wwan0          has IPv4 and/or IPv6 address
 default route  via wwan0, metric 900
 ```
@@ -452,8 +457,8 @@ cgps -s
 PCS GPS starter service:
 
 ```bash
-systemctl status pcs-em7455-gps-nmea.service --no-pager
-journalctl -u pcs-em7455-gps-nmea.service -n 80 --no-pager
+systemctl status pcs-wwan-gps-nmea.service --no-pager
+journalctl -u pcs-wwan-gps-nmea.service -n 80 --no-pager
 ```
 
 Expected starter log:
@@ -462,7 +467,7 @@ Expected starter log:
 ModemManager modem detected.
 Sent GPS_START to /dev/ttyUSB1 at 115200.
 NMEA output detected on /dev/ttyUSB1.
-PCS EM7455 GPS NMEA starter complete.
+PCS WWAN modem GPS NMEA starter complete.
 ```
 
 ## Chrony baseline
@@ -566,7 +571,7 @@ Then restart PCS GPS services on the Pi:
 ```bash
 sudo systemctl restart ModemManager
 sleep 10
-sudo systemctl restart pcs-em7455-gps-nmea.service
+sudo systemctl restart pcs-wwan-gps-nmea.service
 sleep 3
 sudo systemctl restart gpsd.socket gpsd
 sudo systemctl restart pcs-control-panel.service
@@ -640,7 +645,7 @@ AT!GPSNMEASENTENCE=00CF
 AT!RESET
 ```
 
-Known-good EM7455 GNSS setup:
+Known-good WWAN modem GNSS setup:
 
 ```text
 AT!CUSTOM="GPSENABLE",1

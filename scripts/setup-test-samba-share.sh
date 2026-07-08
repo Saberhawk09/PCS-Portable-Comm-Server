@@ -5,7 +5,8 @@ set -Eeuo pipefail
 SHARE_NAME="PCS-Share"
 SHARE_PATH="/srv/pcs-share"
 SAMBA_CONFIG="/etc/samba/smb.conf"
-PCS_USER="${SUDO_USER:-$USER}"
+PCS_USER="${PCS_SAMBA_USER:-${SUDO_USER:-$USER}}"
+PCS_SAMBA_WORKGROUP="${PCS_SAMBA_WORKGROUP:-WORKGROUP}"
 
 echo
 echo "=== PCS Samba Test Share Setup ==="
@@ -67,7 +68,12 @@ EOF
 echo
 echo "Setting Samba password for ${PCS_USER}."
 echo "Use a simple temporary password for testing if desired."
-${SUDO} smbpasswd -a "${PCS_USER}"
+if [[ -n "${PCS_SAMBA_PASSWORD:-}" ]]; then
+    printf '%s\n%s\n' "${PCS_SAMBA_PASSWORD}" "${PCS_SAMBA_PASSWORD}" \
+        | ${SUDO} smbpasswd -s -a "${PCS_USER}"
+else
+    ${SUDO} smbpasswd -a "${PCS_USER}"
+fi
 
 echo
 echo "Testing Samba config..."
@@ -80,7 +86,20 @@ ${SUDO} systemctl enable smbd >/dev/null 2>&1 || true
 
 echo
 echo "Local Samba share list:"
-smbclient -L localhost -U "${PCS_USER}" || true
+if [[ -n "${PCS_SAMBA_PASSWORD:-}" ]]; then
+    SMBCLIENT_AUTH_FILE="$(mktemp)"
+    chmod 0600 "${SMBCLIENT_AUTH_FILE}"
+    {
+        printf 'username = %s\n' "${PCS_USER}"
+        printf 'password = %s\n' "${PCS_SAMBA_PASSWORD}"
+        printf 'workgroup = %s\n' "${PCS_SAMBA_WORKGROUP}"
+    } > "${SMBCLIENT_AUTH_FILE}"
+
+    smbclient -L localhost -A "${SMBCLIENT_AUTH_FILE}" || true
+    rm -f "${SMBCLIENT_AUTH_FILE}"
+else
+    smbclient -L localhost -W "${PCS_SAMBA_WORKGROUP}" -U "${PCS_USER}" || true
+fi
 
 echo
 echo "PCS Samba test share setup complete."

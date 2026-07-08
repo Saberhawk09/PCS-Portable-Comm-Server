@@ -9,7 +9,7 @@ PRIMARY_SHARE_PATH="${USB_MOUNT}/PCS-Share"
 OLD_PRIMARY_PATH="/srv/pcs-share"
 
 SAMBA_CONFIG="/etc/samba/smb.conf"
-PCS_USER="${SUDO_USER:-$USER}"
+PCS_USER="${PCS_SAMBA_USER:-${SUDO_USER:-$USER}}"
 
 echo
 echo "=== PCS USB Primary Share Setup ==="

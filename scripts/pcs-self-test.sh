@@ -27,7 +27,36 @@ PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
 PCS_DASHBOARD_REDIRECT_PORT="80"
 PCS_DASHBOARD_REDIRECT_HEALTH_URL="http://127.0.0.1/health"
 
+REPO_DIR="/home/pi/Projects/PCS-Portable-Comm-Server"
+INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
+
+if [[ -f "${INSTALL_CONFIG}" ]]; then
+    # shellcheck source=/dev/null
+    source "${INSTALL_CONFIG}"
+fi
+
+PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
+PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
+PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
+
 TMP_FILES=()
+
+pcs_cellular_profile_name() {
+    local configured="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
+
+    if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${configured}"; then
+        echo "${configured}"
+        return 0
+    fi
+
+    if [[ "${configured}" != "${PCS_CELLULAR_PROFILE_LEGACY}" ]] \
+        && nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_PROFILE_LEGACY}"; then
+        echo "${PCS_CELLULAR_PROFILE_LEGACY}"
+        return 0
+    fi
+
+    echo "${configured}"
+}
 
 make_temp_file() {
     local tmp_file
@@ -563,10 +592,11 @@ else
     warn "No wwan0 or ppp0 cellular data interface is currently present"
 fi
 
-if nmcli -t -f NAME connection show 2>/dev/null | grep -qx "pcs-cellular-tmobile"; then
-    pass "Cellular NetworkManager profile exists: pcs-cellular-tmobile"
+PCS_CELLULAR_PROFILE_ACTIVE="$(pcs_cellular_profile_name)"
+if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_PROFILE_ACTIVE}"; then
+    pass "Cellular NetworkManager profile exists: ${PCS_CELLULAR_PROFILE_ACTIVE}"
 
-    AUTOCONNECT="$(nmcli -g connection.autoconnect connection show pcs-cellular-tmobile 2>/dev/null || true)"
+    AUTOCONNECT="$(nmcli -g connection.autoconnect connection show "${PCS_CELLULAR_PROFILE_ACTIVE}" 2>/dev/null || true)"
     if [[ "${AUTOCONNECT}" == "no" ]]; then
         pass "Cellular profile autoconnect is disabled for manual control"
     else
@@ -576,13 +606,13 @@ else
     skip "Cellular NetworkManager profile not created yet"
 fi
 
-if service_enabled pcs-em7455-gps-nmea; then
-    pass "WWAN GPS NMEA starter service is enabled: pcs-em7455-gps-nmea"
+if service_enabled pcs-wwan-gps-nmea; then
+    pass "WWAN GPS NMEA starter service is enabled: pcs-wwan-gps-nmea"
 else
-    warn "WWAN GPS NMEA starter service is not enabled: pcs-em7455-gps-nmea"
+    warn "WWAN GPS NMEA starter service is not enabled: pcs-wwan-gps-nmea"
 fi
 
-if service_active pcs-em7455-gps-nmea; then
+if service_active pcs-wwan-gps-nmea; then
     pass "WWAN GPS NMEA starter has completed successfully"
 else
     warn "WWAN GPS NMEA starter service is not active/exited"

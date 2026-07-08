@@ -57,7 +57,7 @@ Currently working:
 - Chrony LAN NTP Server
 - I2C RTC support
 - PCS Control Panel dashboard
-- Validated Sierra Wireless EM7455 and EM7565 functionality - The attached cell modem MUST be configured manually first.
+- Validated Sierra Wireless WWAN modem functionality - The attached cell modem MUST be configured manually first.
 - GPS NMEA exposed on /dev/ttyUSB1
 - /dev/ttyUSB1 NMEA Datastream -> gpsd -> Chrony -> LAN Accessable NTP Server working
 - Full SD-card wipe/rebuild repeatability test
@@ -157,7 +157,7 @@ GNSS path: /dev/ttyUSB1 -> gpsd -> Chrony -> PCS dashboard
 The current known-good PCS NetworkManager cellular profile is:
 
 ```text
-connection.id: pcs-cellular-tmobile
+connection.id: pcs-cellular-profile
 gsm.apn: fast.t-mobile.com
 connection.autoconnect: no
 ipv4.method: auto
@@ -166,13 +166,18 @@ ipv4.route-metric: 900
 ipv6.route-metric: 900
 ```
 
+Fresh installs default to `pcs-cellular-profile`. Older installs may still use
+the legacy `pcs-cellular-tmobile` profile name; PCS status, self-test, and web
+actions will use it if it is already present. Override the fresh-install name in
+`config/pcs-install.conf` with `PCS_CELLULAR_PROFILE`.
+
 Cellular connection is intentionally manual by default. The setup script may create the NetworkManager cellular profile, but PCS does not force cellular autoconnect. Use the PCS Control Panel or NetworkManager tools to connect/disconnect the modem when needed.
 
 Manual connect/disconnect from the Pi:
 
 ```bash
-nmcli connection up pcs-cellular-tmobile
-nmcli connection down pcs-cellular-tmobile
+nmcli connection up pcs-cellular-profile
+nmcli connection down pcs-cellular-profile
 ```
 
 ### Known-good EM7565 AT setup
@@ -253,9 +258,9 @@ $GARMC
 $GAGSA
 ```
 
-### Known-good EM7455 / EM74xx AT setup
+### Known-good WWAN modem / EM74xx AT setup
 
-PCS service names still reference `em7455` because the original GNSS starter was written around the EM7455/DW5811e path. The same GPS service path is also used successfully with the EM7565.
+PCS uses a generic WWAN GPS service path for modem NMEA, gpsd, and Chrony.
 
 Basic identity and unlock:
 
@@ -265,7 +270,7 @@ ATI
 AT!ENTERCND="A710"
 ```
 
-Known-good EM7455 GNSS setup:
+Known-good WWAN modem GNSS setup:
 
 ```text
 AT!CUSTOM="GPSENABLE",1
@@ -354,7 +359,7 @@ Time/Chrony: ok
 Self-test: pass, no hard failures
 ```
 
-For full EM7565 and EM7455 setup notes, including firmware notes, USB composition details, GNSS antenna bias, expected Linux device layout, and troubleshooting, see:
+For full WWAN modem setup notes, including firmware notes, USB composition details, GNSS antenna bias, expected Linux device layout, and troubleshooting, see:
 
 - [WWAN Card Setup](docs/wwan-card-setup.md)
 
@@ -470,7 +475,7 @@ Current tested hardware:
 - RTC module
 - USB flash drive
 - Linksys EA4500 running OpenWrt used as AP/switch
-- Sierra Wireless EM7455 and EM7565 cellular modems
+- Sierra Wireless WWAN cellular modems
 
 Planned hardware:
 

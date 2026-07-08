@@ -53,10 +53,10 @@ echo "WARNING:"
 echo "  Files deleted from the USB primary share will also be deleted from the SD backup mirror."
 echo
 
-read -r -p "Continue with sync? [y/N] " answer
+read -r -p "Continue with sync? [Y/N] " answer
 
 case "${answer}" in
-    y|Y|yes|YES)
+    y|Y|yes|YES|Yes)
         ;;
     *)
         echo "Aborted."

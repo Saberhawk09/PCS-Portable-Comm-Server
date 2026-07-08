@@ -190,10 +190,10 @@ The WWAN modem must be manually configured before use.
 GPS setup script:
 
 ```bash
-./scripts/setup-em7455-gps-nmea.sh
+./scripts/setup-wwan-gps-nmea.sh
 ```
 
-Despite the script name, the PCS project has validated both EM7455 and EM7565-style behavior.
+The PCS project has validated this generic WWAN GPS path with the current modem hardware.
 
 Current EM7565 GPS baseline:
 

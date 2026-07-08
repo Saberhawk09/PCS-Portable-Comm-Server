@@ -5,7 +5,7 @@ set -Eeuo pipefail
 SHARE_NAME="PCS-Backup"
 SHARE_PATH="/srv/pcs-share-backup"
 SAMBA_CONFIG="/etc/samba/smb.conf"
-PCS_USER="${SUDO_USER:-$USER}"
+PCS_USER="${PCS_SAMBA_USER:-${SUDO_USER:-$USER}}"
 
 echo
 echo "=== PCS Samba Backup Share Setup ==="
