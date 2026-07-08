@@ -69,7 +69,7 @@ def run_dispatcher(action: str, timeout: int = 300) -> tuple[int, str]:
 
 
 def get_dashboard() -> dict:
-    code, output = run_dispatcher("dashboard-json", timeout=30)
+    code, output = run_dispatcher("dashboard-json", timeout=75)
 
     if code != 0:
         return {

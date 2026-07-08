@@ -1004,7 +1004,7 @@ def modem_gps_safe_info(modem_number):
     if not modem_number:
         return info
 
-    rc, status_out, _ = run(["mmcli", "-m", modem_number, "--location-status"], timeout=10)
+    rc, status_out, _ = run(["mmcli", "-m", modem_number, "--location-status"], timeout=5)
 
     if rc == 0 and status_out:
         for line in status_out.splitlines():
@@ -1029,7 +1029,7 @@ def modem_gps_safe_info(modem_number):
             elif key == "refresh rate":
                 info["refresh_rate"] = value
 
-    rc, loc_out, _ = run(["mmcli", "-m", modem_number, "--location-get"], timeout=10)
+    rc, loc_out, _ = run(["mmcli", "-m", modem_number, "--location-get"], timeout=5)
 
     if rc == 0 and loc_out:
         lower = loc_out.lower()
@@ -1092,7 +1092,7 @@ def gpsd_nmea_safe_info():
     if not shutil.which("gpspipe"):
         return info
 
-    rc, out, _ = run(["gpspipe", "-r", "-n", "12"], timeout=6)
+    rc, out, _ = run(["gpspipe", "-r", "-n", "6"], timeout=3)
     if rc != 0 or not out:
         return info
 
@@ -1171,7 +1171,7 @@ def gpsd_json_safe_info():
     if not shutil.which("gpspipe"):
         return info
 
-    rc, out, _ = run(["gpspipe", "-w", "-n", "30"], timeout=8)
+    rc, out, _ = run(["gpspipe", "-w", "-n", "12"], timeout=4)
     if rc != 0 or not out:
         return info
 
@@ -1300,10 +1300,10 @@ def merge_gps_info(primary, preferred):
 
 def public_wan_ip():
     for cmd in [
-        ["curl", "-fsS", "--max-time", "5", "https://api.ipify.org"],
-        ["curl", "-fsS", "--max-time", "5", "https://ifconfig.me/ip"],
+        ["curl", "-fsS", "--max-time", "3", "https://api.ipify.org"],
+        ["curl", "-fsS", "--max-time", "3", "https://ifconfig.me/ip"],
     ]:
-        rc, out, _ = run(cmd, timeout=7)
+        rc, out, _ = run(cmd, timeout=4)
         if rc == 0 and out:
             return out.strip()
     return ""
