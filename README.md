@@ -34,7 +34,7 @@ Start here:
 - [Network Topology](docs/network-topology.md)
 - [Network Design](docs/network-design.md)
 - [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
-- [EM7565 GPS / GNSS Notes](docs/em7565-gps-notes.md)
+- [WWAN Card Setup](docs/wwan-card-setup.md)
 - [Samba File Share](docs/samba-file-share.md)
 - [PCS Control Panel](docs/pcs-control-panel.md)
 - [Testing Checklist](docs/testing-checklist.md)
@@ -60,13 +60,14 @@ Currently working:
 - Validated Sierra Wireless EM7455 and EM7565 functionality - The attached cell modem MUST be configured manually first.
 - GPS NMEA exposed on /dev/ttyUSB1
 - /dev/ttyUSB1 NMEA Datastream -> gpsd -> Chrony -> LAN Accessable NTP Server working
+- Full SD-card wipe/rebuild repeatability test
 
 Still planned:
 
 - Final enclosure
 - Final power system implementation using the current 24 V -> regulated 12 V -> regulated 5 V architecture
 - External LTE/GPS antenna mounting
-- Full SD-card wipe/rebuild repeatability test
+
 
 ## Main Setup
 
@@ -111,6 +112,8 @@ Expected result:
 ```text
 nothing to commit, working tree clean
 PCS Pi-side self-test PASSED.
+
+You may also see a single warning related to the cellular profile not being active. This is okay if you haven't manually activated the cellular data connection since the PCS system was installed.
 ```
 
 The self-test should show:
@@ -134,6 +137,22 @@ Open the PCS Control Panel:
 ```text
 http://10.42.0.1:8080
 ```
+
+## WWAN / Cellular Modem Setup
+
+PCS uses NetworkManager and ModemManager for cellular data, with the WWAN card expected to expose an MBIM interface and a GNSS/NMEA serial port.
+
+The current known-good PCS WWAN hardware is:
+
+```text
+Sierra Wireless EM7565
+Firmware: SWI9X50C_01.14.02.00_TMO_002.003_003
+APN: fast.t-mobile.com
+Cellular interface: cdc-wdm0 / wwan0
+GNSS NMEA port: /dev/ttyUSB1
+GNSS path: /dev/ttyUSB1 -> gpsd -> Chrony -> PCS dashboard
+
+For more info see [WWAN Card Setup](docs/wwan-card-setup.md)
 
 ## Expected Hardware / Network State
 
