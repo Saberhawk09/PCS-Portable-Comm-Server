@@ -2241,7 +2241,7 @@ restart_gpsd_path() {
 }
 
 
-wifi_uplink_connection() {
+wifi_active_connection() {
     local active_conn
     active_conn="$(nmcli -t -f DEVICE,TYPE,CONNECTION device status 2>/dev/null \
         | awk -F: '$1 == "wlan0" && $2 == "wifi" { print $3; exit }')"
@@ -2250,9 +2250,73 @@ wifi_uplink_connection() {
         echo "${active_conn}"
         return 0
     fi
+}
 
-    nmcli -t -f NAME,TYPE,AUTOCONNECT connection show 2>/dev/null \
-        | awk -F: '$2 == "wifi" && $3 == "yes" { print $1; exit }'
+wifi_saved_profile_names() {
+    nmcli -t --escape no -f NAME,TYPE connection show 2>/dev/null \
+        | awk -F: '$2 == "wifi" { print $1 }'
+}
+
+wifi_profile_ssid() {
+    local profile="$1"
+    local ssid
+
+    ssid="$(nmcli -g 802-11-wireless.ssid connection show "${profile}" 2>/dev/null | head -n 1)"
+
+    if [[ -n "${ssid}" && "${ssid}" != "--" ]]; then
+        echo "${ssid}"
+    else
+        echo "${profile}"
+    fi
+}
+
+wifi_visible_known_connection() {
+    local visible_file
+    local profile
+    local ssid
+    local line_ssid
+    local signal
+    local best_profile=""
+    local best_signal=-1
+
+    visible_file="$(mktemp)"
+    nmcli -t --escape no -f SSID,SIGNAL device wifi list ifname wlan0 --rescan no > "${visible_file}" 2>/dev/null || true
+
+    while IFS= read -r profile; do
+        [[ -n "${profile}" ]] || continue
+        ssid="$(wifi_profile_ssid "${profile}")"
+
+        while IFS=: read -r line_ssid signal _; do
+            [[ -n "${line_ssid}" ]] || continue
+            [[ "${line_ssid}" == "${ssid}" ]] || continue
+            [[ "${signal}" =~ ^[0-9]+$ ]] || continue
+
+            if (( signal > best_signal )); then
+                best_signal="${signal}"
+                best_profile="${profile}"
+            fi
+        done < "${visible_file}"
+    done < <(wifi_saved_profile_names)
+
+    rm -f "${visible_file}"
+
+    if [[ -n "${best_profile}" ]]; then
+        echo "${best_profile}"
+        return 0
+    fi
+
+    return 1
+}
+
+wifi_known_profiles_table() {
+    local profile
+    local ssid
+
+    while IFS= read -r profile; do
+        [[ -n "${profile}" ]] || continue
+        ssid="$(wifi_profile_ssid "${profile}")"
+        printf '  %s -> %s\n' "${profile}" "${ssid}"
+    done < <(wifi_saved_profile_names)
 }
 
 wifi_status() {
@@ -2274,37 +2338,62 @@ wifi_status() {
     ip route | grep '^default' || true
 
     echo
-    echo "--- Saved Wi-Fi uplink candidate ---"
-    WIFI_CONN="$(wifi_uplink_connection || true)"
-    echo "${WIFI_CONN:-none detected}"
+    echo "--- Active Wi-Fi uplink ---"
+    ACTIVE_WIFI="$(wifi_active_connection || true)"
+    echo "${ACTIVE_WIFI:-none active}"
+
+    echo
+    echo "--- Saved Wi-Fi profiles ---"
+    if wifi_saved_profile_names | grep -q .; then
+        wifi_known_profiles_table
+    else
+        echo "No saved Wi-Fi profiles were found."
+    fi
 }
 
 wifi_connect() {
     header "Connect Wi-Fi Uplink"
 
-    WIFI_CONN="$(wifi_uplink_connection || true)"
-
     echo "Turning Wi-Fi radio on..."
-    nmcli radio wifi on || true
+    nmcli radio wifi on
+    sleep 2
+
+    echo
+    echo "--- Saved Wi-Fi profiles ---"
+    if wifi_saved_profile_names | grep -q .; then
+        wifi_known_profiles_table
+    else
+        echo "ERROR: no saved Wi-Fi profiles were found."
+        echo
+        echo "Add a Wi-Fi profile with NetworkManager before using this button."
+        return 1
+    fi
+
+    echo
+    echo "--- Scanning for known access points ---"
+    nmcli --wait 15 device wifi rescan ifname wlan0 || true
     sleep 3
 
+    WIFI_CONN="$(wifi_visible_known_connection || true)"
+
     if [[ -z "${WIFI_CONN}" ]]; then
-        echo "ERROR: no saved Wi-Fi uplink connection was detected."
-        echo "Known Wi-Fi profiles:"
-        nmcli -f NAME,TYPE,AUTOCONNECT connection show | grep -E 'wifi|NAME' || true
+        echo "ERROR: none of the saved Wi-Fi profiles are currently visible."
+        echo
+        echo "Visible access points:"
+        nmcli -f SSID,SIGNAL,SECURITY device wifi list ifname wlan0 --rescan no || true
         return 1
     fi
 
     echo "Connecting Wi-Fi profile:"
     echo "  ${WIFI_CONN}"
-    nmcli connection up "${WIFI_CONN}"
+    nmcli --wait 30 connection up "${WIFI_CONN}"
 
     echo
     wifi_status
 }
 
 wifi_disconnect() {
-    header "Disconnect Wi-Fi Uplink"
+    header "Disable Wi-Fi Radio"
 
     ACTIVE_WIFI="$(nmcli -t -f DEVICE,TYPE,CONNECTION device status 2>/dev/null \
         | awk -F: '$1 == "wlan0" && $2 == "wifi" { print $3; exit }')"
@@ -2318,8 +2407,10 @@ wifi_disconnect() {
     fi
 
     echo
-    echo "Leaving Wi-Fi radio on so saved profiles can reconnect manually later."
-    echo "Use Connect Wi-Fi Uplink to bring the uplink back."
+    echo "Turning Wi-Fi radio off..."
+    nmcli radio wifi off
+    echo
+    echo "Wi-Fi radio is disabled. Use Connect Wi-Fi Uplink to scan for saved access points and turn it back on."
 
     echo
     wifi_status

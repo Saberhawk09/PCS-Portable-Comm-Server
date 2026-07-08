@@ -94,7 +94,7 @@ Run Self-Test
 View Storage
 View Wi-Fi
 Connect Wi-Fi
-Disconnect Wi-Fi
+Disable Wi-Fi Radio
 View Cellular
 Connect Cellular
 Disconnect Cellular
