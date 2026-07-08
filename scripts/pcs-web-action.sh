@@ -1076,6 +1076,143 @@ def gpsd_nmea_safe_info():
 
     return info
 
+def gpsd_json_safe_info():
+    info = {
+        "capabilities": "gpsd",
+        "enabled": "gpsd JSON",
+        "signals": "unknown",
+        "refresh_rate": "unknown",
+        "gps_data": "not available",
+        "nmea": "not available",
+        "utc": "not available",
+        "coordinates": "not available",
+        "lat_lon": "not available",
+        "grid_square": "unknown",
+        "satellites": "unknown",
+        "fix_quality": "unknown",
+    }
+
+    if not shutil.which("gpspipe"):
+        return info
+
+    rc, out, _ = run(["gpspipe", "-w", "-n", "30"], timeout=8)
+    if rc != 0 or not out:
+        return info
+
+    best_mode = 0
+    best_tpv = {}
+    best_sky = {}
+    best_sky_score = (-1, -1, -1)
+
+    for raw_line in out.splitlines():
+        raw_line = raw_line.strip()
+        if not raw_line.startswith("{"):
+            continue
+
+        try:
+            message = json.loads(raw_line)
+        except Exception:
+            continue
+
+        message_class = message.get("class")
+
+        if message_class == "TPV":
+            try:
+                mode = int(message.get("mode") or 0)
+            except Exception:
+                mode = 0
+
+            # Keep the best recent fix mode. This avoids a later mode=1 TPV
+            # stomping a valid mode=2/mode=3 TPV during EM7565 sentence churn.
+            if mode >= best_mode:
+                best_mode = mode
+                best_tpv = message
+
+        elif message_class == "SKY":
+            satellites = message.get("satellites") or []
+            n_sat = message.get("nSat")
+            u_sat = message.get("uSat")
+
+            if n_sat is None and satellites:
+                n_sat = len(satellites)
+
+            if u_sat is None and satellites:
+                u_sat = sum(1 for sat in satellites if sat.get("used"))
+
+            strong_sat = 0
+            for sat in satellites:
+                try:
+                    if float(sat.get("ss") or 0) > 0:
+                        strong_sat += 1
+                except Exception:
+                    pass
+
+            try:
+                score = (int(n_sat or 0), int(u_sat or 0), int(strong_sat))
+            except Exception:
+                score = (0, 0, strong_sat)
+
+            if score > best_sky_score:
+                best_sky_score = score
+                best_sky = message
+
+    if best_sky:
+        info["gps_data"] = "present"
+        info["nmea"] = "present"
+
+        satellites = best_sky.get("satellites") or []
+        n_sat = best_sky.get("nSat")
+        u_sat = best_sky.get("uSat")
+
+        if n_sat is None and satellites:
+            n_sat = len(satellites)
+
+        if u_sat is None and satellites:
+            u_sat = sum(1 for sat in satellites if sat.get("used"))
+
+        if n_sat is not None and u_sat is not None:
+            info["satellites"] = f"{n_sat} in view / {u_sat} used"
+            info["signals"] = f"{n_sat} visible, {u_sat} used"
+        elif n_sat is not None:
+            info["satellites"] = f"{n_sat} in view"
+            info["signals"] = f"{n_sat} visible"
+        elif u_sat is not None:
+            info["satellites"] = f"{u_sat} used"
+            info["signals"] = f"{u_sat} used"
+
+    if best_tpv:
+        gps_time = best_tpv.get("time")
+        if gps_time:
+            info["utc"] = gps_time.replace("T", " ").replace("Z", " UTC")
+
+        if best_mode >= 3:
+            info["fix_quality"] = "3D fix"
+        elif best_mode == 2:
+            info["fix_quality"] = "2D fix"
+        elif best_mode == 1:
+            info["fix_quality"] = "no fix"
+
+        lat = best_tpv.get("lat")
+        lon = best_tpv.get("lon")
+
+        if best_mode >= 2 and lat is not None and lon is not None:
+            try:
+                lat_f = float(lat)
+                lon_f = float(lon)
+                info["coordinates"] = "available"
+                info["lat_lon"] = f"{lat_f:.6f}, {lon_f:.6f}"
+                info["grid_square"] = maidenhead_grid(lat_f, lon_f)
+            except Exception:
+                pass
+        elif best_mode == 1:
+            # Explicitly override stale coordinates from raw NMEA/MM fallback.
+            info["coordinates"] = "not available (no valid fix)"
+            info["lat_lon"] = "not available (no valid fix)"
+            info["grid_square"] = "unknown"
+
+    return info
+
+
 def merge_gps_info(primary, preferred):
     empty_values = {"", "unknown", "not available"}
 
@@ -1356,7 +1493,7 @@ cell_ip_state = cellular_ip_assignment_state(cell_nm.get("ip_iface"))
 cell_profile_present = cellular_profile_exists()
 cell_route_metric = cellular_route_metric()
 gpsd_active = active("gpsd")
-gps_info = merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info())
+gps_info = merge_gps_info(merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
 
 usb_rc, usb_out, _ = run(["lsusb"], timeout=5)
 usb_lower = usb_out.lower()
@@ -1416,7 +1553,17 @@ cellular_registered = cell_info.get("registration") in {"home", "roaming"}
 cellular_connected = cell_nm.get("state") == "connected"
 cellular_status = "ok" if modem_present and (cellular_registered or cellular_connected) else "warn"
 gps_has_modem_data = gps_info.get("gps_data") == "present"
-gps_status = "ok" if gps_has_modem_data or (gpsd_active and (gps_devices or pps_present or chrony_gps_source_present)) else "warn"
+gps_fix_text = str(gps_info.get("fix_quality", "")).lower()
+gps_has_valid_fix = any(term in gps_fix_text for term in [
+    "2d fix",
+    "3d fix",
+    "active fix",
+    "gps fix",
+    "dgps fix",
+    "rtk fixed",
+    "rtk float",
+])
+gps_status = "ok" if gps_has_valid_fix else "warn" if gps_has_modem_data or (gpsd_active and (gps_devices or pps_present or chrony_gps_source_present)) else "warn"
 
 
 # BEGIN PCS ACTIVE UPLINK MODE
