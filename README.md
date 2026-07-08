@@ -59,10 +59,7 @@ Currently working:
 - PCS Control Panel dashboard
 - Validated Sierra Wireless EM7455 and EM7565 functionality - The attached cell modem MUST be configured manually first.
 - GPS NMEA exposed on /dev/ttyUSB1
-- `gpsd` receiving WWAN GPS NMEA
-- Chrony seeing the GPS source for LAN NTP
-- EM7565 active GPS antenna path validated after confirming GPS SMA bias voltage and replacing/fixing the MHF4 pigtail path
-
+- /dev/ttyUSB1 NMEA Datastream -> gpsd -> Chrony -> LAN Accessable NTP Server working
 
 Still planned:
 
