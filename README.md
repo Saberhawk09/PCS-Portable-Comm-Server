@@ -152,8 +152,6 @@ Cellular interface: cdc-wdm0 / wwan0
 GNSS NMEA port: /dev/ttyUSB1
 GNSS path: /dev/ttyUSB1 -> gpsd -> Chrony -> PCS dashboard
 
-For more info see [WWAN Card Setup](docs/wwan-card-setup.md)
-
 ## Expected Hardware / Network State
 
 Current tested network layout:
@@ -169,6 +167,7 @@ Raspberry Pi uplink - wlan0 during testing, cellular data manual/optional
     |
 Internet
 ```
+For more info see [WWAN Card Setup](docs/wwan-card-setup.md)
 
 Expected access point settings:
 
