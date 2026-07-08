@@ -113,7 +113,8 @@ Expected result:
 nothing to commit, working tree clean
 PCS Pi-side self-test PASSED.
 
-You may also see a single warning related to the cellular profile not being active. This is okay if you haven't manually activated the cellular data connection since the PCS system was installed.
+You may also see a single warning related to the cellular profile not being active. 
+This is okay if you haven't manually activated the cellular data connection since the PCS system was installed.
 ```
 
 The self-test should show:
