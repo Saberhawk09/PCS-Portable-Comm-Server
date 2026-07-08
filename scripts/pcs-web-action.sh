@@ -671,14 +671,19 @@ def gsm_nm_status():
             status["device"] = device or "unknown"
             status["state"] = state or "unknown"
             status["connection"] = connection or "none"
+            rc_iface, out_iface, _ = run(["nmcli", "-g", "GENERAL.IP-IFACE", "device", "show", device], timeout=5)
+            status["ip_iface"] = out_iface.strip() if rc_iface == 0 and out_iface.strip() else "none"
             return status
 
     return status
 
-def wwan_ip_assignment_state():
-    rc, out, _ = run(["ip", "-br", "addr", "show", "wwan0"], timeout=4)
+def cellular_ip_assignment_state(ip_iface):
+    if not ip_iface or ip_iface == "none":
+        return "no cellular IP interface"
+
+    rc, out, _ = run(["ip", "-br", "addr", "show", ip_iface], timeout=4)
     if rc != 0 or not out:
-        return "no wwan0 address"
+        return f"{ip_iface}: no address"
 
     has_ipv4 = False
     has_ipv6 = False
@@ -693,13 +698,13 @@ def wwan_ip_assignment_state():
             has_ipv4 = True
 
     if has_ipv4 and has_ipv6:
-        return "IPv4 + IPv6 assigned"
+        return f"{ip_iface}: IPv4 + IPv6 assigned"
     if has_ipv4:
-        return "IPv4 assigned"
+        return f"{ip_iface}: IPv4 assigned"
     if has_ipv6:
-        return "IPv6 assigned"
+        return f"{ip_iface}: IPv6 assigned"
 
-    return "no IP assigned"
+    return f"{ip_iface}: no IP assigned"
 
 def cellular_profile_exists(profile_name="pcs-cellular-tmobile"):
     rc, out, _ = run(["nmcli", "-t", "-f", "NAME", "connection", "show"], timeout=5)
@@ -1188,7 +1193,7 @@ modem_present = "/Modem/" in mm_out
 modem_number = modem_number_from_list(mm_out)
 cell_info = modem_safe_info(modem_number)
 cell_nm = gsm_nm_status()
-cell_ip_state = wwan_ip_assignment_state()
+cell_ip_state = cellular_ip_assignment_state(cell_nm.get("ip_iface"))
 cell_profile_present = cellular_profile_exists()
 cell_route_metric = cellular_route_metric()
 gpsd_active = active("gpsd")
@@ -1244,7 +1249,7 @@ active_uplink_label = (
     "Wi-Fi"
     if default_iface == "wlan0"
     else "Cellular / WWAN"
-    if default_iface == "wwan0"
+    if default_iface in {"wwan0", "ppp0"} or str(default_iface).startswith("wwan") or str(default_iface).startswith("ppp")
     else default_iface
     if default_iface
     else "unknown"
@@ -1427,7 +1432,7 @@ cards = [
             {"label": "Registration", "value": cell_info.get("registration", "unknown")},
             {"label": "Access tech", "value": cell_info.get("access_tech", "unknown")},
             {"label": "Signal quality", "value": cell_info.get("signal_quality", "unknown")},
-            {"label": "WWAN IP", "value": cell_ip_state},
+            {"label": "Cellular IP", "value": cell_ip_state},
             {"label": "Route metric", "value": cell_route_metric},
         ],
     },
@@ -1506,6 +1511,31 @@ PY
 require_root
 ensure_repo
 
+cellular_data_iface() {
+    local gsm_dev
+    local ip_iface
+
+    gsm_dev="$(nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null \
+        | awk -F: '$2 == "gsm" && $3 == "connected" { print $1; exit }')"
+
+    if [[ -n "${gsm_dev}" ]]; then
+        ip_iface="$(nmcli -g GENERAL.IP-IFACE device show "${gsm_dev}" 2>/dev/null | head -n 1)"
+        if [[ -n "${ip_iface}" && "${ip_iface}" != "--" ]]; then
+            echo "${ip_iface}"
+            return 0
+        fi
+    fi
+
+    for ip_iface in wwan0 ppp0; do
+        if ip -br addr show "${ip_iface}" 2>/dev/null | awk 'NF > 2 { found=1 } END { exit found ? 0 : 1 }'; then
+            echo "${ip_iface}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 cellular_safe_status() {
     local modem_list
     local modem_num
@@ -1553,15 +1583,17 @@ cellular_safe_status() {
     fi
 
     echo
-    echo "--- WWAN address state ---"
-    if ip -br addr show wwan0 >/dev/null 2>&1; then
-        if ip -br addr show wwan0 | awk 'NF > 2 { found=1 } END { exit found ? 0 : 1 }'; then
-            echo "wwan0: IP assigned"
+    echo "--- Cellular address state ---"
+    local cell_iface
+    cell_iface="$(cellular_data_iface || true)"
+    if [[ -n "${cell_iface}" ]]; then
+        if ip -br addr show "${cell_iface}" | awk 'NF > 2 { found=1 } END { exit found ? 0 : 1 }'; then
+            echo "${cell_iface}: IP assigned"
         else
-            echo "wwan0: no IP assigned"
+            echo "${cell_iface}: no IP assigned"
         fi
     else
-        echo "wwan0: not present"
+        echo "No active cellular data interface found"
     fi
 
     echo
@@ -1592,36 +1624,103 @@ cellular_ensure_profile() {
         ipv6.route-metric 900
 }
 
+cellular_nm_state() {
+    nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null \
+        | awk -F: '$2 == "gsm" { print $3; exit }'
+}
+
+cellular_wait_for_modemmanager() {
+    local attempt
+
+    echo "Waiting for ModemManager to rediscover and register the modem..."
+
+    for attempt in $(seq 1 70); do
+        if mmcli -m 0 --output-keyvalue 2>/dev/null | grep -Eq "modem\.generic\.state[[:space:]]*:[[:space:]]*(registered|connected)" \
+            && nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null | awk -F: '$2 == "gsm" { found=1 } END { exit found ? 0 : 1 }'; then
+            return 0
+        fi
+
+        sleep 1
+    done
+
+    return 1
+}
+
+cellular_restart_modemmanager() {
+    echo "--- Recovering cellular modem state ---"
+    echo "Restarting ModemManager to clear the stuck modem/bearer state."
+    systemctl restart ModemManager
+
+    if cellular_wait_for_modemmanager; then
+        echo "ModemManager sees the GSM device again."
+    else
+        echo "WARNING: GSM device did not reappear after restarting ModemManager."
+        return 1
+    fi
+}
+
+cellular_connection_up() {
+    local cell_con="$1"
+    local wait_seconds="$2"
+
+    nmcli --wait "${wait_seconds}" connection up "${cell_con}"
+}
+
 cellular_connect() {
     local cell_con="pcs-cellular-tmobile"
+    local cell_iface
+    local gsm_state
 
     echo "=== PCS Cellular Connect ==="
     echo
     cellular_ensure_profile
 
     echo
-    if nmcli -t -f NAME connection show --active | grep -qx "${cell_con}"; then
+    gsm_state="$(cellular_nm_state)"
+    if [[ "${gsm_state}" == "connected" ]]; then
         echo "--- Cellular connection already active ---"
         nmcli device status | awk '$2 == "gsm" { print $1, $2, $3, $4 }' || true
     else
+        if [[ "${gsm_state}" == connecting* ]]; then
+            echo "--- Cellular activation appears stuck: ${gsm_state} ---"
+            nmcli --wait 5 connection down "${cell_con}" || true
+            cellular_restart_modemmanager || true
+        fi
+
         echo "--- Bringing cellular connection up ---"
-        if ! nmcli --wait 25 connection up "${cell_con}"; then
+        if ! cellular_connection_up "${cell_con}" 20; then
             echo
-            echo "WARNING: cellular connection did not become active within 25 seconds."
-            echo "The modem may still be registering or waiting for cellular service."
+            echo "WARNING: cellular connection did not become active within 20 seconds."
+            echo "Trying one ModemManager recovery before giving up."
             echo
-            cellular_safe_status
-            return 1
+            nmcli --wait 5 connection down "${cell_con}" || true
+            cellular_restart_modemmanager || true
+
+            echo
+            echo "--- Retrying cellular connection ---"
+            if ! cellular_connection_up "${cell_con}" 25; then
+                echo
+                echo "WARNING: cellular connection did not become active after modem recovery."
+                echo "The modem may still be registering or waiting for cellular service."
+                echo
+                cellular_safe_status
+                return 1
+            fi
         fi
     fi
 
     echo
-    echo "--- Waiting 10 seconds ---"
-    sleep 10
+    echo "--- Waiting 3 seconds ---"
+    sleep 3
 
     echo
-    echo "--- Cellular ping test through wwan0 ---"
-    ping -I wwan0 -c 3 -W 4 8.8.8.8 || true
+    cell_iface="$(cellular_data_iface || true)"
+    echo "--- Cellular ping test through ${cell_iface:-unknown} ---"
+    if [[ -n "${cell_iface}" ]]; then
+        ping -I "${cell_iface}" -c 3 -W 4 8.8.8.8 || true
+    else
+        echo "No active cellular data interface found."
+    fi
 
     echo
     cellular_safe_status
@@ -1645,6 +1744,10 @@ cellular_disconnect() {
 
 
 cellular_test_internet() {
+    local cell_iface
+    local http_code
+    local ping_output
+
     echo "=== PCS Cellular Internet Test ==="
     echo
 
@@ -1658,57 +1761,59 @@ cellular_test_internet() {
     fi
 
     echo
-    echo "--- WWAN interface state ---"
-    if ip link show wwan0 >/dev/null 2>&1; then
-        echo "wwan0: present"
+    cell_iface="$(cellular_data_iface || true)"
+
+    echo "--- Cellular data interface state ---"
+    if [[ -n "${cell_iface}" ]] && ip link show "${cell_iface}" >/dev/null 2>&1; then
+        echo "${cell_iface}: present"
     else
-        echo "wwan0: missing"
+        echo "No active cellular data interface found"
         echo "Result: FAIL"
         return 1
     fi
 
-    if ip -br addr show wwan0 2>/dev/null | awk 'NF > 2 { found=1 } END { exit found ? 0 : 1 }'; then
-        echo "wwan0 IP assignment: present / hidden"
+    if ip -br addr show "${cell_iface}" 2>/dev/null | awk 'NF > 2 { found=1 } END { exit found ? 0 : 1 }'; then
+        echo "${cell_iface} IP assignment: present / hidden"
     else
-        echo "wwan0 IP assignment: missing"
+        echo "${cell_iface} IP assignment: missing"
         echo "Result: FAIL"
         return 1
     fi
 
     echo
     echo "--- Cellular route check ---"
-    if ip route show default 2>/dev/null | grep -q "dev wwan0"; then
-        echo "wwan0 default route: present"
+    if ip route show default 2>/dev/null | grep -q "dev ${cell_iface}"; then
+        echo "${cell_iface} default route: present"
     else
-        echo "wwan0 default route: missing"
+        echo "${cell_iface} default route: missing"
         echo "Result: FAIL"
         return 1
     fi
 
     echo
     echo "--- Cellular ping test ---"
-    PING_OUTPUT="$(ping -I wwan0 -c 3 -W 4 8.8.8.8 2>&1 || true)"
+    ping_output="$(ping -I "${cell_iface}" -c 3 -W 4 8.8.8.8 2>&1 || true)"
 
-    if echo "${PING_OUTPUT}" | grep -q " 0% packet loss"; then
-        echo "Ping via wwan0: PASS"
-        echo "${PING_OUTPUT}" | grep -E "packets transmitted|packet loss|rtt" || true
+    if echo "${ping_output}" | grep -q " 0% packet loss"; then
+        echo "Ping via ${cell_iface}: PASS"
+        echo "${ping_output}" | grep -E "packets transmitted|packet loss|rtt" || true
     else
-        echo "Ping via wwan0: FAIL"
-        echo "${PING_OUTPUT}" | grep -E "packets transmitted|packet loss|rtt|Network is unreachable|unknown host|Destination" || true
+        echo "Ping via ${cell_iface}: FAIL"
+        echo "${ping_output}" | grep -E "packets transmitted|packet loss|rtt|Network is unreachable|unknown host|Destination" || true
         echo "Result: FAIL"
         return 1
     fi
 
     echo
     echo "--- Cellular HTTPS test ---"
-    HTTP_CODE="$(curl --interface wwan0 -4 --max-time 20 --silent --show-error --output /dev/null --write-out "%{http_code}" https://api.ipify.org 2>/tmp/pcs-cellular-curl.err || true)"
+    http_code="$(curl --interface "${cell_iface}" -4 --max-time 20 --silent --show-error --output /dev/null --write-out "%{http_code}" https://api.ipify.org 2>/tmp/pcs-cellular-curl.err || true)"
 
-    if [[ "${HTTP_CODE}" == "200" ]]; then
-        echo "HTTPS via wwan0: PASS"
+    if [[ "${http_code}" == "200" ]]; then
+        echo "HTTPS via ${cell_iface}: PASS"
         echo "Public IP: assigned / hidden"
     else
-        echo "HTTPS via wwan0: FAIL"
-        echo "HTTP code: ${HTTP_CODE:-none}"
+        echo "HTTPS via ${cell_iface}: FAIL"
+        echo "HTTP code: ${http_code:-none}"
         if [[ -s /tmp/pcs-cellular-curl.err ]]; then
             echo "curl error:"
             cat /tmp/pcs-cellular-curl.err
@@ -1722,7 +1827,7 @@ cellular_test_internet() {
 
     echo
     echo "Result: PASS"
-    echo "Cellular internet access through wwan0 is working."
+    echo "Cellular internet access through ${cell_iface} is working."
 }
 
 

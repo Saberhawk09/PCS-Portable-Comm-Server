@@ -33,7 +33,7 @@ fi
 
 echo
 echo "This script installs PCS baseline dependencies."
-echo "It does not configure routing, Samba shares, GPSD, Chrony sources, or modem profiles yet."
+echo "It does not configure routing, Samba shares, GPSD, Chrony sources, or cellular profiles."
 echo
 
 BASE_PACKAGES=(

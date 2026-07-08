@@ -194,19 +194,21 @@ else
     echo "/dev/cdc-wdm0: missing"
 fi
 
-if ip link show wwan0 >/dev/null 2>&1; then
-    echo "wwan0: present"
-    ip -br addr show wwan0 || true
-else
-    echo "wwan0: missing"
-fi
+for cell_iface in wwan0 ppp0; do
+    if ip link show "${cell_iface}" >/dev/null 2>&1; then
+        echo "${cell_iface}: present"
+        ip -br addr show "${cell_iface}" || true
+    else
+        echo "${cell_iface}: missing"
+    fi
+done
 
 echo
 echo "[Cellular route preference]"
-if ip route show default 2>/dev/null | grep -q "dev wwan0"; then
-    ip route show default | grep "dev wwan0" || true
+if ip route show default 2>/dev/null | grep -Eq "dev (wwan0|ppp0)"; then
+    ip route show default | grep -E "dev (wwan0|ppp0)" || true
 else
-    echo "No default route through wwan0 currently active"
+    echo "No default route through wwan0 or ppp0 currently active"
 fi
 
 echo

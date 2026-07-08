@@ -119,7 +119,7 @@ The self-test should show:
 Fail: 0
 Warn: 0
 ```
-However you may see warns/skips if the cellular profile has never been activated. See below.
+Cellular data may be disconnected by design; the manual cellular profile should still be present after setup.
 
 For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
@@ -127,7 +127,7 @@ For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
 Cellular data is intentionally configured for manual control.
 
-After a fresh setup, the WWAN modem and GPS should be detected and configured, but the cellular data connection will not be active until it is manually connected from the PCS Control Panel. PCS Self Test will also show a warn/skip for the cellular profile if it has not been manually toggled on at least once.
+After a fresh setup, the WWAN modem, GPS, and manual cellular profile should be detected and configured, but the cellular data connection will not be active until it is manually connected from the PCS Control Panel.
 
 Open the PCS Control Panel:
 

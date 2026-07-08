@@ -91,7 +91,7 @@ Fail: 0
 Warn: 0
 ```
 
-Warnings may appear if the cellular profile has never been manually activated. Cellular data is intentionally manual.
+Cellular data is intentionally manual. The setup creates the cellular profile, but it does not connect cellular data automatically.
 
 ## Network Configuration
 

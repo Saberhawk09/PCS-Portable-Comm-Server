@@ -19,7 +19,7 @@ Fail: 0
 Warn: 0
 ```
 
-Warnings may appear if the cellular profile has not been manually activated yet.
+Cellular data may be disconnected by design. The manual cellular profile should still exist after setup.
 
 Then run:
 

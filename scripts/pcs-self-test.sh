@@ -259,7 +259,7 @@ case "${DEFAULT_IFACE}" in
     "${PCS_WIFI_IFACE}")
         pass "Default route uses Wi-Fi uplink ${PCS_WIFI_IFACE}"
         ;;
-    wwan0|cdc-wdm0)
+    wwan0|cdc-wdm0|ppp0)
         pass "Default route uses cellular uplink ${DEFAULT_IFACE}"
         ;;
     "")
@@ -557,8 +557,10 @@ fi
 
 if ip link show wwan0 >/dev/null 2>&1; then
     pass "wwan0 network interface exists"
+elif ip link show ppp0 >/dev/null 2>&1; then
+    pass "ppp0 cellular data interface exists"
 else
-    warn "wwan0 network interface not present"
+    warn "No wwan0 or ppp0 cellular data interface is currently present"
 fi
 
 if nmcli -t -f NAME connection show 2>/dev/null | grep -qx "pcs-cellular-tmobile"; then

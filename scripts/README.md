@@ -110,6 +110,16 @@ The script disables generated competing `eth0` profiles such as `netplan-eth0`, 
 
 The name still references router WAN sharing, but the current preferred topology uses the attached router/AP as a bridge/AP/switch.
 
+### setup-cellular-profile.sh
+
+Creates or updates the manual T-Mobile cellular profile:
+
+```text
+pcs-cellular-tmobile
+```
+
+The profile uses APN `fast.t-mobile.com`, route metric `900`, and autoconnect disabled. Cellular data is connected manually from the PCS Control Panel.
+
 ## Samba Storage
 
 ### setup-test-samba-share.sh
