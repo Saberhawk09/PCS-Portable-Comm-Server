@@ -1600,8 +1600,20 @@ cellular_connect() {
     cellular_ensure_profile
 
     echo
-    echo "--- Bringing cellular connection up ---"
-    nmcli connection up "${cell_con}"
+    if nmcli -t -f NAME connection show --active | grep -qx "${cell_con}"; then
+        echo "--- Cellular connection already active ---"
+        nmcli device status | awk '$2 == "gsm" { print $1, $2, $3, $4 }' || true
+    else
+        echo "--- Bringing cellular connection up ---"
+        if ! nmcli --wait 25 connection up "${cell_con}"; then
+            echo
+            echo "WARNING: cellular connection did not become active within 25 seconds."
+            echo "The modem may still be registering or waiting for cellular service."
+            echo
+            cellular_safe_status
+            return 1
+        fi
+    fi
 
     echo
     echo "--- Waiting 10 seconds ---"
