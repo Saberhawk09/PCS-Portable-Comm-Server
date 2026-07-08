@@ -2254,7 +2254,7 @@ wifi_active_connection() {
 
 wifi_saved_profile_names() {
     nmcli -t --escape no -f NAME,TYPE connection show 2>/dev/null \
-        | awk -F: '$2 == "wifi" { print $1 }'
+        | awk -F: '$2 == "wifi" || $2 == "802-11-wireless" { print $1 }'
 }
 
 wifi_profile_ssid() {
