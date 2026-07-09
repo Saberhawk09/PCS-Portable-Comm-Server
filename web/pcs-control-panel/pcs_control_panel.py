@@ -25,6 +25,7 @@ ACTIONS = [
     ("cellular-test", "Test Cellular", "Test cellular-only internet through wwan0."),
     ("sync-backup", "Sync USB to SD Backup", "Mirror the USB primary share to the SD backup."),
     ("mount-usb", "Mount USB Storage", "Mount the USB primary share and restart Samba."),
+    ("mount-new-usb", "Mount New USB Storage", "Configure the newly attached USB device as the PCS primary share."),
     ("safe-unmount-usb", "Unmount USB Safely", "Sync backup, stop Samba, unmount USB, then restart Samba."),
     ("restart-services", "Restart PCS Services", "Restart core PCS services through systemd."),
     ("restart-samba", "Restart Samba", "Restart Samba only."),
@@ -40,7 +41,7 @@ ACTION_GROUPS = [
     ("Health", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
-    ("Storage", ["sync-backup", "mount-usb", "safe-unmount-usb"]),
+    ("Storage", ["sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb"]),
     ("Services", ["restart-services", "restart-samba"]),
     ("Time / GPS", ["sync-time", "restart-chrony", "restart-gpsd"]),
 ]
@@ -306,7 +307,7 @@ def render_client_info(dashboard: dict) -> str:
 
 def render_action_card(name: str) -> str:
     label, desc = ACTION_MAP[name]
-    danger = name in {"safe-unmount-usb", "restart-services", "restart-samba", "restart-chrony", "restart-gpsd"}
+    danger = name in {"mount-new-usb", "safe-unmount-usb", "restart-services", "restart-samba", "restart-chrony", "restart-gpsd"}
     css_class = "danger" if danger else "normal"
 
     return f"""

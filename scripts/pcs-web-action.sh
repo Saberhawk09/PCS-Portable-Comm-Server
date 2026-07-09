@@ -47,6 +47,7 @@ Allowed actions:
   storage-status
   sync-backup
   mount-usb
+  mount-new-usb
   safe-unmount-usb
   restart-services
   restart-samba
@@ -165,6 +166,30 @@ configure_detected_usb_primary() {
     "${REPO_DIR}/scripts/setup-usb-primary-share.sh" "${candidate}"
 }
 
+usb_fstab_source() {
+    awk -v target="${USB_MOUNT}" '$2 == target { print $1; exit }' /etc/fstab 2>/dev/null || true
+}
+
+usb_fstab_source_present() {
+    local source="$1"
+    local uuid
+
+    [[ -n "${source}" ]] || return 1
+
+    if [[ "${source}" == UUID=* ]]; then
+        uuid="${source#UUID=}"
+        blkid -U "${uuid}" >/dev/null 2>&1
+        return $?
+    fi
+
+    if [[ "${source}" == /dev/* ]]; then
+        [[ -b "${source}" ]]
+        return $?
+    fi
+
+    return 0
+}
+
 sync_backup() {
     header "Sync USB Primary to SD Backup"
 
@@ -204,27 +229,72 @@ sync_backup() {
 }
 
 mount_usb() {
+    local fstab_source
+
     header "Mount USB Primary Share"
 
     mkdir -p "${USB_MOUNT}"
 
     systemctl daemon-reload || true
+    fstab_source="$(usb_fstab_source)"
 
     if findmnt "${USB_MOUNT}" >/dev/null 2>&1; then
         echo "${USB_MOUNT} is already mounted."
-    elif ! grep -Eq "[[:space:]]${USB_MOUNT//\//\\/}[[:space:]]" /etc/fstab; then
+    elif [[ -z "${fstab_source}" ]]; then
         echo "No /etc/fstab entry exists for ${USB_MOUNT}."
         echo "Attempting one-time USB primary share setup from the dashboard action."
         echo
         configure_detected_usb_primary
     else
-        mount "${USB_MOUNT}"
+        if usb_fstab_source_present "${fstab_source}"; then
+            mount "${USB_MOUNT}"
+        else
+            echo "Configured USB storage is not currently present: ${fstab_source}"
+            echo
+            echo "Use the Mount New USB Storage action to configure a replacement USB device."
+            exit 1
+        fi
     fi
 
     systemctl restart smbd
 
     echo
     echo "USB mount:"
+    findmnt "${USB_MOUNT}" || true
+
+    echo
+    echo "Samba share paths:"
+    testparm -s 2>/dev/null | grep -A8 -E '^\[PCS-Share\]|^\[PCS-Backup\]' || true
+}
+
+mount_new_usb() {
+    header "Mount New USB Primary Share"
+
+    if findmnt "${USB_MOUNT}" >/dev/null 2>&1; then
+        echo "ERROR: ${USB_MOUNT} is already mounted."
+        echo
+        echo "Use Safely Unmount USB before configuring a replacement USB device."
+        exit 1
+    fi
+
+    mkdir -p "${USB_MOUNT}"
+
+    echo "Scanning for a replacement USB storage filesystem."
+    echo "This will update /etc/fstab and the PCS-Share Samba path."
+    echo
+
+    configure_detected_usb_primary
+
+    if ! findmnt "${USB_MOUNT}" >/dev/null 2>&1; then
+        echo
+        echo "ERROR: ${USB_MOUNT} is not mounted after replacement setup."
+        exit 1
+    fi
+
+    systemctl restart smbd
+
+    echo
+    echo "New USB mount:"
     findmnt "${USB_MOUNT}" || true
 
     echo
@@ -2647,6 +2717,10 @@ case "${ACTION}" in
 
     mount-usb)
         mount_usb
+        ;;
+
+    mount-new-usb)
+        mount_new_usb
         ;;
 
     safe-unmount-usb)
