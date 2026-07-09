@@ -73,14 +73,12 @@ Still planned:
 Before running setup, connect the hardware you want the installer to configure:
 
 - Raspberry Pi booted from the target SD card.
-- Ethernet from the Pi `eth0` port to the PCS router/AP WAN or uplink port.
+- Ethernet from the Pi `eth0` port to the PCS router/AP via a LAN port (Not the WAN/Internet Port).
 - The PCS router/AP powered on.
 - The RTC module installed, if this build includes the RTC.
 - The WWAN modem installed and connected over USB, if this build includes cellular/GPS.
 - The GPS/GNSS antenna connected to the WWAN modem, if configuring WWAN GPS/NMEA.
 - The intended USB storage device connected, if using USB primary file storage.
-
-Storage note: fresh installs default to one USB primary share with the backup mirror on the Pi SD card at `/srv/pcs-share-backup`. If setup is left on `auto`, the installer first checks for the known/default PCS USB UUID and will use that device if it is present. Otherwise, connect only the intended PCS primary USB storage device before running the script. If more than one unknown USB storage device is connected, choose the exact device or UUID during setup, or disconnect the extra storage devices and rerun the USB setup step later.
 
 ## Software Setup
 
