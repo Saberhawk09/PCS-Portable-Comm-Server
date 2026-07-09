@@ -104,6 +104,9 @@ ${SUDO} env DEBIAN_FRONTEND=noninteractive apt-get install -y "${ALL_PACKAGES[@]
 
 echo
 echo "Enabling useful baseline services where available..."
+if [[ "${PCS_DEFER_MODEMMANAGER_START:-0}" == "1" ]]; then
+    echo "ModemManager startup will be deferred so WWAN setup can soft-replug USB before modem detection."
+fi
 
 SERVICES_TO_ENABLE=(
     NetworkManager.service
@@ -115,8 +118,14 @@ SERVICES_TO_ENABLE=(
 
 for service in "${SERVICES_TO_ENABLE[@]}"; do
     if systemctl list-unit-files --no-legend "${service}" 2>/dev/null | awk '{print $1}' | grep -qx "${service}"; then
-        echo "Enabling ${service}..."
-        ${SUDO} systemctl enable --now "${service}" || true
+        if [[ "${service}" == "ModemManager.service" && "${PCS_DEFER_MODEMMANAGER_START:-0}" == "1" ]]; then
+            echo "Enabling ${service} without starting it yet..."
+            ${SUDO} systemctl enable "${service}" || true
+            ${SUDO} systemctl stop "${service}" 2>/dev/null || true
+        else
+            echo "Enabling ${service}..."
+            ${SUDO} systemctl enable --now "${service}" || true
+        fi
     else
         echo "Skipping ${service}; unit not found."
     fi

@@ -391,7 +391,7 @@ if [[ -d "web/pcs-control-panel" ]]; then
     chmod +x web/pcs-control-panel/*.py 2>/dev/null || true
 fi
 
-run_step "Install dependencies" "./scripts/install-dependencies.sh"
+run_step "Install dependencies" "PCS_DEFER_MODEMMANAGER_START=1 ./scripts/install-dependencies.sh"
 
 run_step "Configure RTC" "./scripts/setup-rtc.sh"
 
@@ -590,6 +590,10 @@ else
     echo "WARNING: scripts/setup-wwan-gps-nmea.sh not found or not executable."
     echo "Skipping WWAN modem NMEA GPS setup."
 fi
+
+echo
+echo "--- Ensure ModemManager is running for dashboard and self-test ---"
+sudo systemctl start ModemManager 2>/dev/null || true
 
 echo
 echo "============================================================"

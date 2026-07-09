@@ -93,12 +93,6 @@ sudo systemctl enable ModemManager
 sudo systemctl enable pcs-wwan-gps-nmea.service
 sudo systemctl enable gpsd.service
 
-echo
-echo "--- Wait for ModemManager to detect WWAN modem ---"
-sudo systemctl restart ModemManager
-sleep 10
-sudo mmcli --scan-modems >/dev/null 2>&1 || true
-
 MODEM_FOUND=0
 
 wait_for_modemmanager_modem() {
@@ -125,6 +119,9 @@ wait_for_modemmanager_modem() {
 soft_reset_wwan_usb_device() {
     echo
     echo "--- Soft-reset WWAN USB device ---"
+
+    echo "Stopping ModemManager before USB soft replug."
+    sudo systemctl stop ModemManager 2>/dev/null || true
 
     if [[ ! -e /dev/cdc-wdm0 ]]; then
         echo "Cannot soft-reset modem: /dev/cdc-wdm0 is missing."
@@ -177,6 +174,25 @@ soft_reset_wwan_usb_device() {
         sleep 5
     done
 
+    sudo udevadm settle --timeout=10 >/dev/null 2>&1 || true
+}
+
+echo
+echo "--- Prepare WWAN USB before ModemManager detection ---"
+if soft_reset_wwan_usb_device; then
+    echo "WWAN USB soft replug complete."
+else
+    echo "WARNING: WWAN USB soft replug was skipped or failed."
+    echo "Continuing with ModemManager detection in case the modem is already usable."
+fi
+
+echo
+echo "--- Start ModemManager and wait for WWAN modem detection ---"
+sudo systemctl restart ModemManager
+sleep 10
+sudo mmcli --scan-modems >/dev/null 2>&1 || true
+
+start_modemmanager_after_usb_reset() {
     sudo systemctl restart ModemManager
     sleep 10
     sudo mmcli --scan-modems >/dev/null 2>&1 || true
@@ -190,6 +206,7 @@ if ! wait_for_modemmanager_modem 12 "initial"; then
     echo "Trying a software USB replug before failing..."
 
     if soft_reset_wwan_usb_device; then
+        start_modemmanager_after_usb_reset
         wait_for_modemmanager_modem 24 "after USB soft reset" || true
     fi
 fi
