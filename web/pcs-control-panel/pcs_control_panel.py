@@ -29,21 +29,29 @@ ACTIONS = [
     ("safe-unmount-usb", "Unmount USB Safely", "Sync backup, stop Samba, unmount USB, then restart Samba."),
     ("restart-services", "Restart PCS Services", "Restart core PCS services through systemd."),
     ("restart-samba", "Restart Samba", "Restart Samba only."),
+    ("restart-modemmanager", "Restart ModemManager", "Soft-replug WWAN USB, restart modem detection, and reassert GPS."),
     ("sync-time", "Sync Time Now", "Poll Chrony sources, step the system clock if needed, and update the RTC."),
     ("restart-chrony", "Restart Chrony", "Restart Chrony only."),
     ("restart-gpsd", "Restart GPSD", "Reassert WWAN NMEA mode and restart gpsd."),
     ("restart-logs", "View Restart Logs", "Show recent PCS restart service logs."),
+    ("reboot-system", "Reboot PCS", "Restart the Raspberry Pi."),
+    ("shutdown-system", "Shutdown PCS", "Power off the Raspberry Pi cleanly."),
 ]
 
 ACTION_MAP = {name: (label, desc) for name, label, desc in ACTIONS}
+ACTION_CONFIRMS = {
+    "reboot-system": "Reboot PCS now? The dashboard will disconnect while the Pi restarts.",
+    "shutdown-system": "Shutdown PCS now? You will need physical access to power it back on.",
+}
 
 ACTION_GROUPS = [
     ("Health", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
     ("Storage", ["sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb"]),
-    ("Services", ["restart-services", "restart-samba"]),
+    ("Services", ["restart-services", "restart-samba", "restart-modemmanager"]),
     ("Time / GPS", ["sync-time", "restart-chrony", "restart-gpsd"]),
+    ("Power", ["reboot-system", "shutdown-system"]),
 ]
 
 
@@ -307,11 +315,13 @@ def render_client_info(dashboard: dict) -> str:
 
 def render_action_card(name: str) -> str:
     label, desc = ACTION_MAP[name]
-    danger = name in {"mount-new-usb", "safe-unmount-usb", "restart-services", "restart-samba", "restart-chrony", "restart-gpsd"}
+    danger = name in {"mount-new-usb", "safe-unmount-usb", "restart-services", "restart-samba", "restart-modemmanager", "restart-chrony", "restart-gpsd", "reboot-system", "shutdown-system"}
     css_class = "danger" if danger else "normal"
+    confirm_message = ACTION_CONFIRMS.get(name)
+    confirm_attr = f" onsubmit=\"return confirm('{esc(confirm_message)}')\"" if confirm_message else ""
 
     return f"""
-    <form method="POST" action="/run" class="action-card">
+    <form method="POST" action="/run" class="action-card"{confirm_attr}>
         <input type="hidden" name="action" value="{esc(name)}">
         <button class="{css_class}" type="submit">{esc(label)}</button>
         <p>{esc(desc)}</p>

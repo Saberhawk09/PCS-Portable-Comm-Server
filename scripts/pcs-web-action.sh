@@ -51,9 +51,12 @@ Allowed actions:
   safe-unmount-usb
   restart-services
   restart-samba
+  restart-modemmanager
   restart-chrony
   restart-gpsd
   restart-logs
+  reboot-system
+  shutdown-system
 EOF
 }
 
@@ -2216,6 +2219,130 @@ cellular_restart_modemmanager() {
     fi
 }
 
+soft_replug_wwan_usb_device() {
+    local iface_path
+    local search_path
+    local usb_device_path=""
+
+    echo "--- Soft-replug WWAN USB device ---"
+
+    if [[ ! -e /dev/cdc-wdm0 ]]; then
+        echo "Cannot soft-replug WWAN USB: /dev/cdc-wdm0 is missing."
+        return 1
+    fi
+
+    iface_path="$(readlink -f /sys/class/usbmisc/cdc-wdm0/device 2>/dev/null || true)"
+
+    if [[ -z "${iface_path}" ]]; then
+        echo "Cannot resolve sysfs path for /dev/cdc-wdm0."
+        return 1
+    fi
+
+    search_path="${iface_path}"
+
+    while [[ -n "${search_path}" && "${search_path}" != "/" ]]; do
+        if [[ -e "${search_path}/authorized" && -e "${search_path}/idVendor" && -e "${search_path}/idProduct" ]]; then
+            usb_device_path="${search_path}"
+            break
+        fi
+
+        search_path="$(dirname "${search_path}")"
+    done
+
+    if [[ -z "${usb_device_path}" ]]; then
+        echo "Cannot find USB device authorized control."
+        echo "Resolved cdc-wdm0 sysfs path:"
+        echo "  ${iface_path}"
+        return 1
+    fi
+
+    echo "Soft-disconnecting modem USB device:"
+    echo "  ${usb_device_path}"
+
+    echo 0 > "${usb_device_path}/authorized"
+    sleep 5
+
+    echo "Soft-reconnecting modem USB device."
+    echo 1 > "${usb_device_path}/authorized"
+
+    echo "Waiting for modem device nodes to return..."
+    for attempt in $(seq 1 60); do
+        if [[ -e /dev/cdc-wdm0 && -e /dev/ttyUSB0 && -e /dev/ttyUSB1 && -e /dev/ttyUSB2 ]]; then
+            udevadm settle --timeout=10 >/dev/null 2>&1 || true
+            return 0
+        fi
+
+        if (( attempt % 10 == 0 )); then
+            echo "Still waiting for complete WWAN device nodes... $((attempt * 2))s"
+        fi
+
+        sleep 2
+    done
+
+    if [[ -e /dev/cdc-wdm0 && -e /dev/ttyUSB1 ]]; then
+        echo "WARNING: Minimum WWAN nodes returned, but the full serial set did not appear in time."
+        udevadm settle --timeout=10 >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    echo "WARNING: WWAN device nodes did not fully return after USB soft replug."
+    udevadm settle --timeout=10 >/dev/null 2>&1 || true
+    return 1
+}
+
+restart_modemmanager_action() {
+    local attempt
+    local modem_list
+
+    header "Restart ModemManager"
+
+    echo "Stopping ModemManager before WWAN USB recovery."
+    systemctl stop ModemManager 2>/dev/null || true
+
+    if ! soft_replug_wwan_usb_device; then
+        echo "Continuing with ModemManager restart in case the modem is already usable."
+    fi
+
+    echo
+    echo "Starting ModemManager."
+    systemctl start ModemManager
+
+    echo "Waiting for ModemManager to rediscover modem hardware..."
+
+    for attempt in $(seq 1 36); do
+        modem_list="$(mmcli -L 2>/dev/null || true)"
+
+        if echo "${modem_list}" | grep -q "/Modem/"; then
+            echo "ModemManager detected modem."
+            echo
+            echo "--- ModemManager modem list ---"
+            echo "${modem_list}"
+            echo
+            systemctl status ModemManager --no-pager -l || true
+
+            if systemctl cat pcs-wwan-gps-nmea.service >/dev/null 2>&1; then
+                echo
+                echo "--- Reassert WWAN GPS/NMEA, gpsd, and Chrony ---"
+                restart_gpsd_path || true
+            fi
+
+            return 0
+        fi
+
+        echo "Waiting for ModemManager modem detection... ${attempt}/36"
+        mmcli --scan-modems >/dev/null 2>&1 || true
+        sleep 5
+    done
+
+    echo "WARNING: ModemManager did not detect a modem within 180 seconds after restart."
+    echo
+    echo "--- ModemManager modem list ---"
+    mmcli -L || true
+    echo
+    systemctl status ModemManager --no-pager -l || true
+    return 1
+}
+
 cellular_connection_up() {
     local cell_con="$1"
     local wait_seconds="$2"
@@ -2439,6 +2566,8 @@ sync_time_now() {
 }
 
 restart_gpsd_path() {
+    local nmea_seen
+
     header "Restart GPSD / WWAN NMEA"
 
     echo "Reasserting modem GPS/NMEA mode before restarting gpsd."
@@ -2459,7 +2588,19 @@ restart_gpsd_path() {
     echo
     echo "--- gpsd NMEA quick check ---"
     if command -v gpspipe >/dev/null 2>&1; then
-        if timeout 12 gpspipe -r -n 5 2>/dev/null | grep -q '^\$G'; then
+        nmea_seen=0
+
+        for attempt in $(seq 1 4); do
+            if timeout 8 gpspipe -r -n 5 2>/dev/null | grep -q '^\$G'; then
+                nmea_seen=1
+                break
+            fi
+
+            echo "Waiting for gpsd NMEA sample... ${attempt}/4"
+            sleep 5
+        done
+
+        if [[ "${nmea_seen}" -eq 1 ]]; then
             echo "gpsd NMEA: present / location hidden"
         else
             echo "gpsd NMEA: not seen during quick check"
@@ -2469,7 +2610,25 @@ restart_gpsd_path() {
     fi
 
     echo
-    echo "GPSD restart complete."
+    echo "--- Refreshing Chrony GPS/NTP path ---"
+    systemctl start chrony
+    systemctl status chrony --no-pager -l || true
+
+    echo
+    echo "Requesting fresh Chrony samples without restarting the NTP server."
+    chronyc burst 4/4 || true
+    sleep 15
+
+    echo
+    echo "--- Chrony sources after GPSD restart ---"
+    chronyc sources -v || true
+
+    echo
+    echo "--- Chrony tracking after GPSD restart ---"
+    chronyc tracking || true
+
+    echo
+    echo "GPSD / Chrony restart complete."
 }
 
 
@@ -2739,6 +2898,10 @@ case "${ACTION}" in
         systemctl status smbd --no-pager -l || true
         ;;
 
+    restart-modemmanager)
+        restart_modemmanager_action
+        ;;
+
     sync-time)
         sync_time_now
         ;;
@@ -2757,6 +2920,20 @@ case "${ACTION}" in
     restart-logs)
         header "PCS Restart Service Logs"
         journalctl -u pcs-restart-services.service -n 120 --no-pager
+        ;;
+
+    reboot-system)
+        header "Reboot PCS"
+        echo "Reboot requested from PCS Control Panel."
+        echo "The dashboard will disconnect while the Pi restarts."
+        systemctl --no-block reboot
+        ;;
+
+    shutdown-system)
+        header "Shutdown PCS"
+        echo "Shutdown requested from PCS Control Panel."
+        echo "Wait for the Pi activity LED to settle before removing power."
+        systemctl --no-block poweroff
         ;;
 
     ""|-h|--help|help)
