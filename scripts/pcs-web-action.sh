@@ -89,6 +89,82 @@ ensure_usb_mounted() {
     fi
 }
 
+detect_usb_storage_candidates() {
+    local name
+    local type
+    local fstype
+    local pkname
+    local rm
+    local hotplug
+    local tran
+    local parent_device
+    local parent_tran
+    local parent_rm
+    local parent_hotplug
+
+    while read -r name type fstype pkname rm hotplug tran; do
+        [[ -n "${name}" ]] || continue
+        [[ -n "${fstype}" ]] || continue
+        [[ "${name}" != /dev/mmcblk0* ]] || continue
+
+        parent_tran="${tran}"
+        parent_rm="${rm}"
+        parent_hotplug="${hotplug}"
+
+        if [[ "${type}" == "part" && -n "${pkname}" ]]; then
+            parent_device="${pkname}"
+            if [[ "${parent_device}" != /dev/* ]]; then
+                parent_device="/dev/${parent_device}"
+            fi
+
+            parent_tran="$(lsblk -dnro TRAN "${parent_device}" 2>/dev/null || true)"
+            parent_rm="$(lsblk -dnro RM "${parent_device}" 2>/dev/null || true)"
+            parent_hotplug="$(lsblk -dnro HOTPLUG "${parent_device}" 2>/dev/null || true)"
+        fi
+
+        if [[ "${parent_tran}" == "usb" || "${parent_rm}" == "1" || "${parent_hotplug}" == "1" ]]; then
+            echo "${name}"
+        fi
+    done < <(lsblk -rpno NAME,TYPE,FSTYPE,PKNAME,RM,HOTPLUG,TRAN 2>/dev/null)
+}
+
+configure_detected_usb_primary() {
+    local candidates=()
+    local candidate
+
+    mapfile -t candidates < <(detect_usb_storage_candidates | sort -u)
+
+    if [[ "${#candidates[@]}" -eq 0 ]]; then
+        echo "ERROR: No removable/USB storage filesystem was detected."
+        echo
+        echo "Attach the PCS USB storage device, then try Mount USB Storage again."
+        exit 1
+    fi
+
+    if [[ "${#candidates[@]}" -gt 1 ]]; then
+        echo "ERROR: Multiple removable/USB storage filesystems were detected."
+        echo "Automatic dashboard setup needs exactly one candidate."
+        echo
+
+        for candidate in "${candidates[@]}"; do
+            echo "  ${candidate}"
+            lsblk -no NAME,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS "${candidate}" 2>/dev/null || true
+        done
+
+        echo
+        echo "Run this manually from the Pi with the intended device:"
+        echo "  ./scripts/setup-usb-primary-share.sh /dev/sdX1"
+        exit 1
+    fi
+
+    candidate="${candidates[0]}"
+    echo "Detected USB storage candidate: ${candidate}"
+    echo "Configuring it as the PCS primary USB share."
+    echo
+
+    "${REPO_DIR}/scripts/setup-usb-primary-share.sh" "${candidate}"
+}
+
 sync_backup() {
     header "Sync USB Primary to SD Backup"
 
@@ -136,6 +212,11 @@ mount_usb() {
 
     if findmnt "${USB_MOUNT}" >/dev/null 2>&1; then
         echo "${USB_MOUNT} is already mounted."
+    elif ! grep -Eq "[[:space:]]${USB_MOUNT//\//\\/}[[:space:]]" /etc/fstab; then
+        echo "No /etc/fstab entry exists for ${USB_MOUNT}."
+        echo "Attempting one-time USB primary share setup from the dashboard action."
+        echo
+        configure_detected_usb_primary
     else
         mount "${USB_MOUNT}"
     fi

@@ -30,6 +30,7 @@ PCS_SAMBA_USER="${PCS_SAMBA_USER:-${USER}}"
 PCS_SAMBA_WORKGROUP="${PCS_SAMBA_WORKGROUP:-${PCS_SAMBA_WORKGROUP_DEFAULT}}"
 PCS_SAMBA_PASSWORD="${PCS_SAMBA_PASSWORD:-}"
 PCS_SETUP_USB_PRIMARY="${PCS_SETUP_USB_PRIMARY:-ask}"
+PCS_SETUP_USB_DEVICE="${PCS_SETUP_USB_DEVICE:-auto}"
 PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
 
 is_yes() {
@@ -130,6 +131,7 @@ write_install_config() {
         printf "PCS_SAMBA_WORKGROUP=%q\n" "${PCS_SAMBA_WORKGROUP}"
         echo "# PCS_SAMBA_PASSWORD is intentionally not written to disk."
         printf "PCS_SETUP_USB_PRIMARY=%q\n" "${PCS_SETUP_USB_PRIMARY}"
+        printf "PCS_SETUP_USB_DEVICE=%q\n" "${PCS_SETUP_USB_DEVICE}"
         printf "PCS_SETUP_WWAN_GPS=%q\n" "${PCS_SETUP_WWAN_GPS}"
     } > "${INSTALL_CONFIG}"
 
@@ -189,6 +191,7 @@ collect_install_answers() {
                 ask_secret_confirm "Samba password for ${PCS_SAMBA_WORKGROUP}\\${PCS_SAMBA_USER}" PCS_SAMBA_PASSWORD
             fi
             PCS_SETUP_USB_PRIMARY="yes"
+            PCS_SETUP_USB_DEVICE="auto"
             PCS_SETUP_WWAN_GPS="no"
             ;;
         ALL)
@@ -204,6 +207,11 @@ collect_install_answers() {
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
             PCS_SETUP_USB_PRIMARY="$(ask_yes_no "Configure detected USB storage as PCS-Share primary storage?" "${usb_default}")"
+            if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" ]]; then
+                PCS_SETUP_USB_DEVICE="$(ask_value "USB storage device or UUID" "${PCS_SETUP_USB_DEVICE}")"
+            else
+                PCS_SETUP_USB_DEVICE="auto"
+            fi
             PCS_SETUP_WWAN_GPS="$(ask_yes_no "Configure WWAN modem NMEA GPS during setup?" "${gps_default}")"
             ;;
         ASK)
@@ -212,6 +220,7 @@ collect_install_answers() {
             PCS_SAMBA_USER="${USER}"
             PCS_SAMBA_WORKGROUP="${PCS_SAMBA_WORKGROUP:-${PCS_SAMBA_WORKGROUP_DEFAULT}}"
             PCS_SETUP_USB_PRIMARY="ask"
+            PCS_SETUP_USB_DEVICE="auto"
             PCS_SETUP_WWAN_GPS="ask"
             ;;
     esac
@@ -224,6 +233,7 @@ collect_install_answers() {
     export PCS_SAMBA_WORKGROUP
     export PCS_SAMBA_PASSWORD
     export PCS_SETUP_USB_PRIMARY
+    export PCS_SETUP_USB_DEVICE
     export PCS_SETUP_WWAN_GPS
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
@@ -253,6 +263,7 @@ confirm_install_answers() {
     echo "  Samba workgroup:    ${PCS_SAMBA_WORKGROUP}"
     echo "  Samba password:     ${samba_password_status}"
     echo "  USB primary policy: ${PCS_SETUP_USB_PRIMARY}"
+    echo "  USB device/UUID:    ${PCS_SETUP_USB_DEVICE}"
     echo "  WWAN GPS policy:    ${PCS_SETUP_WWAN_GPS}"
     echo
 
@@ -439,7 +450,10 @@ detect_usb_storage_candidates() {
 
 echo "Scanning for USB storage..."
 
-if sudo blkid -U "${USB_UUID_DEFAULT}" >/dev/null 2>&1; then
+if [[ -n "${PCS_SETUP_USB_DEVICE}" && "${PCS_SETUP_USB_DEVICE}" != "auto" ]]; then
+    USB_DEVICE="${PCS_SETUP_USB_DEVICE}"
+    USB_DEVICE_REASON="selected in setup answers"
+elif sudo blkid -U "${USB_UUID_DEFAULT}" >/dev/null 2>&1; then
     USB_DEVICE="$(sudo blkid -U "${USB_UUID_DEFAULT}")"
     USB_DEVICE_REASON="matched default UUID ${USB_UUID_DEFAULT}"
 else
@@ -492,12 +506,21 @@ else
 fi
 
 if [[ -n "${USB_DEVICE}" ]]; then
+    USB_DEVICE_DISPLAY="${USB_DEVICE}"
+    if [[ "${USB_DEVICE_DISPLAY}" != /dev/* ]]; then
+        USB_DEVICE_DISPLAY="$(sudo blkid -U "${USB_DEVICE}" 2>/dev/null || true)"
+    fi
+
     echo
     echo "USB storage candidate:"
     echo "  Device: ${USB_DEVICE}"
     echo "  Reason: ${USB_DEVICE_REASON}"
     echo
-    lsblk -o NAME,PATH,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS,MODEL,TRAN "${USB_DEVICE}" 2>/dev/null || true
+    if [[ -n "${USB_DEVICE_DISPLAY}" ]]; then
+        lsblk -o NAME,PATH,SIZE,FSTYPE,LABEL,UUID,MOUNTPOINTS,MODEL,TRAN "${USB_DEVICE_DISPLAY}" 2>/dev/null || true
+    else
+        echo "  ${USB_DEVICE} was not resolved yet; setup-usb-primary-share.sh will validate it."
+    fi
     echo
 
     if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" || "${PCS_SETUP_USB_PRIMARY}" == "no" ]]; then
