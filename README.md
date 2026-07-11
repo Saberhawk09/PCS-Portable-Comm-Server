@@ -14,11 +14,12 @@ This GitHub will also use a mix of my own writing and AI generated text. All tex
 
 ## Project Goals
 
+- Simple and straightforward software setup with a single script
 - Reliable LAN communication between connected clients
-- Cellular internet connectivity for connected clients
-- NMEA GPS-disciplined NTP server for connected clients
-- LAN file share reachable by all connected clients
-- Rugged field deployment
+- Samba file share reachable by connected clients
+- NMEA GPS-disciplined / internet NTP reference for connected clients
+- Optional cellular internet connectivity for connected clients
+- Rugged and durable enclosure for field deployment
 - Emergency/grid power capable
 - Easy operation by non-technical users
 
@@ -32,32 +33,32 @@ The core PCS software baseline is working and rebuild-tested.
 
 Currently working:
 
-- Reliable post-reboot behavior - The whole PCS system starts up with no user input when the Pi is powered.
-- Browser-accessible PCS control panel at `10.42.0.1` with redirect for port 80
-- Pi-side self-test/status scripts
-- Client LAN/AP handoff through the Pi's ethernet interface
-- Linksys EA4500 OpenWrt operating as the AP/switch
-- USB primary Samba share with SD-card backup mirror
-- Chrony LAN NTP Server
-- I2C RTC support
-- PCS Control Panel dashboard
-- Validated Sierra Wireless WWAN modem functionality - The attached cell modem MUST be configured manually first.
-- GPS NMEA exposed on /dev/ttyUSB1
-- /dev/ttyUSB1 NMEA Datastream -> gpsd -> Chrony -> LAN Accessable NTP Server working
-- Full SD-card wipe/rebuild repeatability test
+- Hardware:
+ - Linksys EA4500 OpenWrt operating as the AP/switch
+ - Client LAN/AP handoff through the Pi's ethernet interface
+ - Validated Sierra Wireless WWAN modem via USB adapter
+ - I2C RTC for sane time reference at boot
 
-Still planned:
+- Software:
+ - Reliable post-reboot behavior - The whole PCS system starts up with no user input when the Pi is powered.
+ - Browser-accessible PCS control panel at `10.42.0.1` with redirect for port 80
+ - Pi-side self-test/status scripts
+ - USB primary Samba share with SD-card backup mirror
+ - GPS NMEA exposed on /dev/ttyUSB1
+ - /dev/ttyUSB1 NMEA Datastream -> gpsd -> Chrony -> LAN Accessable NTP Server working
+ - Full SD-card wipe/rebuild repeatability test
 
-- Final enclosure
-- Final power system implementation using the current 24 V -> regulated 12 V -> regulated 5 V architecture
-- External LTE/GPS antenna mounting
+- Still planned:
+ - Final enclosure
+ - Final power system implementation using the current 24 V -> regulated 12 V -> regulated 5 V architecture
+ - External LTE/GPS antenna mounting
 
 ## Hardware Setup
 
 Before running setup, connect the hardware you want the installer to configure:
 
 - Raspberry Pi booted from the target SD card.
-- Ethernet from the Pi `eth0` port to the PCS router/AP via a LAN port (Not the WAN/Internet Port).
+- Ethernet from the Pi to the PCS router/AP via a LAN port (Not the WAN/Internet Port).
 - The PCS router/AP powered on.
 - The RTC module installed, if this build includes the RTC.
 - The WWAN modem installed and connected over USB, if this build includes cellular/GPS.

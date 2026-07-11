@@ -2,7 +2,7 @@
 
 PCS, or Portable Comm Server, is a portable field networking appliance built around a Raspberry Pi 4, a USB WWAN modem, and a dedicated access point/switch.
 
-The project began after a Field Day networking failure caused by relying on Windows hotspot behavior for shared logging. The goal is to provide a purpose-built field network for amateur radio events, emergency communications exercises, portable operations, and other situations where multiple client computers need a reliable local network.
+The project began after a networking failure caused by relying on Windows hotspot behavior for shared files. The goal is to provide a purpose-built field network for emergency communications exercises, portable operations, and other situations where multiple client computers need a reliable local network.
 
 PCS is intended to provide:
 
@@ -33,11 +33,9 @@ Current tested hardware includes:
 - Raspberry Pi 4
 - Raspberry Pi I2C RTC module
 - USB WWAN enclosure
-- Sierra Wireless / Semtech EM7565 LTE modem with heatsink
+- Sierra Wireless / Semtech EM7565 LTE modem
 - Linksys EA4500 running OpenWrt
 - USB flash drive for primary Samba storage
-- external GNSS antenna
-- LTE antennas / modem antennas as available
 
 ## Current Network Layout
 
@@ -92,7 +90,7 @@ The current software baseline includes:
 - Raspberry Pi RTC support
 - Sierra Wireless WWAN modem support
 - WWAN GPS NMEA path
-- EM7565 active GPS antenna bias/pigtail path validated
+- EM7565 w/active GPS antenna
 - gpsd support
 - Chrony GPS source support
 - Cockpit access

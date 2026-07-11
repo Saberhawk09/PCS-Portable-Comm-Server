@@ -94,7 +94,7 @@ Configure Wi-Fi normally in OpenWrt.
 Recommended settings:
 
 ```text
-SSID:        PCS or club-specific name
+SSID:        Any
 Security:   WPA2/WPA3 as supported by client devices
 Password:   field-safe shared password
 Network:    LAN bridge
