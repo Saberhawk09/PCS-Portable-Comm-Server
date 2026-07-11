@@ -59,7 +59,7 @@ Some documents may still be placeholders while the project is being built out.
 
 Before running setup, connect the hardware you want the installer to configure:
 
-- Raspberry Pi booted from the target SD card.
+- Raspberry Pi booted from the target SD card. Tested with latest Raspberry Pi OS 64-bit.
 - Ethernet from the Pi to the PCS router/AP via a LAN port (Not the WAN/Internet Port).
 - The PCS router/AP powered on.
 - The RTC module installed, if this build includes the RTC.
