@@ -29,9 +29,6 @@ Some documents may still be placeholders while the project is being built out.
 
 ## Current Status
 
-The core PCS software baseline is working and rebuild-tested.
-
-Currently working
 
 ### Hardware:
  - Linksys EA4500 OpenWrt operating as the AP/switch
@@ -54,6 +51,8 @@ Currently working
  - Final enclosure
  - Final power system implementation using the current 24 V -> regulated 12 V -> regulated 5 V architecture
  - External LTE/GPS antenna mounting
+
+ The core PCS software setup and hardware configuration is working as intended.
 
 
 ## Hardware Setup
