@@ -31,13 +31,14 @@ Some documents may still be placeholders while the project is being built out.
 
 The core PCS software baseline is working and rebuild-tested.
 
-Currently working:
+Currently working
 
 - Hardware:
  - Linksys EA4500 OpenWrt operating as the AP/switch
  - Client LAN/AP handoff through the Pi's ethernet interface
  - Validated Sierra Wireless WWAN modem via USB adapter
  - I2C RTC for sane time reference at boot
+
 
 - Software:
  - Reliable post-reboot behavior - The whole PCS system starts up with no user input when the Pi is powered.
@@ -48,10 +49,12 @@ Currently working:
  - /dev/ttyUSB1 NMEA Datastream -> gpsd -> Chrony -> LAN Accessable NTP Server working
  - Full SD-card wipe/rebuild repeatability test
 
+
 - Still planned:
  - Final enclosure
  - Final power system implementation using the current 24 V -> regulated 12 V -> regulated 5 V architecture
  - External LTE/GPS antenna mounting
+
 
 ## Hardware Setup
 
