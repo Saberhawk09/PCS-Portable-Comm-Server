@@ -24,22 +24,6 @@ This GitHub will also use a mix of my own writing and AI generated text. All tex
 
 For more detail, see [Project Overview](docs/project-overview.md).
 
-## PCS Documentation
-
-Start here:
-
-- [Project Overview](docs/project-overview.md)
-- [Bill of Materials](docs/bill-of-materials.md)
-- [Power System](docs/power-system.md)
-- [Network Topology](docs/network-topology.md)
-- [Network Design](docs/network-design.md)
-- [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
-- [WWAN Card Setup](docs/wwan-card-setup.md)
-- [Samba File Share](docs/samba-file-share.md)
-- [PCS Control Panel](docs/pcs-control-panel.md)
-- [Testing Checklist](docs/testing-checklist.md)
-- [Script Reference](scripts/README.md)
-
 Some documents may still be placeholders while the project is being built out.
 
 ## Current Status
@@ -123,18 +107,9 @@ Expected result:
 ```text
 nothing to commit, working tree clean
 PCS Pi-side self-test PASSED.
-
+```
 You may also see a single warning related to the cellular profile not being active. 
 This is okay if you haven't manually activated the cellular data connection since the PCS system was installed.
-```
-
-The self-test should show:
-
-```text
-Fail: 0
-Warn: 0
-```
-Cellular data may be disconnected by design; the manual cellular profile should still be present after setup.
 
 For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
@@ -150,242 +125,21 @@ Open the PCS Control Panel:
 http://10.42.0.1:8080
 ```
 
-## WWAN / Cellular Modem Setup
+## PCS Documentation
 
-PCS uses NetworkManager and ModemManager for cellular data. The WWAN card is expected to expose an MBIM cellular interface and a GNSS/NMEA serial port.
+For additional documentation, start here:
 
-The current known-good PCS WWAN hardware is:
-
-```text
-Sierra Wireless EM7565
-Firmware: SWI9X50C_01.14.02.00_TMO_002.003_003
-APN: fast.t-mobile.com
-Cellular interface: cdc-wdm0 / wwan0
-GNSS NMEA port: /dev/ttyUSB1
-GNSS path: /dev/ttyUSB1 -> gpsd -> Chrony -> PCS dashboard
-```
-
-The current known-good PCS NetworkManager cellular profile is:
-
-```text
-connection.id: pcs-cellular-profile
-gsm.apn: fast.t-mobile.com
-connection.autoconnect: no
-ipv4.method: auto
-ipv6.method: auto
-ipv4.route-metric: 900
-ipv6.route-metric: 900
-```
-
-Fresh installs default to `pcs-cellular-profile`. Older installs may still use
-the legacy `pcs-cellular-tmobile` profile name; PCS status, self-test, and web
-actions will use it if it is already present. Override the fresh-install name in
-`config/pcs-install.conf` with `PCS_CELLULAR_PROFILE`.
-
-Cellular connection is intentionally manual by default. The setup script may create the NetworkManager cellular profile, but PCS does not force cellular autoconnect. Use the PCS Control Panel or NetworkManager tools to connect/disconnect the modem when needed.
-
-Manual connect/disconnect from the Pi:
-
-```bash
-nmcli connection up pcs-cellular-profile
-nmcli connection down pcs-cellular-profile
-```
-
-### Known-good EM7565 AT setup
-
-These commands are normally run from Windows using the Sierra Wireless AT Command Port.
-
-Serial settings:
-
-```text
-115200 baud
-8 data bits
-No parity
-1 stop bit
-No flow control
-```
-
-Basic identity and unlock:
-
-```text
-ATE1
-ATI
-AT!ENTERCND="A710"
-```
-
-Known-good EM7565 GNSS setup:
-
-```text
-AT+WANT=1
-AT!GPSNMEACONFIG=1,1
-AT!GPSNMEASENTENCE=00CF
-AT!RESET
-```
-
-Expected verification after reset:
-
-```text
-AT!ENTERCND="A710"
-AT+WANT?
-AT!GPSNMEACONFIG?
-AT!GPSNMEASENTENCE?
-```
-
-Expected results:
-
-```text
-+WANT: 1
-
-Enabled: 1
-Output Rate: 1
-
-!GPSNMEASENTENCE: 0xCF
-```
-
-The known-good EM7565 GNSS NMEA sentence mask is:
-
-```text
-AT!GPSNMEASENTENCE=00CF
-```
-
-This keeps the useful GPS/GLONASS/GNSS NMEA sentences and removes the `$GA...` sentence group that caused gpsd/cgps fix reporting to flap between valid fix and no fix during testing.
-
-Expected NMEA sentence families after applying `00CF`:
-
-```text
-$GPGGA
-$GPRMC
-$GPGSA
-$GPGSV
-$GLGSV
-$GNGSA
-```
-
-The following `$GA...` sentences should not appear in the normal PCS stream:
-
-```text
-$GAGGA
-$GARMC
-$GAGSA
-```
-
-### Known-good WWAN modem / EM74xx AT setup
-
-PCS uses a generic WWAN GPS service path for modem NMEA, gpsd, and Chrony.
-
-Basic identity and unlock:
-
-```text
-ATE1
-ATI
-AT!ENTERCND="A710"
-```
-
-Known-good WWAN modem GNSS setup:
-
-```text
-AT!CUSTOM="GPSENABLE",1
-AT+WANT=1
-AT!GPSNMEACONFIG=1,1
-AT!GPSNMEASENTENCE=00CF
-AT!RESET
-```
-
-Expected verification after reset:
-
-```text
-AT!ENTERCND="A710"
-AT!CUSTOM?
-AT+WANT?
-AT!GPSNMEACONFIG?
-AT!GPSNMEASENTENCE?
-```
-
-Expected GNSS baseline:
-
-```text
-GPSENABLE: 1
-+WANT: 1
-Enabled: 1
-Output Rate: 1
-!GPSNMEASENTENCE: 0xCF
-```
-
-### USB composition
-
-The known-good USB composition for PCS is:
-
-```text
-DIAG + NMEA + MODEM + MBIM
-Interface bitmask: 0000100D
-```
-
-Query USB composition:
-
-```text
-AT!ENTERCND="A710"
-AT!USBCOMP?
-```
-
-Set USB composition only when needed:
-
-```text
-AT!ENTERCND="A710"
-AT!USBCOMP=1,1,100D
-AT!RESET
-```
-
-After reset, Linux should expose:
-
-```text
-/dev/cdc-wdm0
-wwan0
-/dev/ttyUSB1
-```
-
-### Pi-side WWAN/GNSS verification
-
-Check cellular, GPS, and time after setup:
-
-```bash
-nmcli device status
-mmcli -L
-ip addr show wwan0
-ip route
-
-timeout 20 gpspipe -r 2>/dev/null | grep -E '^\$(GP|GN|GL|GA)(GGA|RMC|GSA|GSV)' | head -n 60
-timeout 20 gpspipe -w 2>/dev/null | grep -E '"class":"(TPV|SKY)"' | head -n 20
-
-chronyc sources -v
-
-sudo /usr/local/sbin/pcs-web-action dashboard-json | jq '.cards[] | select(.id=="cellular"), .cards[] | select(.id=="gps"), .cards[] | select(.id=="time")'
-```
-
-Expected high-level result:
-
-```text
-Cellular: ok
-GPS/GNSS: ok
-Time/Chrony: ok
-Self-test: pass, no hard failures
-```
-
-For full WWAN modem setup notes, including firmware notes, USB composition details, GNSS antenna bias, expected Linux device layout, and troubleshooting, see:
-
+- [Project Overview](docs/project-overview.md)
+- [Bill of Materials](docs/bill-of-materials.md)
+- [Power System](docs/power-system.md)
+- [Network Topology](docs/network-topology.md)
+- [Network Design](docs/network-design.md)
+- [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
 - [WWAN Card Setup](docs/wwan-card-setup.md)
-
-Expected access point settings:
-
-```text
-AP/router DHCP:    disabled
-AP/router LAN IP:  10.42.0.2
-Pi eth0:           10.42.0.1
-Cable:             Pi eth0 -> EA4500 LAN port
-```
-
-The access point may claim it has no internet access. That is expected if the cellular profile is disabled or does not have service. Internet access is intentionally optional with PCS.
-
-For more detail, see [Network Topology](docs/network-topology.md) and [Network Design](docs/network-design.md).
+- [Samba File Share](docs/samba-file-share.md)
+- [PCS Control Panel](docs/pcs-control-panel.md)
+- [Testing Checklist](docs/testing-checklist.md)
+- [Script Reference](scripts/README.md)
 
 ## Windows Client Testing
 
