@@ -64,13 +64,13 @@ Useful Pi-side visibility includes:
 
 - DHCP leases
 - ARP / neighbor table
-- client IP addresses
+- Client IP addresses
 - Samba session state
-- service health
+- Service health
 - GPS/NTP state
-- cellular state
-- storage state
-- backup state
+- Cellular state
+- Storage state
+- Backup state
 
 If a separate router handled DHCP and NAT, the Pi could lose visibility into individual clients or see only the router as a single upstream device.
 
@@ -116,7 +116,7 @@ PCS should still provide local networking, file sharing, local dashboard access,
 Possible uplinks:
 
 - Wi-Fi uplink on `wlan0`
-- cellular uplink through EM7565
+- cellular uplink through WWAN modem
 - no uplink / offline LAN only
 
 Cellular data is intentionally controlled manually through the PCS Control Panel.
@@ -133,9 +133,9 @@ The Pi provides:
 - Chrony NTP service
 - GPSD input for GNSS-backed time
 - PCS Control Panel
-- dashboard redirect
+- Dashboard redirect
 - Cockpit
-- status and self-test scripts
+- Status and self-test scripts
 
 The OpenWrt AP provides:
 
@@ -197,6 +197,6 @@ Useful scripts from the repository root:
 ./scripts/setup-router-wan-share.sh
 ```
 
-Note: some script names still use older wording such as `router-wan-share`. In the current design, this refers to the PCS LAN/client handoff path through the Pi Ethernet interface.
+Note: Some script names still use older wording such as `router-wan-share`. In the current design, this refers to the PCS LAN/client handoff path through the Pi Ethernet interface.
 
 On fresh installs, Raspberry Pi OS may create a generated `netplan-eth0` NetworkManager profile. The setup script disables that competing profile and activates `pcs-router-wan-share` so `eth0` comes up as `10.42.0.1/24` with NetworkManager shared IPv4 forwarding.

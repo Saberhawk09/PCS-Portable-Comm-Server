@@ -4,15 +4,15 @@ PCS, or Portable Comm Server, is a portable field networking appliance built aro
 
 The project began after a networking failure caused by relying on Windows hotspot behavior for shared files. The goal is to provide a purpose-built field network for emergency communications exercises, portable operations, and other situations where multiple client computers need a reliable local network.
 
-PCS is intended to provide:
+PCS is intended to feature/provide:
 
-- reliable wired and wireless LAN connectivity
-- local file sharing for logging computers
-- cellular internet access when available
-- GPS-backed network time
-- web-based system monitoring and control
-- simple operation by non-technical users
-- future rugged enclosure and field power support
+- Reliable wired and wireless LAN connectivity
+- LAN file sharing for connected clients
+- Cellular internet access when available
+- GPS/Internet disciplined NTP server
+- Web-based system monitoring and control
+- Simple operation by non-technical users
+- Rugged enclosure and field power support
 
 ## Current Project Status
 
@@ -20,20 +20,18 @@ PCS is no longer just a planning project. The core software baseline is working 
 
 Current focus:
 
-- polish the software
-- improve reliability and error handling
-- clean up startup behavior
-- bring documentation up to date
-- prepare the repository for a usable release
+- Polish the software
+- Improve reliability and error handling with setup and operation
+- Prepare the repository for a usable release
 
 ## Current Tested Hardware
 
 Current tested hardware includes:
 
 - Raspberry Pi 4
-- Raspberry Pi I2C RTC module
+- DS1307 I2C RTC module
 - USB WWAN enclosure
-- Sierra Wireless / Semtech EM7565 LTE modem
+- Sierra Wireless EM7455 and EM7565 LTE modems
 - Linksys EA4500 running OpenWrt
 - USB flash drive for primary Samba storage
 
@@ -77,7 +75,7 @@ PCS server / gateway
 The current software baseline includes:
 
 - PCS Control Panel
-- dashboard redirect from `http://10.42.0.1`
+- Dashboard redirect from `http://10.42.0.1`
 - Pi-side status and self-test scripts
 - Ethernet client handoff on the PCS LAN
 - OpenWrt AP/switch integration
@@ -85,7 +83,7 @@ The current software baseline includes:
 - Samba backup share
 - USB primary storage support
 - SD-card backup mirror
-- manual backup sync
+- Manual backup sync
 - Chrony LAN NTP server
 - Raspberry Pi RTC support
 - Sierra Wireless WWAN modem support
@@ -127,7 +125,7 @@ PCS is designed to provide stable local network time.
 The intended time hierarchy is:
 
 ```text
-GNSS NMEA from WWAN modem
+GNSS NMEA data from WWAN modem
         |
         v
 gpsd
@@ -139,7 +137,7 @@ Chrony
 PCS LAN clients
 ```
 
-The Raspberry Pi RTC provides a sane time source at boot before GPS or internet time is available.
+The DS1307 RTC provides a sane time source at boot before GPS or internet time is available.
 
 Chrony provides NTP service to LAN clients at:
 
@@ -166,27 +164,27 @@ The backup mirror is intended to reduce the risk of losing field logs if the rem
 
 PCS should be:
 
-- reliable after reboot
-- easy to test
-- easy to rebuild
-- understandable from documentation
-- usable without internet
-- usable by non-technical operators
-- field-serviceable
-- modular enough to improve over time
+- Reliable after reboot
+- Easy to test
+- Easy to rebuild
+- Understandable from documentation
+- Usable without internet
+- Usable by non-technical operators
+- Field-serviceable
+- Modular enough to improve over time
 
 ## Still Planned
 
 The current build works, but the following items are still planned or not final:
 
-- final enclosure
-- final power system implementation using the documented 24 V -> regulated 12 V -> regulated 5 V architecture
-- external antenna mounting
-- battery voltage monitoring hardware
-- low-voltage alarm / safe shutdown hardware
+- Final rugged enclosure
+- Final power system implementation using the documented 24 V -> regulated 12 V -> regulated 5 V architecture
+- External LTE and GNSS antenna mounting
+- Battery voltage monitoring hardware
+- Low-voltage alarm / safe shutdown hardware
 - OLED display
-- full SD-card wipe/rebuild repeatability validation
-- polished public release process
+- Full SD-card wipe/rebuild repeatability validation
+- Polished public release process
 
 ## Related Documentation
 
