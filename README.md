@@ -29,6 +29,7 @@ Some documents may still be placeholders while the project is being built out.
 
 ## Current Status
 
+The core PCS software setup and hardware configuration is working as intended.
 
 ### Hardware:
  - Linksys EA4500 OpenWrt operating as the AP/switch
@@ -52,20 +53,17 @@ Some documents may still be placeholders while the project is being built out.
  - Final power system implementation using the current 24 V -> regulated 12 V -> regulated 5 V architecture
  - External LTE/GPS antenna mounting
 
- The core PCS software setup and hardware configuration is working as intended.
-
-
 ## Hardware Setup
 
-Before running setup, connect the hardware you want the installer to configure:
+### Before running setup, connect the hardware you want the installer to configure:
 
-- Raspberry Pi booted from the target SD card. Tested with latest Raspberry Pi OS 64-bit.
-- Ethernet from the Pi to the PCS router/AP via a LAN port (Not the WAN/Internet Port).
-- The PCS router/AP powered on.
-- The RTC module installed, if this build includes the RTC.
-- The WWAN modem installed and connected over USB, if this build includes cellular/GPS.
-- The GPS/GNSS antenna connected to the WWAN modem, if configuring WWAN GPS/NMEA.
-- The intended USB storage device connected, if using USB primary file storage.
+ - Raspberry Pi booted from the target SD card. Tested with latest Raspberry Pi OS 64-bit.
+ - Ethernet from the Pi to the PCS router/AP via a LAN port (Not the WAN/Internet Port).
+ - The PCS router/AP powered on.
+ - The RTC module installed, if this build includes the RTC.
+ - The WWAN modem installed and connected over USB, if this build includes cellular/GPS.
+ - The GPS/GNSS antenna connected to the WWAN modem, if configuring WWAN GPS/NMEA.
+ - The intended USB storage device connected, if using USB primary file storage.
 
 ## Software Setup
 
