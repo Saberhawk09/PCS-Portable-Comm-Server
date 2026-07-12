@@ -6,7 +6,7 @@ What started as an annoyance caused by Windows networking has evolved into my fi
 
 ## Warning, AI generated code
 
-I'm a highschool dropout working at a convenience store, of course I'm using AI to help me code. 
+### I'm a highschool dropout working at a convenience store, of course I'm using AI to help me code. 
 
 With that said, all code will be reviewed by me (not just hey it works, let's keep going) and all ideas / designs will be 100% human generated.
 
