@@ -52,7 +52,7 @@ Primary Share:   \\10.42.0.1\PCS-Share
 Backup Share:    \\10.42.0.1\PCS-Backup
 NTP Server:      10.42.0.1
 OpenWrt AP:      http://10.42.0.2
-Pi-Star:         http://10.42.0.3
+Pi-Star:         http://10.42.0.3 (when selected during setup)
 ```
 
 ## Documentation Status

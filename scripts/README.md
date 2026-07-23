@@ -26,6 +26,7 @@ This installs/configures:
 - Samba shares
 - Chrony LAN NTP
 - Optional WWAN GNSS and LAN-only GPSD sharing
+- Optional Pi-Star monitoring and local-access links
 - PCS restart service
 - PCS Control Panel
 - Dashboard redirect
@@ -114,6 +115,11 @@ YSFGateway's GPSD client, and the unused local MobileGPS path. It does not
 contain or modify Wi-Fi passwords, callsigns, or digital-network credentials.
 
 See [Full-Stack Reinstall Runbook](../docs/full-stack-reinstall.md).
+
+Pi-Star monitoring is controlled separately by `PCS_SETUP_PISTAR=yes|no` in
+`config/pcs-install.conf`. When set to `no`, PCS does not probe the hotspot,
+does not display Pi-Star-specific dashboard fields, and does not warn when
+`10.42.0.3` is absent.
 
 ### setup-chrony-lan-ntp.sh
 

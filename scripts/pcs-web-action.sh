@@ -413,7 +413,10 @@ import shutil
 import subprocess
 from datetime import datetime
 
-INSTALL_CONFIG = "/home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf"
+INSTALL_CONFIG = os.environ.get(
+    "PCS_INSTALL_CONFIG",
+    "/home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf",
+)
 USB_MOUNT = "/mnt/pcs-usb"
 PRIMARY_SHARE = "/mnt/pcs-usb/PCS-Share"
 BACKUP_SHARE = "/srv/pcs-share-backup"
@@ -449,6 +452,7 @@ def install_config():
 
 CONFIG = install_config()
 CELLULAR_PROFILE = CONFIG.get("PCS_CELLULAR_PROFILE", CELLULAR_PROFILE_DEFAULT)
+PI_STAR_CONFIGURED = CONFIG.get("PCS_SETUP_PISTAR", "no").lower() == "yes"
 
 def run(cmd, timeout=8):
     try:
@@ -1699,20 +1703,46 @@ eth0_ip = eth0_address()
 eth0_method = nm_connection_method("pcs-router-wan-share")
 backup_info = backup_health()
 web_admin = web_admin_status()
-pi_star = pi_star_health()
+pi_star = pi_star_health() if PI_STAR_CONFIGURED else {}
 
 uplink_status = "ok" if route_details.get("interface") else "warn"
 client_lan_status = "ok" if eth0_ip.startswith("10.42.0.1/") else "warn"
-web_admin_status_value = "ok" if (
+web_admin_core_ok = (
     web_admin["control_panel_active"]
     and web_admin["redirect_active"]
     and web_admin["cockpit_active"]
     and web_admin["port_80"]
     and web_admin["port_8080"]
     and web_admin["port_9090"]
-    and pi_star["reachable"]
+)
+pi_star_ok = not PI_STAR_CONFIGURED or (
+    pi_star["reachable"]
     and pi_star["dashboard"]
-) else "warn"
+)
+web_admin_status_value = "ok" if web_admin_core_ok and pi_star_ok else "warn"
+
+web_admin_items = [
+    {"label": "Dashboard redirect", "value": "active" if web_admin["redirect_active"] else "inactive"},
+    {"label": "Control panel", "value": "active" if web_admin["control_panel_active"] else "inactive"},
+    {"label": "Cockpit", "value": "active" if web_admin["cockpit_active"] else "inactive"},
+    {"label": "Port 80", "value": "listening" if web_admin["port_80"] else "not listening"},
+    {"label": "Port 8080", "value": "listening" if web_admin["port_8080"] else "not listening"},
+    {"label": "Port 9090", "value": "listening" if web_admin["port_9090"] else "not listening"},
+]
+
+if PI_STAR_CONFIGURED:
+    web_admin_items.extend([
+        {"label": "Pi-Star ping", "value": "reachable" if pi_star["ping"] else "no reply"},
+        {"label": "Pi-Star dashboard", "value": "reachable" if pi_star["dashboard"] else "unavailable"},
+        {"label": "Pi-Star SSH", "value": "reachable" if pi_star["ssh"] else "unavailable"},
+    ])
+
+if web_admin_status_value != "ok":
+    web_admin_summary = "One or more configured web/admin checks failed"
+elif PI_STAR_CONFIGURED:
+    web_admin_summary = "PCS and Pi-Star interfaces active"
+else:
+    web_admin_summary = "PCS interfaces active"
 
 chrony = chrony_tracking()
 chrony_active = active("chrony")
@@ -1881,18 +1911,8 @@ cards = [
         "id": "web-admin",
         "title": "Web / Admin Interfaces",
         "status": web_admin_status_value,
-        "summary": "PCS and Pi-Star interfaces active" if web_admin_status_value == "ok" else "One or more web/admin checks failed",
-        "items": [
-            {"label": "Dashboard redirect", "value": "active" if web_admin["redirect_active"] else "inactive"},
-            {"label": "Control panel", "value": "active" if web_admin["control_panel_active"] else "inactive"},
-            {"label": "Cockpit", "value": "active" if web_admin["cockpit_active"] else "inactive"},
-            {"label": "Port 80", "value": "listening" if web_admin["port_80"] else "not listening"},
-            {"label": "Port 8080", "value": "listening" if web_admin["port_8080"] else "not listening"},
-            {"label": "Port 9090", "value": "listening" if web_admin["port_9090"] else "not listening"},
-            {"label": "Pi-Star ping", "value": "reachable" if pi_star["ping"] else "no reply"},
-            {"label": "Pi-Star dashboard", "value": "reachable" if pi_star["dashboard"] else "unavailable"},
-            {"label": "Pi-Star SSH", "value": "reachable" if pi_star["ssh"] else "unavailable"},
-        ],
+        "summary": web_admin_summary,
+        "items": web_admin_items,
     },
     {
         "id": "system-stats",
@@ -2076,18 +2096,23 @@ if any(card["status"] == "bad" for card in cards):
 elif any(card["status"] == "warn" for card in cards):
     overall = "warn"
 
+client_info = {
+    "router_ip": "10.42.0.1",
+    "openwrt_url": "http://10.42.0.2/",
+    "pi_star_configured": PI_STAR_CONFIGURED,
+    "wan_public_ip": wan_ip or "unavailable",
+    "uplink_interface": uplink_info.get("interface") or "unknown",
+    "uplink_source_ip": uplink_info.get("source_ip") or "unknown",
+    "router_side_clients": router_clients,
+}
+
+if PI_STAR_CONFIGURED:
+    client_info["pi_star_url"] = "http://10.42.0.3/"
+
 data = {
     "generated_at": datetime.now().isoformat(timespec="seconds"),
     "overall": overall,
-    "client_info": {
-        "router_ip": "10.42.0.1",
-        "openwrt_url": "http://10.42.0.2/",
-        "pi_star_url": "http://10.42.0.3/",
-        "wan_public_ip": wan_ip or "unavailable",
-        "uplink_interface": uplink_info.get("interface") or "unknown",
-        "uplink_source_ip": uplink_info.get("source_ip") or "unknown",
-        "router_side_clients": router_clients,
-    },
+    "client_info": client_info,
     "cards": cards,
 }
 

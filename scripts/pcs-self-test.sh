@@ -42,6 +42,7 @@ PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
 PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
+PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
 
 TMP_FILES=()
 
@@ -315,20 +316,24 @@ else
     fail "OpenWrt AP does not respond at ${PCS_OPENWRT_AP_ADDR}"
 fi
 
-if ping -c 1 -W 2 "${PCS_PISTAR_ADDR}" >/dev/null 2>&1; then
-    pass "Pi-Star responds at ${PCS_PISTAR_ADDR}"
+if [[ "${PCS_SETUP_PISTAR}" == "yes" ]]; then
+    if ping -c 1 -W 2 "${PCS_PISTAR_ADDR}" >/dev/null 2>&1; then
+        pass "Pi-Star responds at ${PCS_PISTAR_ADDR}"
 
-    if command_exists curl; then
-        if curl -fsS --max-time 5 "http://${PCS_PISTAR_ADDR}/" >/dev/null 2>&1; then
-            pass "Pi-Star dashboard responds at http://${PCS_PISTAR_ADDR}/"
+        if command_exists curl; then
+            if curl -fsS --max-time 5 "http://${PCS_PISTAR_ADDR}/" >/dev/null 2>&1; then
+                pass "Pi-Star dashboard responds at http://${PCS_PISTAR_ADDR}/"
+            else
+                warn "Pi-Star dashboard did not answer at http://${PCS_PISTAR_ADDR}/"
+            fi
         else
-            warn "Pi-Star dashboard did not answer at http://${PCS_PISTAR_ADDR}/"
+            skip "curl not found; skipping Pi-Star dashboard HTTP check"
         fi
     else
-        skip "curl not found; skipping Pi-Star dashboard HTTP check"
+        warn "Pi-Star is configured but does not respond at ${PCS_PISTAR_ADDR}"
     fi
 else
-    warn "Pi-Star does not respond at ${PCS_PISTAR_ADDR}; skip this warning when the optional hotspot is powered off"
+    skip "Pi-Star monitoring disabled by install configuration"
 fi
 
 ROUTER_NEIGHBORS="$(ip neigh show dev "${PCS_ETH_IFACE}" 2>/dev/null | awk '$1 ~ /^10\.42\.0\./ && $NF != "FAILED" && $NF != "INCOMPLETE"' || true)"

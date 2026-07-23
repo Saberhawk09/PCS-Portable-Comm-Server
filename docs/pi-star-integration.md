@@ -13,6 +13,16 @@ The tested hotspot is Pi-Star 4.2.3 on Raspbian 11 with hostname `pcs-hotspot`.
 For a complete rebuild sequence, start with
 [Full-Stack Reinstall Runbook](full-stack-reinstall.md).
 
+During PCS base setup, answer yes to:
+
+```text
+Include a Pi-Star hotspot in PCS monitoring and local-access links?
+```
+
+This records `PCS_SETUP_PISTAR=yes` in the private install configuration.
+Builds without Pi-Star should select no; Pi-Star fields and checks are then
+omitted instead of creating a persistent health warning.
+
 ## Automated Setup
 
 Copy `scripts/setup-pistar-pcs.sh` from this repository to Pi-Star, then run it

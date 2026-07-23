@@ -86,6 +86,7 @@ For the current GPS-sharing build, select:
 ```text
 Configure WWAN modem NMEA GPS:       yes
 Share GPSD with trusted PCS clients: yes
+Include Pi-Star in PCS monitoring:   yes
 ```
 
 The generated `config/pcs-install.conf` should therefore contain:
@@ -93,10 +94,15 @@ The generated `config/pcs-install.conf` should therefore contain:
 ```bash
 PCS_SETUP_WWAN_GPS=yes
 PCS_SETUP_GPSD_LAN=yes
+PCS_SETUP_PISTAR=yes
 ```
 
-The second setting installs a socket proxy bound only to
+The GPSD setting installs a socket proxy bound only to
 `10.42.0.1:2947`; GPSD itself remains localhost-only.
+
+`PCS_SETUP_PISTAR=yes` enables the hotspot health checks and local-access
+links. Set it to `no` on builds without Pi-Star; the dashboard and self-test
+then omit those optional checks without degrading overall PCS health.
 
 Reboot:
 

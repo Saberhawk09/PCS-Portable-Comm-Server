@@ -451,6 +451,10 @@ Gateway/DNS point to 10.42.0.1 if configured
 
 ## Pi-Star Integration Test
 
+These checks apply when `PCS_SETUP_PISTAR=yes` is selected. With
+`PCS_SETUP_PISTAR=no`, the self-test reports the optional integration as
+skipped and the dashboard omits Pi-Star-specific health and access fields.
+
 From PCS:
 
 ```bash

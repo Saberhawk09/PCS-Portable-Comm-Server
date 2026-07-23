@@ -33,6 +33,7 @@ PCS_SETUP_USB_PRIMARY="${PCS_SETUP_USB_PRIMARY:-ask}"
 PCS_SETUP_USB_DEVICE="${PCS_SETUP_USB_DEVICE:-auto}"
 PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
+PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
 
 is_yes() {
     case "${1:-}" in
@@ -135,6 +136,7 @@ write_install_config() {
         printf "PCS_SETUP_USB_DEVICE=%q\n" "${PCS_SETUP_USB_DEVICE}"
         printf "PCS_SETUP_WWAN_GPS=%q\n" "${PCS_SETUP_WWAN_GPS}"
         printf "PCS_SETUP_GPSD_LAN=%q\n" "${PCS_SETUP_GPSD_LAN}"
+        printf "PCS_SETUP_PISTAR=%q\n" "${PCS_SETUP_PISTAR}"
     } > "${INSTALL_CONFIG}"
 
     chmod 0600 "${INSTALL_CONFIG}"
@@ -182,6 +184,7 @@ collect_install_answers() {
     local usb_default
     local gps_default
     local gpsd_lan_default
+    local pistar_default
 
     case "${PCS_SETUP_MODE}" in
         DEFAULTS)
@@ -197,6 +200,7 @@ collect_install_answers() {
             PCS_SETUP_USB_DEVICE="auto"
             PCS_SETUP_WWAN_GPS="no"
             PCS_SETUP_GPSD_LAN="no"
+            PCS_SETUP_PISTAR="no"
             ;;
         ALL)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -209,9 +213,11 @@ collect_install_answers() {
             usb_default="${PCS_SETUP_USB_PRIMARY}"
             gps_default="${PCS_SETUP_WWAN_GPS}"
             gpsd_lan_default="${PCS_SETUP_GPSD_LAN}"
+            pistar_default="${PCS_SETUP_PISTAR}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
             [[ "${gpsd_lan_default}" == "ask" ]] && gpsd_lan_default="no"
+            [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
             PCS_SETUP_USB_PRIMARY="$(ask_yes_no "Configure detected USB storage as PCS-Share primary storage?" "${usb_default}")"
             if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" ]]; then
                 PCS_SETUP_USB_DEVICE="$(ask_value "USB storage device or UUID" "${PCS_SETUP_USB_DEVICE}")"
@@ -220,6 +226,7 @@ collect_install_answers() {
             fi
             PCS_SETUP_WWAN_GPS="$(ask_yes_no "Configure WWAN modem NMEA GPS during setup?" "${gps_default}")"
             PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
+            PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
             ;;
         ASK)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -230,6 +237,9 @@ collect_install_answers() {
             PCS_SETUP_USB_DEVICE="auto"
             PCS_SETUP_WWAN_GPS="ask"
             PCS_SETUP_GPSD_LAN="ask"
+            pistar_default="${PCS_SETUP_PISTAR}"
+            [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
+            PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
             ;;
     esac
 
@@ -244,6 +254,7 @@ collect_install_answers() {
     export PCS_SETUP_USB_DEVICE
     export PCS_SETUP_WWAN_GPS
     export PCS_SETUP_GPSD_LAN
+    export PCS_SETUP_PISTAR
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
         unset PCS_ROUTER_WAN_SHARE_CONFIRM
@@ -275,6 +286,7 @@ confirm_install_answers() {
     echo "  USB device/UUID:    ${PCS_SETUP_USB_DEVICE}"
     echo "  WWAN GPS policy:    ${PCS_SETUP_WWAN_GPS}"
     echo "  LAN GPSD policy:    ${PCS_SETUP_GPSD_LAN}"
+    echo "  Pi-Star monitoring: ${PCS_SETUP_PISTAR}"
     echo
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
@@ -307,6 +319,7 @@ echo "  - Optional USB primary share setup, if USB storage is present"
 echo "  - Chrony LAN NTP setup"
 echo "  - Optional WWAN modem NMEA GPS setup, if WWAN GPS hardware is present"
 echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
+echo "  - Optional Pi-Star monitoring and local-access links"
 echo "  - Cockpit/systemd restart button install"
 echo "  - PCS Control Panel setup"
 echo "  - Port 80 dashboard redirect setup"

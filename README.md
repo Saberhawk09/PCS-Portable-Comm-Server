@@ -189,7 +189,7 @@ Primary Share:      \\10.42.0.1\PCS-Share
 Backup Share:       \\10.42.0.1\PCS-Backup
 LAN NTP Server:     10.42.0.1
 LAN GPSD Server:    10.42.0.1:2947 (optional)
-Pi-Star Dashboard:  http://10.42.0.3
+Pi-Star Dashboard:  http://10.42.0.3 (when selected during setup)
 ```
 
 Windows NTP test:

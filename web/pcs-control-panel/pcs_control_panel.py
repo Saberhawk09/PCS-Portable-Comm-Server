@@ -230,7 +230,7 @@ def render_client_info(dashboard: dict) -> str:
 
     router_ip = esc(info.get("router_ip", "10.42.0.1"))
     openwrt_url = esc(info.get("openwrt_url", "http://10.42.0.2/"))
-    pi_star_url = esc(info.get("pi_star_url", "http://10.42.0.3/"))
+    pi_star_configured = bool(info.get("pi_star_configured", False))
     wan_public_ip = esc(info.get("wan_public_ip", "unavailable"))
     uplink_interface = esc(info.get("uplink_interface", "unknown"))
     uplink_source_ip = esc(info.get("uplink_source_ip", "unknown"))
@@ -259,6 +259,18 @@ def render_client_info(dashboard: dict) -> str:
             <code>Only the OpenWrt AP/router is currently visible</code>
         </div>
         """
+
+    if pi_star_configured:
+        pi_star_url = esc(info.get("pi_star_url", "http://10.42.0.3/"))
+        pi_star_access_html = f"""
+                <div class="copy-line">
+                    <span>Pi-Star dashboard</span>
+                    <a class="local-link" href="{pi_star_url}" target="_blank" rel="noopener">{pi_star_url}</a>
+                </div>
+                <div class="copy-line"><span>Pi-Star hostname</span><code>http://pcs-hotspot.local/</code></div>
+        """
+    else:
+        pi_star_access_html = ""
 
     return f"""
     <section class="client-info">
@@ -302,11 +314,7 @@ def render_client_info(dashboard: dict) -> str:
                     <span>OpenWrt router / AP</span>
                     <a class="local-link" href="{openwrt_url}" target="_blank" rel="noopener">{openwrt_url}</a>
                 </div>
-                <div class="copy-line">
-                    <span>Pi-Star dashboard</span>
-                    <a class="local-link" href="{pi_star_url}" target="_blank" rel="noopener">{pi_star_url}</a>
-                </div>
-                <div class="copy-line"><span>Pi-Star hostname</span><code>http://pcs-hotspot.local/</code></div>
+                {pi_star_access_html}
                 <p class="client-note">Available only while connected to the trusted PCS field LAN.</p>
             </div>
 
