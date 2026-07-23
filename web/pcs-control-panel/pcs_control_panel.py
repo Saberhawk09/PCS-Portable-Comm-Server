@@ -229,6 +229,8 @@ def render_client_info(dashboard: dict) -> str:
     info = dashboard.get("client_info", {})
 
     router_ip = esc(info.get("router_ip", "10.42.0.1"))
+    openwrt_url = esc(info.get("openwrt_url", "http://10.42.0.2/"))
+    pi_star_url = esc(info.get("pi_star_url", "http://10.42.0.3/"))
     wan_public_ip = esc(info.get("wan_public_ip", "unavailable"))
     uplink_interface = esc(info.get("uplink_interface", "unknown"))
     uplink_source_ip = esc(info.get("uplink_source_ip", "unknown"))
@@ -295,10 +297,17 @@ def render_client_info(dashboard: dict) -> str:
             </div>
 
             <div class="client-card">
-                <h3>Quick Windows tests</h3>
-                <div class="copy-line"><span>Internet</span><code>ping 8.8.8.8</code></div>
-                <div class="copy-line"><span>DNS</span><code>ping google.com</code></div>
-                <div class="copy-line"><span>Pi access</span><code>ping 10.42.0.1</code></div>
+                <h3>Local device access</h3>
+                <div class="copy-line">
+                    <span>OpenWrt router / AP</span>
+                    <a class="local-link" href="{openwrt_url}" target="_blank" rel="noopener">{openwrt_url}</a>
+                </div>
+                <div class="copy-line">
+                    <span>Pi-Star dashboard</span>
+                    <a class="local-link" href="{pi_star_url}" target="_blank" rel="noopener">{pi_star_url}</a>
+                </div>
+                <div class="copy-line"><span>Pi-Star hostname</span><code>http://pcs-hotspot.local/</code></div>
+                <p class="client-note">Available only while connected to the trusted PCS field LAN.</p>
             </div>
 
             <div class="client-card">
@@ -656,6 +665,27 @@ def page(action_result: str = "", action_name: str = "", return_code: int | None
             border-radius: 6px;
             padding: 0.45rem 0.55rem;
             overflow-wrap: anywhere;
+        }}
+
+        .local-link {{
+            display: block;
+            background: rgba(127, 180, 255, 0.09);
+            border: 1px solid rgba(127, 180, 255, 0.35);
+            border-radius: 6px;
+            color: var(--accent);
+            padding: 0.55rem 0.65rem;
+            overflow-wrap: anywhere;
+            text-decoration: none;
+        }}
+
+        .local-link:hover {{
+            background: rgba(127, 180, 255, 0.16);
+            border-color: var(--accent);
+        }}
+
+        .local-link:focus-visible {{
+            outline: 2px solid var(--text);
+            outline-offset: 2px;
         }}
 
         .client-note {{

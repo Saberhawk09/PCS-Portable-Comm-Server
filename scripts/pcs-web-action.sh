@@ -407,6 +407,7 @@ import json
 import os
 import re
 import shlex
+import socket
 import time
 import shutil
 import subprocess
@@ -418,6 +419,7 @@ PRIMARY_SHARE = "/mnt/pcs-usb/PCS-Share"
 BACKUP_SHARE = "/srv/pcs-share-backup"
 CELLULAR_PROFILE_DEFAULT = "pcs-cellular-profile"
 LEGACY_CELLULAR_PROFILE = "pcs-cellular-tmobile"
+PI_STAR_IP = "10.42.0.3"
 
 def install_config():
     config = {}
@@ -559,6 +561,25 @@ def default_route_iface():
 def ping_ok(target):
     rc, _, _ = run(["ping", "-c", "1", "-W", "2", target], timeout=4)
     return rc == 0
+
+def tcp_connect_ok(host, port, timeout=1.5):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+def pi_star_health():
+    ping = ping_ok(PI_STAR_IP)
+    dashboard = tcp_connect_ok(PI_STAR_IP, 80)
+    ssh = tcp_connect_ok(PI_STAR_IP, 22)
+
+    return {
+        "ping": ping,
+        "dashboard": dashboard,
+        "ssh": ssh,
+        "reachable": ping or dashboard or ssh,
+    }
 
 def system_load():
     try:
@@ -1678,6 +1699,7 @@ eth0_ip = eth0_address()
 eth0_method = nm_connection_method("pcs-router-wan-share")
 backup_info = backup_health()
 web_admin = web_admin_status()
+pi_star = pi_star_health()
 
 uplink_status = "ok" if route_details.get("interface") else "warn"
 client_lan_status = "ok" if eth0_ip.startswith("10.42.0.1/") else "warn"
@@ -1688,6 +1710,8 @@ web_admin_status_value = "ok" if (
     and web_admin["port_80"]
     and web_admin["port_8080"]
     and web_admin["port_9090"]
+    and pi_star["reachable"]
+    and pi_star["dashboard"]
 ) else "warn"
 
 chrony = chrony_tracking()
@@ -1857,7 +1881,7 @@ cards = [
         "id": "web-admin",
         "title": "Web / Admin Interfaces",
         "status": web_admin_status_value,
-        "summary": "Web/admin interfaces active" if web_admin_status_value == "ok" else "One or more web/admin checks failed",
+        "summary": "PCS and Pi-Star interfaces active" if web_admin_status_value == "ok" else "One or more web/admin checks failed",
         "items": [
             {"label": "Dashboard redirect", "value": "active" if web_admin["redirect_active"] else "inactive"},
             {"label": "Control panel", "value": "active" if web_admin["control_panel_active"] else "inactive"},
@@ -1865,6 +1889,9 @@ cards = [
             {"label": "Port 80", "value": "listening" if web_admin["port_80"] else "not listening"},
             {"label": "Port 8080", "value": "listening" if web_admin["port_8080"] else "not listening"},
             {"label": "Port 9090", "value": "listening" if web_admin["port_9090"] else "not listening"},
+            {"label": "Pi-Star ping", "value": "reachable" if pi_star["ping"] else "no reply"},
+            {"label": "Pi-Star dashboard", "value": "reachable" if pi_star["dashboard"] else "unavailable"},
+            {"label": "Pi-Star SSH", "value": "reachable" if pi_star["ssh"] else "unavailable"},
         ],
     },
     {
@@ -2054,6 +2081,8 @@ data = {
     "overall": overall,
     "client_info": {
         "router_ip": "10.42.0.1",
+        "openwrt_url": "http://10.42.0.2/",
+        "pi_star_url": "http://10.42.0.3/",
         "wan_public_ip": wan_ip or "unavailable",
         "uplink_interface": uplink_info.get("interface") or "unknown",
         "uplink_source_ip": uplink_info.get("source_ip") or "unknown",
