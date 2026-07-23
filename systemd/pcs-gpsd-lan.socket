@@ -1,0 +1,11 @@
+[Unit]
+Description=PCS LAN-only GPSD proxy socket
+Documentation=man:systemd-socket-proxyd(8)
+
+[Socket]
+ListenStream=10.42.0.1:2947
+FreeBind=yes
+NoDelay=yes
+
+[Install]
+WantedBy=sockets.target

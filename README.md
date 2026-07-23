@@ -137,6 +137,8 @@ For additional documentation, start here:
 - [Network Design](docs/network-design.md)
 - [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
 - [WWAN Card Setup](docs/wwan-card-setup.md)
+- [GPS Network Sharing](docs/gps-network-sharing.md)
+- [Pi-Star Integration](docs/pi-star-integration.md)
 - [Samba File Share](docs/samba-file-share.md)
 - [PCS Control Panel](docs/pcs-control-panel.md)
 - [Testing Checklist](docs/testing-checklist.md)
@@ -185,6 +187,8 @@ Cockpit:            https://10.42.0.1:9090
 Primary Share:      \\10.42.0.1\PCS-Share
 Backup Share:       \\10.42.0.1\PCS-Backup
 LAN NTP Server:     10.42.0.1
+LAN GPSD Server:    10.42.0.1:2947 (optional)
+Pi-Star Dashboard:  http://10.42.0.3
 ```
 
 Windows NTP test:

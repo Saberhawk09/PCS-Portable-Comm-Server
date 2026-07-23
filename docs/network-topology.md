@@ -16,6 +16,9 @@ Linksys EA4500 running OpenWrt
 AP / bridge / switch
 10.42.0.2
         |
+        +-- Pi-Star hotspot
+        |   10.42.0.3
+        |
         | Ethernet LAN
         v
 Raspberry Pi 4
@@ -41,6 +44,7 @@ PCS server / gateway
 PCS subnet:             10.42.0.0/24
 Raspberry Pi:           10.42.0.1
 Linksys EA4500 OpenWrt: 10.42.0.2
+Pi-Star hotspot:        10.42.0.3
 DHCP clients:           10.42.0.100 - 10.42.0.200
 ```
 
@@ -50,6 +54,7 @@ DHCP clients:           10.42.0.100 - 10.42.0.200
 | --- | --- | --- |
 | Raspberry Pi 4 | PCS server, gateway, DHCP, DNS, Samba, NTP, dashboard | 10.42.0.1 |
 | Linksys EA4500 | OpenWrt AP, bridge, Ethernet switch | 10.42.0.2 |
+| Pi-Star hotspot | Digital voice hotspot and PCS NTP/GPSD client | 10.42.0.3 |
 | Field clients | Logging PCs, phones, tablets | 10.42.0.x |
 | EM7565 | Cellular modem and GNSS source | managed by Pi |
 
@@ -109,6 +114,26 @@ LAN clients using 10.42.0.1 as NTP server
 ```
 
 The Raspberry Pi RTC helps maintain sane time before GPS or internet time is available.
+
+The Pi-Star hotspot uses `10.42.0.1` as its preferred NTP server. PCS can also
+share the WWAN modem's GNSS data with trusted field-LAN devices through an
+optional LAN-only GPSD proxy:
+
+```text
+EM7565 NMEA -> gpsd on 127.0.0.1:2947
+                    |
+                    v
+       LAN proxy on 10.42.0.1:2947
+                    |
+                    +-- Pi-Star YSFGateway at 10.42.0.3
+                    +-- Other trusted GPSD/NMEA clients
+```
+
+The proxy binds only to the PCS LAN address so live location data is not
+exposed on WWAN or other uplink interfaces. See
+[GPS Network Sharing](gps-network-sharing.md) for native GPSD and raw-NMEA
+client examples. Pi-Star's legacy UDP port 7834 MobileGPS path is for its local
+serial-GPS helper; it is not used for raw NMEA forwarding from PCS.
 
 ## Storage Role
 

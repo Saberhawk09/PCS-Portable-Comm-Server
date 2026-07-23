@@ -11,6 +11,8 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Network Design](network-design.md)
 - [Raspberry Pi Setup](raspberry-pi-setup.md)
 - [EM7565 GPS / GNSS Notes](em7565-gps-notes.md)
+- [GPS Network Sharing](gps-network-sharing.md)
+- [Pi-Star Integration](pi-star-integration.md)
 - [Linksys EA4500 OpenWrt AP Setup](linksys-ea4500-ap.md)
 - [Samba File Share](samba-file-share.md)
 - [PCS Control Panel](pcs-control-panel.md)

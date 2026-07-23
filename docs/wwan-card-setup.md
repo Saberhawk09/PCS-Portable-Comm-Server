@@ -445,6 +445,28 @@ USBAUTO="false"
 GPSD_SOCKET="/var/run/gpsd.sock"
 ```
 
+Keep GPSD on localhost. Do not add `-G` merely to share position data with another PCS node, because `-G` listens on every interface and may expose live coordinates over an active uplink.
+
+For a trusted LAN client such as the Pi-Star hotspot, install the LAN-only proxy:
+
+```bash
+bash ./scripts/setup-gpsd-lan-proxy.sh
+```
+
+The proxy listens on `10.42.0.1:2947` and forwards to `127.0.0.1:2947`.
+Native GPSD clients can connect directly, and `gpspipe` can provide NMEA to
+applications that require sentences instead of GPSD JSON. See
+[GPS Network Sharing](gps-network-sharing.md).
+
+On Pi-Star, configure YSFGateway's native GPSD client:
+
+```ini
+[GPSD]
+Enable=1
+Address=10.42.0.1
+Port=2947
+```
+
 Service checks:
 
 ```bash

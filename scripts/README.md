@@ -78,6 +78,22 @@ Helper used by pcs-wwan-gps-nmea.service.
 
 It enables modem GPS through ModemManager, sends GPS_START to /dev/ttyUSB1, and verifies that NMEA output is present. It hides live location in service logs.
 
+### setup-gpsd-lan-proxy.sh
+
+Optionally exposes the local GPSD service to trusted PCS LAN clients at:
+
+```text
+10.42.0.1:2947
+```
+
+```bash
+bash ./scripts/setup-gpsd-lan-proxy.sh
+```
+
+The script uses `systemd-socket-proxyd` bound specifically to the PCS LAN address. GPSD stays on `127.0.0.1:2947`, so the live position feed is not opened on WWAN or other uplink interfaces. Native GPSD clients can use this endpoint directly; see [GPS Network Sharing](../docs/gps-network-sharing.md) for raw-NMEA adapter examples.
+
+Pi-Star 4.2.3 can consume this through YSFGateway's native `[GPSD]` configuration. Do not send raw NMEA to Pi-Star UDP port 7834; that port belongs to Pi-Star's legacy local-serial MobileGPS path and is not a raw-NMEA listener in this build.
+
 ### setup-chrony-lan-ntp.sh
 
 Configures Chrony to serve NTP to PCS clients on:
