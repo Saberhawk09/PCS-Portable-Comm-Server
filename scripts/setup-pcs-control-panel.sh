@@ -4,15 +4,12 @@ set -Eeuo pipefail
 
 REPO_DIR="/home/pi/Projects/PCS-Portable-Comm-Server"
 CONTROL_PANEL_SRC="${REPO_DIR}/web/pcs-control-panel/pcs_control_panel.py"
-LEGACY_PANEL_SRC="${REPO_DIR}/web/pcs-control-panel/pcs_control_panel_legacy.py"
 DISPATCHER_SRC="${REPO_DIR}/scripts/pcs-web-action.sh"
 DISPATCHER_DST="/usr/local/sbin/pcs-web-action"
 SERVICE_SRC="${REPO_DIR}/systemd/pcs-control-panel.service"
 SERVICE_DST="/etc/systemd/system/pcs-control-panel.service"
-STANDBY_DIR="/opt/pcs-control-panel-standby"
-STANDBY_SCRIPT="${STANDBY_DIR}/pcs_control_panel_legacy.py"
-STANDBY_SERVICE_SRC="${REPO_DIR}/systemd/pcs-control-panel-standby.service"
-STANDBY_SERVICE_DST="/etc/systemd/system/pcs-control-panel-standby.service"
+REMOVED_STANDBY_DIR="/opt/pcs-control-panel-standby"
+REMOVED_STANDBY_SERVICE="/etc/systemd/system/pcs-control-panel-standby.service"
 SUDOERS_FILE="/etc/sudoers.d/pcs-control-panel"
 
 echo
@@ -40,11 +37,6 @@ if [[ ! -f "${CONTROL_PANEL_SRC}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${LEGACY_PANEL_SRC}" ]]; then
-    echo "ERROR: missing legacy control panel script: ${LEGACY_PANEL_SRC}"
-    exit 1
-fi
-
 if [[ ! -f "${DISPATCHER_SRC}" ]]; then
     echo "ERROR: missing dispatcher script: ${DISPATCHER_SRC}"
     exit 1
@@ -55,14 +47,10 @@ if [[ ! -f "${SERVICE_SRC}" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${STANDBY_SERVICE_SRC}" ]]; then
-    echo "ERROR: missing standby service file: ${STANDBY_SERVICE_SRC}"
-    exit 1
-fi
-
-echo "Installing standby legacy control panel..."
-sudo mkdir -p "${STANDBY_DIR}"
-sudo install -o root -g root -m 0644 "${LEGACY_PANEL_SRC}" "${STANDBY_SCRIPT}"
+echo "Removing obsolete legacy standby control panel, if present..."
+sudo systemctl disable --now pcs-control-panel-standby.service >/dev/null 2>&1 || true
+sudo rm -f -- "${REMOVED_STANDBY_SERVICE}"
+sudo rm -rf -- "${REMOVED_STANDBY_DIR}"
 
 echo "Installing root-owned PCS web action dispatcher..."
 sudo install -o root -g root -m 0755 "${DISPATCHER_SRC}" "${DISPATCHER_DST}"
@@ -80,20 +68,13 @@ sudo visudo -cf "${SUDOERS_FILE}"
 
 echo "Installing systemd service..."
 sudo cp "${SERVICE_SRC}" "${SERVICE_DST}"
-sudo cp "${STANDBY_SERVICE_SRC}" "${STANDBY_SERVICE_DST}"
 sudo systemctl daemon-reload
 sudo systemctl enable pcs-control-panel.service >/dev/null
-sudo systemctl enable pcs-control-panel-standby.service >/dev/null
 sudo systemctl restart pcs-control-panel.service
-sudo systemctl restart pcs-control-panel-standby.service
 
 echo
 echo "PCS Control Panel service status:"
 systemctl status pcs-control-panel.service --no-pager -l || true
-
-echo
-echo "PCS Control Panel standby service status:"
-systemctl status pcs-control-panel-standby.service --no-pager -l || true
 
 echo
 echo "PCS Control Panel setup complete."
@@ -101,13 +82,9 @@ echo
 echo "From a client behind the PCS/test router, open:"
 echo "  http://10.42.0.1:8080"
 echo
-echo "The standby legacy UI is available at:"
-echo "  http://10.42.0.1:18089"
-echo
 echo "From the Pi/home network, it may also be reachable at:"
 echo "  http://pcs-pi.local:8080"
 echo "  http://192.168.50.236:8080"
-echo "  http://192.168.50.236:18089"
 echo
 echo "Keep these interfaces on the trusted PCS LAN."
 echo
