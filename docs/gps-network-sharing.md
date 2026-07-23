@@ -110,7 +110,8 @@ Port=2947
 
 This supplies the PCS position to YSFGateway's supported GPS/APRS path without
 a second receiver on the hotspot. See [Pi-Star Integration](pi-star-integration.md)
-for the complete configuration and time-synchronization steps.
+for the repeatable setup script, complete configuration, and
+time-synchronization steps.
 
 Pi-Star's legacy `mobilegps.service` remains disabled when no GPS receiver is
 physically attached to the hotspot. The GPSD path does not dynamically rewrite

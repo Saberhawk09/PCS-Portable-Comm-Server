@@ -25,6 +25,7 @@ This installs/configures:
 - Client LAN/AP handoff on `eth0`
 - Samba shares
 - Chrony LAN NTP
+- Optional WWAN GNSS and LAN-only GPSD sharing
 - PCS restart service
 - PCS Control Panel
 - Dashboard redirect
@@ -93,6 +94,26 @@ bash ./scripts/setup-gpsd-lan-proxy.sh
 The script uses `systemd-socket-proxyd` bound specifically to the PCS LAN address. GPSD stays on `127.0.0.1:2947`, so the live position feed is not opened on WWAN or other uplink interfaces. Native GPSD clients can use this endpoint directly; see [GPS Network Sharing](../docs/gps-network-sharing.md) for raw-NMEA adapter examples.
 
 Pi-Star 4.2.3 can consume this through YSFGateway's native `[GPSD]` configuration. Do not send raw NMEA to Pi-Star UDP port 7834; that port belongs to Pi-Star's legacy local-serial MobileGPS path and is not a raw-NMEA listener in this build.
+
+The base installer can run this step when `PCS_SETUP_GPSD_LAN=yes` is selected
+or present in `config/pcs-install.conf`.
+
+### setup-pistar-pcs.sh
+
+Configures the tested Pi-Star 4.2.3 hotspot as a fixed PCS node:
+
+```bash
+./setup-pistar-pcs.sh --apply
+sudo reboot
+./setup-pistar-pcs.sh --check
+```
+
+Copy this script to Pi-Star and run it there as the normal Pi-Star user. It
+manages hostname, the marked `dhcpcd` static-address block, PCS NTP,
+YSFGateway's GPSD client, and the unused local MobileGPS path. It does not
+contain or modify Wi-Fi passwords, callsigns, or digital-network credentials.
+
+See [Full-Stack Reinstall Runbook](../docs/full-stack-reinstall.md).
 
 ### setup-chrony-lan-ntp.sh
 

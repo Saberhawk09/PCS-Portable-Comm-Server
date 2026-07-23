@@ -12,6 +12,9 @@ PCS_WIFI_IFACE="wlan0"
 PCS_ETH_ADDR="10.42.0.1/24"
 PCS_NTP_NET="10.42.0.0/24"
 PCS_OPENWRT_AP_ADDR="10.42.0.2"
+PCS_PISTAR_ADDR="10.42.0.3"
+PCS_GPSD_LAN_ADDR="10.42.0.1"
+PCS_GPSD_LAN_PORT="2947"
 
 PCS_SAMBA_SHARE="PCS-Share"
 PCS_USB_MOUNT="/mnt/pcs-usb"
@@ -38,6 +41,7 @@ fi
 PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
 PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
+PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
 
 TMP_FILES=()
 
@@ -311,10 +315,27 @@ else
     fail "OpenWrt AP does not respond at ${PCS_OPENWRT_AP_ADDR}"
 fi
 
+if ping -c 1 -W 2 "${PCS_PISTAR_ADDR}" >/dev/null 2>&1; then
+    pass "Pi-Star responds at ${PCS_PISTAR_ADDR}"
+
+    if command_exists curl; then
+        if curl -fsS --max-time 5 "http://${PCS_PISTAR_ADDR}/" >/dev/null 2>&1; then
+            pass "Pi-Star dashboard responds at http://${PCS_PISTAR_ADDR}/"
+        else
+            warn "Pi-Star dashboard did not answer at http://${PCS_PISTAR_ADDR}/"
+        fi
+    else
+        skip "curl not found; skipping Pi-Star dashboard HTTP check"
+    fi
+else
+    warn "Pi-Star does not respond at ${PCS_PISTAR_ADDR}; skip this warning when the optional hotspot is powered off"
+fi
+
 ROUTER_NEIGHBORS="$(ip neigh show dev "${PCS_ETH_IFACE}" 2>/dev/null | awk '$1 ~ /^10\.42\.0\./ && $NF != "FAILED" && $NF != "INCOMPLETE"' || true)"
 CLIENT_NEIGHBORS=""
 if [[ -n "${ROUTER_NEIGHBORS}" ]]; then
-    CLIENT_NEIGHBORS="$(printf '%s\n' "${ROUTER_NEIGHBORS}" | grep -Ev "^${PCS_OPENWRT_AP_ADDR//./\\.}[[:space:]]" || true)"
+    CLIENT_NEIGHBORS="$(printf '%s\n' "${ROUTER_NEIGHBORS}" \
+        | grep -Ev "^(${PCS_OPENWRT_AP_ADDR//./\\.}|${PCS_PISTAR_ADDR//./\\.})[[:space:]]" || true)"
 fi
 
 if [[ -n "${ROUTER_NEIGHBORS}" ]]; then
@@ -634,6 +655,50 @@ if service_enabled gpsd; then
     pass "gpsd is enabled"
 else
     warn "gpsd is not enabled"
+fi
+
+if [[ "${PCS_SETUP_GPSD_LAN}" == "yes" ]] \
+    || systemctl list-unit-files pcs-gpsd-lan.socket --no-legend 2>/dev/null | grep -q '^pcs-gpsd-lan[.]socket'; then
+    if service_active pcs-gpsd-lan.socket; then
+        pass "pcs-gpsd-lan.socket is active"
+    else
+        fail "pcs-gpsd-lan.socket is not active"
+    fi
+
+    if service_enabled pcs-gpsd-lan.socket; then
+        pass "pcs-gpsd-lan.socket is enabled"
+    else
+        fail "pcs-gpsd-lan.socket is not enabled"
+    fi
+
+    if ss -H -ltn 2>/dev/null | awk '{print $4}' \
+        | grep -Eq "^${PCS_GPSD_LAN_ADDR//./\\.}:${PCS_GPSD_LAN_PORT}$"; then
+        pass "LAN-only GPSD proxy listens at ${PCS_GPSD_LAN_ADDR}:${PCS_GPSD_LAN_PORT}"
+    else
+        fail "LAN-only GPSD proxy is not listening at ${PCS_GPSD_LAN_ADDR}:${PCS_GPSD_LAN_PORT}"
+    fi
+
+    if python3 - "${PCS_GPSD_LAN_ADDR}" "${PCS_GPSD_LAN_PORT}" <<'PY'
+import json
+import socket
+import sys
+
+with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=4) as client:
+    client.sendall(b"?VERSION;\n")
+    reply = client.recv(4096).decode("ascii", "replace")
+
+if json.loads(reply.splitlines()[0]).get("class") != "VERSION":
+    raise SystemExit(1)
+PY
+    then
+        pass "GPSD VERSION response received through the LAN-only proxy"
+    else
+        fail "GPSD protocol check failed through ${PCS_GPSD_LAN_ADDR}:${PCS_GPSD_LAN_PORT}"
+    fi
+elif [[ "${PCS_SETUP_GPSD_LAN}" == "no" ]]; then
+    skip "LAN-only GPSD proxy disabled by install configuration"
+else
+    skip "LAN-only GPSD proxy is not installed"
 fi
 
 if command_exists gpspipe; then

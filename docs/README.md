@@ -10,6 +10,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Network Topology](network-topology.md)
 - [Network Design](network-design.md)
 - [Raspberry Pi Setup](raspberry-pi-setup.md)
+- [Full-Stack Reinstall Runbook](full-stack-reinstall.md)
 - [EM7565 GPS / GNSS Notes](em7565-gps-notes.md)
 - [GPS Network Sharing](gps-network-sharing.md)
 - [Pi-Star Integration](pi-star-integration.md)
@@ -31,6 +32,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 ```text
 Raspberry Pi 4:         10.42.0.1
 Linksys EA4500 OpenWrt: 10.42.0.2
+Pi-Star hotspot:        10.42.0.3
 PCS LAN subnet:         10.42.0.0/24
 ```
 
@@ -50,6 +52,7 @@ Primary Share:   \\10.42.0.1\PCS-Share
 Backup Share:    \\10.42.0.1\PCS-Backup
 NTP Server:      10.42.0.1
 OpenWrt AP:      http://10.42.0.2
+Pi-Star:         http://10.42.0.3
 ```
 
 ## Documentation Status

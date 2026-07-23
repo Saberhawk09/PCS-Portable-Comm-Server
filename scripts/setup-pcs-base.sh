@@ -32,6 +32,7 @@ PCS_SAMBA_PASSWORD="${PCS_SAMBA_PASSWORD:-}"
 PCS_SETUP_USB_PRIMARY="${PCS_SETUP_USB_PRIMARY:-ask}"
 PCS_SETUP_USB_DEVICE="${PCS_SETUP_USB_DEVICE:-auto}"
 PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
+PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
 
 is_yes() {
     case "${1:-}" in
@@ -133,6 +134,7 @@ write_install_config() {
         printf "PCS_SETUP_USB_PRIMARY=%q\n" "${PCS_SETUP_USB_PRIMARY}"
         printf "PCS_SETUP_USB_DEVICE=%q\n" "${PCS_SETUP_USB_DEVICE}"
         printf "PCS_SETUP_WWAN_GPS=%q\n" "${PCS_SETUP_WWAN_GPS}"
+        printf "PCS_SETUP_GPSD_LAN=%q\n" "${PCS_SETUP_GPSD_LAN}"
     } > "${INSTALL_CONFIG}"
 
     chmod 0600 "${INSTALL_CONFIG}"
@@ -179,6 +181,7 @@ choose_setup_mode() {
 collect_install_answers() {
     local usb_default
     local gps_default
+    local gpsd_lan_default
 
     case "${PCS_SETUP_MODE}" in
         DEFAULTS)
@@ -193,6 +196,7 @@ collect_install_answers() {
             PCS_SETUP_USB_PRIMARY="yes"
             PCS_SETUP_USB_DEVICE="auto"
             PCS_SETUP_WWAN_GPS="no"
+            PCS_SETUP_GPSD_LAN="no"
             ;;
         ALL)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -204,8 +208,10 @@ collect_install_answers() {
             fi
             usb_default="${PCS_SETUP_USB_PRIMARY}"
             gps_default="${PCS_SETUP_WWAN_GPS}"
+            gpsd_lan_default="${PCS_SETUP_GPSD_LAN}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
+            [[ "${gpsd_lan_default}" == "ask" ]] && gpsd_lan_default="no"
             PCS_SETUP_USB_PRIMARY="$(ask_yes_no "Configure detected USB storage as PCS-Share primary storage?" "${usb_default}")"
             if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" ]]; then
                 PCS_SETUP_USB_DEVICE="$(ask_value "USB storage device or UUID" "${PCS_SETUP_USB_DEVICE}")"
@@ -213,6 +219,7 @@ collect_install_answers() {
                 PCS_SETUP_USB_DEVICE="auto"
             fi
             PCS_SETUP_WWAN_GPS="$(ask_yes_no "Configure WWAN modem NMEA GPS during setup?" "${gps_default}")"
+            PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
             ;;
         ASK)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -222,6 +229,7 @@ collect_install_answers() {
             PCS_SETUP_USB_PRIMARY="ask"
             PCS_SETUP_USB_DEVICE="auto"
             PCS_SETUP_WWAN_GPS="ask"
+            PCS_SETUP_GPSD_LAN="ask"
             ;;
     esac
 
@@ -235,6 +243,7 @@ collect_install_answers() {
     export PCS_SETUP_USB_PRIMARY
     export PCS_SETUP_USB_DEVICE
     export PCS_SETUP_WWAN_GPS
+    export PCS_SETUP_GPSD_LAN
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
         unset PCS_ROUTER_WAN_SHARE_CONFIRM
@@ -265,6 +274,7 @@ confirm_install_answers() {
     echo "  USB primary policy: ${PCS_SETUP_USB_PRIMARY}"
     echo "  USB device/UUID:    ${PCS_SETUP_USB_DEVICE}"
     echo "  WWAN GPS policy:    ${PCS_SETUP_WWAN_GPS}"
+    echo "  LAN GPSD policy:    ${PCS_SETUP_GPSD_LAN}"
     echo
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
@@ -296,6 +306,7 @@ echo "  - Samba SD-card backup share setup"
 echo "  - Optional USB primary share setup, if USB storage is present"
 echo "  - Chrony LAN NTP setup"
 echo "  - Optional WWAN modem NMEA GPS setup, if WWAN GPS hardware is present"
+echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
 echo "  - Cockpit/systemd restart button install"
 echo "  - PCS Control Panel setup"
 echo "  - Port 80 dashboard redirect setup"
@@ -381,6 +392,7 @@ ensure_executable "scripts/restart-pcs-services.sh"
 ensure_executable "scripts/setup-pcs-control-panel.sh"
 ensure_executable "scripts/setup-dashboard-redirect.sh"
 ensure_executable "scripts/setup-wwan-gps-nmea.sh"
+ensure_executable "scripts/setup-gpsd-lan-proxy.sh"
 ensure_executable "scripts/pcs-wwan-gps-nmea-start.py"
 ensure_executable "scripts/pcs-web-action.sh"
 ensure_executable "scripts/sync-pcs-share-to-backup.sh"
@@ -590,6 +602,40 @@ else
     echo "WARNING: scripts/setup-wwan-gps-nmea.sh not found or not executable."
     echo "Skipping WWAN modem NMEA GPS setup."
 fi
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Share GPSD with trusted PCS LAN clients"
+echo "============================================================"
+echo
+echo "This publishes GPSD only at 10.42.0.1:2947 for devices on the PCS LAN."
+echo "GPSD itself remains bound to localhost."
+echo
+
+if [[ "${PCS_SETUP_GPSD_LAN}" == "yes" || "${PCS_SETUP_GPSD_LAN}" == "no" ]]; then
+    gpsd_lan_answer="${PCS_SETUP_GPSD_LAN}"
+    echo "Configure the LAN-only GPSD proxy now? [Y/N] ${gpsd_lan_answer}"
+else
+    gpsd_lan_answer="$(ask_yes_no "Configure the LAN-only GPSD proxy now?" "no")"
+fi
+
+case "${gpsd_lan_answer}" in
+    y|Y|yes|YES|Yes)
+        if PCS_GPSD_LAN_CONFIRM=yes ./scripts/setup-gpsd-lan-proxy.sh; then
+            echo "LAN-only GPSD proxy setup completed."
+        else
+            echo
+            echo "WARNING: LAN-only GPSD proxy setup failed."
+            echo "You can retry it later with:"
+            echo "  ./scripts/setup-gpsd-lan-proxy.sh"
+        fi
+        ;;
+    *)
+        echo "Skipping LAN-only GPSD proxy setup."
+        echo "You can run this later:"
+        echo "  ./scripts/setup-gpsd-lan-proxy.sh"
+        ;;
+esac
 
 echo
 echo "--- Ensure ModemManager is running for dashboard and self-test ---"

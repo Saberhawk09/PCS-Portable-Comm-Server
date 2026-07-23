@@ -136,6 +136,7 @@ For additional documentation, start here:
 - [Network Topology](docs/network-topology.md)
 - [Network Design](docs/network-design.md)
 - [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
+- [Full-Stack Reinstall Runbook](docs/full-stack-reinstall.md)
 - [WWAN Card Setup](docs/wwan-card-setup.md)
 - [GPS Network Sharing](docs/gps-network-sharing.md)
 - [Pi-Star Integration](docs/pi-star-integration.md)
@@ -234,6 +235,8 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 - [`scripts/sync-pcs-share-to-backup.sh`](scripts/sync-pcs-share-to-backup.sh) - Mirror USB primary share to SD backup
 - [`scripts/setup-pcs-control-panel.sh`](scripts/setup-pcs-control-panel.sh) - Install the PCS web control panel
 - [`scripts/setup-dashboard-redirect.sh`](scripts/setup-dashboard-redirect.sh) - Install `http://10.42.0.1` dashboard redirect
+- [`scripts/setup-gpsd-lan-proxy.sh`](scripts/setup-gpsd-lan-proxy.sh) - Publish GPSD only on the trusted PCS LAN
+- [`scripts/setup-pistar-pcs.sh`](scripts/setup-pistar-pcs.sh) - Apply or verify the Pi-Star PCS integration
 
 See [Script Reference](scripts/README.md) for the full script list.
 

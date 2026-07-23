@@ -449,6 +449,33 @@ LAN IP is 10.42.0.2
 Gateway/DNS point to 10.42.0.1 if configured
 ```
 
+## Pi-Star Integration Test
+
+From PCS:
+
+```bash
+ping -c 2 10.42.0.3
+curl -fsS http://10.42.0.3/ >/dev/null
+```
+
+On Pi-Star, using a current copy of the repository script:
+
+```bash
+./setup-pistar-pcs.sh --check
+```
+
+Expected:
+
+```text
+Pi-Star PCS integration check passed
+GPSD VERSION response received from 10.42.0.1:2947
+```
+
+The check does not print live coordinates. Immediately after boot, retry a
+time-sync or GPSD warning after a minute. Configuration failures must be fixed.
+See [Full-Stack Reinstall Runbook](full-stack-reinstall.md) for the complete
+reimage procedure.
+
 ## Service Status Test
 
 On the Pi:
@@ -479,6 +506,8 @@ Before using PCS for an event:
 - [ ] PCS boots cleanly
 - [ ] Pi self-test passes
 - [ ] OpenWrt AP reachable at `10.42.0.2`
+- [ ] Pi-Star reachable at `10.42.0.3` when installed
+- [ ] Pi-Star integration check passes
 - [ ] Client receives `10.42.0.x` address
 - [ ] Client can ping `10.42.0.1`
 - [ ] Client can open Control Panel
@@ -488,6 +517,7 @@ Before using PCS for an event:
 - [ ] Client can access `PCS-Backup`
 - [ ] Windows NTP test works
 - [ ] GPS source appears in Chrony when antenna has sky view
+- [ ] Pi-Star receives the PCS GPSD protocol response
 - [ ] Cellular can be manually connected if needed
 - [ ] Cellular can be manually disconnected
 - [ ] System survives reboot and returns to working state
@@ -504,5 +534,6 @@ Samba shares work
 NTP works
 Backup sync works
 OpenWrt AP is reachable
+Pi-Star integration check passes when the hotspot is installed
 Internet works when uplink is intentionally active
 ```

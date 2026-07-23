@@ -10,6 +10,35 @@ DHCP clients:    10.42.0.100-10.42.0.200
 ```
 
 The tested hotspot is Pi-Star 4.2.3 on Raspbian 11 with hostname `pcs-hotspot`.
+For a complete rebuild sequence, start with
+[Full-Stack Reinstall Runbook](full-stack-reinstall.md).
+
+## Automated Setup
+
+Copy `scripts/setup-pistar-pcs.sh` from this repository to Pi-Star, then run it
+as the normal Pi-Star user:
+
+```bash
+chmod +x ./setup-pistar-pcs.sh
+./setup-pistar-pcs.sh --apply
+sudo reboot
+```
+
+After reboot:
+
+```bash
+./setup-pistar-pcs.sh --check
+```
+
+The script supports the tested `dhcpcd`-based Pi-Star image, owns a clearly
+marked block in `/etc/dhcpcd.conf`, and preserves Pi-Star's normally read-only
+root filesystem state. Environment variables can override the documented
+defaults; run the script without `sudo` so its scoped sudo operations and
+backup behavior remain intact.
+
+The script does not configure the PCS Wi-Fi password, callsign, radio modes, or
+digital-network credentials. Restore those with Pi-Star's native backup or
+enter them through its dashboard.
 
 ## Time
 
@@ -54,8 +83,9 @@ This publishes a LAN-only proxy at `10.42.0.1:2947` while leaving GPSD itself on
 See [GPS Network Sharing](gps-network-sharing.md) for the complete PCS data
 path and examples for other GPSD or raw-NMEA consumers.
 
-On Pi-Star, remount the normally read-only root filesystem and back up the
-configuration:
+The setup script above is the repeatable method. For reference, the equivalent
+manual GPS-only change begins by remounting the normally read-only root
+filesystem and backing up the configuration:
 
 ```bash
 sudo mount -o remount,rw /
@@ -103,6 +133,25 @@ The response class should be `VERSION`. Leave Pi-Star's `mobilegps.service`
 and legacy `[Mobile GPS]` block disabled when there is no receiver physically
 attached to the hotspot.
 
-## Scope
+## Feature Scope and Local-Receiver Comparison
 
 YSFGateway can use this GPSD feed for its supported GPS/APRS behavior. The installed MMDVMHost and YSF2DMR binaries retain their own static `[Info]` location fields; do not claim that this path dynamically rewrites those fields or BrandMeister's hotspot location without separate verification.
+
+For the verified YSFGateway use case, the network GPSD feed avoids a second GPS
+receiver and provides the same PCS position source used by other LAN devices.
+It also keeps antenna placement, GNSS acquisition, and time discipline
+centralized on PCS.
+
+A receiver physically attached to Pi-Star can use Pi-Star's local-serial
+MobileGPS path. Depending on mode and image support, that path may feed
+MMDVMHost features that do not consume YSFGateway's GPSD client. The current
+network integration has not been verified as a general dynamic-location source
+for DMR/BrandMeister, YSF2DMR, or every MMDVMHost mode. Keep static location
+fields correct for those services, and use a local receiver if a required mode
+specifically depends on MobileGPS.
+
+The network method also depends on PCS, the AP, and the LAN being available.
+A directly attached receiver can remain independent when Pi-Star is used away
+from PCS. Those are the meaningful feature and failure-domain differences; GPS
+fix quality itself depends primarily on the receiver, antenna, and view of the
+sky.
