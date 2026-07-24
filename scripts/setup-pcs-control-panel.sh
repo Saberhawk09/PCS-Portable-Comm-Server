@@ -22,7 +22,7 @@ if [[ "${EUID}" -eq 0 ]]; then
     exit 1
 fi
 
-if ! sudo -n -v 2>/dev/null; then
+if ! sudo -n true 2>/dev/null; then
     if [[ ! -t 0 ]]; then
         echo "ERROR: sudo credentials are required, but no interactive terminal is available."
         echo "Run this installer from an interactive Pi terminal so sudo can prompt normally."
