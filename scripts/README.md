@@ -121,6 +121,34 @@ Pi-Star monitoring is controlled separately by `PCS_SETUP_PISTAR=yes|no` in
 does not display Pi-Star-specific dashboard fields, and does not warn when
 `10.42.0.3` is absent.
 
+### setup-pistar-shutdown.sh
+
+Pairs the PCS shutdown button with a configured Pi-Star hotspot:
+
+```bash
+./scripts/setup-pistar-shutdown.sh --apply
+```
+
+The script asks SSH for the Pi-Star password once, creates a dedicated
+root-owned PCS key, and replaces the temporary key entry with a restricted
+entry that permits only:
+
+```text
+check
+poweroff
+```
+
+The Pi-Star password is never read by the script, written to the install
+configuration, or stored on disk. Verify an existing pairing without shutting
+anything down:
+
+```bash
+./scripts/setup-pistar-shutdown.sh --check
+```
+
+If Pi-Star is unavailable when the dashboard shutdown button is pressed, PCS
+prints a warning and continues its own clean shutdown.
+
 ### setup-chrony-lan-ntp.sh
 
 Configures Chrony to serve NTP to PCS clients on:

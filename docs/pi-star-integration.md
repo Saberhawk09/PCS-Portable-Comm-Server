@@ -50,6 +50,31 @@ The script does not configure the PCS Wi-Fi password, callsign, radio modes, or
 digital-network credentials. Restore those with Pi-Star's native backup or
 enter them through its dashboard.
 
+## Coordinated Shutdown
+
+PCS can request a clean Pi-Star shutdown before powering itself off. Run this
+on PCS after Pi-Star is reachable at `10.42.0.3`:
+
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+./scripts/setup-pistar-shutdown.sh --apply
+```
+
+SSH asks for the Pi-Star password once. The setup script uses it only to
+bootstrap a dedicated SSH key and does not save the password. The installed
+key is restricted on Pi-Star to readiness checks and poweroff; it cannot open a
+shell or execute arbitrary commands.
+
+Non-disruptive readiness test:
+
+```bash
+./scripts/setup-pistar-shutdown.sh --check
+```
+
+When pairing is present, the PCS dashboard's **Shutdown PCS** action requests
+Pi-Star poweroff first and then powers off PCS. An offline or unpaired Pi-Star
+does not block PCS shutdown.
+
 ## Time
 
 Pi-Star uses the PCS server as its preferred NTP source and retains public NTP fallback:

@@ -35,13 +35,13 @@ ACTIONS = [
     ("restart-gpsd", "Restart GPSD", "Reassert WWAN NMEA mode and restart gpsd."),
     ("restart-logs", "View Restart Logs", "Show recent PCS restart service logs."),
     ("reboot-system", "Reboot PCS", "Restart the Raspberry Pi."),
-    ("shutdown-system", "Shutdown PCS", "Power off the Raspberry Pi cleanly."),
+    ("shutdown-system", "Shutdown PCS", "Request Pi-Star shutdown when paired, then power off PCS cleanly."),
 ]
 
 ACTION_MAP = {name: (label, desc) for name, label, desc in ACTIONS}
 ACTION_CONFIRMS = {
     "reboot-system": "Reboot PCS now? The dashboard will disconnect while the Pi restarts.",
-    "shutdown-system": "Shutdown PCS now? You will need physical access to power it back on.",
+    "shutdown-system": "Shutdown PCS now? A paired Pi-Star hotspot will also be shut down. You will need physical access to power them back on.",
 }
 
 ACTION_GROUPS = [

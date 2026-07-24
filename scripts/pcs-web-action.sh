@@ -19,6 +19,12 @@ LEGACY_CELLULAR_PROFILE="pcs-cellular-tmobile"
 CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${CELLULAR_PROFILE_DEFAULT}}"
 CELLULAR_APN="${PCS_CELLULAR_APN:-fast.t-mobile.com}"
 CELLULAR_ROUTE_METRIC="${PCS_CELLULAR_ROUTE_METRIC:-900}"
+PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
+PISTAR_HOST="${PCS_PISTAR_HOST:-10.42.0.3}"
+PISTAR_USER="${PCS_PISTAR_USER:-pi-star}"
+PISTAR_PAIR_DIR="${PCS_PISTAR_PAIR_DIR:-/etc/pcs/pistar-shutdown}"
+PISTAR_PRIVATE_KEY="${PISTAR_PAIR_DIR}/id_ed25519"
+PISTAR_KNOWN_HOSTS="${PISTAR_PAIR_DIR}/known_hosts"
 
 ACTION="${1:-}"
 
@@ -33,6 +39,53 @@ require_root() {
         echo "ERROR: This dispatcher must run as root."
         exit 1
     fi
+}
+
+request_pistar_poweroff() {
+    local output
+    local ssh_rc
+
+    if [[ "${PCS_SETUP_PISTAR}" != "yes" ]]; then
+        echo "Pi-Star integration is not configured; skipping hotspot shutdown."
+        return 0
+    fi
+
+    if [[ ! -r "${PISTAR_PRIVATE_KEY}" || ! -r "${PISTAR_KNOWN_HOSTS}" ]]; then
+        echo "WARNING: Pi-Star coordinated shutdown is not paired."
+        echo "Continuing with PCS shutdown."
+        return 0
+    fi
+
+    echo "Requesting clean shutdown from Pi-Star at ${PISTAR_HOST}..."
+
+    set +e
+    output="$(timeout 15 ssh \
+        -i "${PISTAR_PRIVATE_KEY}" \
+        -o BatchMode=yes \
+        -o ConnectTimeout=6 \
+        -o ConnectionAttempts=1 \
+        -o IdentitiesOnly=yes \
+        -o ServerAliveInterval=2 \
+        -o ServerAliveCountMax=2 \
+        -o StrictHostKeyChecking=yes \
+        -o UserKnownHostsFile="${PISTAR_KNOWN_HOSTS}" \
+        "${PISTAR_USER}@${PISTAR_HOST}" \
+        poweroff 2>&1)"
+    ssh_rc=$?
+    set -e
+
+    if [[ -n "${output}" ]]; then
+        printf '%s\n' "${output}"
+    fi
+
+    if [[ "${output}" == *"PCS_PISTAR_POWEROFF_ACCEPTED"* ]]; then
+        echo "Pi-Star accepted the shutdown request."
+        return 0
+    fi
+
+    echo "WARNING: Pi-Star did not confirm shutdown (SSH exit ${ssh_rc})."
+    echo "Continuing with PCS shutdown."
+    return 0
 }
 
 show_help() {
@@ -423,6 +476,7 @@ BACKUP_SHARE = "/srv/pcs-share-backup"
 CELLULAR_PROFILE_DEFAULT = "pcs-cellular-profile"
 LEGACY_CELLULAR_PROFILE = "pcs-cellular-tmobile"
 PI_STAR_IP = "10.42.0.3"
+PI_STAR_PAIR_DIR = "/etc/pcs/pistar-shutdown"
 
 def install_config():
     config = {}
@@ -1731,10 +1785,15 @@ web_admin_items = [
 ]
 
 if PI_STAR_CONFIGURED:
+    pi_star_shutdown_paired = (
+        os.path.isfile(os.path.join(PI_STAR_PAIR_DIR, "id_ed25519"))
+        and os.path.isfile(os.path.join(PI_STAR_PAIR_DIR, "known_hosts"))
+    )
     web_admin_items.extend([
         {"label": "Pi-Star ping", "value": "reachable" if pi_star["ping"] else "no reply"},
         {"label": "Pi-Star dashboard", "value": "reachable" if pi_star["dashboard"] else "unavailable"},
         {"label": "Pi-Star SSH", "value": "reachable" if pi_star["ssh"] else "unavailable"},
+        {"label": "Pi-Star shutdown", "value": "paired" if pi_star_shutdown_paired else "not paired"},
     ])
 
 if web_admin_status_value != "ok":
@@ -2986,6 +3045,7 @@ case "${ACTION}" in
     shutdown-system)
         header "Shutdown PCS"
         echo "Shutdown requested from PCS Control Panel."
+        request_pistar_poweroff
         echo "Wait for the Pi activity LED to settle before removing power."
         systemctl --no-block poweroff
         ;;

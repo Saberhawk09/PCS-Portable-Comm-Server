@@ -320,6 +320,7 @@ echo "  - Chrony LAN NTP setup"
 echo "  - Optional WWAN modem NMEA GPS setup, if WWAN GPS hardware is present"
 echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
 echo "  - Optional Pi-Star monitoring and local-access links"
+echo "  - Optional password-assisted Pi-Star coordinated shutdown pairing"
 echo "  - Cockpit/systemd restart button install"
 echo "  - PCS Control Panel setup"
 echo "  - Port 80 dashboard redirect setup"
@@ -406,6 +407,7 @@ ensure_executable "scripts/setup-pcs-control-panel.sh"
 ensure_executable "scripts/setup-dashboard-redirect.sh"
 ensure_executable "scripts/setup-wwan-gps-nmea.sh"
 ensure_executable "scripts/setup-gpsd-lan-proxy.sh"
+ensure_executable "scripts/setup-pistar-shutdown.sh"
 ensure_executable "scripts/pcs-wwan-gps-nmea-start.py"
 ensure_executable "scripts/pcs-web-action.sh"
 ensure_executable "scripts/sync-pcs-share-to-backup.sh"
@@ -649,6 +651,15 @@ case "${gpsd_lan_answer}" in
         echo "  ./scripts/setup-gpsd-lan-proxy.sh"
         ;;
 esac
+
+if [[ "${PCS_SETUP_PISTAR}" == "yes" ]]; then
+    run_optional_step \
+        "Pair Pi-Star coordinated shutdown" \
+        "./scripts/setup-pistar-shutdown.sh"
+else
+    echo
+    echo "Pi-Star monitoring is disabled; skipping coordinated shutdown pairing."
+fi
 
 echo
 echo "--- Ensure ModemManager is running for dashboard and self-test ---"

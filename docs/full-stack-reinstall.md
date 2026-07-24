@@ -162,6 +162,19 @@ It backs up every file it changes under `/root/pcs-pistar-backups/`, restores
 Pi-Star's root filesystem to read-only when it found it read-only, and leaves
 Wi-Fi credentials and radio settings untouched.
 
+After Pi-Star has rebooted at `10.42.0.3`, return to PCS and pair coordinated
+shutdown:
+
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+./scripts/setup-pistar-shutdown.sh --apply
+```
+
+Enter the Pi-Star password when SSH asks. The password is used only to install
+a restricted shutdown key and is not saved. If Pi-Star was already configured
+and reachable during the PCS base installer, this optional pairing step may
+already be complete.
+
 ## Verification
 
 On PCS:
@@ -170,6 +183,7 @@ On PCS:
 cd /home/pi/Projects/PCS-Portable-Comm-Server
 ./scripts/pcs-self-test.sh
 ./scripts/pcs-status.sh
+./scripts/setup-pistar-shutdown.sh --check
 ```
 
 Copy a fresh version of the Pi-Star script after a repository update, then run
@@ -199,6 +213,7 @@ complete when:
 - OpenWrt and Pi-Star retain `.2` and `.3`
 - Pi-Star time synchronizes through PCS
 - Pi-Star receives a GPSD protocol response from PCS
+- coordinated shutdown readiness check passes
 - required radio modes pass an operator-supervised on-air test
 
 ## Remaining Manual Checkpoints

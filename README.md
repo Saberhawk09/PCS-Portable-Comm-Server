@@ -237,6 +237,7 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 - [`scripts/setup-dashboard-redirect.sh`](scripts/setup-dashboard-redirect.sh) - Install `http://10.42.0.1` dashboard redirect
 - [`scripts/setup-gpsd-lan-proxy.sh`](scripts/setup-gpsd-lan-proxy.sh) - Publish GPSD only on the trusted PCS LAN
 - [`scripts/setup-pistar-pcs.sh`](scripts/setup-pistar-pcs.sh) - Apply or verify the Pi-Star PCS integration
+- [`scripts/setup-pistar-shutdown.sh`](scripts/setup-pistar-shutdown.sh) - Pair the PCS shutdown button with Pi-Star
 
 See [Script Reference](scripts/README.md) for the full script list.
 

@@ -196,6 +196,16 @@ The control panel is an operator convenience layer.
 
 The terminal scripts remain the source of truth for setup and troubleshooting.
 
+The **Shutdown PCS** action requests poweroff from Pi-Star first when
+`PCS_SETUP_PISTAR=yes` and password-assisted shutdown pairing has been
+completed. If Pi-Star is offline or unpaired, PCS reports a warning and
+continues its own shutdown. Pair or verify the restricted key with:
+
+```bash
+./scripts/setup-pistar-shutdown.sh --apply
+./scripts/setup-pistar-shutdown.sh --check
+```
+
 If the control panel hangs or behaves strangely, restart it:
 
 ```bash

@@ -480,6 +480,18 @@ time-sync or GPSD warning after a minute. Configuration failures must be fixed.
 See [Full-Stack Reinstall Runbook](full-stack-reinstall.md) for the complete
 reimage procedure.
 
+Verify coordinated shutdown pairing without powering off either device:
+
+```bash
+./scripts/setup-pistar-shutdown.sh --check
+```
+
+Expected:
+
+```text
+Pi-Star coordinated shutdown pairing is ready.
+```
+
 ## Service Status Test
 
 On the Pi:
@@ -512,6 +524,7 @@ Before using PCS for an event:
 - [ ] OpenWrt AP reachable at `10.42.0.2`
 - [ ] Pi-Star reachable at `10.42.0.3` when installed
 - [ ] Pi-Star integration check passes
+- [ ] Pi-Star coordinated shutdown readiness check passes
 - [ ] Client receives `10.42.0.x` address
 - [ ] Client can ping `10.42.0.1`
 - [ ] Client can open Control Panel

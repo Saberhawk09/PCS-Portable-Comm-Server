@@ -41,6 +41,7 @@ BASE_PACKAGES=(
     curl
     wget
     git
+    openssh-client
     nano
     vim
     htop
