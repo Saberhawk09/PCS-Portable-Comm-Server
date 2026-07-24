@@ -131,7 +131,9 @@ case "${answer}" in
         ;;
 esac
 
-sudo -v
+if ! sudo -n true 2>/dev/null; then
+    sudo -v
+fi
 
 echo
 echo "--- Preparing the dedicated root-owned PCS key ---"
