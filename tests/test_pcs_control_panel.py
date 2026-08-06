@@ -182,6 +182,8 @@ class RouteSecurityTests(unittest.TestCase):
         session_cookie = self.login()
         status, _, admin_page = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 200)
+        self.assertIn('<main class="admin-main">', admin_page)
+        self.assertIn("repeat(6,minmax(0,1fr))", admin_page)
         csrf = re.search(r'name="csrf" value="([^"]+)"', admin_page).group(1)
 
         self.action_mock.reset_mock()

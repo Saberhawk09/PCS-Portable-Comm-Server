@@ -4,6 +4,7 @@
 
 import importlib.util
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 
 from test_pcs_control_panel import ADMIN_DATA, PUBLIC_DATA
@@ -20,7 +21,14 @@ pcs.write_password_record(credential, "correct horse battery staple")
 pcs.AUTH = pcs.AuthManager(credential)
 pcs.SESSIONS = pcs.SessionStore(b"preview-key" * 4, ttl=3600)
 pcs.get_public_dashboard = lambda: pcs.sanitize_public_dashboard(PUBLIC_DATA)
-pcs.get_admin_dashboard = lambda: ADMIN_DATA
+
+admin_preview = deepcopy(ADMIN_DATA)
+base_card = admin_preview["cards"][0]
+admin_preview["cards"] = [
+    {**deepcopy(base_card), "id": title.lower().replace(" ", "-"), "title": title}
+    for title in ("System", "Network", "Cellular", "GNSS", "Storage", "Time", "Services", "Pi-Star")
+]
+pcs.get_admin_dashboard = lambda: admin_preview
 pcs.run_action = lambda action: (0, f"Preview action completed: {action}\n")
 
 server = pcs.ReusableThreadingHTTPServer(("127.0.0.1", 8765), pcs.Handler)
