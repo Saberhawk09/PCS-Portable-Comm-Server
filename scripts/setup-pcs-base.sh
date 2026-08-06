@@ -322,8 +322,8 @@ echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
 echo "  - Optional Pi-Star monitoring and local-access links"
 echo "  - Optional password-assisted Pi-Star coordinated shutdown pairing"
 echo "  - Cockpit/systemd restart button install"
-echo "  - PCS Control Panel setup"
-echo "  - Port 80 dashboard redirect setup"
+echo "  - PCS public homepage and authenticated control panel setup"
+echo "  - Legacy port 8080 admin compatibility redirect"
 echo "  - Final PCS status and self-test"
 echo
 echo "It will not automatically configure:"
@@ -689,8 +689,6 @@ fi
 
 run_step "Install PCS Control Panel" "./scripts/setup-pcs-control-panel.sh"
 
-run_optional_step "Install port 80 dashboard redirect" "./scripts/setup-dashboard-redirect.sh"
-
 echo
 echo "============================================================"
 echo "STEP: Final PCS status"
@@ -719,11 +717,11 @@ echo "=== PCS Base Setup Complete ==="
 echo
 echo "Useful client access addresses from behind the PCS access point:"
 echo
-echo "PCS Dashboard:"
-echo "  http://10.42.0.1"
+echo "PCS public homepage:"
+echo "  http://10.42.0.1/"
 echo
-echo "PCS Control Panel:"
-echo "  http://10.42.0.1:8080"
+echo "PCS Admin Login:"
+echo "  http://10.42.0.1/admin/"
 echo
 echo "Primary file share:"
 echo "  \\\\10.42.0.1\\PCS-Share"

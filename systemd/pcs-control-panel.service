@@ -1,5 +1,5 @@
 [Unit]
-Description=PCS Control Panel Web Interface
+Description=PCS Public Homepage and Administrative Control Panel
 After=network-online.target
 Wants=network-online.target
 
@@ -8,10 +8,13 @@ Type=simple
 User=pi
 WorkingDirectory=/home/pi/Projects/PCS-Portable-Comm-Server
 Environment=PCS_CONTROL_HOST=0.0.0.0
-Environment=PCS_CONTROL_PORT=8080
+Environment=PCS_CONTROL_PORT=80
+Environment=PCS_ADMIN_CREDENTIAL_FILE=/etc/pcs-control-panel/admin.json
+Environment=PCS_SESSION_KEY_FILE=/etc/pcs-control-panel/session.key
 ExecStart=/usr/bin/python3 /home/pi/Projects/PCS-Portable-Comm-Server/web/pcs-control-panel/pcs_control_panel.py
 Restart=on-failure
 RestartSec=3
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target

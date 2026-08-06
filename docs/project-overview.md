@@ -62,8 +62,8 @@ PCS server / gateway
         +-- Chrony LAN NTP
         +-- RTC support
         +-- GPSD
-        +-- PCS Control Panel
-        +-- dashboard redirect
+        +-- PCS public homepage
+        +-- authenticated admin control panel
         +-- optional cellular internet
                 |
                 v
@@ -74,8 +74,8 @@ PCS server / gateway
 
 The current software baseline includes:
 
-- PCS Control Panel
-- Dashboard redirect from `http://10.42.0.1`
+- Public PCS status homepage
+- Password-protected administration at `/admin/`
 - Pi-side status and self-test scripts
 - Ethernet client handoff on the PCS LAN
 - OpenWrt AP/switch integration
@@ -99,8 +99,8 @@ The current software baseline includes:
 From a client connected to the PCS network:
 
 ```text
-PCS Dashboard:      http://10.42.0.1
-PCS Control Panel:  http://10.42.0.1:8080
+PCS Homepage:       http://10.42.0.1/
+PCS Admin Login:    http://10.42.0.1/admin/
 Cockpit:            https://10.42.0.1:9090
 Primary Share:      \\10.42.0.1\PCS-Share
 Backup Share:       \\10.42.0.1\PCS-Backup

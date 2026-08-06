@@ -17,10 +17,11 @@ PCS_BACKUP_SHARE_PATH="/srv/pcs-share-backup"
 PCS_HOSTNAME="$(hostname 2>/dev/null || echo pcs-pi)"
 
 PCS_CONTROL_SERVICE="pcs-control-panel.service"
-PCS_CONTROL_PORT="8080"
-PCS_CONTROL_URL="http://10.42.0.1:8080"
+PCS_CONTROL_PORT="80"
+PCS_CONTROL_URL="http://10.42.0.1"
+PCS_ADMIN_URL="http://10.42.0.1/admin/"
 PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
-PCS_DASHBOARD_REDIRECT_URL="http://10.42.0.1"
+PCS_DASHBOARD_REDIRECT_URL="http://10.42.0.1:8080"
 
 REPO_DIR="/home/pi/Projects/PCS-Portable-Comm-Server"
 INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
@@ -506,8 +507,8 @@ echo "Primary share:            ${PRIMARY_SHARE_STATUS} (${PCS_SHARE_NAME})"
 echo "Backup share:             ${BACKUP_SHARE_STATUS} (${PCS_BACKUP_SHARE_NAME})"
 echo "Last backup sync:         ${BACKUP_SYNC_STATUS}"
 echo "Cockpit:                  ${COCKPIT_STATUS}"
-echo "PCS Control Panel:        ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
-echo "Dashboard Redirect:       ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
+echo "PCS Homepage/Admin:       ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
+echo "Legacy Admin Redirect:    ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
 printf "%-27s %s
 " "WWAN modem:" "${WWAN_SUMMARY}"
 echo "GPSD:                     ${GPSD_STATUS}"
@@ -527,8 +528,11 @@ echo "Cockpit web UI:"
 echo "  https://${PCS_ROUTER_IP}:9090"
 echo
 
-echo "PCS Control Panel:"
-echo "  http://${PCS_ROUTER_IP}:${PCS_CONTROL_PORT}"
+echo "PCS public homepage:"
+echo "  http://${PCS_ROUTER_IP}/"
+echo
+echo "PCS Admin Login:"
+echo "  http://${PCS_ROUTER_IP}/admin/"
 echo
 echo "LAN NTP server:"
 echo "  ${PCS_ROUTER_IP}"
@@ -559,8 +563,11 @@ echo "Backup file share:"
 echo "  explorer \\\\${PCS_ROUTER_IP}\\${PCS_BACKUP_SHARE_NAME}"
 echo
 
-echo "PCS Control Panel:"
-echo "  start http://${PCS_ROUTER_IP}:${PCS_CONTROL_PORT}"
+echo "PCS public homepage:"
+echo "  start http://${PCS_ROUTER_IP}/"
+echo
+echo "PCS Admin Login:"
+echo "  start http://${PCS_ROUTER_IP}/admin/"
 echo
 
 echo "--- Current Test Topology ---"
@@ -579,7 +586,8 @@ echo "- ${PCS_HOSTNAME}.local may not resolve from behind the router because mDN
 echo "- ${PCS_SHARE_NAME} is the current primary/test share."
 echo "- ${PCS_BACKUP_SHARE_NAME} is the SD-card backup mirror share."
 echo "- Run ./scripts/sync-pcs-share-to-backup.sh to manually mirror the primary share to backup."
-echo "- PCS Control Panel is available at http://${PCS_ROUTER_IP}:${PCS_CONTROL_PORT} on the router-side network."
+echo "- PCS public status is available at http://${PCS_ROUTER_IP}/ on the router-side network."
+echo "- Authenticated operator controls are available through the visible Admin Login panel or http://${PCS_ROUTER_IP}/admin/."
 echo "- WWAN modem and GPS NMEA are supported and tested."
 echo "- GPSD is expected to be active when WWAN modem GPS setup is installed."
 echo "- Future EM7565 modem validation is still pending."

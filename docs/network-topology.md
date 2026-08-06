@@ -28,8 +28,8 @@ PCS server / gateway
         +-- Samba file sharing
         +-- Chrony LAN NTP
         +-- GPSD
-        +-- PCS Control Panel
-        +-- dashboard redirect
+        +-- PCS public homepage
+        +-- authenticated admin control panel
         +-- DHCP / DNS
         +-- NAT / forwarding
         +-- optional internet uplink
@@ -72,8 +72,8 @@ It provides:
 - GPSD
 - Chrony NTP
 - RTC support
-- PCS Control Panel
-- dashboard redirect
+- PCS public homepage and authenticated administration
+- legacy port 8080 admin redirect
 - status/self-test scripts
 - backup sync tools
 
@@ -160,8 +160,8 @@ PCS-Backup  -> /srv/pcs-share-backup
 From a PCS client:
 
 ```text
-Dashboard:       http://10.42.0.1
-Control Panel:   http://10.42.0.1:8080
+PCS Homepage:    http://10.42.0.1/
+Admin Login:     http://10.42.0.1/admin/
 Cockpit:         https://10.42.0.1:9090
 Primary Share:   \\10.42.0.1\PCS-Share
 Backup Share:    \\10.42.0.1\PCS-Backup

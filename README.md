@@ -82,7 +82,7 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-The setup script installs the PCS software baseline, configures the Pi client network, sets up Samba, Chrony, RTC support, Cockpit, the PCS Control Panel, and the dashboard redirect.
+The setup script installs the PCS software baseline, configures the Pi client network, sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel.
 
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 
@@ -120,10 +120,10 @@ Cellular data is intentionally configured for manual control.
 
 After a fresh setup, the WWAN modem, GPS, and manual cellular profile should be detected and configured, but the cellular data connection will not be active until it is manually connected from the PCS Control Panel.
 
-Open the PCS Control Panel:
+Open the PCS homepage and select **Admin Login**:
 
 ```text
-http://10.42.0.1:8080
+http://10.42.0.1/
 ```
 
 ## PCS Documentation
@@ -182,8 +182,8 @@ For more detail, see [Testing Checklist](docs/testing-checklist.md).
 From a device connected to the PCS network:
 
 ```text
-PCS Dashboard:      http://10.42.0.1
-PCS Control Panel:  http://10.42.0.1:8080
+PCS Homepage:       http://10.42.0.1/
+PCS Admin Login:    http://10.42.0.1/admin/
 Cockpit:            https://10.42.0.1:9090
 Primary Share:      \\10.42.0.1\PCS-Share
 Backup Share:       \\10.42.0.1\PCS-Backup
@@ -233,8 +233,8 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 - [`scripts/pcs-status.sh`](scripts/pcs-status.sh) - Detailed system status output
 - [`scripts/setup-usb-primary-share.sh`](scripts/setup-usb-primary-share.sh) - Configure USB storage as `PCS-Share`
 - [`scripts/sync-pcs-share-to-backup.sh`](scripts/sync-pcs-share-to-backup.sh) - Mirror USB primary share to SD backup
-- [`scripts/setup-pcs-control-panel.sh`](scripts/setup-pcs-control-panel.sh) - Install the PCS web control panel
-- [`scripts/setup-dashboard-redirect.sh`](scripts/setup-dashboard-redirect.sh) - Install `http://10.42.0.1` dashboard redirect
+- [`scripts/setup-pcs-control-panel.sh`](scripts/setup-pcs-control-panel.sh) - Install the public homepage and authenticated control panel
+- [`scripts/setup-dashboard-redirect.sh`](scripts/setup-dashboard-redirect.sh) - Install the legacy port 8080 redirect to `/admin/`
 - [`scripts/setup-gpsd-lan-proxy.sh`](scripts/setup-gpsd-lan-proxy.sh) - Publish GPSD only on the trusted PCS LAN
 - [`scripts/setup-pistar-pcs.sh`](scripts/setup-pistar-pcs.sh) - Apply or verify the Pi-Star PCS integration
 - [`scripts/setup-pistar-shutdown.sh`](scripts/setup-pistar-shutdown.sh) - Pair the PCS shutdown button with Pi-Star

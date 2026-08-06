@@ -45,8 +45,8 @@ The Linksys EA4500 runs OpenWrt and acts as a bridged access point and Ethernet 
 From a client connected to the PCS network:
 
 ```text
-Dashboard:       http://10.42.0.1
-Control Panel:   http://10.42.0.1:8080
+PCS Homepage:    http://10.42.0.1/
+Admin Login:     http://10.42.0.1/admin/
 Cockpit:         https://10.42.0.1:9090
 Primary Share:   \\10.42.0.1\PCS-Share
 Backup Share:    \\10.42.0.1\PCS-Backup
@@ -74,6 +74,6 @@ docs/                  Project documentation
 hardware/              Wiring, enclosure, and physical build notes
 scripts/               Setup, maintenance, status, and test scripts
 systemd/               PCS service files
-web/pcs-control-panel/ PCS Control Panel web interface
+web/pcs-control-panel/ PCS homepage and administrative web interface
 config/                Configuration templates and support files
 ```

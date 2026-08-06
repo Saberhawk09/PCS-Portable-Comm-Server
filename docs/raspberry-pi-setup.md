@@ -2,7 +2,7 @@
 
 This document describes the Raspberry Pi side of PCS.
 
-The Raspberry Pi is the main PCS server and network controller. It provides LAN services, file sharing, time service, modem/GPS support, the PCS Control Panel, and system status tools.
+The Raspberry Pi is the main PCS server and network controller. It provides LAN services, file sharing, time service, modem/GPS support, the public PCS homepage, authenticated administration, and system status tools.
 
 ## Expected Pi Role
 
@@ -15,8 +15,8 @@ The Pi provides:
 - Chrony LAN NTP
 - Raspberry Pi RTC support
 - GPSD support for WWAN GNSS
-- PCS Control Panel
-- dashboard redirect
+- PCS public homepage and authenticated control panel
+- legacy port 8080 admin redirect
 - Cockpit access
 - status and self-test scripts
 
@@ -57,8 +57,8 @@ The base setup configures the PCS software baseline, including:
 - Chrony LAN NTP
 - RTC support
 - Cockpit
-- PCS Control Panel
-- dashboard redirect
+- PCS public homepage and authenticated control panel
+- legacy port 8080 admin redirect
 - status/self-test tooling
 - systemd service support
 
@@ -127,8 +127,8 @@ The access point should have DHCP disabled. The Pi should be the only DHCP serve
 From a device connected to the PCS network:
 
 ```text
-PCS Dashboard:      http://10.42.0.1
-PCS Control Panel:  http://10.42.0.1:8080
+PCS Homepage:       http://10.42.0.1/
+PCS Admin Login:    http://10.42.0.1/admin/
 Cockpit:            https://10.42.0.1:9090
 Primary Share:      \\10.42.0.1\PCS-Share
 Backup Share:       \\10.42.0.1\PCS-Backup
@@ -214,10 +214,10 @@ Cellular data is intentionally manual.
 
 The modem and GPS may be detected and configured, but the cellular data connection is not expected to auto-connect after setup.
 
-Use the PCS Control Panel:
+Open the PCS homepage and select **Admin Login**:
 
 ```text
-http://10.42.0.1:8080
+http://10.42.0.1/
 ```
 
 Manual cellular control avoids:
@@ -241,21 +241,21 @@ https://10.42.0.1:9090
 
 Use Cockpit for system inspection and manual service management when needed.
 
-## Dashboard / Control Panel
+## Homepage / Control Panel
 
-Dashboard redirect:
+Public homepage:
 
 ```text
 http://10.42.0.1
 ```
 
-PCS Control Panel:
+Authenticated administration:
 
 ```text
-http://10.42.0.1:8080
+http://10.42.0.1/admin/
 ```
 
-The Control Panel is the preferred operator interface for PCS service control and status.
+The public homepage provides field status. The authenticated control panel is the preferred operator interface for PCS service control and detailed diagnostics.
 
 ## Useful Commands
 

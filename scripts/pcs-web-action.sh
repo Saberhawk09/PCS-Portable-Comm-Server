@@ -94,6 +94,7 @@ PCS web action dispatcher
 
 Allowed actions:
 
+  dashboard-public-json
   dashboard-json
   status
   self-test
@@ -477,6 +478,7 @@ CELLULAR_PROFILE_DEFAULT = "pcs-cellular-profile"
 LEGACY_CELLULAR_PROFILE = "pcs-cellular-tmobile"
 PI_STAR_IP = "10.42.0.3"
 PI_STAR_PAIR_DIR = "/etc/pcs/pistar-shutdown"
+PUBLIC_VIEW = os.environ.get("PCS_DASHBOARD_VIEW") == "public"
 
 def install_config():
     config = {}
@@ -1667,14 +1669,14 @@ def resolve_client_name(ip, mac, manual_names, lease_names):
 
     return ip
 
-def router_side_clients():
+def router_side_clients(resolve_names=True):
     rc, out, _ = run(["ip", "neigh", "show", "dev", "eth0"], timeout=4)
     clients = []
     if rc != 0:
         return clients
 
-    manual_names = manual_client_names()
-    lease_names = dhcp_lease_names()
+    manual_names = manual_client_names() if resolve_names else {}
+    lease_names = dhcp_lease_names() if resolve_names else {}
 
     for line in out.splitlines():
         parts = line.split()
@@ -1691,7 +1693,7 @@ def router_side_clients():
                 mac = parts[idx + 1]
 
         if ip.startswith("10.42.0."):
-            friendly_name = resolve_client_name(ip, mac, manual_names, lease_names)
+            friendly_name = resolve_client_name(ip, mac, manual_names, lease_names) if resolve_names else "LAN client"
 
             clients.append({
                 "ip": ip,
@@ -1722,6 +1724,29 @@ def chrony_tracking():
             data[key.strip()] = value.strip()
     return data
 
+def signal_quality_label(raw):
+    match = re.search(r"(\d{1,3})\s*%", str(raw or ""))
+    if not match:
+        return "unknown"
+
+    percent = max(0, min(100, int(match.group(1))))
+    if percent >= 75:
+        return "Excellent"
+    if percent >= 50:
+        return "Good"
+    if percent >= 25:
+        return "Fair"
+    return "Poor"
+
+def card_items_by_id(cards, card_id):
+    for card in cards:
+        if card.get("id") == card_id:
+            return {
+                item.get("label", ""): item.get("value", "unknown")
+                for item in card.get("items", [])
+            }
+    return {}
+
 usb_mount = findmnt(USB_MOUNT)
 usb_usage = disk_usage(USB_MOUNT) if usb_mount else None
 root_usage = disk_usage("/")
@@ -1733,9 +1758,9 @@ internet_ok = ping_ok("8.8.8.8")
 dns_ok = ping_ok("google.com")
 eth_ip_ok = ip_has_address("eth0", "10.42.0.1/24")
 default_iface = default_route_iface()
-wan_ip = public_wan_ip()
+wan_ip = "" if PUBLIC_VIEW else public_wan_ip()
 uplink_info = uplink_route_info()
-router_clients = router_side_clients()
+router_clients = router_side_clients(resolve_names=not PUBLIC_VIEW)
 
 load1, load5, load15 = system_load()
 cpu_cores = os.cpu_count() or 1
@@ -1758,6 +1783,7 @@ eth0_method = nm_connection_method("pcs-router-wan-share")
 backup_info = backup_health()
 web_admin = web_admin_status()
 pi_star = pi_star_health() if PI_STAR_CONFIGURED else {}
+openwrt_online = ping_ok("10.42.0.2")
 
 uplink_status = "ok" if route_details.get("interface") else "warn"
 client_lan_status = "ok" if eth0_ip.startswith("10.42.0.1/") else "warn"
@@ -1776,8 +1802,8 @@ pi_star_ok = not PI_STAR_CONFIGURED or (
 web_admin_status_value = "ok" if web_admin_core_ok and pi_star_ok else "warn"
 
 web_admin_items = [
-    {"label": "Dashboard redirect", "value": "active" if web_admin["redirect_active"] else "inactive"},
-    {"label": "Control panel", "value": "active" if web_admin["control_panel_active"] else "inactive"},
+    {"label": "Homepage / admin", "value": "active" if web_admin["control_panel_active"] else "inactive"},
+    {"label": "Legacy 8080 redirect", "value": "active" if web_admin["redirect_active"] else "inactive"},
     {"label": "Cockpit", "value": "active" if web_admin["cockpit_active"] else "inactive"},
     {"label": "Port 80", "value": "listening" if web_admin["port_80"] else "not listening"},
     {"label": "Port 8080", "value": "listening" if web_admin["port_8080"] else "not listening"},
@@ -2175,8 +2201,112 @@ data = {
     "cards": cards,
 }
 
+if PUBLIC_VIEW:
+    system_items = card_items_by_id(cards, "system-stats")
+    network_items = card_items_by_id(cards, "network")
+    cellular_items = card_items_by_id(cards, "cellular")
+    time_items = card_items_by_id(cards, "time")
+    gps_items = card_items_by_id(cards, "gps")
+
+    public_sections = {
+        "system": {
+            "status": system_status,
+            "uptime": system_items.get("Uptime", "unknown"),
+            "local_time": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "cpu_temperature": system_items.get("CPU temp", "unavailable"),
+            "cpu_load": system_items.get("CPU load", "unknown"),
+            "memory_used": system_items.get("RAM used", "unknown"),
+            "root_storage_used": system_items.get("Root disk used", "unknown"),
+        },
+        "network": {
+            "status": network_status,
+            "lan_gateway": "10.42.0.1",
+            "openwrt_online": openwrt_online,
+            "openwrt_url": "http://10.42.0.2/",
+            "internet_available": internet_ok and dns_ok,
+            "uplink_type": active_uplink_label,
+            "connected_client_count": len(router_clients),
+        },
+        "cellular": {
+            "status": cellular_status,
+            "modem_present": modem_present,
+            "connected": cellular_connected,
+            "carrier": cellular_items.get("Operator", "unknown"),
+            "access_technology": cellular_items.get("Access tech", "unknown"),
+            "signal": signal_quality_label(cellular_items.get("Signal quality", "")),
+        },
+        "time": {
+            "status": time_status,
+            "chrony_active": chrony_active,
+            "synchronized": clock_sync == "yes",
+            "source": (
+                "GNSS"
+                if chrony_gps_source_present and clock_sync == "yes"
+                else "Internet NTP"
+                if clock_sync == "yes" and not chrony_local_fallback
+                else "RTC / local fallback"
+                if chrony_local_fallback
+                else "Unsynchronized"
+            ),
+            "reference": time_items.get("Reference", "unknown"),
+        },
+        "gnss": {
+            "status": gps_status,
+            "receiver_active": gpsd_active or modem_present,
+            "fix": gps_items.get("Fix quality", "unknown"),
+            "satellites": gps_items.get("Satellites", "unknown"),
+            "coordinates": gps_items.get("Lat/Lon", "not available"),
+            "grid_square": gps_items.get("Grid square", "unknown"),
+            "utc_time": gps_items.get("UTC time", "unknown"),
+        },
+        "storage": {
+            "status": storage_status,
+            "usb_mounted": usb_mount is not None,
+            "primary_share_available": primary_share_ok,
+            "backup_share_available": backup_share_ok,
+            "usb_free_gb": f"{usb_usage.get('free_gb')} GB" if usb_usage else "unavailable",
+            "backup_free_gb": f"{backup_usage.get('free_gb')} GB" if backup_usage else "unavailable",
+        },
+        "services": {
+            "status": "ok" if smbd_active and web_admin["control_panel_active"] else "warn",
+            "homepage_available": web_admin["control_panel_active"] and web_admin["port_80"],
+            "file_sharing_available": smbd_active and (primary_share_ok or backup_share_ok),
+            "cockpit_available": web_admin["cockpit_active"] and web_admin["port_9090"],
+            "gpsd_lan_enabled": CONFIG.get("PCS_SETUP_GPSD_LAN", "auto").lower() != "no",
+        },
+        "pistar": {
+            "configured": PI_STAR_CONFIGURED,
+            "online": bool(pi_star.get("reachable")) if PI_STAR_CONFIGURED else False,
+            "url": "http://10.42.0.3/" if PI_STAR_CONFIGURED else "",
+        },
+        "aprs": {
+            "configured": False,
+        },
+    }
+
+    public_overall = "ok"
+    public_statuses = [
+        section.get("status")
+        for section in public_sections.values()
+        if isinstance(section, dict) and section.get("status")
+    ]
+    if "bad" in public_statuses:
+        public_overall = "bad"
+    elif "warn" in public_statuses:
+        public_overall = "warn"
+
+    data = {
+        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "overall": public_overall,
+        **public_sections,
+    }
+
 print(json.dumps(data, indent=2))
 PY
+}
+
+dashboard_public_json() {
+    PCS_DASHBOARD_VIEW=public dashboard_json
 }
 
 require_root
@@ -2951,6 +3081,10 @@ case "${ACTION}" in
 
     dashboard-json)
         dashboard_json
+        ;;
+
+    dashboard-public-json)
+        dashboard_public_json
         ;;
 
     status)
