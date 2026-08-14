@@ -169,7 +169,7 @@ google.com resolves and replies
 
 If cellular data is disconnected, internet tests may fail. That does not mean PCS LAN services are broken.
 
-## Dashboard / Control Panel Test
+## Homepage / Admin Login Test
 
 From a PCS client browser:
 
@@ -180,20 +180,50 @@ http://10.42.0.1
 Expected:
 
 ```text
-Redirects to PCS Control Panel
+Public Field Network Status homepage loads
+Admin Login button and panel are visible
+No authentication is required for public status
 ```
 
-Direct Control Panel URL:
+Select **Admin Login**, or open:
 
 ```text
-http://10.42.0.1:8080
+http://10.42.0.1/admin/
 ```
 
 Expected:
 
 ```text
-PCS Control Panel loads
+Unauthenticated users see the Admin Login page
+Correct password opens PCS Administration
+Incorrect password is rejected
+Change Admin Password button is visible after login
+Logout returns to the public homepage and invalidates the session
 ```
+
+Select **Change Admin Password** and verify:
+
+```text
+The page requires the current password, new password, and confirmation
+The forgotten-password warning names setup-pcs-control-panel.sh --reset-admin-password
+An incorrect current password and mismatched confirmation are rejected
+A successful change returns to Admin Login and invalidates the previous session
+The new password works and the previous password no longer works
+```
+
+For forgotten-password recovery, rerun from an interactive Pi terminal and confirm that the installer prompts for a replacement:
+
+```bash
+./scripts/setup-pcs-control-panel.sh --reset-admin-password
+```
+
+Legacy compatibility URL:
+
+```text
+http://10.42.0.1:8080/
+```
+
+Expected: redirects to `http://10.42.0.1/admin/`.
 
 Cockpit:
 
@@ -404,7 +434,7 @@ If multiple modems or modem numbers are present, adjust the modem number.
 Open:
 
 ```text
-http://10.42.0.1:8080
+http://10.42.0.1/admin/
 ```
 
 Use the PCS Control Panel to manually connect cellular data.
@@ -527,7 +557,8 @@ Before using PCS for an event:
 - [ ] Pi-Star coordinated shutdown readiness check passes
 - [ ] Client receives `10.42.0.x` address
 - [ ] Client can ping `10.42.0.1`
-- [ ] Client can open Control Panel
+- [ ] Client can open the public homepage and see the Admin Login panel
+- [ ] Authorized operator can log in, log out, and run an admin action
 - [ ] Client can open `PCS-Share`
 - [ ] Client can write to `PCS-Share`
 - [ ] Backup sync works
@@ -545,7 +576,7 @@ PCS is ready for field use when:
 
 ```text
 Pi self-test passes
-Control Panel loads
+Public homepage and authenticated administration load
 Clients receive PCS LAN addresses
 Samba shares work
 NTP works

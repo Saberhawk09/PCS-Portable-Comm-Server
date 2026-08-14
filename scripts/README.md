@@ -28,8 +28,8 @@ This installs/configures:
 - Optional WWAN GNSS and LAN-only GPSD sharing
 - Optional Pi-Star monitoring and local-access links
 - PCS restart service
-- PCS Control Panel
-- Dashboard redirect
+- PCS public homepage and authenticated control panel
+- Legacy port 8080 admin compatibility redirect
 - Final status/self-test checks
 
 ## Dependencies
@@ -267,36 +267,45 @@ Warning: this is a mirror-style sync. Files deleted from the USB primary share m
 
 ### setup-pcs-control-panel.sh
 
-Installs the PCS Control Panel web interface.
+Installs the PCS public homepage, Admin Login, authenticated operator controls, local password hash, and systemd services.
 
 ```bash
 ./scripts/setup-pcs-control-panel.sh
 ```
 
-Control Panel URL:
+A fresh interactive install prompts for the admin password. If a password already exists, a repeat install asks whether to keep it or replace it. The authenticated administration page also provides **Change Admin Password** when the current password is known.
+
+Public homepage and Admin Login URLs:
 
 ```text
-http://10.42.0.1:8080
+http://10.42.0.1/
+http://10.42.0.1/admin/
+```
+
+If the password is forgotten, it cannot be reset in the browser. Rerun the installer interactively:
+
+```bash
+./scripts/setup-pcs-control-panel.sh --reset-admin-password
 ```
 
 ### setup-dashboard-redirect.sh
 
-Installs the port 80 redirect service.
+Installs or repairs the optional legacy port 8080 compatibility redirect. The unified PCS application owns port 80; old `:8080` bookmarks are redirected to `/admin/`.
 
 ```bash
 ./scripts/setup-dashboard-redirect.sh
 ```
 
-Dashboard URL:
+Legacy URL:
 
 ```text
-http://10.42.0.1
+http://10.42.0.1:8080/
 ```
 
 This redirects to:
 
 ```text
-http://10.42.0.1:8080
+http://10.42.0.1/admin/
 ```
 
 ### pcs-web-action.sh

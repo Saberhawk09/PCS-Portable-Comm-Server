@@ -24,11 +24,17 @@ PCS_BACKUP_SHARE="PCS-Backup"
 PCS_BACKUP_PATH="/srv/pcs-share-backup"
 
 PCS_CONTROL_SERVICE="pcs-control-panel.service"
-PCS_CONTROL_PORT="8080"
-PCS_CONTROL_URL="http://127.0.0.1:8080"
+PCS_CONTROL_PORT="80"
+PCS_CONTROL_URL="http://127.0.0.1/"
+PCS_ADMIN_URL="http://127.0.0.1/admin/"
+PCS_PUBLIC_STATUS_URL="http://127.0.0.1/api/public-status"
+PCS_ADMIN_CREDENTIAL_FILE="/etc/pcs-control-panel/admin.json"
+PCS_SESSION_KEY_FILE="/etc/pcs-control-panel/session.key"
+PCS_ADMIN_PASSWORD_HELPER="/usr/local/sbin/pcs-admin-password-helper"
+PCS_CONTROL_SUDOERS_FILE="/etc/sudoers.d/pcs-control-panel"
 PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
-PCS_DASHBOARD_REDIRECT_PORT="80"
-PCS_DASHBOARD_REDIRECT_HEALTH_URL="http://127.0.0.1/health"
+PCS_DASHBOARD_REDIRECT_PORT="8080"
+PCS_DASHBOARD_REDIRECT_HEALTH_URL="http://127.0.0.1:8080/health"
 
 REPO_DIR="/home/pi/Projects/PCS-Portable-Comm-Server"
 INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
@@ -447,7 +453,7 @@ else
     warn "TCP port 9090 not visible in ss output; cockpit.socket may still activate on demand"
 fi
 
-section "PCS Control Panel"
+section "PCS Homepage and Administration"
 
 if service_active "${PCS_CONTROL_SERVICE}"; then
     pass "${PCS_CONTROL_SERVICE} is active"
@@ -470,17 +476,82 @@ fi
 if command_exists curl; then
     PCS_CONTROL_HTML="$(mktemp)"
     if curl -fsS --max-time 20 "${PCS_CONTROL_URL}" -o "${PCS_CONTROL_HTML}" 2>/dev/null \
-        && grep -q "PCS Control Panel" "${PCS_CONTROL_HTML}"; then
-        pass "PCS Control Panel HTTP check works at ${PCS_CONTROL_URL}"
+        && grep -q "Portable Communication Server" "${PCS_CONTROL_HTML}" \
+        && grep -q "Admin Login" "${PCS_CONTROL_HTML}"; then
+        pass "PCS public homepage and Admin Login panel work at ${PCS_CONTROL_URL}"
     else
-        fail "PCS Control Panel HTTP check failed at ${PCS_CONTROL_URL}"
+        fail "PCS public homepage check failed at ${PCS_CONTROL_URL}"
     fi
     rm -f "${PCS_CONTROL_HTML}"
+
+    PCS_PUBLIC_JSON="$(curl -fsS --max-time 20 "${PCS_PUBLIC_STATUS_URL}" 2>/dev/null || true)"
+    if [[ "${PCS_PUBLIC_JSON}" == *'"overall"'* ]] \
+        && [[ "${PCS_PUBLIC_JSON}" != *'"imei"'* ]] \
+        && [[ "${PCS_PUBLIC_JSON}" != *'"imsi"'* ]] \
+        && [[ "${PCS_PUBLIC_JSON}" != *'"router_side_clients"'* ]]; then
+        pass "Public status API is available and excludes blocked identity/client fields"
+    else
+        fail "Public status API is missing or contains a blocked field"
+    fi
+
+    PCS_ADMIN_HTTP_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "${PCS_ADMIN_URL}" 2>/dev/null || true)"
+    if [[ "${PCS_ADMIN_HTTP_CODE}" == "303" ]]; then
+        pass "Unauthenticated admin page request is redirected to login"
+    else
+        fail "Unauthenticated admin page returned HTTP ${PCS_ADMIN_HTTP_CODE:-unknown}; expected 303"
+    fi
+
+    PCS_ADMIN_POST_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -X POST \
+        -H 'Content-Type: application/x-www-form-urlencoded' \
+        --data 'action=status&csrf=invalid' \
+        http://127.0.0.1/admin/run 2>/dev/null || true)"
+    if [[ "${PCS_ADMIN_POST_CODE}" == "303" ]]; then
+        pass "Unauthenticated direct admin action POST is rejected"
+    else
+        fail "Unauthenticated admin action POST returned HTTP ${PCS_ADMIN_POST_CODE:-unknown}; expected 303"
+    fi
+
+    PCS_PASSWORD_POST_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -X POST \
+        -H 'Content-Type: application/x-www-form-urlencoded' \
+        --data 'current_password=invalid&new_password=invalid&confirm_password=invalid&csrf=invalid' \
+        http://127.0.0.1/admin/password 2>/dev/null || true)"
+    if [[ "${PCS_PASSWORD_POST_CODE}" == "303" ]]; then
+        pass "Unauthenticated admin password POST is rejected"
+    else
+        fail "Unauthenticated password POST returned HTTP ${PCS_PASSWORD_POST_CODE:-unknown}; expected 303"
+    fi
 else
-    skip "curl not found; skipping PCS Control Panel HTTP check"
+    skip "curl not found; skipping PCS homepage and admin route checks"
 fi
 
-section "PCS Dashboard Redirect"
+if [[ -s "${PCS_ADMIN_CREDENTIAL_FILE}" ]]; then
+    pass "PCS admin password hash is configured outside the repository"
+else
+    warn "PCS admin password is not configured; /admin/ remains locked"
+fi
+
+if [[ -s "${PCS_SESSION_KEY_FILE}" ]]; then
+    pass "PCS persistent session signing key is installed"
+else
+    fail "PCS persistent session signing key is missing"
+fi
+
+if [[ -x "${PCS_ADMIN_PASSWORD_HELPER}" ]] \
+    && [[ "$(stat -c '%U:%G %a' "${PCS_ADMIN_PASSWORD_HELPER}" 2>/dev/null || true)" == "root:root 755" ]]; then
+    pass "Root-owned PCS admin password update helper is installed"
+else
+    fail "PCS admin password update helper is missing or has unsafe ownership/mode"
+fi
+
+if [[ "$(sudo -n stat -c '%U:%G %a' "${PCS_CONTROL_SUDOERS_FILE}" 2>/dev/null || true)" == "root:root 440" ]] \
+    && sudo -n visudo -cf "${PCS_CONTROL_SUDOERS_FILE}" >/dev/null 2>&1 \
+    && sudo -n grep -Fq "${PCS_ADMIN_PASSWORD_HELPER} --change-from-stdin" "${PCS_CONTROL_SUDOERS_FILE}" 2>/dev/null; then
+    pass "PCS control-panel sudoers allowlist is valid and includes the password helper"
+else
+    fail "PCS control-panel sudoers allowlist is missing, invalid, or has unsafe permissions"
+fi
+
+section "PCS Legacy Admin Redirect"
 
 if service_active "${PCS_DASHBOARD_REDIRECT_SERVICE}"; then
     pass "${PCS_DASHBOARD_REDIRECT_SERVICE} is active"
@@ -502,12 +573,12 @@ fi
 
 if command_exists curl; then
     if curl -fsS --max-time 5 "${PCS_DASHBOARD_REDIRECT_HEALTH_URL}" >/dev/null 2>&1; then
-        pass "PCS dashboard redirect health check works"
+        pass "PCS port 8080 compatibility redirect health check works"
     else
-        fail "PCS dashboard redirect health check failed"
+        fail "PCS port 8080 compatibility redirect health check failed"
     fi
 else
-    skip "curl not found; skipping dashboard redirect HTTP check"
+    skip "curl not found; skipping compatibility redirect HTTP check"
 fi
 
 section "Raspberry Pi Connect"

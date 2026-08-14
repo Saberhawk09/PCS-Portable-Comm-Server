@@ -1,0 +1,314 @@
+import http.client
+import importlib.util
+import json
+import re
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+from unittest import mock
+from urllib.parse import urlencode
+
+
+MODULE_PATH = Path(__file__).parents[1] / "web" / "pcs-control-panel" / "pcs_control_panel.py"
+SPEC = importlib.util.spec_from_file_location("pcs_control_panel", MODULE_PATH)
+pcs = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(pcs)
+
+
+PUBLIC_DATA = {
+    "generated_at": "2026-08-06T12:00:00-04:00",
+    "overall": "ok",
+    "system": {"status": "ok", "uptime": "2h", "local_time": "noon", "cpu_temperature": "42 C"},
+    "network": {"status": "ok", "lan_gateway": "10.42.0.1", "openwrt_online": True, "internet_available": True, "uplink_type": "Wi-Fi", "connected_client_count": 3},
+    "cellular": {"status": "ok", "modem_present": True, "connected": False, "carrier": "Field Carrier", "signal": "Good", "imei": "must-not-render"},
+    "time": {"status": "ok", "chrony_active": True, "synchronized": True, "source": "GNSS"},
+    "gnss": {"status": "ok", "receiver_active": True, "fix": "3D fix", "satellites": "8 used", "coordinates": "38.123456, -77.123456", "grid_square": "FM18kc"},
+    "storage": {"status": "ok", "usb_mounted": True, "primary_share_available": True, "backup_share_available": True, "usb_free_gb": "40 GB", "backup_free_gb": "8 GB"},
+    "services": {"status": "ok", "gpsd_lan_enabled": True},
+    "pistar": {"configured": False},
+    "aprs": {"configured": False},
+}
+
+ADMIN_DATA = {
+    "generated_at": "2026-08-06T12:00:00-04:00",
+    "overall": "ok",
+    "cards": [{"id": "system", "title": "System", "status": "ok", "summary": "Healthy", "items": []}],
+    "client_info": {"router_side_clients": []},
+}
+
+
+class PasswordTests(unittest.TestCase):
+    def test_password_record_verifies_without_storing_plaintext(self):
+        record = pcs.make_password_record("correct horse battery staple")
+        self.assertTrue(pcs.verify_password_record("correct horse battery staple", record))
+        self.assertFalse(pcs.verify_password_record("wrong password", record))
+        self.assertNotIn("correct horse battery staple", str(record))
+
+    def test_password_minimum_length(self):
+        with self.assertRaises(ValueError):
+            pcs.make_password_record("too-short")
+
+    def test_password_helper_receives_secrets_only_through_stdin(self):
+        completed = mock.Mock(returncode=0, stdout="updated", stderr="")
+        with mock.patch.object(pcs.subprocess, "run", return_value=completed) as runner:
+            updated, _ = pcs.change_admin_password(
+                "correct horse battery staple",
+                "new correct horse battery staple",
+            )
+        self.assertTrue(updated)
+        command = runner.call_args.args[0]
+        self.assertNotIn("correct horse battery staple", command)
+        self.assertNotIn("new correct horse battery staple", command)
+        payload = json.loads(runner.call_args.kwargs["input"])
+        self.assertEqual(payload["current_password"], "correct horse battery staple")
+        self.assertEqual(payload["new_password"], "new correct horse battery staple")
+
+
+class SessionTests(unittest.TestCase):
+    def test_logout_destroys_session(self):
+        store = pcs.SessionStore(b"a" * 32, ttl=60)
+        cookie, _ = store.create()
+        session_id, session = store.validate(cookie)
+        self.assertIsNotNone(session)
+        store.destroy(session_id)
+        self.assertEqual(store.validate(cookie), (None, None))
+
+    def test_tampered_session_is_rejected(self):
+        store = pcs.SessionStore(b"a" * 32, ttl=60)
+        cookie, _ = store.create()
+        self.assertEqual(store.validate(cookie + "x"), (None, None))
+
+    def test_expired_session_is_rejected(self):
+        store = pcs.SessionStore(b"a" * 32, ttl=0)
+        cookie, _ = store.create()
+        self.assertEqual(store.validate(cookie), (None, None))
+
+    def test_password_rotation_destroys_all_sessions(self):
+        store = pcs.SessionStore(b"a" * 32, ttl=60)
+        first_cookie, _ = store.create()
+        second_cookie, _ = store.create()
+        store.destroy_all()
+        self.assertEqual(store.validate(first_cookie), (None, None))
+        self.assertEqual(store.validate(second_cookie), (None, None))
+
+
+class PublicDataTests(unittest.TestCase):
+    def test_public_contract_removes_unapproved_fields(self):
+        sanitized = pcs.sanitize_public_dashboard(PUBLIC_DATA)
+        self.assertNotIn("imei", sanitized["cellular"])
+        self.assertEqual(sanitized["gnss"]["coordinates"], "38.123456, -77.123456")
+        self.assertEqual(sanitized["gnss"]["grid_square"], "FM18kc")
+
+
+class RouteSecurityTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tempdir = tempfile.TemporaryDirectory()
+        credential = str(Path(cls.tempdir.name) / "admin.json")
+        pcs.write_password_record(credential, "correct horse battery staple")
+        pcs.AUTH = pcs.AuthManager(credential)
+        pcs.SESSIONS = pcs.SessionStore(b"b" * 32, ttl=120)
+        pcs.LOGIN_LIMITER = pcs.LoginLimiter()
+        cls.action_mock = mock.Mock(return_value=(0, "action complete"))
+        cls.password_change_mock = mock.Mock(return_value=(True, "Password updated."))
+        cls.patchers = [
+            mock.patch.object(pcs, "get_public_dashboard", return_value=pcs.sanitize_public_dashboard(PUBLIC_DATA)),
+            mock.patch.object(pcs, "get_admin_dashboard", return_value=ADMIN_DATA),
+            mock.patch.object(pcs, "run_action", cls.action_mock),
+            mock.patch.object(pcs, "change_admin_password", cls.password_change_mock),
+        ]
+        for patcher in cls.patchers:
+            patcher.start()
+        cls.server = pcs.ReusableThreadingHTTPServer(("127.0.0.1", 0), pcs.Handler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.port = cls.server.server_address[1]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=2)
+        for patcher in reversed(cls.patchers):
+            patcher.stop()
+        cls.tempdir.cleanup()
+
+    def request(self, method, path, body=None, headers=None):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        connection.request(method, path, body=body, headers=headers or {})
+        response = connection.getresponse()
+        content = response.read().decode("utf-8")
+        response_headers = response.headers
+        connection.close()
+        return response.status, response_headers, content
+
+    def login(self):
+        status, headers, page = self.request("GET", "/admin/login")
+        self.assertEqual(status, 200)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+        login_cookie = headers.get("Set-Cookie").split(";", 1)[0]
+        body = urlencode({"csrf": csrf, "password": "correct horse battery staple"})
+        status, headers, _ = self.request(
+            "POST",
+            "/admin/login",
+            body,
+            {"Content-Type": "application/x-www-form-urlencoded", "Cookie": login_cookie},
+        )
+        self.assertEqual(status, 303)
+        session_cookie = next(
+            value.split(";", 1)[0]
+            for value in headers.get_all("Set-Cookie")
+            if value.startswith("pcs_admin_session=")
+        )
+        return session_cookie
+
+    def test_public_home_has_prominent_admin_login_and_allowed_coordinates(self):
+        status, _, page = self.request("GET", "/")
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(page.count("Admin Login"), 2)
+        self.assertIn("38.123456, -77.123456", page)
+        self.assertIn("FM18kc", page)
+        self.assertNotIn("must-not-render", page)
+
+        status, _, public_json = self.request("GET", "/api/public-status")
+        self.assertEqual(status, 200)
+        self.assertNotIn("imei", public_json.lower())
+        self.assertIn("FM18kc", public_json)
+
+    def test_unauthenticated_admin_get_redirects_to_login(self):
+        status, headers, _ = self.request("GET", "/admin/")
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+
+    def test_unauthenticated_direct_action_post_is_rejected(self):
+        self.action_mock.reset_mock()
+        body = urlencode({"csrf": "invalid", "action": "status"})
+        status, headers, _ = self.request("POST", "/admin/run", body, {"Content-Type": "application/x-www-form-urlencoded"})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+        self.action_mock.assert_not_called()
+
+    def test_unauthenticated_password_change_is_rejected(self):
+        self.password_change_mock.reset_mock()
+        body = urlencode({
+            "csrf": "invalid",
+            "current_password": "correct horse battery staple",
+            "new_password": "new correct horse battery staple",
+            "confirm_password": "new correct horse battery staple",
+        })
+        status, headers, _ = self.request("POST", "/admin/password", body, {"Content-Type": "application/x-www-form-urlencoded"})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+        self.password_change_mock.assert_not_called()
+
+    def test_incorrect_password_is_rejected(self):
+        status, headers, page = self.request("GET", "/admin/login")
+        self.assertEqual(status, 200)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+        login_cookie = headers.get("Set-Cookie").split(";", 1)[0]
+        body = urlencode({"csrf": csrf, "password": "definitely the wrong password"})
+        status, _, page = self.request(
+            "POST",
+            "/admin/login",
+            body,
+            {"Content-Type": "application/x-www-form-urlencoded", "Cookie": login_cookie},
+        )
+        self.assertEqual(status, 401)
+        self.assertIn("Incorrect administrator password", page)
+
+    def test_oversized_login_password_is_rejected(self):
+        status, headers, page = self.request("GET", "/admin/login")
+        self.assertEqual(status, 200)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+        login_cookie = headers.get("Set-Cookie").split(";", 1)[0]
+        body = urlencode({"csrf": csrf, "password": "x" * (pcs.MAX_PASSWORD_LENGTH + 1)})
+        status, _, page = self.request(
+            "POST",
+            "/admin/login",
+            body,
+            {"Content-Type": "application/x-www-form-urlencoded", "Cookie": login_cookie},
+        )
+        self.assertEqual(status, 401)
+        self.assertIn("Incorrect administrator password", page)
+
+    def test_login_csrf_action_and_logout_flow(self):
+        session_cookie = self.login()
+        status, _, admin_page = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn('<main class="admin-main">', admin_page)
+        self.assertIn("repeat(6,minmax(0,1fr))", admin_page)
+        self.assertIn("Change Admin Password", admin_page)
+        self.assertIn("forgotten password cannot be recovered", admin_page)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', admin_page).group(1)
+
+        self.action_mock.reset_mock()
+        bad_body = urlencode({"csrf": "wrong", "action": "status"})
+        status, _, _ = self.request("POST", "/admin/run", bad_body, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 403)
+        self.action_mock.assert_not_called()
+
+        good_body = urlencode({"csrf": csrf, "action": "status"})
+        status, _, page = self.request("POST", "/admin/run", good_body, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn("action complete", page)
+        self.action_mock.assert_called_once_with("status")
+
+        logout_body = urlencode({"csrf": csrf})
+        status, _, _ = self.request("POST", "/admin/logout", logout_body, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 303)
+        status, headers, _ = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+
+    def test_authenticated_password_change_flow(self):
+        session_cookie = self.login()
+        status, _, page = self.request("GET", "/admin/password", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn("Forgotten passwords cannot be changed here", page)
+        self.assertIn("--reset-admin-password", page)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+
+        self.password_change_mock.reset_mock()
+        mismatch = urlencode({
+            "csrf": csrf,
+            "current_password": "correct horse battery staple",
+            "new_password": "new correct horse battery staple",
+            "confirm_password": "different correct horse battery staple",
+        })
+        status, _, page = self.request("POST", "/admin/password", mismatch, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 400)
+        self.assertIn("did not match", page)
+        self.password_change_mock.assert_not_called()
+
+        wrong_current = urlencode({
+            "csrf": csrf,
+            "current_password": "incorrect current password",
+            "new_password": "new correct horse battery staple",
+            "confirm_password": "new correct horse battery staple",
+        })
+        status, _, page = self.request("POST", "/admin/password", wrong_current, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 401)
+        self.assertIn("Current administrator password was incorrect", page)
+        self.password_change_mock.assert_not_called()
+
+        valid = urlencode({
+            "csrf": csrf,
+            "current_password": "correct horse battery staple",
+            "new_password": "new correct horse battery staple",
+            "confirm_password": "new correct horse battery staple",
+        })
+        status, headers, _ = self.request("POST", "/admin/password", valid, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login?changed=1")
+        self.password_change_mock.assert_called_once_with(
+            "correct horse battery staple",
+            "new correct horse battery staple",
+        )
+        status, headers, _ = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+
+
+if __name__ == "__main__":
+    unittest.main()

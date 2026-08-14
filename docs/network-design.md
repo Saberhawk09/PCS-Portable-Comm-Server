@@ -42,7 +42,7 @@ Bridge / AP / Ethernet switch
 Raspberry Pi 4 eth0
 10.42.0.1/24
         |
-        +-- PCS Control Panel
+        +-- PCS homepage and authenticated administration
         +-- Samba shares
         +-- Chrony LAN NTP
         +-- GPSD
@@ -132,8 +132,8 @@ The Pi provides:
 - Samba file shares
 - Chrony NTP service
 - GPSD input for GNSS-backed time
-- PCS Control Panel
-- Dashboard redirect
+- PCS public homepage and authenticated control panel
+- Legacy port 8080 admin redirect
 - Cockpit
 - Status and self-test scripts
 

@@ -1,59 +1,51 @@
-# PCS Control Panel
+# PCS Homepage and Control Panel
 
-PCS includes a local web control panel for common operator tasks.
-
-Primary dashboard URL:
+PCS provides a public field-status homepage and a password-protected administrative control panel on the trusted local PCS network.
 
 ```text
-http://10.42.0.1
+Public homepage:  http://10.42.0.1/
+Admin login:      http://10.42.0.1/admin/
+Cockpit:          https://10.42.0.1:9090
 ```
 
-Direct control panel URL:
+The public homepage contains a visible **Admin Login** button and administration panel. Operators do not need to enter the legacy port manually.
+
+## Public Homepage
+
+The homepage is read-only and does not require authentication. It shows an explicitly limited status data set:
+
+- Overall health, uptime, local time, temperature, load, memory, and storage use
+- Internet availability, active uplink, OpenWrt status, and client count
+- Sanitized cellular connection, carrier, access technology, and signal category
+- GNSS fix, satellites, exact coordinates, Maidenhead grid square, and GNSS time
+- Chrony synchronization and current time source
+- USB, `PCS-Share`, and `PCS-Backup` availability and free space
+- Local file-share, NTP, GPSD, Cockpit, and OpenWrt access information
+- Pi-Star status and link only when Pi-Star integration is configured
+
+Exact coordinates and grid square are intentionally public to clients on site. The public data does not include modem or SIM identifiers, Wi-Fi secrets, detailed client identity or MAC addresses, arbitrary command output, or administrative actions.
+
+The public JSON used by the page is also available read-only at:
 
 ```text
-http://10.42.0.1:8080
+http://10.42.0.1/api/public-status
 ```
 
-The port 80 dashboard URL redirects to the control panel on port 8080.
+## Administrative Control Panel
 
-## Purpose
+The `/admin/` area contains the detailed dashboard and all operator action groups:
 
-The control panel provides a simple local interface for checking system health and running common PCS actions without remembering terminal commands.
+- Health
+- Network
+- Cellular
+- Storage
+- Services
+- Time / GPS
+- Power
 
-It is intended for trusted local PCS clients only.
+Unauthenticated requests are redirected to the Admin Login page. Administrative POST requests require both a valid session and CSRF token. Direct unauthenticated POST requests are rejected before the dispatcher is called.
 
-Keep this interface on the trusted PCS LAN.
-
-## Services
-
-The control panel uses two systemd services:
-
-```text
-pcs-control-panel.service
-pcs-dashboard-redirect.service
-```
-
-`pcs-control-panel.service` runs the main web interface on port 8080.
-
-`pcs-dashboard-redirect.service` runs a small port 80 redirect service.
-
-## Setup Scripts
-
-Install the main control panel:
-
-```bash
-./scripts/setup-pcs-control-panel.sh
-```
-
-Install the port 80 dashboard redirect:
-
-```bash
-./scripts/setup-dashboard-redirect.sh
-```
-
-## Web Actions
-
-The control panel uses an allowlisted dispatcher script:
+Dangerous operations retain confirmation prompts. Privileged work continues to use the allowlisted dispatcher:
 
 ```text
 /usr/local/sbin/pcs-web-action
@@ -65,149 +57,92 @@ Repository source:
 scripts/pcs-web-action.sh
 ```
 
-The web app does not run arbitrary shell commands. It only calls known PCS actions.
+The web application cannot submit arbitrary shell commands.
 
-Available actions include:
+## Authentication Storage
 
-```text
-View PCS Status
-Run Self-Test
-View Storage
-View Wi-Fi
-Connect Wi-Fi
-Disable Wi-Fi Radio
-View Cellular
-Connect Cellular
-Disconnect Cellular
-Test Cellular
-Sync USB to SD Backup
-Mount USB Storage
-Unmount USB Safely
-Restart PCS Services
-Restart Samba
-Sync Time Now
-Restart Chrony
-Restart GPSD
-View Restart Logs
-```
-
-## Dashboard Cards
-
-The dashboard shows quick status cards for:
+The local password is processed with PBKDF2-HMAC-SHA256 and a random salt. Only the resulting password record is stored.
 
 ```text
-System stats
-Core services
-Network
-Storage
-Web/admin interfaces
-Time / NTP
-Samba
-Cellular / WWAN
-GPS / GNSS
+/etc/pcs-control-panel/admin.json
+/etc/pcs-control-panel/session.key
 ```
 
-These cards are intended to give a quick field-health overview before using the detailed action buttons.
+These files are kept outside the repository and restricted to `root` and the web-service group. Password changes are written atomically by the root-owned `/usr/local/sbin/pcs-admin-password-helper`; plaintext passwords are passed only through local stdin and are not placed in process arguments or logs.
 
-## Field Access
+Sessions expire after 30 minutes by default. Session cookies are signed, HTTP-only, and restricted to `/admin` with `SameSite=Strict`. Logout invalidates the server-side session immediately.
 
-The dashboard includes local client information:
+The PCS field interface currently uses HTTP. This protects the administrative boundary from unauthenticated use but does not encrypt traffic on the LAN. Keep the interface on the trusted PCS network. HTTPS can be added later if protection against local packet capture becomes necessary.
 
-```text
-PCS dashboard:      http://10.42.0.1
-PCS control panel:  http://10.42.0.1:8080
-Cockpit:            https://10.42.0.1:9090
-Primary share:      \\10.42.0.1\PCS-Share
-Backup share:       \\10.42.0.1\PCS-Backup
-LAN NTP server:     10.42.0.1
-```
+## Install or Upgrade
 
-Windows NTP test:
-
-```cmd
-w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
-```
-
-## WAN and Client Display
-
-The dashboard attempts to show:
-
-- WAN/public IP
-- Uplink interface
-- Uplink source IP
-- Clients visible on the Pi `eth0` network
-
-Client visibility works best when the access point is in AP/switch mode and clients receive addresses directly from the Pi.
-
-## Friendly Client Names
-
-Friendly local client names can be configured with:
-
-```text
-config/local-client-names.tsv
-```
-
-This file is ignored by Git so private local device names and MAC addresses are not published.
-
-A safe example file is tracked:
-
-```text
-config/local-client-names.example.tsv
-```
-
-Example format:
-
-```text
-10.42.0.2	Linksys EA4500 OpenWrt AP
-10.42.0.123	Field Laptop
-aa:bb:cc:dd:ee:ff	Field Laptop
-```
-
-## Health Checks
-
-Check service status:
+Run as the normal `pi` user:
 
 ```bash
-systemctl status pcs-control-panel.service --no-pager -l
-systemctl status pcs-dashboard-redirect.service --no-pager -l
+./scripts/setup-pcs-control-panel.sh
 ```
 
-Test the main control panel locally:
+On a new interactive installation, the script requires an administrator password. When a password already exists, every interactive repeat install asks whether to preserve it or enter a replacement. This makes password configuration repeatable without silently overwriting a working credential.
+
+During a noninteractive fresh install, the public homepage is installed but administration remains locked until a password is configured. This prevents a default or generated password from being exposed in logs.
+
+## Reset the Admin Password
+
+An authenticated operator can select **Change Admin Password** on the administration page. The current password, a new password, and confirmation are required. A successful change invalidates every active admin session and returns the operator to Admin Login.
+
+A forgotten password cannot be recovered or replaced from the browser. Rerun the installer from an interactive Pi terminal:
+
+Run from an interactive PCS terminal:
 
 ```bash
-curl -I http://127.0.0.1:8080
+./scripts/setup-pcs-control-panel.sh --reset-admin-password
 ```
 
-Test the port 80 redirect:
+The password must be at least 12 characters. The reset command prompts securely, replaces only the local password hash, preserves the session signing key, and restarts the service. `--reset-admin-password` intentionally fails without an interactive terminal so a replacement password cannot leak into automation logs.
 
-```bash
-curl -I http://127.0.0.1
-```
-
-Test the redirect health endpoint:
-
-```bash
-curl http://127.0.0.1/health
-```
-
-## Notes
-
-The control panel is an operator convenience layer.
-
-The terminal scripts remain the source of truth for setup and troubleshooting.
-
-The **Shutdown PCS** action requests poweroff from Pi-Star first when
-`PCS_SETUP_PISTAR=yes` and password-assisted shutdown pairing has been
-completed. If Pi-Star is offline or unpaired, PCS reports a warning and
-continues its own shutdown. Pair or verify the restricted key with:
-
-```bash
-./scripts/setup-pistar-shutdown.sh --apply
-./scripts/setup-pistar-shutdown.sh --check
-```
-
-If the control panel hangs or behaves strangely, restart it:
+Restarting the service invalidates any sessions held in memory:
 
 ```bash
 sudo systemctl restart pcs-control-panel.service
 ```
+
+## Services and Ports
+
+```text
+pcs-control-panel.service          port 80, public and authenticated routes
+pcs-dashboard-redirect.service    port 8080, legacy compatibility redirect
+```
+
+The old redirect service no longer owns port 80. After the unified service is installed, old bookmarks such as `http://10.42.0.1:8080/` redirect to `http://10.42.0.1/admin/`.
+
+The compatibility redirect remains separate so it can be disabled later without affecting the homepage:
+
+```bash
+sudo systemctl disable --now pcs-dashboard-redirect.service
+```
+
+## Health Checks
+
+```bash
+systemctl status pcs-control-panel.service --no-pager -l
+systemctl status pcs-dashboard-redirect.service --no-pager -l
+curl -fsS http://127.0.0.1/health
+curl -fsS http://127.0.0.1/api/public-status
+curl -I http://127.0.0.1/admin/
+curl -fsS http://127.0.0.1:8080/health
+```
+
+An unauthenticated request to `/admin/` should return HTTP `303` and point to `/admin/login`.
+
+## Public Data Collection
+
+The dispatcher exposes two logical dashboard views:
+
+```text
+dashboard-public-json    explicitly allowlisted public status structure
+dashboard-json           full administrative cards and client details
+```
+
+The public view is constructed deliberately from approved fields. It is not produced by sending unrestricted diagnostic output to the browser and hiding parts with CSS or JavaScript.
+
+Optional subsystems return warning or unavailable values without preventing the rest of the homepage from loading. Pi-Star content is omitted unless configured. APRS is reserved as a future optional data card and remains hidden when unavailable.

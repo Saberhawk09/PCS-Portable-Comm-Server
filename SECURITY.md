@@ -1,5 +1,19 @@
 # Security Policy
 
+## Runtime Boundary
+
+PCS is designed for a trusted local field network. The public homepage intentionally exposes operational health and current GNSS position to connected LAN clients. Administrative diagnostics and actions require the local PCS administrator password.
+
+The current field interface uses HTTP. Do not expose ports `80`, `8080`, `9090`, Samba, GPSD, or SSH directly to the public internet, and do not bridge untrusted clients onto the PCS LAN without an additional security boundary.
+
+## Reporting a Vulnerability
+
+Use the repository's private vulnerability-reporting form under **Security > Advisories > Report a vulnerability**. Do not publish an unpatched vulnerability, credential, device identifier, or precise private deployment detail in a public issue.
+
+If private reporting is unavailable, open a minimal issue asking the maintainer to establish private contact. Do not include exploit details or secrets in that issue.
+
+## Repository Secrets
+
 PCS may eventually involve cellular modem configuration, network settings, VPN configuration, IP addresses, and device-specific setup files.
 
 Do not commit:

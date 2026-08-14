@@ -177,6 +177,8 @@ already be complete.
 
 ## Verification
 
+The PCS Pi SD-card wipe/rebuild path was verified on July 8, 2026. The procedure below remains the release-standard validation because OpenWrt, Pi-Star, credentials, and on-air radio checks still contain intentional manual checkpoints.
+
 On PCS:
 
 ```bash

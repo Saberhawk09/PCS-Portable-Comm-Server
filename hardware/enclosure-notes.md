@@ -1,6 +1,6 @@
 # Enclosure Notes
 
-> Draft enclosure planning notes. Final dimensions and mounting details are TBD.
+> The PCS hardware is assembled and usable. Exact as-built dimensions, fasteners, mounting locations, photos, and CAD/export references still need to be recorded here.
 
 ## Design Goal
 
@@ -8,14 +8,14 @@ The PCS enclosure should organize all major components into a compact, rugged, f
 
 The current concept is closer to a luggable computer than a generic electronics box. Inspiration includes older portable computers where the front face is protected when the cover is closed.
 
-The case is planned to be 3D printed, primarily using:
+The enclosure design uses or anticipates these printable materials:
 
 - PETG for the main enclosure
 - TPU for bumpers, feet, or impact protection
 
 ## Case Style
 
-Current desired style:
+Current design style:
 
 - luggable PC form factor
 - protected front IO when the cover is closed
@@ -25,7 +25,7 @@ Current desired style:
 
 The front panel is not expected to be one fully custom integrated PCB-style panel. Instead, the current concept uses individual 3D printed IO shields around the discrete components.
 
-Front IO may include access for:
+Front IO design includes access for:
 
 - Raspberry Pi 4 ports
 - Linksys EA4500 Ethernet ports
@@ -37,7 +37,7 @@ Front IO may include access for:
 
 ## External Features
 
-Planned external access:
+Documented external access:
 
 - AC input through switched/fused IEC C14 inlet
 - DC input through Anderson Powerpole inlet
@@ -64,7 +64,7 @@ Internal components to mount:
 
 ## Power System Layout
 
-The current proposed power system uses:
+The documented power system uses:
 
 ```text
 AC or external DC input
