@@ -68,7 +68,7 @@ The local password is processed with PBKDF2-HMAC-SHA256 and a random salt. Only 
 /etc/pcs-control-panel/session.key
 ```
 
-These files are kept outside the repository and restricted to `root` and the web-service group. Existing credentials are preserved during repeat installations.
+These files are kept outside the repository and restricted to `root` and the web-service group. Password changes are written atomically by the root-owned `/usr/local/sbin/pcs-admin-password-helper`; plaintext passwords are passed only through local stdin and are not placed in process arguments or logs.
 
 Sessions expire after 30 minutes by default. Session cookies are signed, HTTP-only, and restricted to `/admin` with `SameSite=Strict`. Logout invalidates the server-side session immediately.
 
@@ -82,11 +82,15 @@ Run as the normal `pi` user:
 ./scripts/setup-pcs-control-panel.sh
 ```
 
-On a new interactive installation, the script prompts for an administrator password. A repeat install preserves the existing credential and does not prompt.
+On a new interactive installation, the script requires an administrator password. When a password already exists, every interactive repeat install asks whether to preserve it or enter a replacement. This makes password configuration repeatable without silently overwriting a working credential.
 
 During a noninteractive fresh install, the public homepage is installed but administration remains locked until a password is configured. This prevents a default or generated password from being exposed in logs.
 
 ## Reset the Admin Password
+
+An authenticated operator can select **Change Admin Password** on the administration page. The current password, a new password, and confirmation are required. A successful change invalidates every active admin session and returns the operator to Admin Login.
+
+A forgotten password cannot be recovered or replaced from the browser. Rerun the installer from an interactive Pi terminal:
 
 Run from an interactive PCS terminal:
 
@@ -94,7 +98,7 @@ Run from an interactive PCS terminal:
 ./scripts/setup-pcs-control-panel.sh --reset-admin-password
 ```
 
-The password must be at least 12 characters. The command replaces only the local password hash and preserves the session signing key.
+The password must be at least 12 characters. The reset command prompts securely, replaces only the local password hash, preserves the session signing key, and restarts the service. `--reset-admin-password` intentionally fails without an interactive terminal so a replacement password cannot leak into automation logs.
 
 Restarting the service invalidates any sessions held in memory:
 

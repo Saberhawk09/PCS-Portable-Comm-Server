@@ -1,10 +1,10 @@
 # Wiring Notes
 
-> Draft wiring notes. This is not a finalized schematic.
+> The PCS hardware is operational, but this file is not yet a verified as-built schematic. Reconcile every connection, fuse, wire gauge, connector, and measurement with the physical unit before using it for repair or replication.
 
 ## Current Power Flow
 
-The current proposed PCS power path uses a regulated 12 V backbone.
+The documented PCS power path uses a regulated 12 V backbone.
 
 ```text
 AC Input:
@@ -27,7 +27,7 @@ PSD-30A-5 -> regulated 5 V bus -> Raspberry Pi / WWAN adapter / USB storage
 
 ## Source Selector
 
-Planned switch: 6-pin DPDT center-off toggle.
+Documented switch: 6-pin DPDT center-off toggle.
 
 | Switch Position | Function |
 | --- | --- |
@@ -49,7 +49,7 @@ External DC negative --/
 
 ## Main Fuse
 
-Current planned main fuse:
+Documented main fuse:
 
 ```text
 7.5 A slow-blow
@@ -65,7 +65,7 @@ This protects the common selected-DC feed into the main 12 V regulator. Keep unf
 
 ## Branch Fuses
 
-Current branch fuse planning:
+Documented branch fuse plan:
 
 ```text
 Router / AP 12 V branch:     3 A
@@ -74,6 +74,23 @@ Optional 5 V output branch:  3 A to 5 A
 ```
 
 Final fuse sizing should be based on actual measured current draw and wire gauge.
+
+## As-Built Verification Record
+
+Record these values from the physical PCS before treating this file as final:
+
+| Check | As-built value |
+| --- | --- |
+| AC inlet fuse | Not yet recorded |
+| Main selected-DC fuse | Not yet recorded |
+| Router branch fuse | Not yet recorded |
+| 5 V converter input fuse | Not yet recorded |
+| AC/DC source-selector pinout | Not yet recorded |
+| 12 V rail wire gauge | Not yet recorded |
+| 5 V rail wire gauge | Not yet recorded |
+| Idle 12 V / 5 V rail measurements | Not yet recorded |
+| Peak-load 12 V / 5 V rail measurements | Not yet recorded |
+| Protective-earth bonding points | Not yet recorded |
 
 ## Converter Notes
 

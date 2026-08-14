@@ -197,7 +197,24 @@ Expected:
 Unauthenticated users see the Admin Login page
 Correct password opens PCS Administration
 Incorrect password is rejected
+Change Admin Password button is visible after login
 Logout returns to the public homepage and invalidates the session
+```
+
+Select **Change Admin Password** and verify:
+
+```text
+The page requires the current password, new password, and confirmation
+The forgotten-password warning names setup-pcs-control-panel.sh --reset-admin-password
+An incorrect current password and mismatched confirmation are rejected
+A successful change returns to Admin Login and invalidates the previous session
+The new password works and the previous password no longer works
+```
+
+For forgotten-password recovery, rerun from an interactive Pi terminal and confirm that the installer prompts for a replacement:
+
+```bash
+./scripts/setup-pcs-control-panel.sh --reset-admin-password
 ```
 
 Legacy compatibility URL:

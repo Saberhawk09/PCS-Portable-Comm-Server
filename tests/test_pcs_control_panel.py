@@ -1,5 +1,6 @@
 import http.client
 import importlib.util
+import json
 import re
 import tempfile
 import threading
@@ -48,6 +49,21 @@ class PasswordTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pcs.make_password_record("too-short")
 
+    def test_password_helper_receives_secrets_only_through_stdin(self):
+        completed = mock.Mock(returncode=0, stdout="updated", stderr="")
+        with mock.patch.object(pcs.subprocess, "run", return_value=completed) as runner:
+            updated, _ = pcs.change_admin_password(
+                "correct horse battery staple",
+                "new correct horse battery staple",
+            )
+        self.assertTrue(updated)
+        command = runner.call_args.args[0]
+        self.assertNotIn("correct horse battery staple", command)
+        self.assertNotIn("new correct horse battery staple", command)
+        payload = json.loads(runner.call_args.kwargs["input"])
+        self.assertEqual(payload["current_password"], "correct horse battery staple")
+        self.assertEqual(payload["new_password"], "new correct horse battery staple")
+
 
 class SessionTests(unittest.TestCase):
     def test_logout_destroys_session(self):
@@ -68,6 +84,14 @@ class SessionTests(unittest.TestCase):
         cookie, _ = store.create()
         self.assertEqual(store.validate(cookie), (None, None))
 
+    def test_password_rotation_destroys_all_sessions(self):
+        store = pcs.SessionStore(b"a" * 32, ttl=60)
+        first_cookie, _ = store.create()
+        second_cookie, _ = store.create()
+        store.destroy_all()
+        self.assertEqual(store.validate(first_cookie), (None, None))
+        self.assertEqual(store.validate(second_cookie), (None, None))
+
 
 class PublicDataTests(unittest.TestCase):
     def test_public_contract_removes_unapproved_fields(self):
@@ -87,10 +111,12 @@ class RouteSecurityTests(unittest.TestCase):
         pcs.SESSIONS = pcs.SessionStore(b"b" * 32, ttl=120)
         pcs.LOGIN_LIMITER = pcs.LoginLimiter()
         cls.action_mock = mock.Mock(return_value=(0, "action complete"))
+        cls.password_change_mock = mock.Mock(return_value=(True, "Password updated."))
         cls.patchers = [
             mock.patch.object(pcs, "get_public_dashboard", return_value=pcs.sanitize_public_dashboard(PUBLIC_DATA)),
             mock.patch.object(pcs, "get_admin_dashboard", return_value=ADMIN_DATA),
             mock.patch.object(pcs, "run_action", cls.action_mock),
+            mock.patch.object(pcs, "change_admin_password", cls.password_change_mock),
         ]
         for patcher in cls.patchers:
             patcher.start()
@@ -163,6 +189,19 @@ class RouteSecurityTests(unittest.TestCase):
         self.assertEqual(headers.get("Location"), "/admin/login")
         self.action_mock.assert_not_called()
 
+    def test_unauthenticated_password_change_is_rejected(self):
+        self.password_change_mock.reset_mock()
+        body = urlencode({
+            "csrf": "invalid",
+            "current_password": "correct horse battery staple",
+            "new_password": "new correct horse battery staple",
+            "confirm_password": "new correct horse battery staple",
+        })
+        status, headers, _ = self.request("POST", "/admin/password", body, {"Content-Type": "application/x-www-form-urlencoded"})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+        self.password_change_mock.assert_not_called()
+
     def test_incorrect_password_is_rejected(self):
         status, headers, page = self.request("GET", "/admin/login")
         self.assertEqual(status, 200)
@@ -178,12 +217,29 @@ class RouteSecurityTests(unittest.TestCase):
         self.assertEqual(status, 401)
         self.assertIn("Incorrect administrator password", page)
 
+    def test_oversized_login_password_is_rejected(self):
+        status, headers, page = self.request("GET", "/admin/login")
+        self.assertEqual(status, 200)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+        login_cookie = headers.get("Set-Cookie").split(";", 1)[0]
+        body = urlencode({"csrf": csrf, "password": "x" * (pcs.MAX_PASSWORD_LENGTH + 1)})
+        status, _, page = self.request(
+            "POST",
+            "/admin/login",
+            body,
+            {"Content-Type": "application/x-www-form-urlencoded", "Cookie": login_cookie},
+        )
+        self.assertEqual(status, 401)
+        self.assertIn("Incorrect administrator password", page)
+
     def test_login_csrf_action_and_logout_flow(self):
         session_cookie = self.login()
         status, _, admin_page = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 200)
         self.assertIn('<main class="admin-main">', admin_page)
         self.assertIn("repeat(6,minmax(0,1fr))", admin_page)
+        self.assertIn("Change Admin Password", admin_page)
+        self.assertIn("forgotten password cannot be recovered", admin_page)
         csrf = re.search(r'name="csrf" value="([^"]+)"', admin_page).group(1)
 
         self.action_mock.reset_mock()
@@ -201,6 +257,54 @@ class RouteSecurityTests(unittest.TestCase):
         logout_body = urlencode({"csrf": csrf})
         status, _, _ = self.request("POST", "/admin/logout", logout_body, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
         self.assertEqual(status, 303)
+        status, headers, _ = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+
+    def test_authenticated_password_change_flow(self):
+        session_cookie = self.login()
+        status, _, page = self.request("GET", "/admin/password", headers={"Cookie": session_cookie})
+        self.assertEqual(status, 200)
+        self.assertIn("Forgotten passwords cannot be changed here", page)
+        self.assertIn("--reset-admin-password", page)
+        csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+
+        self.password_change_mock.reset_mock()
+        mismatch = urlencode({
+            "csrf": csrf,
+            "current_password": "correct horse battery staple",
+            "new_password": "new correct horse battery staple",
+            "confirm_password": "different correct horse battery staple",
+        })
+        status, _, page = self.request("POST", "/admin/password", mismatch, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 400)
+        self.assertIn("did not match", page)
+        self.password_change_mock.assert_not_called()
+
+        wrong_current = urlencode({
+            "csrf": csrf,
+            "current_password": "incorrect current password",
+            "new_password": "new correct horse battery staple",
+            "confirm_password": "new correct horse battery staple",
+        })
+        status, _, page = self.request("POST", "/admin/password", wrong_current, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 401)
+        self.assertIn("Current administrator password was incorrect", page)
+        self.password_change_mock.assert_not_called()
+
+        valid = urlencode({
+            "csrf": csrf,
+            "current_password": "correct horse battery staple",
+            "new_password": "new correct horse battery staple",
+            "confirm_password": "new correct horse battery staple",
+        })
+        status, headers, _ = self.request("POST", "/admin/password", valid, {"Content-Type": "application/x-www-form-urlencoded", "Cookie": session_cookie})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login?changed=1")
+        self.password_change_mock.assert_called_once_with(
+            "correct horse battery staple",
+            "new correct horse battery staple",
+        )
         status, headers, _ = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 303)
         self.assertEqual(headers.get("Location"), "/admin/login")

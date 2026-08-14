@@ -7,6 +7,8 @@ CONTROL_PANEL_SRC="${REPO_DIR}/web/pcs-control-panel/pcs_control_panel.py"
 REDIRECT_SRC="${REPO_DIR}/web/pcs-control-panel/pcs_dashboard_redirect.py"
 DISPATCHER_SRC="${REPO_DIR}/scripts/pcs-web-action.sh"
 DISPATCHER_DST="/usr/local/sbin/pcs-web-action"
+PASSWORD_HELPER_SRC="${REPO_DIR}/scripts/pcs-admin-password-helper.py"
+PASSWORD_HELPER_DST="/usr/local/sbin/pcs-admin-password-helper"
 SERVICE_SRC="${REPO_DIR}/systemd/pcs-control-panel.service"
 SERVICE_DST="/etc/systemd/system/pcs-control-panel.service"
 REDIRECT_SERVICE_SRC="${REPO_DIR}/systemd/pcs-dashboard-redirect.service"
@@ -17,7 +19,15 @@ SESSION_KEY_FILE="${AUTH_DIR}/session.key"
 REMOVED_STANDBY_DIR="/opt/pcs-control-panel-standby"
 REMOVED_STANDBY_SERVICE="/etc/systemd/system/pcs-control-panel-standby.service"
 SUDOERS_FILE="/etc/sudoers.d/pcs-control-panel"
+SUDOERS_TEMP=""
 RESET_ADMIN_PASSWORD=0
+
+cleanup() {
+    if [[ -n "${SUDOERS_TEMP}" && -f "${SUDOERS_TEMP}" ]]; then
+        rm -f -- "${SUDOERS_TEMP}"
+    fi
+}
+trap cleanup EXIT
 
 if [[ "${1:-}" == "--reset-admin-password" ]]; then
     RESET_ADMIN_PASSWORD=1
@@ -36,6 +46,12 @@ if [[ "${EUID}" -eq 0 ]]; then
     exit 1
 fi
 
+if [[ "${RESET_ADMIN_PASSWORD}" -eq 1 && ! -t 0 ]]; then
+    echo "ERROR: --reset-admin-password requires an interactive Pi terminal."
+    echo "Rerun the installer interactively so the new password is not exposed in logs or arguments."
+    exit 1
+fi
+
 if ! sudo -n true 2>/dev/null; then
     if [[ ! -t 0 ]]; then
         echo "ERROR: sudo credentials are required, but no interactive terminal is available."
@@ -49,6 +65,7 @@ for required_file in \
     "${CONTROL_PANEL_SRC}" \
     "${REDIRECT_SRC}" \
     "${DISPATCHER_SRC}" \
+    "${PASSWORD_HELPER_SRC}" \
     "${SERVICE_SRC}" \
     "${REDIRECT_SERVICE_SRC}"; do
     if [[ ! -f "${required_file}" ]]; then
@@ -65,13 +82,21 @@ sudo rm -rf -- "${REMOVED_STANDBY_DIR}"
 echo "Installing root-owned PCS web action dispatcher..."
 sudo install -o root -g root -m 0755 "${DISPATCHER_SRC}" "${DISPATCHER_DST}"
 
+echo "Installing root-owned PCS admin password helper..."
+sudo install -o root -g root -m 0755 "${PASSWORD_HELPER_SRC}" "${PASSWORD_HELPER_DST}"
+
 echo "Installing sudoers allowlist..."
-cat <<EOF | sudo tee "${SUDOERS_FILE}" >/dev/null
+SUDOERS_TEMP="$(mktemp)"
+cat >"${SUDOERS_TEMP}" <<EOF
 # Allow the PCS web application to invoke only its fixed dispatcher actions.
 pi ALL=(root) NOPASSWD: ${DISPATCHER_DST} dashboard-public-json, ${DISPATCHER_DST} dashboard-json, ${DISPATCHER_DST} status, ${DISPATCHER_DST} self-test, ${DISPATCHER_DST} storage-status, ${DISPATCHER_DST} wifi-status, ${DISPATCHER_DST} wifi-connect, ${DISPATCHER_DST} wifi-disconnect, ${DISPATCHER_DST} cellular-status, ${DISPATCHER_DST} cellular-connect, ${DISPATCHER_DST} cellular-disconnect, ${DISPATCHER_DST} cellular-test, ${DISPATCHER_DST} sync-backup, ${DISPATCHER_DST} mount-usb, ${DISPATCHER_DST} mount-new-usb, ${DISPATCHER_DST} safe-unmount-usb, ${DISPATCHER_DST} restart-services, ${DISPATCHER_DST} restart-samba, ${DISPATCHER_DST} restart-modemmanager, ${DISPATCHER_DST} sync-time, ${DISPATCHER_DST} restart-chrony, ${DISPATCHER_DST} restart-gpsd, ${DISPATCHER_DST} restart-logs, ${DISPATCHER_DST} reboot-system, ${DISPATCHER_DST} shutdown-system
+pi ALL=(root) NOPASSWD: ${PASSWORD_HELPER_DST} --change-from-stdin
 EOF
-sudo chmod 0440 "${SUDOERS_FILE}"
-sudo visudo -cf "${SUDOERS_FILE}"
+chmod 0600 "${SUDOERS_TEMP}"
+sudo visudo -cf "${SUDOERS_TEMP}"
+sudo install -o root -g root -m 0440 "${SUDOERS_TEMP}" "${SUDOERS_FILE}"
+rm -f -- "${SUDOERS_TEMP}"
+SUDOERS_TEMP=""
 
 echo "Preparing local authentication files..."
 sudo install -d -o root -g pi -m 0750 "${AUTH_DIR}"
@@ -83,21 +108,32 @@ fi
 sudo chown root:pi "${SESSION_KEY_FILE}"
 sudo chmod 0640 "${SESSION_KEY_FILE}"
 
+CONFIGURE_ADMIN_PASSWORD=0
 if [[ "${RESET_ADMIN_PASSWORD}" -eq 1 || ! -s "${ADMIN_FILE}" ]]; then
+    CONFIGURE_ADMIN_PASSWORD=1
+elif [[ -t 0 ]]; then
+    echo
+    read -r -p "A PCS admin password is already configured. Change it now? [y/N] " CHANGE_ADMIN_REPLY
+    case "${CHANGE_ADMIN_REPLY}" in
+        y|Y|yes|YES|Yes) CONFIGURE_ADMIN_PASSWORD=1 ;;
+        *) echo "Preserving the existing PCS administrator credential." ;;
+    esac
+else
+    echo "Preserving the existing PCS administrator credential."
+fi
+
+if [[ "${CONFIGURE_ADMIN_PASSWORD}" -eq 1 ]]; then
     if [[ -t 0 ]]; then
         echo
-        echo "Set the password used by the Admin Login panel."
-        sudo /usr/bin/python3 "${CONTROL_PANEL_SRC}" \
-            --set-password \
-            --credential-file "${ADMIN_FILE}"
+        echo "WARNING: A forgotten admin password cannot be recovered from the web interface."
+        echo "Rerun this installer with --reset-admin-password to replace a forgotten password."
+        sudo "${PASSWORD_HELPER_DST}" --set-password
     else
         echo "WARNING: no PCS admin password is configured and no interactive terminal is available."
         echo "The public homepage will run, but /admin/ will remain locked."
         echo "Configure it later with:"
         echo "  ./scripts/setup-pcs-control-panel.sh --reset-admin-password"
     fi
-else
-    echo "Preserving the existing PCS administrator credential."
 fi
 
 if sudo test -s "${ADMIN_FILE}"; then
@@ -140,5 +176,8 @@ echo "  Legacy redirect:  http://10.42.0.1:8080/"
 echo
 echo "Home-network test address:"
 echo "  http://192.168.50.236/"
+echo
+echo "If the admin password is forgotten, rerun:"
+echo "  ./scripts/setup-pcs-control-panel.sh --reset-admin-password"
 echo
 echo "Keep these interfaces on the trusted PCS LAN."

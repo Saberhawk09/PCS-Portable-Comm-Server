@@ -1,14 +1,14 @@
 # PCS Power System
 
-PCS is planned to support both emergency DC power and normal AC grid power.
+PCS supports a design intended for both emergency DC power and normal AC grid power.
 
-This document is a planning/reference document. Final wiring should be checked against actual part ratings, enclosure layout, fuse ratings, wire gauge, heat, and safe AC wiring practices.
+The PCS hardware is operational, but this document remains a design/reference record until every value is reconciled with the physical as-built wiring. Check actual part ratings, enclosure layout, fuse ratings, wire gauge, heat, and safe AC wiring practices before using it for repair or replication.
 
 This is not a certified electrical drawing.
 
-## Current Proposed Architecture
+## Documented Power Architecture
 
-The current planned architecture uses one regulated 12 V backbone regardless of whether PCS is powered from AC or external DC.
+The documented architecture uses one regulated 12 V backbone regardless of whether PCS is powered from AC or external DC.
 
 ```text
 120 VAC input
@@ -79,7 +79,7 @@ Raw 24 V input -> PSD-30A-5
 
 ## Power Budget
 
-Current planning budget:
+Documented design budget:
 
 ```text
 Router / AP budget:     12 V x 3 A = 36 W
@@ -143,7 +143,7 @@ Switching both positive and negative/source return keeps the internal AC/DC supp
 
 ## Fuse Planning
 
-Current planned fuses:
+Documented fuse plan:
 
 ```text
 Main selected-DC input fuse:  7.5 A slow-blow
@@ -232,6 +232,14 @@ The COM-18732 is the main power-path bottleneck and should get deliberate airflo
 
 ## Current Status
 
-The current proposed power architecture is defined, but final wiring and enclosure implementation are still pending.
+The PCS hardware assembly is operational. The next documentation pass must record the physical as-built system rather than infer it from this design document.
 
-Software testing is currently being done from normal Raspberry Pi power while the final case and power system are developed.
+Before this file is treated as an as-built electrical record, capture and verify:
+
+- installed converter and power-supply part numbers
+- source-selector pinout and break-before-make behavior
+- actual fuse values and locations
+- wire gauge, connector type, polarity, and grounding
+- measured 12 V and 5 V rail voltage under idle and peak load
+- peak current draw and converter temperature
+- AC terminal guarding, strain relief, and protective-earth bonding

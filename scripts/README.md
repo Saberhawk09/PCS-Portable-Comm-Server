@@ -273,6 +273,8 @@ Installs the PCS public homepage, Admin Login, authenticated operator controls, 
 ./scripts/setup-pcs-control-panel.sh
 ```
 
+A fresh interactive install prompts for the admin password. If a password already exists, a repeat install asks whether to keep it or replace it. The authenticated administration page also provides **Change Admin Password** when the current password is known.
+
 Public homepage and Admin Login URLs:
 
 ```text
@@ -280,7 +282,7 @@ http://10.42.0.1/
 http://10.42.0.1/admin/
 ```
 
-Reset the local administrator password interactively:
+If the password is forgotten, it cannot be reset in the browser. Rerun the installer interactively:
 
 ```bash
 ./scripts/setup-pcs-control-panel.sh --reset-admin-password

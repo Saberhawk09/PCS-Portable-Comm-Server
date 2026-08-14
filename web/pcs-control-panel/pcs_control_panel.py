@@ -19,6 +19,10 @@ from urllib.parse import parse_qs, urlsplit
 HOST = os.environ.get("PCS_CONTROL_HOST", "0.0.0.0")
 PORT = int(os.environ.get("PCS_CONTROL_PORT", "80"))
 DISPATCHER = os.environ.get("PCS_WEB_ACTION", "/usr/local/sbin/pcs-web-action")
+PASSWORD_HELPER = os.environ.get(
+    "PCS_ADMIN_PASSWORD_HELPER",
+    "/usr/local/sbin/pcs-admin-password-helper",
+)
 CREDENTIAL_FILE = os.environ.get(
     "PCS_ADMIN_CREDENTIAL_FILE",
     "/etc/pcs-control-panel/admin.json",
@@ -31,6 +35,7 @@ SESSION_TTL = int(os.environ.get("PCS_SESSION_TTL", "1800"))
 COOKIE_SECURE = os.environ.get("PCS_COOKIE_SECURE", "no").lower() == "yes"
 PASSWORD_ITERATIONS = 310_000
 MAX_FORM_BYTES = 64 * 1024
+MAX_PASSWORD_LENGTH = 1024
 
 ACTIONS = [
     ("status", "View PCS Status", "Show the full PCS status report."),
@@ -240,6 +245,10 @@ class SessionStore:
         with self.lock:
             self.sessions.pop(session_id, None)
 
+    def destroy_all(self) -> None:
+        with self.lock:
+            self.sessions.clear()
+
     def _purge_locked(self, now: int) -> None:
         expired = [key for key, value in self.sessions.items() if value.get("expires", 0) <= now]
         for key in expired:
@@ -323,6 +332,26 @@ def run_dispatcher(action: str, timeout: int = 300) -> tuple[int, str]:
         return 124, (exc.stdout or "") + "\nERROR: action timed out.\n"
     except Exception as exc:
         return 1, f"ERROR: {exc}\n"
+
+
+def change_admin_password(current_password: str, new_password: str) -> tuple[bool, str]:
+    payload = json.dumps({
+        "current_password": current_password,
+        "new_password": new_password,
+    })
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", PASSWORD_HELPER, "--change-from-stdin"],
+            input=payload,
+            text=True,
+            capture_output=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False, "Password update helper was unavailable."
+    if result.returncode != 0:
+        return False, "Password update was rejected."
+    return True, "Password updated. Sign in again with the new password."
 
 
 def dashboard_error(message: str, public: bool) -> dict:
@@ -419,13 +448,13 @@ main{max-width:1450px;margin:auto;padding:1.2rem}.admin-main{max-width:1600px}.h
 .overview{padding:1rem 1.1rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1rem}.overview h2{margin:0}.overview p{margin:.25rem 0 0;color:var(--muted)}
 .badge{display:inline-flex;align-items:center;justify-content:center;min-width:4.2rem;padding:.42rem .65rem;border-radius:999px;font-size:.78rem;font-weight:900}.badge.ok{background:rgba(97,214,155,.14);color:var(--ok)}.badge.warn{background:rgba(242,197,92,.15);color:var(--warn)}.badge.bad{background:rgba(241,119,119,.15);color:var(--bad)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:.85rem}.admin-grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr));margin-bottom:1.25rem}.card{padding:1rem}.card-top{display:flex;align-items:center;justify-content:space-between;gap:.7rem}.card h2,.card h3{margin:0;font-size:1.05rem}.summary{color:var(--muted);margin:.55rem 0 .7rem}.item{display:flex;justify-content:space-between;gap:1rem;border-top:1px solid rgba(255,255,255,.07);padding:.48rem 0}.item span:first-child{color:var(--muted)}.item span:last-child{text-align:right;overflow-wrap:anywhere}.item code{overflow-wrap:anywhere}.metric{margin:.65rem 0}.metric-row{display:flex;justify-content:space-between;color:var(--muted);font-size:.9rem}.bar{height:.55rem;border-radius:99px;background:#090d11;overflow:hidden;margin-top:.25rem}.bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--ok))}
-.section-title{margin:1.5rem 0 .75rem}.service-grid{margin-top:.85rem}.service-card a{display:block;margin-top:.7rem}.notice{border-left:4px solid var(--warn);padding:.75rem 1rem;background:rgba(242,197,92,.08);margin:1rem 0;border-radius:7px}.error{border-left-color:var(--bad);background:rgba(241,119,119,.08)}
+.section-title{margin:1.5rem 0 .75rem}.service-grid{margin-top:.85rem}.service-card a{display:block;margin-top:.7rem}.notice{border-left:4px solid var(--warn);padding:.75rem 1rem;background:rgba(242,197,92,.08);margin:1rem 0;border-radius:7px}.error{border-left-color:var(--bad);background:rgba(241,119,119,.08)}.success{border-left-color:var(--ok);background:rgba(97,214,155,.08)}.password-card{display:flex;align-items:center;justify-content:space-between;gap:1rem}.password-card h2{margin:0 0 .35rem}.password-card p{margin:0;color:var(--muted);max-width:78ch}.password-card .button{flex:none}
 .action-group{padding:1rem;margin-bottom:.85rem}.action-group h3{margin:0 0 .7rem;color:var(--muted);font-size:.86rem;text-transform:uppercase;letter-spacing:.09em}.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem}.action-card{border:1px solid var(--line);background:rgba(255,255,255,.025);padding:.8rem;border-radius:10px}.action-card button{width:100%}.action-card p{color:var(--muted);margin:.6rem 0 0;font-size:.9rem}
 .output{padding:1rem;margin-top:1rem}.output pre{background:#080c10;border-radius:9px;padding:1rem;white-space:pre-wrap;word-break:break-word;max-height:52vh;overflow:auto}.login-wrap{max-width:500px;margin:7vh auto}.login-panel{padding:1.4rem}.login-panel label{display:block;margin:.9rem 0 .35rem}.login-panel input{width:100%;padding:.75rem;background:#090e13;color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}.login-panel button{width:100%;margin-top:1rem}.small{font-size:.86rem;color:var(--muted)}
 .logout{display:inline}.logout button{padding:.5rem .7rem;background:transparent;border:1px solid var(--line);color:var(--text)}footer{padding:2rem 1rem;text-align:center;color:var(--muted)}
 @media(min-width:1300px){.public-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(min-width:1500px){.admin-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
-@media(max-width:760px){.hero{grid-template-columns:1fr}.nav{align-items:flex-start}.navlinks{flex-wrap:wrap;justify-content:flex-end}main{padding:.85rem}.item{display:grid;gap:.2rem}.item span:last-child{text-align:left}}
+@media(max-width:760px){.hero{grid-template-columns:1fr}.nav{align-items:flex-start}.navlinks{flex-wrap:wrap;justify-content:flex-end}main{padding:.85rem}.item{display:grid;gap:.2rem}.item span:last-child{text-align:left}.password-card{align-items:stretch;flex-direction:column}}
 """
 
 
@@ -571,23 +600,34 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
         access_rows.append(item(client.get("name", "unknown"), f"{client.get('ip', 'unknown')} / {client.get('mac', 'unknown')} / {client.get('state', 'unknown')}"))
 
     body = f"""
-    <header><div class="nav"><div class="brand">PCS Administration</div><nav class="navlinks"><a class="button secondary" href="/">Public Homepage</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
+    <header><div class="nav"><div class="brand">PCS Administration</div><nav class="navlinks"><a class="button secondary" href="/">Public Homepage</a><a class="button secondary" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
     <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{badge(data.get('overall', 'warn'))}</section>
     <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}</section>
     <h2 class="section-title">Detailed field access</h2><section class="card">{''.join(access_rows)}</section>
+    <h2 class="section-title">Administrator access</h2><section class="card password-card"><div><h2>Admin panel password</h2><p>Change it here while the current password is known. A forgotten password cannot be recovered in the browser; rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from the Pi terminal.</p></div><a class="button" href="/admin/password">Change Admin Password</a></section>
     <h2 class="section-title">Operator commands</h2>{''.join(action_groups)}{result_html}</main>"""
     script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});"""
     return document("PCS Administration", body, script=script, nonce=nonce)
 
 
-def render_login_page(csrf: str, error: str = "") -> bytes:
+def render_login_page(csrf: str, error: str = "", notice: str = "") -> bytes:
     error_html = f'<div class="notice error">{esc(error)}</div>' if error else ""
+    notice_html = f'<div class="notice success">{esc(notice)}</div>' if notice else ""
     configured_note = "" if AUTH.configured() else '<div class="notice">Administration is locked until an admin password is configured from the PCS terminal.</div>'
     body = f"""
     <header><div class="nav"><div class="brand">PCS Administration</div><nav class="navlinks"><a class="button secondary" href="/">Public Homepage</a></nav></div></header>
-    <main class="login-wrap"><section class="login-panel"><p class="eyebrow">Authorized operators</p><h1>Admin Login</h1><p class="small">Enter the local PCS administrator password to access controls and detailed diagnostics.</p>{configured_note}{error_html}
+    <main class="login-wrap"><section class="login-panel"><p class="eyebrow">Authorized operators</p><h1>Admin Login</h1><p class="small">Enter the local PCS administrator password to access controls and detailed diagnostics.</p>{configured_note}{notice_html}{error_html}
     <form method="POST" action="/admin/login"><input type="hidden" name="csrf" value="{esc(csrf)}"><label for="password">Admin password</label><input id="password" name="password" type="password" required autocomplete="current-password"><button type="submit">Sign in to PCS Administration</button></form></section></main>"""
     return document("PCS Admin Login", body)
+
+
+def render_password_page(csrf: str, error: str = "") -> bytes:
+    error_html = f'<div class="notice error">{esc(error)}</div>' if error else ""
+    body = f"""
+    <header><div class="nav"><div class="brand">Change Admin Password</div><nav class="navlinks"><a class="button secondary" href="/admin/">Back to Administration</a></nav></div></header>
+    <main class="login-wrap"><section class="login-panel"><p class="eyebrow">Administrator security</p><h1>Change Admin Password</h1><div class="notice"><strong>Forgotten passwords cannot be changed here.</strong> Rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from an interactive Pi terminal.</div>{error_html}
+    <form method="POST" action="/admin/password"><input type="hidden" name="csrf" value="{esc(csrf)}"><label for="current-password">Current password</label><input id="current-password" name="current_password" type="password" required autocomplete="current-password"><label for="new-password">New password</label><input id="new-password" name="new_password" type="password" required minlength="12" autocomplete="new-password"><label for="confirm-password">Confirm new password</label><input id="confirm-password" name="confirm_password" type="password" required minlength="12" autocomplete="new-password"><button type="submit">Update Admin Password</button></form></section></main>"""
+    return document("Change PCS Admin Password", body)
 
 
 def cookie_value(header: str | None, name: str) -> str | None:
@@ -683,17 +723,18 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin":
             self.redirect("/admin/")
             return
-        if path == "/admin/" and not self.session()[1]:
+        if path in {"/admin/", "/admin/password"} and not self.session()[1]:
             self.redirect("/admin/login")
             return
-        if path in {"/", "/health", "/api/public-status", "/admin/", "/admin/login"}:
+        if path in {"/", "/health", "/api/public-status", "/admin/", "/admin/login", "/admin/password"}:
             content_type = "application/json; charset=utf-8" if path == "/api/public-status" else "text/html; charset=utf-8"
             self.send_body(200, b"", content_type, head_only=True)
             return
         self.send_body(404, b"", "text/plain; charset=utf-8", head_only=True)
 
     def do_GET(self):
-        path = urlsplit(self.path).path
+        parsed = urlsplit(self.path)
+        path = parsed.path
         if path == "/":
             self.send_body(200, render_public_page(get_public_dashboard()), "text/html; charset=utf-8")
             return
@@ -714,7 +755,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             token = secrets.token_urlsafe(32)
             login_cookie = cookie_header("pcs_login_csrf", token, "/admin", max_age=600)
-            self.send_body(200, render_login_page(token), "text/html; charset=utf-8", cookies=[login_cookie])
+            changed = parse_qs(parsed.query).get("changed") == ["1"]
+            notice = "Password updated. Sign in again with the new password." if changed else ""
+            self.send_body(200, render_login_page(token, notice=notice), "text/html; charset=utf-8", cookies=[login_cookie])
             return
         if path == "/admin/":
             _, session = self.require_session()
@@ -723,6 +766,12 @@ class Handler(BaseHTTPRequestHandler):
             nonce = secrets.token_urlsafe(18)
             body = render_admin_page(get_admin_dashboard(), session["csrf"], nonce=nonce)
             self.send_body(200, body, "text/html; charset=utf-8", nonce=nonce)
+            return
+        if path == "/admin/password":
+            _, session = self.require_session()
+            if not session:
+                return
+            self.send_body(200, render_password_page(session["csrf"]), "text/html; charset=utf-8")
             return
         self.send_body(404, b"Not found\n", "text/plain; charset=utf-8")
 
@@ -743,7 +792,8 @@ class Handler(BaseHTTPRequestHandler):
             if not LOGIN_LIMITER.allowed(address):
                 self.send_body(429, render_login_page(supplied, "Too many failed attempts. Wait one minute and try again."), "text/html; charset=utf-8")
                 return
-            if not AUTH.verify(form.get("password", "")):
+            password = form.get("password", "")
+            if len(password) > MAX_PASSWORD_LENGTH or not AUTH.verify(password):
                 LOGIN_LIMITER.failed(address)
                 self.send_body(401, render_login_page(supplied, "Incorrect administrator password."), "text/html; charset=utf-8")
                 return
@@ -766,6 +816,48 @@ class Handler(BaseHTTPRequestHandler):
             SESSIONS.destroy(session_id)
             expired = cookie_header("pcs_admin_session", "", "/admin", max_age=0)
             self.redirect("/", cookies=[expired])
+            return
+
+        if path == "/admin/password":
+            _, session = self.require_session()
+            if not session:
+                return
+            if not self.csrf_valid(form, session):
+                self.send_body(403, b"CSRF validation failed\n", "text/plain; charset=utf-8")
+                return
+
+            current_password = form.get("current_password", "")
+            new_password = form.get("new_password", "")
+            confirmation = form.get("confirm_password", "")
+            address = self.client_address[0]
+            if not LOGIN_LIMITER.allowed(address):
+                self.send_body(429, render_password_page(session["csrf"], "Too many failed attempts. Wait one minute and try again."), "text/html; charset=utf-8")
+                return
+            if len(current_password) > MAX_PASSWORD_LENGTH or not AUTH.verify(current_password):
+                LOGIN_LIMITER.failed(address)
+                self.send_body(401, render_password_page(session["csrf"], "Current administrator password was incorrect."), "text/html; charset=utf-8")
+                return
+            if new_password != confirmation:
+                self.send_body(400, render_password_page(session["csrf"], "New password and confirmation did not match."), "text/html; charset=utf-8")
+                return
+            if len(new_password) < 12:
+                self.send_body(400, render_password_page(session["csrf"], "New password must be at least 12 characters."), "text/html; charset=utf-8")
+                return
+            if len(new_password) > MAX_PASSWORD_LENGTH:
+                self.send_body(400, render_password_page(session["csrf"], "New password was too long."), "text/html; charset=utf-8")
+                return
+            if hmac.compare_digest(current_password, new_password):
+                self.send_body(400, render_password_page(session["csrf"], "New password must be different from the current password."), "text/html; charset=utf-8")
+                return
+
+            updated, message = change_admin_password(current_password, new_password)
+            if not updated:
+                self.send_body(500, render_password_page(session["csrf"], message), "text/html; charset=utf-8")
+                return
+            LOGIN_LIMITER.succeeded(address)
+            SESSIONS.destroy_all()
+            expired = cookie_header("pcs_admin_session", "", "/admin", max_age=0)
+            self.redirect("/admin/login?changed=1", cookies=[expired])
             return
 
         if path == "/admin/run":

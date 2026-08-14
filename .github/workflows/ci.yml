@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile Python sources
+        run: |
+          python -m py_compile \
+            scripts/pcs-admin-password-helper.py \
+            scripts/pcs-wwan-gps-nmea-start.py \
+            tests/serve_pcs_ui_fixture.py \
+            tests/test_pcs_admin_password_helper.py \
+            tests/test_pcs_control_panel.py \
+            tests/test_documentation.py \
+            web/pcs-control-panel/pcs_control_panel.py \
+            web/pcs-control-panel/pcs_dashboard_redirect.py
+
+      - name: Check shell syntax
+        run: |
+          for script in scripts/*.sh; do
+            bash -n "$script"
+          done

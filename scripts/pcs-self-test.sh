@@ -30,6 +30,8 @@ PCS_ADMIN_URL="http://127.0.0.1/admin/"
 PCS_PUBLIC_STATUS_URL="http://127.0.0.1/api/public-status"
 PCS_ADMIN_CREDENTIAL_FILE="/etc/pcs-control-panel/admin.json"
 PCS_SESSION_KEY_FILE="/etc/pcs-control-panel/session.key"
+PCS_ADMIN_PASSWORD_HELPER="/usr/local/sbin/pcs-admin-password-helper"
+PCS_CONTROL_SUDOERS_FILE="/etc/sudoers.d/pcs-control-panel"
 PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
 PCS_DASHBOARD_REDIRECT_PORT="8080"
 PCS_DASHBOARD_REDIRECT_HEALTH_URL="http://127.0.0.1:8080/health"
@@ -508,6 +510,16 @@ if command_exists curl; then
     else
         fail "Unauthenticated admin action POST returned HTTP ${PCS_ADMIN_POST_CODE:-unknown}; expected 303"
     fi
+
+    PCS_PASSWORD_POST_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -X POST \
+        -H 'Content-Type: application/x-www-form-urlencoded' \
+        --data 'current_password=invalid&new_password=invalid&confirm_password=invalid&csrf=invalid' \
+        http://127.0.0.1/admin/password 2>/dev/null || true)"
+    if [[ "${PCS_PASSWORD_POST_CODE}" == "303" ]]; then
+        pass "Unauthenticated admin password POST is rejected"
+    else
+        fail "Unauthenticated password POST returned HTTP ${PCS_PASSWORD_POST_CODE:-unknown}; expected 303"
+    fi
 else
     skip "curl not found; skipping PCS homepage and admin route checks"
 fi
@@ -522,6 +534,21 @@ if [[ -s "${PCS_SESSION_KEY_FILE}" ]]; then
     pass "PCS persistent session signing key is installed"
 else
     fail "PCS persistent session signing key is missing"
+fi
+
+if [[ -x "${PCS_ADMIN_PASSWORD_HELPER}" ]] \
+    && [[ "$(stat -c '%U:%G %a' "${PCS_ADMIN_PASSWORD_HELPER}" 2>/dev/null || true)" == "root:root 755" ]]; then
+    pass "Root-owned PCS admin password update helper is installed"
+else
+    fail "PCS admin password update helper is missing or has unsafe ownership/mode"
+fi
+
+if [[ "$(sudo -n stat -c '%U:%G %a' "${PCS_CONTROL_SUDOERS_FILE}" 2>/dev/null || true)" == "root:root 440" ]] \
+    && sudo -n visudo -cf "${PCS_CONTROL_SUDOERS_FILE}" >/dev/null 2>&1 \
+    && sudo -n grep -Fq "${PCS_ADMIN_PASSWORD_HELPER} --change-from-stdin" "${PCS_CONTROL_SUDOERS_FILE}" 2>/dev/null; then
+    pass "PCS control-panel sudoers allowlist is valid and includes the password helper"
+else
+    fail "PCS control-panel sudoers allowlist is missing, invalid, or has unsafe permissions"
 fi
 
 section "PCS Legacy Admin Redirect"

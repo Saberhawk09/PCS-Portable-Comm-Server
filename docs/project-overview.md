@@ -16,13 +16,13 @@ PCS is intended to feature/provide:
 
 ## Current Project Status
 
-PCS is no longer just a planning project. The core software baseline is working and rebuild-tested.
+PCS is an operational hardware and software system. The core software baseline is rebuild-tested, and the current assembled hardware provides the intended LAN, storage, time, GNSS, monitoring, and optional cellular services.
 
 Current focus:
 
 - Polish the software
 - Improve reliability and error handling with setup and operation
-- Prepare the repository for a usable release
+- Keep documentation and releases aligned with the fielded system
 
 ## Current Tested Hardware
 
@@ -34,6 +34,8 @@ Current tested hardware includes:
 - Sierra Wireless EM7455 and EM7565 LTE modems
 - Linksys EA4500 running OpenWrt
 - USB flash drive for primary Samba storage
+- Active GNSS antenna
+- Pi-Star hotspot integration when installed
 
 ## Current Network Layout
 
@@ -173,18 +175,19 @@ PCS should be:
 - Field-serviceable
 - Modular enough to improve over time
 
-## Still Planned
+## Current Finish Work and Optional Enhancements
 
-The current build works, but the following items are still planned or not final:
+The working build is operational. Remaining work is primarily documentation, measurement, and optional expansion:
 
-- Final rugged enclosure
-- Final power system implementation using the documented 24 V -> regulated 12 V -> regulated 5 V architecture
-- External LTE and GNSS antenna mounting
-- Battery voltage monitoring hardware
-- Low-voltage alarm / safe shutdown hardware
-- OLED display
-- Full SD-card wipe/rebuild repeatability validation
-- Polished public release process
+- capture final enclosure dimensions, mounting details, photos, and CAD references
+- reconcile the documented power architecture with the physical as-built wiring
+- record actual fuse values, wire gauge, rail voltage, current draw, and thermal results
+- finish permanent external LTE and GNSS antenna labeling and mounting documentation
+- consider battery voltage monitoring and low-voltage safe shutdown hardware
+- consider a small local status display
+- repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
+
+The PCS Pi SD-card wipe/rebuild was verified on July 8, 2026. Credential entry, radio identity, firmware flashing, and on-air RF checks intentionally remain manual.
 
 ## Related Documentation
 
