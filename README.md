@@ -29,7 +29,9 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
 
-The assembled PCS hardware and core software stack are operational. The current focus is software reliability, accurate as-built documentation, operator usability, and repeatable GitHub releases.
+Software wise, the PCS repo is currently in a beta/working with minor issues. Installs are repeatable and everything is configured automatically, save for the cell modem firmware and the optional Pi-Star integration. Those must be configured separately.
+
+Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system is fully functional with the source selector switch. 2x 120mm cooling fans have been installed for cooling which seem to be more than sufficient. Pi-Star is working alongside PCS, and the external SMA antennas are working great. No additional IO has been expanded to the front IO panel yet.
 
 ### Hardware
 
@@ -40,6 +42,7 @@ The assembled PCS hardware and core software stack are operational. The current 
 - DS1307 I2C RTC for a sane boot-time reference
 - Removable USB primary storage with an SD-card backup mirror
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
+- AC/DC power system with source selector switch.
 
 ### Software
 
