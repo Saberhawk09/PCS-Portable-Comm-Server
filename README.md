@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml)
 
-A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS disciplined NTP, LAN file sharing, and web monitoring.
+A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS disciplined NTP, LAN file sharing, and web monitoring. Also now with Pi-Star, APRS, and Meshtastic.
 
 What started as an annoyance caused by Windows networking has evolved into my first end-to-end hardware and software project.
 
@@ -31,7 +31,7 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 Software wise, the PCS repo is currently in a beta/working with minor issues. Installs are repeatable and everything is configured automatically, save for the cell modem firmware and the optional Pi-Star integration. Those must be configured separately.
 
-Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system is fully functional with the source selector switch. 2x 120mm cooling fans have been installed for cooling which seem to be more than sufficient. Pi-Star is working alongside PCS, and the external SMA antennas are working great. No additional IO has been expanded to the front IO panel yet.
+Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system is fully functional with the source selector switch. 2x 120mm cooling fans have been installed for cooling which seem to be more than sufficient. Pi-Star is working alongside PCS, and the external SMA antennas are working great. No additional IO has been expanded to the front IO panel yet. Direwolf for APRS is installed but the hardware has yet to be installed, and Meshtastic is still in the planning phase
 
 ### Hardware
 
@@ -41,9 +41,10 @@ Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system 
 - LTE and active GNSS antennas with validated cellular registration and 3D GNSS fixes
 - DS1307 I2C RTC for a sane boot-time reference
 - Removable USB primary storage with an SD-card backup mirror
-- Optional Pi-Star hotspot integrated at `10.42.0.3`
 - AC/DC power system with source selector switch
+- Optional Pi-Star hotspot integrated at `10.42.0.3`
 - Optional Dire Wolf / APRS software staging (radio and USB audio hardware pending)
+- Optional Meshtastic Node with intergrations
 
 ### Software
 
@@ -55,7 +56,7 @@ Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system 
 - Manual cellular data control with Wi-Fi fallback during development and testing
 - LAN GPSD, NTP, and coordinated Pi-Star shutdown integration
 - Hardware-safe Dire Wolf staging with APRS activation intentionally deferred
-- PCS Pi SD-card wipe/rebuild verified on July 8, 2026
+- PCS Pi SD-card wipe/rebuild verified on August 18th 2026
 
 ### Current Finish Work
 
@@ -63,12 +64,13 @@ Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system 
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
 - Continue expanding automated and operator-supervised field validation
+- APRS and Meshtastic hardware/software integration
 
 ## Hardware Setup
 
 ### Before running setup, connect the hardware you want the installer to configure:
 
- - Raspberry Pi booted from the target SD card. Tested with latest Raspberry Pi OS 64-bit.
+ - Raspberry Pi booted from the target SD card. Tested with latest Raspberry Pi OS 64-bit Desktop (Should work on Lite).
  - Ethernet from the Pi to the PCS router/AP via a LAN port (Not the WAN/Internet Port).
  - The PCS router/AP powered on.
  - The RTC module installed, if this build includes the RTC.
@@ -303,8 +305,6 @@ With Windows being Windows, this suboptimal but functional solution never worked
 
 It was an hour before start time, while everyone was setting up antennas I was configuring the network share. Only trouble was, Windows had other ideas. Devices couldn't connect to my hotspot, once connected my Toughbook never showed they were, they didn't have internet access, and I could never see my Toughbook share over the local network. It was a massive headache that was thankfully solved by a club member who let us use his portable cellular router while we sourced a replacement dedicated club router.
 
-Once we had everything hooked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event.
+Once we had everything hooked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event. Needless to say I was annoyed. Not just at Windows, but at myself for assuming it would work properly and not planning ahead. Well the lessons from that mistake have evolved into this project.
 
-Needless to say I was annoyed. Not just at Windows, but at myself for assuming it would work properly and not planning ahead. Well the lessons from that mistake have evolved into this project.
-
-The goal of this project isn't to replace commercial networking equipment, it's to build a communications appliance specifically tailored to emergency communications exercises and other portable operations.
+The goal of this project isn't to replace commercial networking equipment or build a portable homelab grade server, it's to build a communications appliance specifically tailored to emergency communications exercises and other portable operations.
