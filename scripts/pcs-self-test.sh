@@ -49,6 +49,12 @@ PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
+PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
+PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
+PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
+PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
 
 TMP_FILES=()
 
@@ -116,6 +122,10 @@ section() {
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+direwolf_supports_gpsd() {
+    command_exists direwolf && direwolf -t 0 -h 2>&1 | grep -qi 'gpsd'
 }
 
 service_active() {
@@ -604,6 +614,145 @@ if command_exists rpi-connect; then
 else
     skip "rpi-connect command not found"
 fi
+
+section "Dire Wolf / APRS"
+
+case "${PCS_SETUP_APRS}" in
+    staged)
+        if command_exists direwolf; then
+            pass "Dire Wolf is installed for APRS staging"
+        else
+            fail "Dire Wolf staging selected but direwolf is not installed"
+        fi
+
+        if [[ "${PCS_APRS_GPSD}" == "yes" ]]; then
+            if direwolf_supports_gpsd; then
+                pass "Dire Wolf reports compiled-in gpsd support"
+            else
+                fail "GPS tracker selected but Dire Wolf does not report gpsd support"
+            fi
+            echo "APRS GPSD target: ${PCS_APRS_GPSD_HOST}:${PCS_APRS_GPSD_PORT}"
+        fi
+
+        if systemctl list-unit-files direwolf.service --no-legend 2>/dev/null | grep -q '^direwolf[.]service'; then
+            pass "direwolf.service is installed"
+        else
+            fail "direwolf.service is missing"
+        fi
+
+        if service_active direwolf.service; then
+            fail "Staged direwolf.service is unexpectedly active"
+        else
+            pass "Staged direwolf.service is inactive"
+        fi
+
+        if service_enabled direwolf.service; then
+            fail "Staged direwolf.service is unexpectedly enabled"
+        else
+            pass "Staged direwolf.service is disabled"
+        fi
+
+        if [[ "$(sudo -n stat -c '%U:%G %a' /etc/pcs/aprs/direwolf.example.conf 2>/dev/null || true)" == "root:direwolf 640" ]]; then
+            pass "PCS Dire Wolf safe-default example has restricted ownership and mode"
+        else
+            fail "PCS Dire Wolf safe-default example is missing or has unsafe permissions"
+        fi
+
+        if sudo -n test -e /etc/direwolf.conf; then
+            warn "Live /etc/direwolf.conf exists while APRS is only marked staged"
+        else
+            pass "No live Dire Wolf configuration is installed during staging"
+        fi
+        ;;
+    yes)
+        if command_exists direwolf; then
+            pass "Dire Wolf is installed"
+        else
+            fail "APRS is configured but direwolf is not installed"
+        fi
+
+
+        if [[ "${PCS_APRS_GPSD}" == "yes" ]]; then
+            if direwolf_supports_gpsd; then
+                pass "Dire Wolf reports compiled-in gpsd support"
+            else
+                fail "Active GPS tracker requires a Dire Wolf build with gpsd support"
+            fi
+
+            if service_active gpsd.service; then
+                pass "Active APRS tracker has a running local gpsd service"
+            else
+                fail "Active APRS tracker requires gpsd.service"
+            fi
+            echo "APRS GPSD target: ${PCS_APRS_GPSD_HOST}:${PCS_APRS_GPSD_PORT}"
+        fi
+
+        if service_active direwolf.service; then
+            pass "direwolf.service is active"
+        else
+            fail "APRS is configured but direwolf.service is inactive"
+        fi
+
+        if service_enabled direwolf.service; then
+            pass "direwolf.service is enabled"
+        else
+            fail "APRS is configured but direwolf.service is disabled"
+        fi
+
+        if sudo -n test -s /etc/direwolf.conf; then
+            pass "Live Dire Wolf configuration is present"
+        else
+            fail "APRS is configured but /etc/direwolf.conf is missing"
+        fi
+
+        if [[ "$(sudo -n stat -c '%U:%G %a' /etc/direwolf.conf 2>/dev/null || true)" == "root:direwolf 640" ]]; then
+            pass "Live Dire Wolf configuration has restricted ownership and mode"
+        else
+            fail "Live Dire Wolf configuration permissions are not root:direwolf 640"
+        fi
+
+        if [[ "${PCS_APRS_KISS_PORT}" != "0" ]]; then
+            if service_active pcs-aprs-kiss-firewall.service \
+                && sudo -n /usr/local/sbin/pcs-aprs-kiss-firewall --check >/dev/null 2>&1; then
+                pass "KISS tcp/${PCS_APRS_KISS_PORT} has persistent PCS-LAN-only firewall enforcement"
+            else
+                fail "Active KISS requires the PCS APRS firewall service and drop rule"
+            fi
+        fi
+
+        if [[ -x /usr/local/sbin/pcs-aprs-telemetry ]]; then
+            pass "APRS CSV telemetry helper is installed"
+        else
+            warn "APRS CSV telemetry helper is missing"
+        fi
+
+        case "${PCS_APRS_ACTIVE_MODE}" in
+            rx)
+                if sudo -n grep -Eq '^ADEVICE [^ ]+ null$' /etc/direwolf.conf \
+                    && ! sudo -n grep -Eq '^(PTT|IGTXVIA|IGTXLIMIT|TBEACON|PBEACON|DIGIPEAT|FX25TX)[[:space:]]' /etc/direwolf.conf; then
+                    pass "Active APRS receive profile has no RF transmit path"
+                else
+                    fail "Active APRS receive profile contains output or transmit directives"
+                fi
+                ;;
+            tx)
+                if sudo -n grep -Eq '^PTT GPIO ' /etc/direwolf.conf \
+                    && sudo -n grep -Eq '^DIGIPEAT ' /etc/direwolf.conf \
+                    && sudo -n grep -Eq '^FX25TX ' /etc/direwolf.conf; then
+                    pass "Active APRS transmit profile contains the selected guarded directives"
+                else
+                    fail "Active APRS transmit profile is missing PTT, digipeater, or FX.25 directives"
+                fi
+                ;;
+            *)
+                fail "PCS_APRS_ACTIVE_MODE must be rx or tx when APRS is active"
+                ;;
+        esac
+        ;;
+    *)
+        skip "Dire Wolf / APRS is not selected in the install configuration"
+        ;;
+esac
 
 section "WWAN / GPS"
 

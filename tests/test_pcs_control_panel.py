@@ -5,6 +5,7 @@ import re
 import tempfile
 import threading
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from unittest import mock
 from urllib.parse import urlencode
@@ -99,6 +100,57 @@ class PublicDataTests(unittest.TestCase):
         self.assertNotIn("imei", sanitized["cellular"])
         self.assertEqual(sanitized["gnss"]["coordinates"], "38.123456, -77.123456")
         self.assertEqual(sanitized["gnss"]["grid_square"], "FM18kc")
+
+    def test_aprs_card_is_hidden_until_hardware_profile_is_active(self):
+        staged = deepcopy(PUBLIC_DATA)
+        staged["aprs"] = {
+            "configured": False,
+            "status": "ok",
+            "service": "staged / disabled",
+            "radio": "waiting for hardware",
+            "frequency": "not selected",
+            "tx_state": "disabled during staging",
+        }
+        self.assertNotIn("APRS / Packet", pcs.render_public_page(staged).decode("utf-8"))
+
+        active = deepcopy(PUBLIC_DATA)
+        active["aprs"] = {
+            "configured": True,
+            "status": "ok",
+            "service": "active",
+            "radio": "USB audio / receive-only",
+            "callsign": "W8IJC-2",
+            "role": "digi-IGate / GPS tracker",
+            "frequency": "144.555 MHz",
+            "modem": "1200 baud AFSK",
+            "aprs_is_profile": "two-way via noam.aprs2.net; all eligible RF to APRS-IS",
+            "digipeater": "WIDE1-1 only (fill-in)",
+            "beacon": "GPS every 10 minutes",
+            "kiss": "10.42.0.1:8001",
+            "fx25": "enabled",
+            "packets": "3 last hour / 12 last 24h",
+            "last_heard": "2026-08-17T20:15:00Z",
+            "tx_state": "enabled",
+            "aprs_is_passcode": "must-not-render",
+            "ptt_gpio": "must-not-render",
+            "audio_device": "must-not-render",
+        }
+        sanitized = pcs.sanitize_public_dashboard(active)
+        page = pcs.render_public_page(sanitized).decode("utf-8")
+        self.assertNotIn("radio", sanitized["aprs"])
+        self.assertNotIn("aprs_is_passcode", sanitized["aprs"])
+        self.assertNotIn("ptt_gpio", sanitized["aprs"])
+        self.assertNotIn("audio_device", sanitized["aprs"])
+        self.assertIn("APRS / Packet", page)
+        self.assertIn("W8IJC-2", page)
+        self.assertIn("144.555 MHz", page)
+        self.assertIn("two-way via noam.aprs2.net; all eligible RF to APRS-IS", page)
+        self.assertIn("WIDE1-1 only (fill-in)", page)
+        self.assertIn("10.42.0.1:8001", page)
+        self.assertIn("3 last hour / 12 last 24h", page)
+        self.assertIn("2026-08-17T20:15:00Z", page)
+        self.assertNotIn("USB audio", page)
+        self.assertNotIn("must-not-render", page)
 
 
 class RouteSecurityTests(unittest.TestCase):

@@ -145,4 +145,14 @@ dashboard-json           full administrative cards and client details
 
 The public view is constructed deliberately from approved fields. It is not produced by sending unrestricted diagnostic output to the browser and hiding parts with CSS or JavaScript.
 
-Optional subsystems return warning or unavailable values without preventing the rest of the homepage from loading. Pi-Star content is omitted unless configured. APRS is reserved as a future optional data card and remains hidden when unavailable.
+Optional subsystems return warning or unavailable values without preventing the rest of the homepage from loading. Pi-Star content is omitted unless configured. Authenticated operators can see APRS software staging state, including the selected local GPS tracker source; the public APRS card remains hidden until a real hardware profile is explicitly activated.
+
+Once APRS is active, the public card identifies the station callsign and role, frequency, modem, configured APRS-IS behavior and RF-to-IS scope, fill-in alias, beacon interval, LAN KISS endpoint, FX.25 transmit setting, Dire Wolf service state, and RF transmit state. These are published as the intended operating profile; an APRS-IS profile such as `two-way via noam.aprs2.net; all eligible RF to APRS-IS` does not by itself claim that a live APRS-IS session is connected.
+
+Managed Dire Wolf CSV logs add aggregate packets heard in the last hour/day and
+the last RF packet timestamp to the public card. The authenticated APRS card
+also shows unique stations over 24 hours and the most recently heard station.
+Dire Wolf's synthetic channel 999 tracker-transmit records are excluded from
+receive counts.
+
+The public contract does not expose the APRS-IS passcode, GPIO/PTT details, ALSA or serial device paths, raw packet logs, or staged-only configuration. Hardware and packet activity will be added only when PCS can report those states directly without guessing.

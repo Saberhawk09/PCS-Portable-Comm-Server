@@ -2,6 +2,42 @@
 
 All notable user-facing PCS changes are recorded here.
 
+## [Unreleased]
+
+### Added
+
+- hardware-safe Dire Wolf / APRS software staging and validation workflow
+- authenticated dashboard state for staged or active APRS installations
+- receive-only configuration example and hardware-arrival activation checklist
+- interactive non-secret APRS profile questionnaire and read-only audio/PTT discovery
+- versioned W8IJC-2 digi-IGate profile for an alternate tactical APRS channel,
+  including all-eligible RF-to-APRS-IS publication and conventional two-way
+  APRS message gating back to RF
+- active-high Raspberry Pi GPIO PTT intent for an optoisolated EasyDigi
+  active-low radio closure-to-ground output
+- selected BCM GPIO17 / physical pin 11 for EasyDigi PTT and documented the
+  tentative PCS-wide GPIO allocation
+- selected 144.555 MHz as the operator-defined tactical APRS channel
+- selected a 10-minute GPS beacon interval and conventional WIDE1-1-only
+  fill-in digipeater policy with no preemptive handling
+- connected the Dire Wolf tracker profile to the documented private PCS gpsd
+  path at `localhost:2947` and exposed that source in admin status
+- added an active-only public APRS operating-profile card without exposing
+  APRS-IS credentials, GPIO/PTT wiring, audio device paths, or staged settings
+- added guarded Dire Wolf RX/TX render, validation, activation, and rollback
+- pinned an official Dire Wolf 1.8.1 source-build fallback for Raspberry Pi OS
+  releases whose package is too old for the PCS libgpiod/FX.25 profile
+- fixed non-interactive nftables discovery and Dire Wolf help parsing under
+  shell `pipefail`, and bound the service override to the validated binary path
+  commands with explicit hardware evidence gates and interactive RF confirmation
+- added synthetic AX.25/FX.25 packet tests, capability reporting, persistent
+  LAN-only KISS filtering, managed log retention, and APRS dashboard telemetry
+
+### Security
+
+- Dire Wolf remains stopped and disabled during staging, with no live APRS-IS
+  credential, PTT, beacon, or RF transmit path configured
+
 ## [1.1] - 2026-08-13
 
 ### Added

@@ -34,6 +34,15 @@ fi
 PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
 PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
+PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
+PCS_APRS_AUDIO_INPUT="${PCS_APRS_AUDIO_INPUT:-auto}"
+PCS_APRS_AUDIO_OUTPUT="${PCS_APRS_AUDIO_OUTPUT:-null}"
+PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-not selected}"
+PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
+PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
+PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
 
 pcs_cellular_profile_name() {
     local configured="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
@@ -339,6 +348,41 @@ for path in "${PCS_SHARE_PATH}" "${PCS_BACKUP_SHARE_PATH}"; do
 done
 echo
 
+echo "--- Dire Wolf / APRS ---"
+echo "PCS state: ${PCS_SETUP_APRS}"
+case "${PCS_SETUP_APRS}" in
+    staged|yes)
+        if command -v direwolf >/dev/null 2>&1; then
+            echo "Dire Wolf: installed ($(direwolf -t 0 -h 2>&1 | sed -n '1p' || true))"
+        else
+            echo "Dire Wolf: missing"
+        fi
+        echo "Service active:  $(systemctl is-active direwolf.service 2>/dev/null || true)"
+        echo "Service enabled: $(systemctl is-enabled direwolf.service 2>/dev/null || true)"
+        echo "Active profile:  ${PCS_APRS_ACTIVE_MODE}"
+        echo "Audio capture:   ${PCS_APRS_AUDIO_INPUT}"
+        echo "Audio playback:  ${PCS_APRS_AUDIO_OUTPUT}"
+        echo "Frequency:       ${PCS_APRS_FREQUENCY}"
+        echo "GPS tracker:     ${PCS_APRS_GPSD} (${PCS_APRS_GPSD_HOST}:${PCS_APRS_GPSD_PORT})"
+        echo "KISS endpoint:   10.42.0.1:${PCS_APRS_KISS_PORT}"
+        echo "KISS firewall:   $(systemctl is-active pcs-aprs-kiss-firewall.service 2>/dev/null || true)"
+        if [[ -x /usr/local/sbin/pcs-aprs-telemetry ]]; then
+            /usr/local/sbin/pcs-aprs-telemetry || true
+        else
+            echo "Packet telemetry: helper not installed"
+        fi
+        if [[ "${PCS_SETUP_APRS}" == "staged" ]]; then
+            echo "RF TX:           disabled during software staging"
+        else
+            echo "RF TX:           ${PCS_APRS_TX_ENABLED:-no}"
+        fi
+        ;;
+    *)
+        echo "APRS software is not selected."
+        ;;
+esac
+echo
+
 echo "--- Key Services ---"
 for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket pcs-control-panel.service pcs-dashboard-redirect.service; do
     echo
@@ -477,6 +521,28 @@ else
     DASHBOARD_REDIRECT_STATUS="inactive"
 fi
 
+case "${PCS_SETUP_APRS}" in
+    staged)
+        if command -v direwolf >/dev/null 2>&1 \
+            && ! systemctl is-active --quiet direwolf.service \
+            && ! systemctl is-enabled --quiet direwolf.service 2>/dev/null; then
+            APRS_STATUS="software staged / RF disabled"
+        else
+            APRS_STATUS="staging needs attention"
+        fi
+        ;;
+    yes)
+        if systemctl is-active --quiet direwolf.service; then
+            APRS_STATUS="active"
+        else
+            APRS_STATUS="configured / inactive"
+        fi
+        ;;
+    *)
+        APRS_STATUS="not configured"
+        ;;
+esac
+
 if [[ -d "${PCS_SHARE_PATH}" ]] && testparm -s 2>/dev/null | grep -q "^\[${PCS_SHARE_NAME}\]"; then
     PRIMARY_SHARE_STATUS="present"
 else
@@ -509,6 +575,7 @@ echo "Last backup sync:         ${BACKUP_SYNC_STATUS}"
 echo "Cockpit:                  ${COCKPIT_STATUS}"
 echo "PCS Homepage/Admin:       ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
 echo "Legacy Admin Redirect:    ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
+echo "Dire Wolf / APRS:         ${APRS_STATUS}"
 printf "%-27s %s
 " "WWAN modem:" "${WWAN_SUMMARY}"
 echo "GPSD:                     ${GPSD_STATUS}"

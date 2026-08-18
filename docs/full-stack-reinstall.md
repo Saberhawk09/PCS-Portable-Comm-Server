@@ -24,7 +24,8 @@ Before starting, have these items connected and available:
 - Pi-Star hotspot and its target SD card
 - Ethernet from the PCS Pi to an EA4500 LAN port
 - A workstation that can join the PCS Wi-Fi network
-- A temporary internet connection for package installation
+- A temporary internet connection for package installation and, when Debian's
+  Dire Wolf package is older than PCS requires, the pinned official 1.8.1 source
 
 Do not use the EA4500 WAN/Internet port unless it has deliberately been added
 to the LAN bridge.
@@ -87,6 +88,7 @@ For the current GPS-sharing build, select:
 Configure WWAN modem NMEA GPS:       yes
 Share GPSD with trusted PCS clients: yes
 Include Pi-Star in PCS monitoring:   yes
+Stage Dire Wolf / APRS software:     yes
 ```
 
 The generated `config/pcs-install.conf` should therefore contain:
@@ -95,6 +97,7 @@ The generated `config/pcs-install.conf` should therefore contain:
 PCS_SETUP_WWAN_GPS=yes
 PCS_SETUP_GPSD_LAN=yes
 PCS_SETUP_PISTAR=yes
+PCS_SETUP_APRS=staged
 ```
 
 The GPSD setting installs a socket proxy bound only to
@@ -103,6 +106,15 @@ The GPSD setting installs a socket proxy bound only to
 `PCS_SETUP_PISTAR=yes` enables the hotspot health checks and local-access
 links. Set it to `no` on builds without Pi-Star; the dashboard and self-test
 then omit those optional checks without degrading overall PCS health.
+
+`PCS_SETUP_APRS=staged` means Dire Wolf is installed but stopped and disabled,
+with no station identity, audio device, APRS-IS credential, PTT, or RF path.
+After commissioning, preserve `/etc/direwolf.conf`,
+`/etc/pcs/aprs/backups/`, and the active-mode values from the ignored install
+configuration as credential-bearing/manual recovery material. The APRS-IS
+passcode is intentionally absent from Git. See
+[Dire Wolf / APRS Integration](direwolf-aprs.md) for `--render-config`,
+`--validate-config`, guarded activation, and `--rollback`.
 
 Reboot:
 

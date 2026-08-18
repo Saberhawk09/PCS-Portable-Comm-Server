@@ -27,6 +27,7 @@ This installs/configures:
 - Chrony LAN NTP
 - Optional WWAN GNSS and LAN-only GPSD sharing
 - Optional Pi-Star monitoring and local-access links
+- Optional Dire Wolf / APRS software staging with the service and RF path disabled
 - PCS restart service
 - PCS public homepage and authenticated control panel
 - Legacy port 8080 admin compatibility redirect
@@ -43,6 +44,88 @@ Installs baseline packages used by PCS.
 ```
 
 Includes tools for networking, Samba, Chrony, GPSD, ModemManager, Cockpit, and general diagnostics.
+
+## Dire Wolf / APRS
+
+### setup-direwolf-aprs.sh
+
+Stages Dire Wolf software and provides guarded rendering,
+validation, activation, testing, and rollback:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --prepare
+./scripts/setup-direwolf-aprs.sh --configure-options
+./scripts/setup-direwolf-aprs.sh --record-validation
+./scripts/setup-direwolf-aprs.sh --list-audio
+./scripts/setup-direwolf-aprs.sh --detect-audio
+./scripts/setup-direwolf-aprs.sh --check
+./scripts/setup-direwolf-aprs.sh --capabilities
+./scripts/setup-direwolf-aprs.sh --software-test
+./scripts/setup-direwolf-aprs.sh --render-config rx
+./scripts/setup-direwolf-aprs.sh --render-config tx
+./scripts/setup-direwolf-aprs.sh --validate-config rx
+./scripts/setup-direwolf-aprs.sh --validate-config tx
+./scripts/setup-direwolf-aprs.sh --activate-rx
+./scripts/setup-direwolf-aprs.sh --activate-tx
+./scripts/setup-direwolf-aprs.sh --rollback
+./scripts/setup-direwolf-aprs.sh --help
+```
+
+Staging records `PCS_SETUP_APRS="staged"` in the ignored local install config,
+keeps `direwolf.service` stopped/disabled, and makes the state visible only on
+the authenticated dashboard. See [Dire Wolf / APRS Integration](../docs/direwolf-aprs.md).
+
+Flag behavior:
+
+- `--prepare` installs dependencies and the safe template while leaving the service disabled.
+- `--configure-options` records non-secret desired settings only.
+- `--prepare` installs the Debian service/package foundation and automatically
+  builds the official pinned Dire Wolf 1.8.1 source when the distribution
+  package does not meet the PCS 1.8+ requirement. It leaves the service disabled.
+- `--record-validation` records hardware evidence but never activates the service.
+- `--list-audio`, `--check`, and `--capabilities` are read-only discovery/status commands.
+- `--detect-audio` records a stable ALSA ID only for one unambiguous USB capture/playback card and resets audio evidence gates.
+- `--software-test` uses temporary WAV files to verify AX.25, FX.25, and timing tolerance without RF.
+- `--render-config rx|tx` prints a proposed configuration with no real passcode.
+- `--validate-config rx|tx` lints the proposal and reports every activation blocker.
+- `--activate-rx` installs a transactional receive/IGate profile with null output and no RF transmit directives.
+- `--activate-tx` requires all evidence gates and an exact typed RF confirmation before installing the TX profile.
+- `--rollback` restores the newest root-owned live-configuration backup.
+- `--help` and `-h` print the terminal command reference.
+
+Activation also installs persistent LAN-only KISS filtering, managed Dire Wolf
+CSV logging/rotation, and a restart-on-failure systemd override. Full option,
+security, and rollback details are in
+[Dire Wolf / APRS Integration](../docs/direwolf-aprs.md).
+
+### pcs_aprs_telemetry.py
+
+Summarizes Dire Wolf daily CSV logs for the dashboard:
+
+```bash
+./scripts/pcs_aprs_telemetry.py
+./scripts/pcs_aprs_telemetry.py --json
+./scripts/pcs_aprs_telemetry.py --log-dir /var/log/direwolf
+./scripts/pcs_aprs_telemetry.py --help
+```
+
+It counts received RF packets for the last hour/day, unique recent stations,
+and the last RF packet while excluding Dire Wolf's synthetic channel 999
+tracker-transmit rows.
+
+### pcs-aprs-kiss-firewall.sh
+
+Normally managed by `pcs-aprs-kiss-firewall.service`:
+
+```bash
+sudo /usr/local/sbin/pcs-aprs-kiss-firewall --apply
+sudo /usr/local/sbin/pcs-aprs-kiss-firewall --check
+sudo /usr/local/sbin/pcs-aprs-kiss-firewall --clear
+sudo /usr/local/sbin/pcs-aprs-kiss-firewall --help
+```
+
+The helper admits KISS only from loopback and the configured PCS LAN, then
+drops the selected KISS port on all other interfaces.
 
 ## Time / RTC / NTP
 
@@ -361,6 +444,7 @@ Includes:
 - Samba shares
 - Storage paths
 - Services
+- Dire Wolf / APRS staged or active state
 - Client access info
 
 ### pcs-self-test.sh

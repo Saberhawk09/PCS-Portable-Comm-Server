@@ -34,6 +34,49 @@ PCS_SETUP_USB_DEVICE="${PCS_SETUP_USB_DEVICE:-auto}"
 PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
+PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
+PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
+PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-W8IJC-2}"
+PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-144.555 MHz}"
+PCS_APRS_AUDIO_INPUT="${PCS_APRS_AUDIO_INPUT:-auto}"
+PCS_APRS_AUDIO_OUTPUT="${PCS_APRS_AUDIO_OUTPUT:-auto}"
+PCS_APRS_SAMPLE_RATE="${PCS_APRS_SAMPLE_RATE:-48000}"
+PCS_APRS_AUDIO_CHANNELS="${PCS_APRS_AUDIO_CHANNELS:-1}"
+PCS_APRS_MODEM="${PCS_APRS_MODEM:-1200}"
+PCS_APRS_PTT_METHOD="${PCS_APRS_PTT_METHOD:-gpio}"
+PCS_APRS_PTT_INTERFACE="${PCS_APRS_PTT_INTERFACE:-EasyDigi}"
+PCS_APRS_PTT_GPIO_LINE="${PCS_APRS_PTT_GPIO_LINE:-17}"
+PCS_APRS_PTT_ACTIVE_LEVEL="${PCS_APRS_PTT_ACTIVE_LEVEL:-high}"
+PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
+PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-8001}"
+PCS_APRS_IGATE="${PCS_APRS_IGATE:-yes}"
+PCS_APRS_IGATE_SERVER="${PCS_APRS_IGATE_SERVER:-noam.aprs2.net}"
+PCS_APRS_IGATE_MODE="${PCS_APRS_IGATE_MODE:-two-way}"
+PCS_APRS_IGATE_RF_TO_IS_FILTER="${PCS_APRS_IGATE_RF_TO_IS_FILTER:-all-eligible}"
+PCS_APRS_IGATE_IS_TO_RF_FILTER="${PCS_APRS_IGATE_IS_TO_RF_FILTER:-normal-messages}"
+PCS_APRS_IGATE_TX_PATH="${PCS_APRS_IGATE_TX_PATH:-direct}"
+PCS_APRS_IGATE_TX_LIMIT_1M="${PCS_APRS_IGATE_TX_LIMIT_1M:-6}"
+PCS_APRS_IGATE_TX_LIMIT_5M="${PCS_APRS_IGATE_TX_LIMIT_5M:-10}"
+PCS_APRS_GPSD="${PCS_APRS_GPSD:-yes}"
+PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
+PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_BEACON="${PCS_APRS_BEACON:-yes}"
+PCS_APRS_BEACON_TYPE="${PCS_APRS_BEACON_TYPE:-gps-tracker}"
+PCS_APRS_BEACON_INTERVAL="${PCS_APRS_BEACON_INTERVAL:-10:00}"
+PCS_APRS_BEACON_PATH="${PCS_APRS_BEACON_PATH:-not selected}"
+PCS_APRS_BEACON_SYMBOL="${PCS_APRS_BEACON_SYMBOL:-not selected}"
+PCS_APRS_BEACON_COMMENT="${PCS_APRS_BEACON_COMMENT:-PCS}"
+PCS_APRS_DIGIPEAT="${PCS_APRS_DIGIPEAT:-yes}"
+PCS_APRS_DIGIPEAT_MODE="${PCS_APRS_DIGIPEAT_MODE:-fill-in}"
+PCS_APRS_DIGIPEAT_ALIAS="${PCS_APRS_DIGIPEAT_ALIAS:-WIDE1-1}"
+PCS_APRS_DIGIPEAT_ALIAS_PATTERN="${PCS_APRS_DIGIPEAT_ALIAS_PATTERN:-^W8IJC-2$}"
+PCS_APRS_DIGIPEAT_WIDE_PATTERN="${PCS_APRS_DIGIPEAT_WIDE_PATTERN:-^WIDE1-1$}"
+PCS_APRS_DIGIPEAT_PREEMPTIVE="${PCS_APRS_DIGIPEAT_PREEMPTIVE:-OFF}"
+PCS_APRS_DIGIPEAT_FILTER="${PCS_APRS_DIGIPEAT_FILTER:-all-eligible}"
+PCS_APRS_DIGIPEAT_DEDUPE_SECONDS="${PCS_APRS_DIGIPEAT_DEDUPE_SECONDS:-30}"
+PCS_APRS_TX_ENABLED="${PCS_APRS_TX_ENABLED:-yes}"
+PCS_APRS_FX25_TX="${PCS_APRS_FX25_TX:-yes}"
+PCS_APRS_LOGGING="${PCS_APRS_LOGGING:-yes}"
 
 is_yes() {
     case "${1:-}" in
@@ -137,6 +180,49 @@ write_install_config() {
         printf "PCS_SETUP_WWAN_GPS=%q\n" "${PCS_SETUP_WWAN_GPS}"
         printf "PCS_SETUP_GPSD_LAN=%q\n" "${PCS_SETUP_GPSD_LAN}"
         printf "PCS_SETUP_PISTAR=%q\n" "${PCS_SETUP_PISTAR}"
+        printf "PCS_SETUP_APRS=%q\n" "${PCS_SETUP_APRS}"
+        printf "PCS_APRS_ROLE=%q\n" "${PCS_APRS_ROLE}"
+        printf "PCS_APRS_CALLSIGN=%q\n" "${PCS_APRS_CALLSIGN}"
+        printf "PCS_APRS_FREQUENCY=%q\n" "${PCS_APRS_FREQUENCY}"
+        printf "PCS_APRS_AUDIO_INPUT=%q\n" "${PCS_APRS_AUDIO_INPUT}"
+        printf "PCS_APRS_AUDIO_OUTPUT=%q\n" "${PCS_APRS_AUDIO_OUTPUT}"
+        printf "PCS_APRS_SAMPLE_RATE=%q\n" "${PCS_APRS_SAMPLE_RATE}"
+        printf "PCS_APRS_AUDIO_CHANNELS=%q\n" "${PCS_APRS_AUDIO_CHANNELS}"
+        printf "PCS_APRS_MODEM=%q\n" "${PCS_APRS_MODEM}"
+        printf "PCS_APRS_PTT_METHOD=%q\n" "${PCS_APRS_PTT_METHOD}"
+        printf "PCS_APRS_PTT_INTERFACE=%q\n" "${PCS_APRS_PTT_INTERFACE}"
+        printf "PCS_APRS_PTT_GPIO_LINE=%q\n" "${PCS_APRS_PTT_GPIO_LINE}"
+        printf "PCS_APRS_PTT_ACTIVE_LEVEL=%q\n" "${PCS_APRS_PTT_ACTIVE_LEVEL}"
+        printf "PCS_APRS_AGW_PORT=%q\n" "${PCS_APRS_AGW_PORT}"
+        printf "PCS_APRS_KISS_PORT=%q\n" "${PCS_APRS_KISS_PORT}"
+        printf "PCS_APRS_IGATE=%q\n" "${PCS_APRS_IGATE}"
+        printf "PCS_APRS_IGATE_SERVER=%q\n" "${PCS_APRS_IGATE_SERVER}"
+        printf "PCS_APRS_IGATE_MODE=%q\n" "${PCS_APRS_IGATE_MODE}"
+        printf "PCS_APRS_IGATE_RF_TO_IS_FILTER=%q\n" "${PCS_APRS_IGATE_RF_TO_IS_FILTER}"
+        printf "PCS_APRS_IGATE_IS_TO_RF_FILTER=%q\n" "${PCS_APRS_IGATE_IS_TO_RF_FILTER}"
+        printf "PCS_APRS_IGATE_TX_PATH=%q\n" "${PCS_APRS_IGATE_TX_PATH}"
+        printf "PCS_APRS_IGATE_TX_LIMIT_1M=%q\n" "${PCS_APRS_IGATE_TX_LIMIT_1M}"
+        printf "PCS_APRS_IGATE_TX_LIMIT_5M=%q\n" "${PCS_APRS_IGATE_TX_LIMIT_5M}"
+        printf "PCS_APRS_GPSD=%q\n" "${PCS_APRS_GPSD}"
+        printf "PCS_APRS_GPSD_HOST=%q\n" "${PCS_APRS_GPSD_HOST}"
+        printf "PCS_APRS_GPSD_PORT=%q\n" "${PCS_APRS_GPSD_PORT}"
+        printf "PCS_APRS_BEACON=%q\n" "${PCS_APRS_BEACON}"
+        printf "PCS_APRS_BEACON_TYPE=%q\n" "${PCS_APRS_BEACON_TYPE}"
+        printf "PCS_APRS_BEACON_INTERVAL=%q\n" "${PCS_APRS_BEACON_INTERVAL}"
+        printf "PCS_APRS_BEACON_PATH=%q\n" "${PCS_APRS_BEACON_PATH}"
+        printf "PCS_APRS_BEACON_SYMBOL=%q\n" "${PCS_APRS_BEACON_SYMBOL}"
+        printf "PCS_APRS_BEACON_COMMENT=%q\n" "${PCS_APRS_BEACON_COMMENT}"
+        printf "PCS_APRS_DIGIPEAT=%q\n" "${PCS_APRS_DIGIPEAT}"
+        printf "PCS_APRS_DIGIPEAT_MODE=%q\n" "${PCS_APRS_DIGIPEAT_MODE}"
+        printf "PCS_APRS_DIGIPEAT_ALIAS=%q\n" "${PCS_APRS_DIGIPEAT_ALIAS}"
+        printf "PCS_APRS_DIGIPEAT_ALIAS_PATTERN=%q\n" "${PCS_APRS_DIGIPEAT_ALIAS_PATTERN}"
+        printf "PCS_APRS_DIGIPEAT_WIDE_PATTERN=%q\n" "${PCS_APRS_DIGIPEAT_WIDE_PATTERN}"
+        printf "PCS_APRS_DIGIPEAT_PREEMPTIVE=%q\n" "${PCS_APRS_DIGIPEAT_PREEMPTIVE}"
+        printf "PCS_APRS_DIGIPEAT_FILTER=%q\n" "${PCS_APRS_DIGIPEAT_FILTER}"
+        printf "PCS_APRS_DIGIPEAT_DEDUPE_SECONDS=%q\n" "${PCS_APRS_DIGIPEAT_DEDUPE_SECONDS}"
+        printf "PCS_APRS_TX_ENABLED=%q\n" "${PCS_APRS_TX_ENABLED}"
+        printf "PCS_APRS_FX25_TX=%q\n" "${PCS_APRS_FX25_TX}"
+        printf "PCS_APRS_LOGGING=%q\n" "${PCS_APRS_LOGGING}"
     } > "${INSTALL_CONFIG}"
 
     chmod 0600 "${INSTALL_CONFIG}"
@@ -185,6 +271,7 @@ collect_install_answers() {
     local gps_default
     local gpsd_lan_default
     local pistar_default
+    local aprs_default
 
     case "${PCS_SETUP_MODE}" in
         DEFAULTS)
@@ -201,6 +288,7 @@ collect_install_answers() {
             PCS_SETUP_WWAN_GPS="no"
             PCS_SETUP_GPSD_LAN="no"
             PCS_SETUP_PISTAR="no"
+            PCS_SETUP_APRS="no"
             ;;
         ALL)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -214,10 +302,13 @@ collect_install_answers() {
             gps_default="${PCS_SETUP_WWAN_GPS}"
             gpsd_lan_default="${PCS_SETUP_GPSD_LAN}"
             pistar_default="${PCS_SETUP_PISTAR}"
+            aprs_default="${PCS_SETUP_APRS}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
             [[ "${gpsd_lan_default}" == "ask" ]] && gpsd_lan_default="no"
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
+            [[ "${aprs_default}" == "ask" ]] && aprs_default="no"
+            [[ "${aprs_default}" == "staged" ]] && aprs_default="yes"
             PCS_SETUP_USB_PRIMARY="$(ask_yes_no "Configure detected USB storage as PCS-Share primary storage?" "${usb_default}")"
             if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" ]]; then
                 PCS_SETUP_USB_DEVICE="$(ask_value "USB storage device or UUID" "${PCS_SETUP_USB_DEVICE}")"
@@ -227,6 +318,7 @@ collect_install_answers() {
             PCS_SETUP_WWAN_GPS="$(ask_yes_no "Configure WWAN modem NMEA GPS during setup?" "${gps_default}")"
             PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
+            PCS_SETUP_APRS="$(ask_yes_no "Stage optional Dire Wolf / APRS software without enabling radio or RF transmit?" "${aprs_default}")"
             ;;
         ASK)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -237,6 +329,7 @@ collect_install_answers() {
             PCS_SETUP_USB_DEVICE="auto"
             PCS_SETUP_WWAN_GPS="ask"
             PCS_SETUP_GPSD_LAN="ask"
+            PCS_SETUP_APRS="ask"
             pistar_default="${PCS_SETUP_PISTAR}"
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
@@ -255,6 +348,7 @@ collect_install_answers() {
     export PCS_SETUP_WWAN_GPS
     export PCS_SETUP_GPSD_LAN
     export PCS_SETUP_PISTAR
+    export PCS_SETUP_APRS
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
         unset PCS_ROUTER_WAN_SHARE_CONFIRM
@@ -287,6 +381,7 @@ confirm_install_answers() {
     echo "  WWAN GPS policy:    ${PCS_SETUP_WWAN_GPS}"
     echo "  LAN GPSD policy:    ${PCS_SETUP_GPSD_LAN}"
     echo "  Pi-Star monitoring: ${PCS_SETUP_PISTAR}"
+    echo "  Dire Wolf / APRS:   ${PCS_SETUP_APRS}"
     echo
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
@@ -320,6 +415,7 @@ echo "  - Chrony LAN NTP setup"
 echo "  - Optional WWAN modem NMEA GPS setup, if WWAN GPS hardware is present"
 echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
 echo "  - Optional Pi-Star monitoring and local-access links"
+echo "  - Optional hardware-safe Dire Wolf / APRS software staging"
 echo "  - Optional password-assisted Pi-Star coordinated shutdown pairing"
 echo "  - Cockpit/systemd restart button install"
 echo "  - PCS public homepage and authenticated control panel setup"
@@ -408,6 +504,10 @@ ensure_executable "scripts/setup-dashboard-redirect.sh"
 ensure_executable "scripts/setup-wwan-gps-nmea.sh"
 ensure_executable "scripts/setup-gpsd-lan-proxy.sh"
 ensure_executable "scripts/setup-pistar-shutdown.sh"
+ensure_executable "scripts/setup-direwolf-aprs.sh"
+ensure_executable "scripts/pcs-aprs-kiss-firewall.sh"
+ensure_executable "scripts/test-direwolf-aprs-software.sh"
+ensure_executable "scripts/pcs_aprs_telemetry.py"
 ensure_executable "scripts/pcs-wwan-gps-nmea-start.py"
 ensure_executable "scripts/pcs-web-action.sh"
 ensure_executable "scripts/sync-pcs-share-to-backup.sh"
@@ -649,6 +749,41 @@ case "${gpsd_lan_answer}" in
         echo "Skipping LAN-only GPSD proxy setup."
         echo "You can run this later:"
         echo "  ./scripts/setup-gpsd-lan-proxy.sh"
+        ;;
+esac
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Stage Dire Wolf / APRS software"
+echo "============================================================"
+echo
+echo "This installs Dire Wolf but leaves its service disabled, with no callsign,"
+echo "APRS-IS credential, audio device, PTT method, beacon, or RF transmit path."
+echo
+
+if [[ "${PCS_SETUP_APRS}" == "yes" || "${PCS_SETUP_APRS}" == "no" ]]; then
+    aprs_answer="${PCS_SETUP_APRS}"
+elif [[ "${PCS_SETUP_APRS}" == "staged" ]]; then
+    aprs_answer="yes"
+else
+    aprs_answer="$(ask_yes_no "Stage Dire Wolf / APRS software now?" "no")"
+fi
+
+case "${aprs_answer}" in
+    y|Y|yes|YES|Yes)
+        if ./scripts/setup-direwolf-aprs.sh --prepare; then
+            echo "Dire Wolf / APRS software staging completed."
+        else
+            echo
+            echo "WARNING: Dire Wolf / APRS software staging failed."
+            echo "You can retry it later with:"
+            echo "  ./scripts/setup-direwolf-aprs.sh --prepare"
+        fi
+        ;;
+    *)
+        echo "Skipping Dire Wolf / APRS software staging."
+        echo "You can run it later:"
+        echo "  ./scripts/setup-direwolf-aprs.sh --prepare"
         ;;
 esac
 
