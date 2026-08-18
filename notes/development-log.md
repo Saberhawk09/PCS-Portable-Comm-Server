@@ -2,6 +2,8 @@
 
 This file tracks major project decisions, build progress, and testing notes for PCS.
 
+> **Historical record:** Entries describe the system at the date shown and are not current setup instructions. See the [notes index](README.md) and [current project overview](../docs/project-overview.md) before using any command, address, hardware status, or topology from this log.
+
 ## 2026-07-01
 
 - Created public GitHub repository
@@ -17,7 +19,7 @@ This file tracks major project decisions, build progress, and testing notes for 
 - Created first GitHub issues
 - Created Prototype v0.1 milestone
 
-## Current Status
+## 2026-07-01 Status Snapshot
 
 The GitHub repository has been created and initial documentation is being organized.
 
@@ -46,7 +48,7 @@ The following major items are still being finalized or purchased:
 
 Software setup and configuration can begin once a dedicated Raspberry Pi SD card is available.
 
-## Next Notes To Capture
+## 2026-07-01 Planned Follow-Up
 
 - Router hardware decision
 - Power system verification
@@ -150,7 +152,7 @@ Skip: 0
 PCS Pi-side self-test PASSED.
 ```
 
-### Current Status
+### Status at the End of This Snapshot
 
 PCS is now in a stable WWAN/GPS baseline state.
 
@@ -190,3 +192,17 @@ Remaining work:
 - Future EM7565 validation
 - Final LTE/GPS antenna mounting
 - Final enclosure and power integration
+
+## Superseded Information
+
+The dated entries above intentionally retain early project state. The following items are no longer current:
+
+- The Actiontec T3200 and Windstream router paths were temporary bring-up hardware. The current access point/switch is the Linksys EA4500 running OpenWrt at `10.42.0.2`.
+- The Raspberry Pi is now the PCS gateway and owns DHCP, DNS, NAT/routing, and services at `10.42.0.1`; the EA4500 is a bridged AP/switch.
+- The temporary Pi Wi-Fi uplink and router-WAN test path were replaced by the current optional, manually controlled EM7565 cellular uplink.
+- The temporary `/srv/pcs-share` primary share was replaced by USB-backed `PCS-Share` with the SD-card `PCS-Backup` mirror.
+- Port 80 now hosts the unified public homepage and authenticated administration. Port 8080 is only a compatibility redirect to `/admin/`.
+- WWAN GNSS through `/dev/ttyUSB1`, gpsd, and Chrony is implemented; the earlier “future GPS” notes are complete.
+- Historical self-test counts are evidence from those snapshots, not the current expected count.
+
+For the maintained system state, use the [Project Overview](../docs/project-overview.md), [Network Topology](../docs/network-topology.md), and [Testing Checklist](../docs/testing-checklist.md).

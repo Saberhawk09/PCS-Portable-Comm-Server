@@ -2,6 +2,8 @@
 
 This file tracks Raspberry Pi setup, testing, and hardware bring-up notes for PCS.
 
+> **Historical record:** This is the initial July 1, 2026 bring-up snapshot. Its Actiontec/Windstream router, temporary Wi-Fi uplink, temporary Samba path, incomplete WWAN/GNSS work, and planned checks have been superseded. Use the [notes index](README.md) and [current project overview](../docs/project-overview.md) for the maintained system.
+
 ## 2026-07-01
 
 Fresh Raspberry Pi OS with desktop, 64-bit, installed for PCS testing.
@@ -70,7 +72,7 @@ Raspberry Pi Connect verification:
 - Screen sharing services enabled and active
 - Communication with Raspberry Pi Connect services working
 
-Current notes:
+Notes captured during this snapshot:
 
 - RTC overlay is enabled in /boot/firmware/config.txt
 - Working config backed up as /boot/firmware/config.txt.pcs-rtc-working
@@ -97,7 +99,7 @@ Current notes:
 - `./scripts/pcs-self-test.sh` can be used as the main Pi-side validation command
 - `./scripts/pcs-status.sh` can be used for detailed status and client access information
 
-Next planned checks:
+Planned checks at this point:
 
 - Confirm Git workflow from the Pi
 - Detect WWAN modem over USB
@@ -105,3 +107,9 @@ Next planned checks:
 - Install and test Samba file sharing
 - Install and test GPSD
 - Install and test Chrony
+
+## Superseded By the Current PCS Baseline
+
+The current PCS uses the Raspberry Pi at `10.42.0.1` as the gateway and service host, the Linksys EA4500 running OpenWrt at `10.42.0.2` as a bridged AP/switch, and the optional Pi-Star hotspot at `10.42.0.3`. USB-backed primary storage, the SD-card backup mirror, EM7565 cellular service, WWAN GNSS through gpsd/Chrony, the public homepage, and authenticated administration are now implemented.
+
+See the [Network Topology](../docs/network-topology.md), [Raspberry Pi Setup](../docs/raspberry-pi-setup.md), and [Full-Stack Reinstall Runbook](../docs/full-stack-reinstall.md) instead of applying this snapshot as a procedure.
