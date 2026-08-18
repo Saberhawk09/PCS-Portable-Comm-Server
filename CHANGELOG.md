@@ -28,10 +28,25 @@ All notable user-facing PCS changes are recorded here.
 - pinned an official Dire Wolf 1.8.1 source-build fallback for Raspberry Pi OS
   releases whose package is too old for the PCS libgpiod/FX.25 profile
 - fixed non-interactive nftables discovery and Dire Wolf help parsing under
-  shell `pipefail`, and bound the service override to the validated binary path
-  commands with explicit hardware evidence gates and interactive RF confirmation
+  shell `pipefail`
+- bound the service override to the validated binary path and guarded render,
+  activation, and rollback commands with explicit hardware evidence gates and
+  interactive RF confirmation
 - added synthetic AX.25/FX.25 packet tests, capability reporting, persistent
   LAN-only KISS filtering, managed log retention, and APRS dashboard telemetry
+
+### Changed
+
+- moved optional Pi-Star coordinated-shutdown pairing to the first usable PCS-LAN
+  point and reused the up-front installer selection without storing its password
+- corrected executable permissions for the APRS helpers so a clean install does
+  not modify the repository checkout
+- aligned the README, project overview, documentation index, bill of materials,
+  testing/release guidance, and reinstall record with the August 18 PCS state
+- archived superseded bring-up notes while preserving their dated evidence and
+  appending the current Pi/OpenWrt/Pi-Star architecture decisions
+- recorded APRS and Meshtastic expansion hardware as purchased but not installed
+  or validated; Meshtastic integration remains unimplemented
 
 ### Security
 

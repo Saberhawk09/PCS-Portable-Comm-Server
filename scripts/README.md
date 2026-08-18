@@ -21,8 +21,9 @@ Runs the baseline PCS setup workflow.
 This installs/configures:
 
 - Dependencies
-- RTC
 - Client LAN/AP handoff on `eth0`
+- Optional Pi-Star coordinated-shutdown pairing at the first usable PCS-LAN point
+- RTC
 - Samba shares
 - Chrony LAN NTP
 - Optional WWAN GNSS and LAN-only GPSD sharing
@@ -32,6 +33,14 @@ This installs/configures:
 - PCS public homepage and authenticated control panel
 - Legacy port 8080 admin compatibility redirect
 - Final status/self-test checks
+
+In `ALL` or `DEFAULTS` input mode, the Pi-Star inclusion choice is collected
+with the other setup answers. When enabled, the installer configures the PCS
+LAN and then immediately attempts coordinated-shutdown pairing before the
+remaining setup steps. The earlier answer suppresses the redundant pairing
+confirmation; SSH still requests the Pi-Star password directly and never
+stores it. If Pi-Star is unavailable, pairing remains an optional failure and
+the rest of the PCS installation continues.
 
 ## Dependencies
 

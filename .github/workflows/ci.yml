@@ -36,6 +36,7 @@ jobs:
             tests/test_documentation.py \
             tests/test_direwolf_aprs.py \
             tests/test_aprs_telemetry.py \
+            tests/test_setup_pcs_base.py \
             web/pcs-control-panel/pcs_control_panel.py \
             web/pcs-control-panel/pcs_dashboard_redirect.py
 
@@ -44,3 +45,10 @@ jobs:
           for script in scripts/*.sh; do
             bash -n "$script"
           done
+
+      - name: Check executable APRS helpers
+        run: |
+          test -x scripts/pcs-aprs-kiss-firewall.sh
+          test -x scripts/pcs_aprs_telemetry.py
+          test -x scripts/setup-direwolf-aprs.sh
+          test -x scripts/test-direwolf-aprs-software.sh

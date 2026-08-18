@@ -185,7 +185,10 @@ gpsd:     receives WWAN GPS NMEA
 Chrony:   sees GPS source for LAN NTP
 ```
 
-The WWAN modem must be manually configured before use.
+Modem firmware and USB composition remain deliberate manual prerequisites when
+the known-good EM7565 baseline is not already present. Once Linux exposes the
+expected modem and NMEA devices, the PCS installer configures the manual cellular
+profile and can install the WWAN NMEA, gpsd, and Chrony service path.
 
 GPS setup script:
 

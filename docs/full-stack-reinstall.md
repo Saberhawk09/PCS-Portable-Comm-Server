@@ -106,6 +106,10 @@ The GPSD setting installs a socket proxy bound only to
 `PCS_SETUP_PISTAR=yes` enables the hotspot health checks and local-access
 links. Set it to `no` on builds without Pi-Star; the dashboard and self-test
 then omit those optional checks without degrading overall PCS health.
+In `ALL` or `DEFAULTS` input mode this answer is collected up front. After the
+installer establishes the PCS LAN on `eth0`, it immediately attempts the
+coordinated-shutdown pairing before continuing with the remaining setup. SSH
+asks for the Pi-Star password at that point; the password is not stored.
 
 `PCS_SETUP_APRS=staged` means Dire Wolf is installed but stopped and disabled,
 with no station identity, audio device, APRS-IS credential, PTT, or RF path.
@@ -184,12 +188,13 @@ cd /home/pi/Projects/PCS-Portable-Comm-Server
 
 Enter the Pi-Star password when SSH asks. The password is used only to install
 a restricted shutdown key and is not saved. If Pi-Star was already configured
-and reachable during the PCS base installer, this optional pairing step may
-already be complete.
+and reachable during the PCS base installer, this optional pairing is attempted
+immediately after the PCS LAN is configured and may already be complete. If it
+was not reachable then, use the standalone command above.
 
 ## Verification
 
-The PCS Pi SD-card wipe/rebuild path was verified on July 8, 2026. The procedure below remains the release-standard validation because OpenWrt, Pi-Star, credentials, and on-air radio checks still contain intentional manual checkpoints.
+The PCS Pi SD-card wipe/rebuild path was most recently verified on August 18, 2026. That validation covered the repeatable Pi-side software path and configured integrations; it did not make OpenWrt or Pi-Star flashing, credentials, appliance backups, USB identity decisions, or on-air RF checks automatic. The procedure below remains the release-standard validation because those intentional manual checkpoints still apply.
 
 On PCS:
 
@@ -198,6 +203,8 @@ cd /home/pi/Projects/PCS-Portable-Comm-Server
 ./scripts/pcs-self-test.sh
 ./scripts/pcs-status.sh
 ./scripts/setup-pistar-shutdown.sh --check
+./scripts/setup-direwolf-aprs.sh --check
+./scripts/setup-direwolf-aprs.sh --software-test
 ```
 
 Copy a fresh version of the Pi-Star script after a repository update, then run
@@ -228,6 +235,7 @@ complete when:
 - Pi-Star time synchronizes through PCS
 - Pi-Star receives a GPSD protocol response from PCS
 - coordinated shutdown readiness check passes
+- Dire Wolf is safely staged and its software test passes, or its active mode has completed the documented hardware/RF validation
 - required radio modes pass an operator-supervised on-air test
 
 ## Remaining Manual Checkpoints

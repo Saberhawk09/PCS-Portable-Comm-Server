@@ -14,7 +14,9 @@ If private reporting is unavailable, open a minimal issue asking the maintainer 
 
 ## Repository Secrets
 
-PCS may eventually involve cellular modem configuration, network settings, VPN configuration, IP addresses, and device-specific setup files.
+PCS includes cellular modem configuration, network settings, private IP
+addressing, and device-specific setup files, and it may later add VPN
+configuration. Runtime credentials and appliance backups remain outside Git.
 
 Do not commit:
 
