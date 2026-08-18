@@ -1,0 +1,15 @@
+[Unit]
+Description=PCS APRS LAN-only KISS firewall
+Before=direwolf.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/pcs/aprs/kiss-firewall.conf
+ExecStart=/usr/local/sbin/pcs-aprs-kiss-firewall --apply
+ExecStop=/usr/local/sbin/pcs-aprs-kiss-firewall --clear
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

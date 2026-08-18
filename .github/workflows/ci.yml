@@ -28,11 +28,14 @@ jobs:
         run: |
           python -m py_compile \
             scripts/pcs-admin-password-helper.py \
+            scripts/pcs_aprs_telemetry.py \
             scripts/pcs-wwan-gps-nmea-start.py \
             tests/serve_pcs_ui_fixture.py \
             tests/test_pcs_admin_password_helper.py \
             tests/test_pcs_control_panel.py \
             tests/test_documentation.py \
+            tests/test_direwolf_aprs.py \
+            tests/test_aprs_telemetry.py \
             web/pcs-control-panel/pcs_control_panel.py \
             web/pcs-control-panel/pcs_dashboard_redirect.py
 

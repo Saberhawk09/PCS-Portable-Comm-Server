@@ -42,7 +42,8 @@ Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system 
 - DS1307 I2C RTC for a sane boot-time reference
 - Removable USB primary storage with an SD-card backup mirror
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
-- AC/DC power system with source selector switch.
+- AC/DC power system with source selector switch
+- Optional Dire Wolf / APRS software staging (radio and USB audio hardware pending)
 
 ### Software
 
@@ -53,6 +54,7 @@ Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system 
 - GPS NMEA from `/dev/ttyUSB1` through gpsd and Chrony to LAN clients
 - Manual cellular data control with Wi-Fi fallback during development and testing
 - LAN GPSD, NTP, and coordinated Pi-Star shutdown integration
+- Hardware-safe Dire Wolf staging with APRS activation intentionally deferred
 - PCS Pi SD-card wipe/rebuild verified on July 8, 2026
 
 ### Current Finish Work
@@ -73,6 +75,7 @@ Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system 
  - The WWAN modem installed and connected over USB, if this build includes cellular/GPS.
  - The GPS/GNSS antenna connected to the WWAN modem, if configuring WWAN GPS/NMEA.
  - The intended USB storage device connected, if using USB primary file storage.
+ - The APRS USB sound card and radio interface, only when moving beyond software staging.
 
 ## Software Setup
 
@@ -94,6 +97,12 @@ Run the base setup:
 The setup script installs the PCS software baseline, configures the Pi client network, sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel.
 
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
+
+Dire Wolf can be installed, rendered, policy-validated, and synthetically tested
+before the APRS hardware arrives without enabling its service or any RF path.
+The documented workflow provides separate guarded RX/TX activation, LAN-only
+KISS, managed logs/dashboard telemetry, and transactional rollback. See
+[Dire Wolf / APRS Integration](docs/direwolf-aprs.md).
 
 ## After Setup
 
@@ -153,6 +162,7 @@ For additional documentation, start here:
 - [Pi-Star Integration](docs/pi-star-integration.md)
 - [Samba File Share](docs/samba-file-share.md)
 - [PCS Control Panel](docs/pcs-control-panel.md)
+- [PCS GPIO Allocation](docs/gpio-allocation.md)
 - [Testing Checklist](docs/testing-checklist.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Script Reference](scripts/README.md)

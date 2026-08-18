@@ -312,7 +312,11 @@ PUBLIC_FIELDS = {
     "storage": {"status", "usb_mounted", "primary_share_available", "backup_share_available", "usb_free_gb", "backup_free_gb"},
     "services": {"status", "homepage_available", "file_sharing_available", "cockpit_available", "gpsd_lan_enabled"},
     "pistar": {"configured", "online", "url"},
-    "aprs": {"configured", "status", "service", "radio", "frequency", "aprs_is", "packets", "last_heard", "tx_state"},
+    "aprs": {
+        "configured", "status", "service", "callsign", "role", "frequency", "modem",
+        "aprs_is", "aprs_is_profile", "beacon", "digipeater", "kiss", "fx25", "packets",
+        "last_heard", "tx_state",
+    },
 }
 
 
@@ -537,8 +541,14 @@ def render_public_page(data: dict) -> bytes:
     aprs = data.get("aprs", {})
     if aprs.get("configured"):
         cards.append(public_card("APRS / Packet", aprs, [
-            ("Service", "service", "unknown"), ("Radio", "radio", "unknown"),
-            ("Frequency", "frequency", "unknown"), ("RF TX", "tx_state", "Safe"),
+            ("Station", "callsign", "unknown"), ("Role", "role", "unknown"),
+            ("Frequency", "frequency", "unknown"), ("Modem", "modem", "unknown"),
+            ("APRS-IS profile", "aprs_is_profile", "disabled"),
+            ("Digipeater", "digipeater", "disabled"), ("Beacon", "beacon", "disabled"),
+            ("Network TNC", "kiss", "disabled"), ("FX.25 TX", "fx25", "disabled"),
+            ("Packet activity", "packets", "not available"),
+            ("Last RF packet", "last_heard", "not available"),
+            ("Service", "service", "unknown"), ("RF TX", "tx_state", "Safe"),
         ]))
 
     gpsd_line = item("GPSD", "10.42.0.1:2947" if services.get("gpsd_lan_enabled") else "not enabled")

@@ -11,6 +11,9 @@ EM7565 GNSS
     v
 gpsd on 127.0.0.1:2947
     |
+    +-- Dire Wolf GPS tracker (`GPSD localhost 2947`)
+    +-- Chrony SHM time source
+    |
     v
 LAN-only GPSD proxy on 10.42.0.1:2947
     |
@@ -23,6 +26,11 @@ LAN-only GPSD proxy on 10.42.0.1:2947
 Live position data is sensitive. Do not add `-G` to GPSD merely to share it
 with another PCS device: that makes GPSD listen on every available interface,
 including an uplink. Use the LAN-only proxy instead.
+
+Dire Wolf runs locally and connects directly to `localhost:2947`. It must not
+loop back through the LAN proxy. This keeps the APRS tracker independent of the
+optional LAN-sharing socket while still allowing gpsd to arbitrate the single
+`/dev/ttyUSB1` NMEA source.
 
 ## Enable the PCS LAN Interface
 

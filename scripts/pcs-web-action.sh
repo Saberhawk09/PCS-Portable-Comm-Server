@@ -474,6 +474,7 @@ INSTALL_CONFIG = os.environ.get(
 USB_MOUNT = "/mnt/pcs-usb"
 PRIMARY_SHARE = "/mnt/pcs-usb/PCS-Share"
 BACKUP_SHARE = "/srv/pcs-share-backup"
+APRS_TELEMETRY_HELPER = "/usr/local/sbin/pcs-aprs-telemetry"
 CELLULAR_PROFILE_DEFAULT = "pcs-cellular-profile"
 LEGACY_CELLULAR_PROFILE = "pcs-cellular-tmobile"
 PI_STAR_IP = "10.42.0.3"
@@ -509,6 +510,10 @@ def install_config():
 CONFIG = install_config()
 CELLULAR_PROFILE = CONFIG.get("PCS_CELLULAR_PROFILE", CELLULAR_PROFILE_DEFAULT)
 PI_STAR_CONFIGURED = CONFIG.get("PCS_SETUP_PISTAR", "no").lower() == "yes"
+APRS_STATE = CONFIG.get("PCS_SETUP_APRS", "no").lower()
+APRS_STAGED = APRS_STATE == "staged"
+APRS_CONFIGURED = APRS_STATE == "yes"
+APRS_PREPARED = APRS_STAGED or APRS_CONFIGURED
 
 def run(cmd, timeout=8):
     try:
@@ -1865,6 +1870,101 @@ cell_route_metric = cellular_route_metric(cell_profile_name)
 gpsd_active = active("gpsd")
 gps_info = merge_gps_info(merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
 
+direwolf_installed = shutil.which("direwolf") is not None
+direwolf_active = active("direwolf.service")
+direwolf_enabled = enabled("direwolf.service")
+direwolf_template = os.path.isfile("/etc/pcs/aprs/direwolf.example.conf")
+direwolf_live_config = os.path.isfile("/etc/direwolf.conf")
+aprs_audio_input = CONFIG.get("PCS_APRS_AUDIO_INPUT", "auto")
+aprs_audio_output = CONFIG.get("PCS_APRS_AUDIO_OUTPUT", "null")
+aprs_active_mode = CONFIG.get("PCS_APRS_ACTIVE_MODE", "staged")
+aprs_callsign = CONFIG.get("PCS_APRS_CALLSIGN", "not selected")
+aprs_role = CONFIG.get("PCS_APRS_ROLE", "monitor")
+aprs_frequency = CONFIG.get("PCS_APRS_FREQUENCY", "not selected")
+aprs_modem = CONFIG.get("PCS_APRS_MODEM", "1200")
+aprs_igate = CONFIG.get("PCS_APRS_IGATE", "no").lower() == "yes"
+aprs_igate_server = CONFIG.get("PCS_APRS_IGATE_SERVER", "not configured")
+aprs_igate_mode = CONFIG.get("PCS_APRS_IGATE_MODE", "rx-only")
+aprs_igate_rf_to_is_filter = CONFIG.get("PCS_APRS_IGATE_RF_TO_IS_FILTER", "all-eligible")
+aprs_kiss_port = CONFIG.get("PCS_APRS_KISS_PORT", "0")
+aprs_tx_enabled = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_TX_ENABLED", "no").lower() == "yes"
+aprs_fx25_tx = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_FX25_TX", "no").lower() == "yes"
+aprs_gpsd = CONFIG.get("PCS_APRS_GPSD", "no").lower() == "yes"
+aprs_gpsd_host = CONFIG.get("PCS_APRS_GPSD_HOST", "localhost")
+aprs_gpsd_port = CONFIG.get("PCS_APRS_GPSD_PORT", "2947")
+aprs_beacon = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_BEACON", "no").lower() == "yes"
+aprs_beacon_type = CONFIG.get("PCS_APRS_BEACON_TYPE", "fixed")
+aprs_beacon_interval = CONFIG.get("PCS_APRS_BEACON_INTERVAL", "not configured")
+aprs_digipeat = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_DIGIPEAT", "no").lower() == "yes"
+aprs_digipeat_mode = CONFIG.get("PCS_APRS_DIGIPEAT_MODE", "standard")
+aprs_digipeat_alias = CONFIG.get("PCS_APRS_DIGIPEAT_ALIAS", "not configured")
+
+aprs_role_label = {
+    "digi-igate": "digi-IGate / GPS tracker",
+    "igate": "IGate",
+    "digipeater": "digipeater",
+    "tracker": "GPS tracker",
+    "monitor": "receive monitor",
+}.get(aprs_role, aprs_role)
+aprs_modem_label = f"{aprs_modem} baud AFSK" if aprs_modem == "1200" else f"{aprs_modem} baud"
+if aprs_igate:
+    aprs_igate_scope = "all eligible RF to APRS-IS" if aprs_igate_rf_to_is_filter == "all-eligible" else "filtered RF to APRS-IS"
+    aprs_igate_active_mode = "receive-only" if aprs_active_mode == "rx" else aprs_igate_mode
+    aprs_igate_label = f"{aprs_igate_active_mode} via {aprs_igate_server}; {aprs_igate_scope}"
+else:
+    aprs_igate_label = "disabled"
+aprs_kiss_label = f"10.42.0.1:{aprs_kiss_port}" if aprs_kiss_port != "0" else "disabled"
+if aprs_beacon:
+    aprs_beacon_source = "GPS" if aprs_beacon_type == "gps-tracker" else aprs_beacon_type
+    aprs_beacon_interval_label = "10 minutes" if aprs_beacon_interval == "10:00" else aprs_beacon_interval
+    aprs_beacon_label = f"{aprs_beacon_source} every {aprs_beacon_interval_label}"
+else:
+    aprs_beacon_label = "disabled"
+aprs_digipeater_label = f"{aprs_digipeat_alias} only ({aprs_digipeat_mode})" if aprs_digipeat else "disabled"
+aprs_fx25_label = "enabled" if aprs_fx25_tx else "disabled"
+aprs_telemetry = {
+    "available": False,
+    "packets_1h": 0,
+    "packets_24h": 0,
+    "unique_stations_24h": 0,
+    "last_packet_at": "",
+    "last_station": "",
+}
+if os.path.isfile(APRS_TELEMETRY_HELPER):
+    telemetry_rc, telemetry_out, _ = run([APRS_TELEMETRY_HELPER, "--json"], timeout=5)
+    if telemetry_rc == 0:
+        try:
+            loaded_telemetry = json.loads(telemetry_out)
+            if isinstance(loaded_telemetry, dict):
+                aprs_telemetry.update(loaded_telemetry)
+        except (TypeError, ValueError):
+            pass
+if aprs_telemetry.get("available"):
+    aprs_packet_summary = f"{aprs_telemetry.get('packets_1h', 0)} last hour / {aprs_telemetry.get('packets_24h', 0)} last 24h"
+    aprs_last_packet = aprs_telemetry.get("last_packet_at") or "none in logs"
+else:
+    aprs_packet_summary = "not available"
+    aprs_last_packet = "not available"
+
+if APRS_STAGED:
+    aprs_status = "ok" if direwolf_installed and direwolf_template and not direwolf_active and not direwolf_enabled else "warn"
+    aprs_summary = "Dire Wolf software staged; waiting for USB audio and radio hardware"
+    aprs_service_label = "staged / disabled" if not direwolf_active else "unexpectedly active"
+    aprs_radio_label = "waiting for USB audio and radio"
+    aprs_tx_label = "disabled during staging"
+elif APRS_CONFIGURED:
+    aprs_status = "ok" if direwolf_installed and direwolf_live_config and direwolf_active else "warn"
+    aprs_summary = "Dire Wolf APRS service active" if aprs_status == "ok" else "Configured APRS service needs attention"
+    aprs_service_label = "active" if direwolf_active else "inactive"
+    aprs_radio_label = CONFIG.get("PCS_APRS_RADIO", f"{aprs_audio_input} -> {aprs_audio_output}")
+    aprs_tx_label = "enabled" if aprs_tx_enabled else "receive-only"
+else:
+    aprs_status = "ok"
+    aprs_summary = "APRS not selected"
+    aprs_service_label = "not configured"
+    aprs_radio_label = "not configured"
+    aprs_tx_label = "disabled"
+
 usb_rc, usb_out, _ = run(["lsusb"], timeout=5)
 usb_lower = usb_out.lower()
 wwan_usb = wwan_usb_info(usb_out, cell_info.get("model", ""))
@@ -2154,8 +2254,31 @@ cards = [
             },
         ],
     },
-
 ]
+
+if APRS_PREPARED:
+    cards.append({
+        "id": "aprs",
+        "title": "APRS / Packet",
+        "status": aprs_status,
+        "summary": aprs_summary,
+        "items": [
+            {"label": "PCS state", "value": APRS_STATE},
+            {"label": "Active profile", "value": aprs_active_mode},
+            {"label": "Dire Wolf package", "value": "installed" if direwolf_installed else "missing"},
+            {"label": "Service", "value": aprs_service_label},
+            {"label": "Boot enablement", "value": "enabled" if direwolf_enabled else "disabled"},
+            {"label": "Radio / audio", "value": aprs_radio_label},
+            {"label": "Frequency", "value": aprs_frequency},
+            {"label": "GPS tracker source", "value": f"{aprs_gpsd_host}:{aprs_gpsd_port}" if aprs_gpsd else "disabled"},
+            {"label": "APRS-IS", "value": "configured" if aprs_igate else "not configured"},
+            {"label": "RF TX", "value": aprs_tx_label},
+            {"label": "Packets", "value": aprs_packet_summary},
+            {"label": "Unique stations / 24h", "value": str(aprs_telemetry.get("unique_stations_24h", 0)) if aprs_telemetry.get("available") else "not available"},
+            {"label": "Last RF packet", "value": aprs_last_packet},
+            {"label": "Last station", "value": aprs_telemetry.get("last_station") or "not available"},
+        ],
+    })
 
 card_order = [
     "system-stats",
@@ -2170,6 +2293,7 @@ card_order = [
     "client-lan",
     "time",
     "gps",
+    "aprs",
 ]
 
 card_rank = {card_id: index for index, card_id in enumerate(card_order)}
@@ -2185,6 +2309,7 @@ client_info = {
     "router_ip": "10.42.0.1",
     "openwrt_url": "http://10.42.0.2/",
     "pi_star_configured": PI_STAR_CONFIGURED,
+    "aprs_state": APRS_STATE,
     "wan_public_ip": wan_ip or "unavailable",
     "uplink_interface": uplink_info.get("interface") or "unknown",
     "uplink_source_ip": uplink_info.get("source_ip") or "unknown",
@@ -2280,7 +2405,22 @@ if PUBLIC_VIEW:
             "url": "http://10.42.0.3/" if PI_STAR_CONFIGURED else "",
         },
         "aprs": {
-            "configured": False,
+            "configured": APRS_CONFIGURED,
+            "status": aprs_status,
+            "service": aprs_service_label,
+            "callsign": aprs_callsign,
+            "role": aprs_role_label,
+            "frequency": aprs_frequency,
+            "aprs_is": "configured" if aprs_igate else "not configured",
+            "aprs_is_profile": aprs_igate_label,
+            "modem": aprs_modem_label,
+            "beacon": aprs_beacon_label,
+            "digipeater": aprs_digipeater_label,
+            "kiss": aprs_kiss_label,
+            "fx25": aprs_fx25_label,
+            "packets": aprs_packet_summary,
+            "last_heard": aprs_last_packet,
+            "tx_state": aprs_tx_label,
         },
     }
 
