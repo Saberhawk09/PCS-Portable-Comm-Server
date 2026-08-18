@@ -106,6 +106,10 @@ The GPSD setting installs a socket proxy bound only to
 `PCS_SETUP_PISTAR=yes` enables the hotspot health checks and local-access
 links. Set it to `no` on builds without Pi-Star; the dashboard and self-test
 then omit those optional checks without degrading overall PCS health.
+In `ALL` or `DEFAULTS` input mode this answer is collected up front. After the
+installer establishes the PCS LAN on `eth0`, it immediately attempts the
+coordinated-shutdown pairing before continuing with the remaining setup. SSH
+asks for the Pi-Star password at that point; the password is not stored.
 
 `PCS_SETUP_APRS=staged` means Dire Wolf is installed but stopped and disabled,
 with no station identity, audio device, APRS-IS credential, PTT, or RF path.
@@ -184,8 +188,9 @@ cd /home/pi/Projects/PCS-Portable-Comm-Server
 
 Enter the Pi-Star password when SSH asks. The password is used only to install
 a restricted shutdown key and is not saved. If Pi-Star was already configured
-and reachable during the PCS base installer, this optional pairing step may
-already be complete.
+and reachable during the PCS base installer, this optional pairing is attempted
+immediately after the PCS LAN is configured and may already be complete. If it
+was not reachable then, use the standalone command above.
 
 ## Verification
 

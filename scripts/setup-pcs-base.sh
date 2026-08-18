@@ -405,8 +405,9 @@ echo "This script configures the current Raspberry Pi OS install for PCS baselin
 echo
 echo "It will run:"
 echo "  - Dependency installer"
-echo "  - RTC setup"
 echo "  - Client LAN / AP handoff setup on eth0"
+echo "  - Optional password-assisted Pi-Star coordinated shutdown pairing as soon as the PCS LAN is ready"
+echo "  - RTC setup"
 echo "  - Manual cellular profile setup"
 echo "  - Samba bootstrap share setup"
 echo "  - Samba SD-card backup share setup"
@@ -416,7 +417,6 @@ echo "  - Optional WWAN modem NMEA GPS setup, if WWAN GPS hardware is present"
 echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
 echo "  - Optional Pi-Star monitoring and local-access links"
 echo "  - Optional hardware-safe Dire Wolf / APRS software staging"
-echo "  - Optional password-assisted Pi-Star coordinated shutdown pairing"
 echo "  - Cockpit/systemd restart button install"
 echo "  - PCS public homepage and authenticated control panel setup"
 echo "  - Legacy port 8080 admin compatibility redirect"
@@ -520,9 +520,18 @@ fi
 
 run_step "Install dependencies" "PCS_DEFER_MODEMMANAGER_START=1 ./scripts/install-dependencies.sh"
 
-run_step "Configure RTC" "./scripts/setup-rtc.sh"
-
 run_step "Configure client LAN/AP handoff on eth0" "./scripts/setup-router-wan-share.sh"
+
+if [[ "${PCS_SETUP_PISTAR}" == "yes" ]]; then
+    run_optional_step \
+        "Pair Pi-Star coordinated shutdown" \
+        "PCS_PISTAR_PAIR_CONFIRM=yes ./scripts/setup-pistar-shutdown.sh"
+else
+    echo
+    echo "Pi-Star monitoring is disabled; skipping coordinated shutdown pairing."
+fi
+
+run_step "Configure RTC" "./scripts/setup-rtc.sh"
 
 run_step "Configure manual cellular profile" "./scripts/setup-cellular-profile.sh"
 
@@ -786,15 +795,6 @@ case "${aprs_answer}" in
         echo "  ./scripts/setup-direwolf-aprs.sh --prepare"
         ;;
 esac
-
-if [[ "${PCS_SETUP_PISTAR}" == "yes" ]]; then
-    run_optional_step \
-        "Pair Pi-Star coordinated shutdown" \
-        "./scripts/setup-pistar-shutdown.sh"
-else
-    echo
-    echo "Pi-Star monitoring is disabled; skipping coordinated shutdown pairing."
-fi
 
 echo
 echo "--- Ensure ModemManager is running for dashboard and self-test ---"
