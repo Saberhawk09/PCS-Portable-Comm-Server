@@ -522,6 +522,41 @@ Expected:
 Pi-Star coordinated shutdown pairing is ready.
 ```
 
+## Dire Wolf / APRS Safety Test
+
+These checks apply when Dire Wolf / APRS is selected during setup. They validate
+software and policy without claiming that audio, PTT, deviation, receiver
+performance, RF coverage, digipeating, or on-air behavior has been tested.
+
+From PCS:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --check
+./scripts/setup-direwolf-aprs.sh --capabilities
+./scripts/setup-direwolf-aprs.sh --software-test
+./scripts/setup-direwolf-aprs.sh --validate-config rx
+./scripts/setup-direwolf-aprs.sh --validate-config tx
+```
+
+For a software-staged installation, confirm:
+
+```bash
+systemctl is-enabled direwolf || true
+systemctl is-active direwolf || true
+```
+
+Expected staged state:
+
+```text
+Dire Wolf installation and synthetic packet tests pass
+Dire Wolf service is disabled and inactive
+No live APRS-IS credential, audio device, PTT, beacon, or RF path is configured
+RX/TX validation reports every unresolved hardware or operator decision as a blocker
+```
+
+Do not weaken or bypass a TX blocker to make this checklist pass. An intentionally
+active APRS installation instead requires the complete [Safe Activation Order](direwolf-aprs.md#safe-activation-order), including bench measurements and an operator-supervised RF test. Meshtastic is not part of the current test baseline because its PCS integration is not implemented.
+
 ## Service Status Test
 
 On the Pi:
@@ -566,6 +601,7 @@ Before using PCS for an event:
 - [ ] Windows NTP test works
 - [ ] GPS source appears in Chrony when antenna has sky view
 - [ ] Pi-Star receives the PCS GPSD protocol response
+- [ ] APRS is safely staged, or its active mode has completed the documented hardware and RF validation
 - [ ] Cellular can be manually connected if needed
 - [ ] Cellular can be manually disconnected
 - [ ] System survives reboot and returns to working state
@@ -583,5 +619,6 @@ NTP works
 Backup sync works
 OpenWrt AP is reachable
 Pi-Star integration check passes when the hotspot is installed
+APRS remains safely staged or has a documented, validated active mode
 Internet works when uplink is intentionally active
 ```

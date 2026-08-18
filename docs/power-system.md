@@ -106,7 +106,10 @@ Expected use:
 55.5 W / 72 W = about 77 percent
 ```
 
-That is acceptable for the planned build, but the COM-18732 should not be buried or treated as a no-heat part. Design the enclosure around airflow and mounting for this converter.
+That is within the documented converter rating, but it leaves limited design
+headroom and is not a measured as-built load. The COM-18732 should not be buried
+or treated as a no-heat part; its mounting, airflow, current, and temperature
+still require verification against the physical PCS.
 
 Design target:
 

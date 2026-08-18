@@ -20,6 +20,9 @@ Use this checklist for every public PCS release.
 - [ ] verify the public homepage and admin login from a PCS client
 - [ ] verify an authenticated admin action
 - [ ] verify Samba, NTP, GNSS, OpenWrt, and Pi-Star as applicable
+- [ ] when APRS is selected, run `./scripts/setup-direwolf-aprs.sh --check`, `--capabilities`, and `--software-test`
+- [ ] review `--validate-config rx` and `--validate-config tx`; investigate every blocker instead of bypassing it
+- [ ] confirm Dire Wolf is disabled/inactive when staged, or complete the documented bench and operator-supervised RF validation for an intentionally active mode
 - [ ] reboot and repeat the self-test for changes affecting startup or systemd
 
 ## GitHub Validation
@@ -35,4 +38,4 @@ Use this checklist for every public PCS release.
 
 ## Manual Field Checkpoints
 
-Credentials, firmware flashing, radio identity, RF behavior, and on-air testing remain operator-supervised. Do not place passwords, callsign credentials, SIM details, router backups, or private deployment data in Git.
+Credentials, firmware flashing, radio identity, RF behavior, and on-air testing remain operator-supervised. Do not place passwords, APRS-IS passcodes, callsign credentials, SIM details, router backups, or private deployment data in Git. Meshtastic remains outside the release test baseline until its PCS integration is implemented and documented.

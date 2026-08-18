@@ -1,18 +1,13 @@
 # Config Examples
 
-This folder will contain example configuration files for PCS services.
+This legacy directory is retained as a pointer. Maintained, versioned examples
+live in [`config/`](../config/) so they stay beside the installer inputs and
+templates that consume them:
 
-Planned examples may include:
+- [`pcs-install.example.conf`](../config/pcs-install.example.conf) — non-secret PCS installer selections
+- [`local-client-names.example.tsv`](../config/local-client-names.example.tsv) — friendly LAN client names
+- [`direwolf.example.conf`](../config/direwolf.example.conf) — hardware-safe staged Dire Wolf template
 
-- Samba / SMB file sharing
-- GPSD
-- Chrony / NTP
-- ModemManager
-- NetworkManager
-- WireGuard
-- Router notes
-- Firewall or DHCP examples
-
-All files in this folder must use fake/example values.
+All committed examples must use fake or non-secret values.
 
 Do not commit real passwords, private keys, SIM information, carrier account details, or private network configuration.

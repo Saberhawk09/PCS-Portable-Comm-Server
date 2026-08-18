@@ -194,7 +194,7 @@ was not reachable then, use the standalone command above.
 
 ## Verification
 
-The PCS Pi SD-card wipe/rebuild path was verified on July 8, 2026. The procedure below remains the release-standard validation because OpenWrt, Pi-Star, credentials, and on-air radio checks still contain intentional manual checkpoints.
+The PCS Pi SD-card wipe/rebuild path was most recently verified on August 18, 2026. That validation covered the repeatable Pi-side software path and configured integrations; it did not make OpenWrt or Pi-Star flashing, credentials, appliance backups, USB identity decisions, or on-air RF checks automatic. The procedure below remains the release-standard validation because those intentional manual checkpoints still apply.
 
 On PCS:
 
@@ -203,6 +203,8 @@ cd /home/pi/Projects/PCS-Portable-Comm-Server
 ./scripts/pcs-self-test.sh
 ./scripts/pcs-status.sh
 ./scripts/setup-pistar-shutdown.sh --check
+./scripts/setup-direwolf-aprs.sh --check
+./scripts/setup-direwolf-aprs.sh --software-test
 ```
 
 Copy a fresh version of the Pi-Star script after a repository update, then run
@@ -233,6 +235,7 @@ complete when:
 - Pi-Star time synchronizes through PCS
 - Pi-Star receives a GPSD protocol response from PCS
 - coordinated shutdown readiness check passes
+- Dire Wolf is safely staged and its software test passes, or its active mode has completed the documented hardware/RF validation
 - required radio modes pass an operator-supervised on-air test
 
 ## Remaining Manual Checkpoints
