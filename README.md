@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml)
 
-A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS disciplined NTP, LAN file sharing, and web monitoring. Also now with Pi-Star, APRS, and Meshtastic.
+A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, optional Pi-Star integration, and hardware-safe APRS staging.
 
 What started as an annoyance caused by Windows networking has evolved into my first end-to-end hardware and software project.
 
@@ -29,9 +29,9 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
 
-Software wise, the PCS repo is currently in a beta/working with minor issues. Installs are repeatable and everything is configured automatically, save for the cell modem firmware and the optional Pi-Star integration. Those must be configured separately.
+PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, optional Pi-Star support, and hardware-safe APRS staging. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF commissioning remain deliberate operator-supervised steps.
 
-Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system is fully functional with the source selector switch. 2x 120mm cooling fans have been installed for cooling which seem to be more than sufficient. Pi-Star is working alongside PCS, and the external SMA antennas are working great. No additional IO has been expanded to the front IO panel yet. Direwolf for APRS is installed but the hardware has yet to be installed, and Meshtastic is still in the planning phase
+The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 120 mm cooling fans, Pi-Star hotspot, cellular/GNSS path, and external SMA antennas are working in the current build. The remaining APRS and Meshtastic expansion hardware has been purchased and is awaiting delivery; it is not yet installed or validated. Front-panel expansion and the exact as-built electrical and mechanical record are also unfinished.
 
 ### Hardware
 
@@ -41,10 +41,10 @@ Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system 
 - LTE and active GNSS antennas with validated cellular registration and 3D GNSS fixes
 - DS1307 I2C RTC for a sane boot-time reference
 - Removable USB primary storage with an SD-card backup mirror
-- AC/DC power system with source selector switch
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
-- Optional Dire Wolf / APRS software staging (radio and USB audio hardware pending)
-- Optional Meshtastic Node with intergrations
+- Operational AC/DC power system with source selector switch; as-built electrical measurements and wiring records remain pending
+- Optional Dire Wolf / APRS software staging; radio/audio interface hardware purchased and awaiting delivery
+- Optional Meshtastic expansion hardware purchased and awaiting delivery; integration is not yet implemented
 
 ### Software
 
@@ -54,30 +54,30 @@ Hardware wise, PCS is currently at a v1 prototype stage. The AC/DC power system 
 - USB primary Samba share with SD-card backup mirror
 - GPS NMEA from `/dev/ttyUSB1` through gpsd and Chrony to LAN clients
 - Manual cellular data control with Wi-Fi fallback during development and testing
-- LAN GPSD, NTP, and coordinated Pi-Star shutdown integration
+- LAN GPSD, NTP, and installer-assisted coordinated Pi-Star shutdown integration
 - Hardware-safe Dire Wolf staging with APRS activation intentionally deferred
-- PCS Pi SD-card wipe/rebuild verified on August 18th 2026
+- PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; credentials, external-device recovery, and RF checks remain manual
 
 ### Current Finish Work
 
 - Capture final enclosure dimensions, mounting details, photos, and CAD references
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
+- Install and commission the APRS and Meshtastic expansion hardware after it arrives
 - Continue expanding automated and operator-supervised field validation
-- APRS and Meshtastic hardware/software integration
 
 ## Hardware Setup
 
-### Before running setup, connect the hardware you want the installer to configure:
+Before running setup, connect the hardware you want the installer to configure:
 
- - Raspberry Pi booted from the target SD card. Tested with latest Raspberry Pi OS 64-bit Desktop (Should work on Lite).
- - Ethernet from the Pi to the PCS router/AP via a LAN port (Not the WAN/Internet Port).
- - The PCS router/AP powered on.
- - The RTC module installed, if this build includes the RTC.
- - The WWAN modem installed and connected over USB, if this build includes cellular/GPS.
- - The GPS/GNSS antenna connected to the WWAN modem, if configuring WWAN GPS/NMEA.
- - The intended USB storage device connected, if using USB primary file storage.
- - The APRS USB sound card and radio interface, only when moving beyond software staging.
+- Raspberry Pi booted from the target SD card. Tested with Raspberry Pi OS 64-bit Desktop; Lite has not yet been validated.
+- Ethernet from the Pi to the PCS router/AP through a LAN port, not the WAN/Internet port.
+- The PCS router/AP powered on.
+- The RTC module installed, if this build includes the RTC.
+- The WWAN modem installed and connected over USB, if this build includes cellular/GPS.
+- The GPS/GNSS antenna connected to the WWAN modem, if configuring WWAN GPS/NMEA.
+- The intended USB storage device connected, if using USB primary file storage.
+- The APRS USB sound card and radio interface, only when moving beyond software staging.
 
 ## Software Setup
 
@@ -96,7 +96,7 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-The setup script installs the PCS software baseline, configures the Pi client network, sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel.
+The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing and can stage Dire Wolf without activating an RF path.
 
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 
@@ -197,8 +197,8 @@ ping google.com
 Expected:
 
 - `10.42.0.1` replies from the Pi
-- `8.8.8.8` confirms internet routing
-- `google.com` confirms DNS
+- `8.8.8.8` confirms internet routing when an uplink is intentionally active
+- `google.com` confirms DNS when an uplink is intentionally active
 
 For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
@@ -266,21 +266,29 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 
 See [Script Reference](scripts/README.md) for the full script list.
 
-## Hardware / Build Planning
+## Hardware and Expansion Status
 
-Current tested hardware:
+Installed and tested hardware:
 
 - Raspberry Pi 4
 - RTC module
 - USB flash drive
 - Linksys EA4500 running OpenWrt used as AP/switch
-- Sierra Wireless WWAN cellular modems
+- Sierra Wireless EM7565 WWAN modem with external LTE and active GNSS antennas
+- Pi-Star hotspot
+- AC/DC source-selector power system and two 120 mm cooling fans
 
-Planned hardware:
+Purchased and awaiting delivery or installation:
 
-- Final power system build using the documented 24 V supply, regulated 12 V bus, and 5 V converter architecture
-- Final enclosure
-- External antennas
+- APRS radio/audio interface hardware
+- Meshtastic expansion hardware
+
+Remaining documentation and validation:
+
+- Record the exact as-built power components, fuses, wiring, grounding, rail measurements, and thermal results
+- Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
+- Bench-test and operator-supervise APRS activation before enabling any RF transmit path
+- Document and validate the Meshtastic integration after the hardware arrives
 
 For more detail, see [Bill of Materials](docs/bill-of-materials.md) and [Power System](docs/power-system.md).
 
@@ -294,8 +302,7 @@ The problem was simple:
 
 Windows update.
 
-During the Winter Field Day prior, we had used my Dell Latitude 7212 Toughbook for networking. All logging machines connected to my machine via the WiFi hotspot function and it worked well enough. The only problem was w
-Windows not allowing me to turn the hotspot on without an internet connection. My toughbook had a DW5821e cellular modem, but the signal was very marginal so I had to make sure once the hotspot was on it never turned off.
+During the Winter Field Day prior, we had used my Dell Latitude 7212 Toughbook for networking. All logging machines connected to my machine through the Wi-Fi hotspot function, and it worked well enough. The only problem was Windows not allowing me to turn the hotspot on without an internet connection. My Toughbook had a DW5821e cellular modem, but the signal was very marginal, so I had to make sure that once the hotspot was on, it never turned off.
 
 Nerve wracking and annoying, but we made it work.
 
