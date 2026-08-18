@@ -60,13 +60,25 @@ Pi-Star:         http://10.42.0.3 (when selected during setup)
 
 ## Documentation Status
 
-The software, network, storage, WWAN/GNSS, and Pi-Star documents describe the current working system as of August 2026. Hardware documentation now distinguishes the operational build from as-built details that still need to be measured or photographed.
+The software, network, storage, WWAN/GNSS, Pi-Star, and hardware-safe Dire Wolf / APRS staging documents describe the current working system as of August 2026. The Pi-side wipe/rebuild path was most recently verified on August 18, 2026.
+
+The current documentation uses these status boundaries:
+
+- **Installed / tested:** working in the current PCS build
+- **Software staged:** installed and testable without activating dependent hardware or RF
+- **Purchased / awaiting delivery:** acquired but not installed or validated
+- **As-built record pending:** operational hardware whose exact wiring, measurements, mounting, or part reconciliation is still incomplete
+
+APRS remains software-staged until its purchased radio/audio/PTT hardware arrives and passes bench and operator-supervised RF validation. Meshtastic hardware has been purchased and is awaiting delivery; PCS integration is not yet implemented or documented as a working subsystem.
 
 Current documentation priorities:
 
 - capture exact enclosure dimensions, mounting locations, and CAD/export references
 - reconcile power and wiring notes with the physical build
 - record measured rail voltage, current draw, fuse sizes, wire gauge, and thermal results
+- install and validate the APRS and Meshtastic expansion hardware after delivery
+- add a Meshtastic integration document only after its PCS design and observed behavior are established
+- extend the general testing and release checklists for the guarded APRS workflow
 - keep install and validation steps copy/paste friendly
 - update the changelog and release checklist with every public release
 

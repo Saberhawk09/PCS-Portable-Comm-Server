@@ -11,17 +11,21 @@ PCS is intended to feature/provide:
 - Cellular internet access when available
 - GPS/Internet disciplined NTP server
 - Web-based system monitoring and control
+- Optional Pi-Star, APRS, and future Meshtastic integration
 - Simple operation by non-technical users
 - Rugged enclosure and field power support
 
 ## Current Project Status
 
-PCS is an operational hardware and software system. The core software baseline is rebuild-tested, and the current assembled hardware provides the intended LAN, storage, time, GNSS, monitoring, and optional cellular services.
+PCS is an operational v1 hardware and software prototype. The core Pi-side software baseline is rebuild-tested, and the assembled hardware provides the intended LAN, storage, time, GNSS, monitoring, optional cellular, and Pi-Star services.
+
+Dire Wolf / APRS is software-staged with the service and RF path disabled. The APRS radio/audio/PTT and Meshtastic expansion hardware has been purchased and is awaiting delivery; neither expansion is installed or hardware-validated. The exact as-built power, wiring, grounding, thermal, enclosure, and mounting records are also still pending.
 
 Current focus:
 
 - Polish the software
 - Improve reliability and error handling with setup and operation
+- Install and commission the purchased APRS and Meshtastic expansion hardware after delivery
 - Keep documentation and releases aligned with the fielded system
 
 ## Current Tested Hardware
@@ -30,12 +34,20 @@ Current tested hardware includes:
 
 - Raspberry Pi 4
 - DS1307 I2C RTC module
-- USB WWAN enclosure
-- Sierra Wireless EM7455 and EM7565 LTE modems
+- Sierra Wireless EM7565 LTE modem and USB WWAN adapter
 - Linksys EA4500 running OpenWrt
 - USB flash drive for primary Samba storage
-- Active GNSS antenna
-- Pi-Star hotspot integration when installed
+- External LTE and active GNSS antennas
+- Pi-Star hotspot at `10.42.0.3`
+- Operational AC/DC source-selector power system
+- Two 120 mm cooling fans
+
+Purchased and awaiting delivery or installation:
+
+- APRS radio/audio/PTT hardware
+- Meshtastic expansion hardware
+
+Purchased hardware is not treated as installed or validated until it has been commissioned and tested.
 
 ## Current Network Layout
 
@@ -66,6 +78,8 @@ PCS server / gateway
         +-- GPSD
         +-- PCS public homepage
         +-- authenticated admin control panel
+        +-- optional Pi-Star integration at 10.42.0.3
+        +-- hardware-safe Dire Wolf / APRS staging
         +-- optional cellular internet
                 |
                 v
@@ -93,8 +107,13 @@ The current software baseline includes:
 - EM7565 w/active GPS antenna
 - gpsd support
 - Chrony GPS source support
+- LAN-only GPSD sharing for trusted PCS clients
+- Optional Pi-Star monitoring, GPS/time integration, and installer-assisted coordinated-shutdown pairing
+- Hardware-safe Dire Wolf installation, profile rendering, synthetic testing, and guarded RX/TX activation workflow
 - Cockpit access
 - systemd service integration
+
+Meshtastic integration is not yet implemented. Its purchased hardware remains an expansion item awaiting delivery and design validation.
 
 ## Current Client Access
 
@@ -108,6 +127,7 @@ Primary Share:      \\10.42.0.1\PCS-Share
 Backup Share:       \\10.42.0.1\PCS-Backup
 LAN NTP Server:     10.42.0.1
 OpenWrt AP:         http://10.42.0.2
+Pi-Star Dashboard:  http://10.42.0.3 (when selected during setup)
 ```
 
 ## Cellular Internet Philosophy
@@ -183,11 +203,13 @@ The working build is operational. Remaining work is primarily documentation, mea
 - reconcile the documented power architecture with the physical as-built wiring
 - record actual fuse values, wire gauge, rail voltage, current draw, and thermal results
 - finish permanent external LTE and GNSS antenna labeling and mounting documentation
+- install and bench-validate the APRS hardware before any supervised RF activation
+- document and validate the Meshtastic integration after its hardware arrives
 - consider battery voltage monitoring and low-voltage safe shutdown hardware
 - consider a small local status display
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
 
-The PCS Pi SD-card wipe/rebuild was verified on July 8, 2026. Credential entry, radio identity, firmware flashing, and on-air RF checks intentionally remain manual.
+The PCS Pi SD-card wipe/rebuild was most recently verified on August 18, 2026. Credential entry, external-appliance recovery, radio identity, firmware flashing, and on-air RF checks intentionally remain manual.
 
 ## Related Documentation
 
@@ -197,6 +219,9 @@ Start with:
 - [Network Design](network-design.md)
 - [Linksys EA4500 AP Setup](linksys-ea4500-ap.md)
 - [Raspberry Pi Setup](raspberry-pi-setup.md)
+- [Full-Stack Reinstall Runbook](full-stack-reinstall.md)
+- [Pi-Star Integration](pi-star-integration.md)
+- [Dire Wolf / APRS Integration](direwolf-aprs.md)
 - [Samba File Share](samba-file-share.md)
 - [PCS Control Panel](pcs-control-panel.md)
 - [Testing Checklist](testing-checklist.md)

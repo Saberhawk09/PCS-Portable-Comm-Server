@@ -1,10 +1,13 @@
 # Bill of Materials
 
+Status reflects the latest known acquisition state. **Purchased / awaiting delivery** does not mean installed or validated. **Purchased / as-built record pending** means the part has been acquired, but its exact installation still needs to be reconciled with the physical PCS.
+
 ## Compute Hardware
 
 | Item                 | Qty | Status      | Price | Notes                                |
 | -------------------- | --: | ----------- | ----: | ------------------------------------ |
 | Raspberry Pi 4 8GB   |   1 | Owned       |     - | Main server hardware                 |
+| DS1307-compatible RTC module | 1 | Installed / tested | - | Boot-time reference clock |
 | External flash drive |   1 | Installed / tested |     - | Removable storage for LAN file share |
 
 ## Networking / Cellular
@@ -25,25 +28,40 @@
 | --------------------------------- | --: | ------ | ----: | -------------------------------- |
 | Linksys EA4500 running OpenWrt |   1 | Installed / tested |     - | Dedicated PCS AP / Ethernet switch |
 
+## Radio / Expansion Hardware
+
+| Item                               | Qty | Status                         | Price | Notes                                      |
+| ---------------------------------- | --: | ------------------------------ | ----: | ------------------------------------------ |
+| Pi-Star hotspot                    |   1 | Installed / tested             |     - | Fixed PCS-LAN node at `10.42.0.3`          |
+| APRS radio/audio/PTT hardware      | TBD | Purchased / awaiting delivery  |     - | Exact models and component quantities TBD  |
+| Meshtastic expansion hardware      | TBD | Purchased / awaiting delivery  |     - | Exact nodes and integration details TBD    |
+
 ## Power System
 
 | Item                          | Qty | Status    | Price | Notes                             |
 | ----------------------------- | --: | --------- | ----: | --------------------------------- |
-| Anderson Powerpole inlet      |   1 | Purchased |   $15 | DC input                          |
-| Automotive blade fuse holders |   2 | Purchased |    $5 | Fuse holders                      |
-| Bussmann 3A blade fuses       |   5 | Purchased |    $5 | 12 V and converter branch fusing  |
-| 7.5A slow-blow fuse           |   1 | Planned   |     - | Main selected-DC input fuse       |
-| SPST switches                 |   4 | Purchased |    $6 | Auxiliary switching               |
-| DPDT center-off switch        |   1 | Purchased |   $12 | AC/DC source selection            |
-| Switched fused C14 inlet      |   1 | Purchased |    $8 | AC grid input                     |
-| Mean Well LRS-100-24          |   1 | Planned   |     - | 120 VAC to 24 VDC, 108 W          |
-| SparkFun COM-18732            |   1 | Planned   |     - | 8-36 V input to regulated 12 V    |
-| Mean Well PSD-30A-5           |   1 | Planned   |     - | Regulated 12 V to 5 V, 5 A        |
+| Anderson Powerpole inlet      |   1 | Purchased / as-built record pending |   $15 | DC input                          |
+| Automotive blade fuse holders |   2 | Purchased / as-built record pending |    $5 | Fuse holders                      |
+| Bussmann 3A blade fuses       |   5 | Purchased / as-built record pending |    $5 | 12 V and converter branch fusing  |
+| 7.5A slow-blow fuse           |   1 | Purchased / as-built record pending |     - | Main selected-DC input fuse       |
+| SPST switches                 |   4 | Purchased / as-built record pending |    $6 | Auxiliary switching               |
+| DPDT center-off switch        |   1 | Purchased / as-built record pending |   $12 | AC/DC source selection            |
+| Switched fused C14 inlet      |   1 | Purchased / as-built record pending |    $8 | AC grid input                     |
+| Mean Well LRS-100-24          |   1 | Purchased / as-built record pending |     - | 120 VAC to 24 VDC, 108 W          |
+| SparkFun COM-18732            |   1 | Purchased / as-built record pending |     - | 8-36 V input to regulated 12 V    |
+| Mean Well PSD-30A-5           |   1 | Purchased / as-built record pending |     - | Regulated 12 V to 5 V, 5 A        |
+| 120 mm cooling fans           |   2 | Installed / operating                 |     - | Thermal performance not yet measured |
+
+## Enclosure / Mechanical
+
+| Item                                  | Qty   | Status                              | Price | Notes                                  |
+| ------------------------------------- | ----: | ----------------------------------- | ----: | -------------------------------------- |
+| Prototype enclosure and mounting hardware | 1 set | Installed / as-built record pending | - | Dimensions, fasteners, photos, and CAD references TBD |
 
 ## Estimated Listed Cost
 
 Known listed cost total: **$120**
 
-This total only includes items with prices listed in this document. Items marked with `-` were already owned or purchased separately, so their prices are not included.
+This total only includes items with prices currently listed in this document. Items marked with `-` were already owned, purchased separately, or still need their purchase price recorded, so they are not included.
 
-Power-system rows still marked **Planned** have not yet been reconciled with the physical as-built unit. Update their status and actual cost when that inspection is recorded.
+No hardware remains marked **Planned**. Purchased expansion hardware remains uninstalled until delivery, and the power and enclosure rows still require reconciliation with the physical as-built unit before they can be called installed or electrically validated.
