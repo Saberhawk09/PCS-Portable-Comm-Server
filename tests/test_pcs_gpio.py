@@ -260,8 +260,18 @@ class PcsGpioTests(unittest.TestCase):
             "gps_fix",
         })
         frames = pcs_gpio.matrix_alert_frames(alerts)
-        self.assertEqual(frames[0].rows, pcs_gpio.NO_FIX_ICON)
-        self.assertEqual(frames[0].intensity, 6)
+        for index, alert in enumerate(alerts):
+            prefix, subsystem = frames[index * 2:index * 2 + 2]
+            expected_prefix = (
+                pcs_gpio.X_ICON
+                if alert.severity == "critical"
+                else pcs_gpio.EXCLAMATION_ICON
+            )
+            expected_intensity = 6 if alert.severity == "critical" else 4
+            self.assertEqual(prefix.rows, expected_prefix)
+            self.assertEqual(prefix.intensity, expected_intensity)
+            self.assertEqual(subsystem.rows, alert.icon)
+            self.assertEqual(subsystem.intensity, expected_intensity)
 
     def test_one_matrix_alert_rotation_writes_only_health_frames(self):
         class FakeMatrix:

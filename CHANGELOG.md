@@ -44,7 +44,8 @@ All notable user-facing PCS changes are recorded here.
 - corrected the LCD cellular state to follow the actual NetworkManager data
   session instead of treating a registered idle modem as connected
 - repurposed the MAX7219 from duplicate telemetry into a priority health
-  annunciator with healthy heartbeat/checkmark, warning, and critical patterns
+  annunciator with healthy heartbeat/checkmark, `!` plus subsystem warning, and
+  `X` plus subsystem critical patterns
 - recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
   capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel

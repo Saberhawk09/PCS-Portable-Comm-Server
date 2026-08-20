@@ -111,9 +111,9 @@ The base installer exposes this as the optional
 when necessary, installs `python3-spidev` if missing, and reports when a reboot
 is needed before `/dev/spidev0.0` becomes available.
 
-The service uses a heartbeat/checkmark animation when PCS is healthy. Warnings
-alternate an attention symbol with a subsystem icon; critical faults alternate
-an `X` with the subsystem icon. It watches CPU temperature, root-disk capacity,
+The service uses a heartbeat/checkmark animation when PCS is healthy. Every
+warning shows an `!` followed by its subsystem icon; every critical fault shows
+an `X` followed by its subsystem icon. It watches CPU temperature, root-disk capacity,
 primary USB mounting, failed systemd units, active uplink, and GPS fix without
 duplicating the LCD's normal telemetry. It does not retain GPS coordinates or
 control APRS PTT or radio UART lines.

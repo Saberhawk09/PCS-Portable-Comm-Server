@@ -99,8 +99,8 @@ drive SPI, PTT, UART, fan, or WS2812 lines.
 ## MAX7219 Health Annunciator
 
 The installed matrix is an across-the-room health annunciator. A heartbeat and
-checkmark indicate normal operation. Warnings alternate an attention symbol
-with the affected subsystem icon; critical faults alternate an `X` with the
+checkmark indicate normal operation. Every warning shows an `!` followed by the
+affected subsystem icon; every critical fault shows an `X` followed by the
 subsystem icon. Alert sources are CPU temperature (75/85 C warning/critical),
 root-disk use (85/95 percent), missing primary USB storage, failed systemd units,
 no active uplink, and unavailable GPS fix. Detailed live values remain on the
