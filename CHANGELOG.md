@@ -40,6 +40,7 @@ All notable user-facing PCS changes are recorded here.
   temperature, cellular on/off state, and paired GPS view/used satellite counts
 - expanded the LCD rotation with active network-uplink and AP-client/grid-square
   pages using the PCS route, neighbor, and GPS definitions
+- centered all HD44780 text fields within their 16-character rows
 - recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
   capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel

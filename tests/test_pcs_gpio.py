@@ -50,9 +50,9 @@ class PcsGpioTests(unittest.TestCase):
     def test_lcd_line_normalization_is_exactly_two_rows_of_sixteen(self):
         self.assertEqual(
             pcs_gpio.normalize_lcd_lines(("PCS ONLINE", "A line that is much too long", "ignored")),
-            ("PCS ONLINE      ", "A line that is m"),
+            ("   PCS ONLINE   ", "A line that is m"),
         )
-        self.assertEqual(pcs_gpio.normalize_lcd_lines(("one\nline",)), ("one line        ", "                "))
+        self.assertEqual(pcs_gpio.normalize_lcd_lines(("one\nline",)), ("    one line    ", "                "))
         self.assertEqual(pcs_gpio.HD44780_CHARACTER_CODES["°"], 0xDF)
 
     def test_max7219_uses_the_proven_pcs_spi_settings(self):
@@ -300,7 +300,7 @@ class PcsGpioTests(unittest.TestCase):
             result = pcs_gpio.main(("lcd", "--line1", "PCS ONLINE", "--line2", "READY"))
         self.assertEqual(result, 0)
         parsed = json.loads(output.getvalue())
-        self.assertEqual(parsed["lines"], ["PCS ONLINE      ", "READY           "])
+        self.assertEqual(parsed["lines"], ["   PCS ONLINE   ", "     READY      "])
         self.assertFalse(parsed["writes_performed"])
 
     def test_real_lcd_requires_double_confirmation(self):

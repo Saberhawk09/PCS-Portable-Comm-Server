@@ -326,10 +326,10 @@ def selected_targets(target: str) -> tuple[str, ...]:
 
 
 def normalize_lcd_lines(lines: Sequence[str]) -> tuple[str, str]:
-    """Return exactly two printable 16-character HD44780 rows."""
+    """Return exactly two centered, printable 16-character HD44780 rows."""
     normalized = [str(line).replace("\n", " ").replace("\r", " ") for line in lines[:LCD_ROWS]]
     normalized.extend("" for _ in range(LCD_ROWS - len(normalized)))
-    return tuple(line[:LCD_COLUMNS].ljust(LCD_COLUMNS) for line in normalized)  # type: ignore[return-value]
+    return tuple(line[:LCD_COLUMNS].center(LCD_COLUMNS) for line in normalized)  # type: ignore[return-value]
 
 
 def run_demo(
