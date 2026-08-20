@@ -35,23 +35,25 @@ class PinAssignment:
 PIN_ASSIGNMENTS: tuple[PinAssignment, ...] = (
     PinAssignment("RTC SDA", 2, 3, "Linux I2C", "existing; kernel-managed"),
     PinAssignment("RTC SCL", 3, 5, "Linux I2C", "existing; kernel-managed"),
-    PinAssignment("LCD RS", 4, 7, "pcs_gpio", "selected; not bench-tested"),
+    PinAssignment("LCD RS", 4, 7, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("APRS PTT", 6, 31, "Dire Wolf", "selected; activation-gated"),
     PinAssignment("MAX7219 CS", 8, 24, "Linux SPI0", "installed and bench-tested"),
     PinAssignment("MAX7219 DIN", 10, 19, "Linux SPI0", "installed and bench-tested"),
     PinAssignment("MAX7219 CLK", 11, 23, "Linux SPI0", "installed and bench-tested"),
     PinAssignment("SA818 UART TX", 14, 8, "Linux UART", "reserved; logic level unverified"),
     PinAssignment("SA818 UART RX", 15, 10, "Linux UART", "reserved; logic level unverified"),
-    PinAssignment("LCD E", 17, 11, "pcs_gpio", "selected; not bench-tested"),
+    PinAssignment("LCD E", 17, 11, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("Fan PWM", 18, 12, "pcs_gpio", "selected; behavior not measured"),
     PinAssignment("WS2812 data", 21, 40, "pcs_gpio", "selected; not bench-tested"),
-    PinAssignment("LCD D4", 22, 15, "pcs_gpio", "selected; not bench-tested"),
-    PinAssignment("LCD D5", 23, 16, "pcs_gpio", "selected; not bench-tested"),
-    PinAssignment("LCD D6", 24, 18, "pcs_gpio", "selected; not bench-tested"),
-    PinAssignment("LCD D7", 25, 22, "pcs_gpio", "selected; not bench-tested"),
+    PinAssignment("LCD D4", 27, 13, "pcs_gpio", "installed and bench-tested"),
+    PinAssignment("LCD D5", 22, 15, "pcs_gpio", "installed and bench-tested"),
+    PinAssignment("LCD D6", 23, 16, "pcs_gpio", "installed and bench-tested"),
+    PinAssignment("LCD D7", 24, 18, "pcs_gpio", "installed and bench-tested"),
 )
 
-LCD_PINS = {"rs": 4, "enable": 17, "d4": 22, "d5": 23, "d6": 24, "d7": 25}
+LCD_PINS = {"rs": 4, "enable": 17, "d4": 27, "d5": 22, "d6": 23, "d7": 24}
+LCD_COLUMNS = 16
+LCD_ROWS = 2
 WS2812_PIN = 21
 WS2812_COUNT = 6
 FAN_PWM_PIN = 18
@@ -132,14 +134,17 @@ class HD44780:
         self._send(value, data=False)
 
     def text(self, lines: Sequence[str]) -> None:
-        padded = [str(line)[:16].ljust(16) for line in (*lines[:2], "", "")[:2]]
+        padded = normalize_lcd_lines(lines)
         for address, line in zip((0x00, 0x40), padded):
             self.command(0x80 | address)
             for character in line:
                 self._send(ord(character), data=True)
 
-    def close(self) -> None:
-        self.command(0x01)
+    def close(self, *, clear: bool = True) -> None:
+        if clear:
+            self.command(0x01)
+        for output in (*self.data, self.enable, self.rs):
+            output.off()
         for output in (*self.data, self.enable, self.rs):
             output.close()
 
@@ -293,6 +298,12 @@ class MatrixDisplay(Protocol):
     def close(self) -> None: ...
 
 
+class LcdDisplay(Protocol):
+    def text(self, lines: Sequence[str]) -> None: ...
+
+    def close(self, *, clear: bool = True) -> None: ...
+
+
 @dataclass(frozen=True)
 class StatsFrame:
     metric: str
@@ -305,6 +316,13 @@ class StatsFrame:
 
 def selected_targets(target: str) -> tuple[str, ...]:
     return SAFE_ALL_TARGETS if target == "all" else (target,)
+
+
+def normalize_lcd_lines(lines: Sequence[str]) -> tuple[str, str]:
+    """Return exactly two printable 16-character HD44780 rows."""
+    normalized = [str(line).replace("\n", " ").replace("\r", " ") for line in lines[:LCD_ROWS]]
+    normalized.extend("" for _ in range(LCD_ROWS - len(normalized)))
+    return tuple(line[:LCD_COLUMNS].ljust(LCD_COLUMNS) for line in normalized)  # type: ignore[return-value]
 
 
 def run_demo(
@@ -445,6 +463,46 @@ def collect_stats() -> StatsSnapshot:
     )
 
 
+def read_uptime_seconds(path: Path = Path("/proc/uptime")) -> int | None:
+    try:
+        value = float(path.read_text(encoding="ascii").split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    return max(0, int(value))
+
+
+def format_uptime(seconds: int | None) -> str:
+    if seconds is None:
+        return "UPTIME UNKNOWN"
+    minutes = max(0, int(seconds)) // 60
+    days, minutes = divmod(minutes, 24 * 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"UP {min(days, 999)}d {hours:02}h {minutes:02}m"
+
+
+def lcd_status_pages(
+    snapshot: StatsSnapshot,
+    uptime_seconds: int | None,
+) -> tuple[tuple[str, str], ...]:
+    temperature = "--" if snapshot.temperature_c is None else str(snapshot.temperature_c)
+    cellular = "--" if snapshot.cellular_quality is None else str(snapshot.cellular_quality)
+    if snapshot.gps_satellites is None:
+        gps_line1 = "GPS DATA UNKNOWN"
+    else:
+        gps_line1 = f"GPS {snapshot.gps_satellites} SAT VIEW"
+    if snapshot.gps_satellites == 0 or snapshot.gps_locked is False:
+        gps_line2 = "NO GPS FIX"
+    elif snapshot.gps_locked is True:
+        gps_line2 = "GPS FIX OK"
+    else:
+        gps_line2 = "FIX UNKNOWN"
+    return (
+        ("PCS ONLINE", format_uptime(uptime_seconds)),
+        (f"CPU TEMP {temperature}C", f"LTE SIGNAL {cellular}%"),
+        (gps_line1, gps_line2),
+    )
+
+
 def stats_frames(snapshot: StatsSnapshot) -> tuple[StatsFrame, ...]:
     if snapshot.gps_satellites == 0 or snapshot.gps_locked is False:
         gps_value = NO_FIX_ICON
@@ -484,6 +542,35 @@ def run_stats(
         if once:
             break
         sleeper(cycle_pause)
+
+
+def run_lcd_status(
+    lcd: LcdDisplay,
+    *,
+    once: bool = False,
+    page_seconds: float = 3.0,
+    collector: Callable[[], StatsSnapshot] = collect_stats,
+    uptime_reader: Callable[[], int | None] = read_uptime_seconds,
+    sleeper: Callable[[float], None] = time.sleep,
+    should_stop: Callable[[], bool] = lambda: False,
+) -> None:
+    while not should_stop():
+        snapshot = collector()
+        pages = lcd_status_pages(snapshot, uptime_reader())
+        print(
+            json.dumps(
+                {"snapshot": snapshot.as_dict(), "pages": [list(page) for page in pages]},
+                separators=(",", ":"),
+            ),
+            flush=True,
+        )
+        for page in pages:
+            if should_stop():
+                break
+            lcd.text(page)
+            sleeper(page_seconds)
+        if once:
+            break
 
 
 def dependency_report() -> dict[str, object]:
@@ -529,6 +616,14 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--duration", type=float, default=3.0)
     demo.add_argument("--fan-duty", type=float)
 
+    lcd = subparsers.add_parser("lcd", help="write two lines to the HD44780-compatible 16x2 LCD")
+    lcd.add_argument("--line1", default="PCS ONLINE")
+    lcd.add_argument("--line2", default="LCD DRIVER READY")
+    lcd.add_argument("--hardware", action="store_true", help="select the real Raspberry Pi LCD")
+    lcd.add_argument("--apply", action="store_true", help="confirm that LCD GPIO writes are intended")
+    lcd.add_argument("--duration", type=float, default=0.0, help="seconds to hold GPIO ownership after writing")
+    lcd.add_argument("--clear", action="store_true", help="clear the LCD before releasing GPIO")
+
     stats = subparsers.add_parser("stats", help="rotate useful live PCS statistics on the MAX7219")
     stats.add_argument("--hardware", action="store_true", help="select the real SPI0 MAX7219")
     stats.add_argument("--apply", action="store_true", help="confirm that matrix writes are intended")
@@ -536,6 +631,12 @@ def build_parser() -> argparse.ArgumentParser:
     stats.add_argument("--icon-seconds", type=float, default=0.8)
     stats.add_argument("--value-seconds", type=float, default=1.5)
     stats.add_argument("--cycle-pause", type=float, default=0.3)
+
+    lcd_status = subparsers.add_parser("lcd-status", help="rotate live PCS status on the 16x2 LCD")
+    lcd_status.add_argument("--hardware", action="store_true", help="select the real Raspberry Pi LCD")
+    lcd_status.add_argument("--apply", action="store_true", help="confirm that LCD GPIO writes are intended")
+    lcd_status.add_argument("--once", action="store_true", help="show one complete rotation, then exit")
+    lcd_status.add_argument("--page-seconds", type=float, default=3.0)
     return parser
 
 
@@ -605,6 +706,69 @@ def main(argv: Iterable[str] | None = None) -> int:
         finally:
             if matrix is not None:
                 matrix.close()
+        return 0
+
+    if args.command == "lcd-status":
+        if args.page_seconds < 0:
+            raise SystemExit("ERROR: --page-seconds cannot be negative")
+        if not args.hardware:
+            snapshot = collect_stats()
+            print(json.dumps({
+                "backend": "simulation",
+                "snapshot": snapshot.as_dict(),
+                "pages": [list(page) for page in lcd_status_pages(snapshot, read_uptime_seconds())],
+                "writes_performed": False,
+            }, indent=2))
+            return 0
+
+        stopped = False
+
+        def request_lcd_stop(_signum: int, _frame: object) -> None:
+            nonlocal stopped
+            stopped = True
+
+        signal.signal(signal.SIGTERM, request_lcd_stop)
+        signal.signal(signal.SIGINT, request_lcd_stop)
+        device: HD44780 | None = None
+        try:
+            device = HD44780()
+            run_lcd_status(
+                device,
+                once=args.once,
+                page_seconds=args.page_seconds,
+                should_stop=lambda: stopped,
+            )
+        except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
+            raise SystemExit(f"ERROR: {error}") from error
+        finally:
+            if device is not None:
+                device.close(clear=False)
+        return 0
+
+    if args.command == "lcd":
+        if args.duration < 0:
+            raise SystemExit("ERROR: --duration cannot be negative")
+        lines = normalize_lcd_lines((args.line1, args.line2))
+        if not args.hardware:
+            print(json.dumps({
+                "backend": "simulation",
+                "device": "lcd",
+                "pins": LCD_PINS,
+                "lines": list(lines),
+                "writes_performed": False,
+            }, indent=2))
+            return 0
+
+        device: HD44780 | None = None
+        try:
+            device = HD44780()
+            device.text(lines)
+            time.sleep(args.duration)
+        except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
+            raise SystemExit(f"ERROR: {error}") from error
+        finally:
+            if device is not None:
+                device.close(clear=args.clear)
         return 0
 
     if args.duration < 0:

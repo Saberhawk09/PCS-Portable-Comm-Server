@@ -32,6 +32,10 @@ All notable user-facing PCS changes are recorded here.
   PCS status/self-test coverage
 - matched the matrix satellite count to the web admin by keeping gpsd's fullest
   recent multi-constellation `SKY` report instead of the first partial report
+- added a guarded two-line HD44780 LCD command and aligned its data pins with
+  the installed GPIO27/GPIO22/GPIO23/GPIO24 wiring
+- bench-tested the installed HD44780 path and added a hardened GPIO-only daemon
+  with rotating PCS/uptime, CPU/LTE, and GPS/fix pages
 - recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
   capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel

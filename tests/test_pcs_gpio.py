@@ -15,6 +15,8 @@ import pcs_gpio  # noqa: E402
 
 STATS_SERVICE = ROOT / "systemd" / "pcs-gpio-stats.service"
 STATS_SETUP = ROOT / "scripts" / "setup-gpio-stats.sh"
+LCD_SERVICE = ROOT / "systemd" / "pcs-gpio-lcd.service"
+LCD_SETUP = ROOT / "scripts" / "setup-gpio-lcd.sh"
 
 
 class PcsGpioTests(unittest.TestCase):
@@ -30,6 +32,10 @@ class PcsGpioTests(unittest.TestCase):
             "MAX7219 CS": (8, 24),
             "SA818 UART TX": (14, 8),
             "SA818 UART RX": (15, 10),
+            "LCD D4": (27, 13),
+            "LCD D5": (22, 15),
+            "LCD D6": (23, 16),
+            "LCD D7": (24, 18),
         }
         actual = {pin.function: (pin.gpio, pin.physical) for pin in pcs_gpio.PIN_ASSIGNMENTS}
         for function, assignment in expected.items():
@@ -38,8 +44,15 @@ class PcsGpioTests(unittest.TestCase):
     def test_lcd_uses_the_six_schematic_gpio_lines(self):
         self.assertEqual(
             pcs_gpio.LCD_PINS,
-            {"rs": 4, "enable": 17, "d4": 22, "d5": 23, "d6": 24, "d7": 25},
+            {"rs": 4, "enable": 17, "d4": 27, "d5": 22, "d6": 23, "d7": 24},
         )
+
+    def test_lcd_line_normalization_is_exactly_two_rows_of_sixteen(self):
+        self.assertEqual(
+            pcs_gpio.normalize_lcd_lines(("PCS ONLINE", "A line that is much too long", "ignored")),
+            ("PCS ONLINE      ", "A line that is m"),
+        )
+        self.assertEqual(pcs_gpio.normalize_lcd_lines(("one\nline",)), ("one line        ", "                "))
 
     def test_max7219_uses_the_proven_pcs_spi_settings(self):
         self.assertEqual(pcs_gpio.MAX7219_SPI_BUS, 0)
@@ -82,6 +95,50 @@ class PcsGpioTests(unittest.TestCase):
         for record in records:
             status = pcs_gpio.merge_gps_status(*status, record)
         self.assertEqual(status, (21, True))
+
+    def test_uptime_reader_and_formatter(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "uptime"
+            path.write_text("93784.44 123.0\n", encoding="ascii")
+            self.assertEqual(pcs_gpio.read_uptime_seconds(path), 93784)
+        self.assertEqual(pcs_gpio.format_uptime(93784), "UP 1d 02h 03m")
+        self.assertEqual(pcs_gpio.format_uptime(None), "UPTIME UNKNOWN")
+
+    def test_lcd_status_pages_are_concise_and_cover_unknown_gps(self):
+        pages = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(39, 12, 21, True), 93784)
+        self.assertEqual(pages, (
+            ("PCS ONLINE", "UP 1d 02h 03m"),
+            ("CPU TEMP 39C", "LTE SIGNAL 12%"),
+            ("GPS 21 SAT VIEW", "GPS FIX OK"),
+        ))
+        unknown = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(None, None, None, None), None)
+        self.assertEqual(unknown[-1], ("GPS DATA UNKNOWN", "FIX UNKNOWN"))
+        self.assertTrue(all(len(line) <= 16 for page in pages + unknown for line in page))
+
+    def test_one_lcd_status_rotation_writes_three_pages(self):
+        class FakeLcd:
+            def __init__(self):
+                self.pages = []
+
+            def text(self, lines):
+                self.pages.append(tuple(lines))
+
+            def close(self, *, clear=True):
+                pass
+
+        lcd = FakeLcd()
+        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            pcs_gpio.run_lcd_status(
+                lcd,
+                once=True,
+                collector=lambda: snapshot,
+                uptime_reader=lambda: 93784,
+                sleeper=lambda _: None,
+            )
+        self.assertEqual(lcd.pages, list(pcs_gpio.lcd_status_pages(snapshot, 93784)))
+        self.assertEqual(json.loads(output.getvalue())["snapshot"], snapshot.as_dict())
 
     def test_one_stats_rotation_writes_only_matrix_frames(self):
         class FakeMatrix:
@@ -137,6 +194,20 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("raspi-config nonint do_spi 0", setup)
         self.assertIn("apt-get install -y python3-spidev", setup)
 
+    def test_lcd_service_is_gpio_only_and_hardened(self):
+        service = LCD_SERVICE.read_text(encoding="utf-8")
+        setup = LCD_SETUP.read_text(encoding="utf-8")
+        self.assertIn("pcs-gpio lcd-status --hardware --apply", service)
+        self.assertIn("DeviceAllow=/dev/gpiochip0 rw", service)
+        self.assertIn("SupplementaryGroups=gpio", service)
+        self.assertIn("RuntimeDirectory=pcs-gpio-lcd", service)
+        self.assertIn("WorkingDirectory=/run/pcs-gpio-lcd", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+        self.assertNotIn("spidev", service)
+        self.assertNotIn("PTT", service)
+        self.assertIn("systemctl enable --now pcs-gpio-lcd.service", setup)
+        self.assertIn("apt-get install -y python3-gpiozero", setup)
+
     def test_all_demo_excludes_fan_ptt_uart_and_rtc(self):
         backend = pcs_gpio.MockBackend()
         pcs_gpio.run_demo(backend, "all", duration=0, pause=lambda _: None)
@@ -172,6 +243,32 @@ class PcsGpioTests(unittest.TestCase):
     def test_real_demo_requires_double_confirmation(self):
         with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
             pcs_gpio.main(("demo", "lcd", "--hardware", "--duration", "0"))
+
+    def test_lcd_command_is_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("lcd", "--line1", "PCS ONLINE", "--line2", "READY"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["lines"], ["PCS ONLINE      ", "READY           "])
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_lcd_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("lcd", "--hardware"))
+
+    def test_lcd_status_is_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("lcd-status", "--once", "--page-seconds", "0"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(len(parsed["pages"]), 3)
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_lcd_status_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("lcd-status", "--hardware", "--once"))
 
 
 if __name__ == "__main__":

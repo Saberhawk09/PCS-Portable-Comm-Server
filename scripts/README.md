@@ -67,12 +67,31 @@ python3 scripts/pcs_gpio.py pins
 python3 scripts/pcs_gpio.py check
 python3 scripts/pcs_gpio.py demo all --duration 0
 python3 scripts/pcs_gpio.py stats
+python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY"
+python3 scripts/pcs_gpio.py lcd-status
 ```
 
 Simulation is the default. Real writes require both `--hardware` and `--apply`.
+The `lcd` command accepts two lines, trims/pads each to 16 characters, and keeps
+the written text visible unless `--clear` is requested.
+The `lcd-status` command rotates three 16x2 pages: PCS state and uptime, CPU
+temperature and LTE signal quality, then GPS satellites in view and fix state.
 PTT and SA818 UART are never driven by this tool. See
 [PCS GPIO Allocation](../docs/gpio-allocation.md) for the pin map and hardware
 commissioning commands.
+
+### setup-gpio-lcd.sh
+
+Installs or inspects the persistent GPIO-only HD44780 status rotation:
+
+```bash
+bash scripts/setup-gpio-lcd.sh --install
+bash scripts/setup-gpio-lcd.sh --check
+```
+
+The service uses the same privacy-preserving data collectors as the matrix and
+does not retain coordinates or control APRS PTT, radio UART, SPI, fan, or
+WS2812 lines.
 
 ### setup-gpio-stats.sh
 

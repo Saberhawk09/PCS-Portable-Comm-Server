@@ -52,6 +52,7 @@ BASE_PACKAGES=(
 
 HARDWARE_PACKAGES=(
     i2c-tools
+    python3-gpiozero
     python3-spidev
     usbutils
     pciutils

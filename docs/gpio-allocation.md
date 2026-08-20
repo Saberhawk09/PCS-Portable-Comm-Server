@@ -11,20 +11,20 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | --- | ---: | ---: | --- | --- |
 | RTC SDA | GPIO2 | 3 | Existing subsystem | I2C SDA; kernel-managed. |
 | RTC SCL | GPIO3 | 5 | Existing subsystem | I2C SCL; kernel-managed. |
-| LCD RS | GPIO4 | 7 | Selected; not bench-tested | HD44780-compatible 16x2 LCD in 4-bit mode. |
+| LCD RS | GPIO4 | 7 | Installed and bench-tested | HD44780-compatible 16x2 LCD in 4-bit mode. |
 | EasyDigi APRS PTT | GPIO6 | 31 | Selected; not bench-tested | Active high on the Pi side. EasyDigi optoisolation produces an active-low radio PTT closure to ground. Dire Wolf directive: `PTT GPIO 6`. |
 | MAX7219 CS/LOAD | GPIO8 | 24 | Installed and bench-tested | SPI0 CE0 through one channel of the 74AHCT125. |
 | MAX7219 DIN | GPIO10 | 19 | Installed and bench-tested | SPI0 MOSI through one channel of the 74AHCT125. |
 | MAX7219 CLK | GPIO11 | 23 | Installed and bench-tested | SPI0 SCLK through one channel of the 74AHCT125. |
 | SA818S UART TX | GPIO14 | 8 | Reserved; logic level unverified | Pi TX to radio RXD. Do not connect until the radio UART level is measured. |
 | SA818S UART RX | GPIO15 | 10 | Reserved; logic level unverified | Pi RX from radio TXD. Do not connect until the radio UART level is measured. |
-| LCD E | GPIO17 | 11 | Selected; not bench-tested | HD44780 enable. |
+| LCD E | GPIO17 | 11 | Installed and bench-tested | HD44780 enable. |
 | Fan PWM | GPIO18 | 12 | Selected; behavior not measured | PWM-capable line; no automatic fan curve is selected yet. |
 | WS2812 data | GPIO21 | 40 | Selected; not bench-tested | PCM-capable output through the 74AHCT125; six LEDs are planned. |
-| LCD D4 | GPIO22 | 15 | Selected; not bench-tested | HD44780 4-bit data. |
-| LCD D5 | GPIO23 | 16 | Selected; not bench-tested | HD44780 4-bit data. |
-| LCD D6 | GPIO24 | 18 | Selected; not bench-tested | HD44780 4-bit data. |
-| LCD D7 | GPIO25 | 22 | Selected; not bench-tested | HD44780 4-bit data. |
+| LCD D4 | GPIO27 | 13 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
+| LCD D5 | GPIO22 | 15 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
+| LCD D6 | GPIO23 | 16 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
+| LCD D7 | GPIO24 | 18 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 
 ## Bus and Ownership Boundaries
 
@@ -54,6 +54,8 @@ a simulator and does not touch GPIO:
 python3 scripts/pcs_gpio.py pins
 python3 scripts/pcs_gpio.py check
 python3 scripts/pcs_gpio.py demo all --duration 0
+python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY"
+python3 scripts/pcs_gpio.py lcd-status
 ```
 
 Real LCD, MAX7219, or WS2812 writes require the two-part
@@ -64,6 +66,7 @@ curve have not been measured:
 
 ```bash
 python3 scripts/pcs_gpio.py demo lcd --hardware --apply
+python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY" --hardware --apply
 python3 scripts/pcs_gpio.py demo matrix --hardware --apply
 sudo python3 scripts/pcs_gpio.py demo leds --hardware --apply
 python3 scripts/pcs_gpio.py demo fan --fan-duty 100 --hardware --apply
@@ -71,6 +74,24 @@ python3 scripts/pcs_gpio.py demo fan --fan-duty 100 --hardware --apply
 
 The real backends expect the Raspberry Pi OS `gpiozero` and `spidev` Python
 modules plus `rpi_ws281x` for the LEDs. Run `check` before commissioning.
+
+## HD44780 Live Status
+
+The installed 16x2 LCD rotates three pages every three seconds: PCS state and
+uptime; CPU temperature and the same ModemManager LTE signal-quality percentage
+used by PCS; then gpsd satellites in view and fix state. Unknown data is shown
+explicitly rather than substituted with zero. Coordinates are never retained
+or logged.
+
+Install or inspect its GPIO-only service with:
+
+```bash
+bash scripts/setup-gpio-lcd.sh --install
+bash scripts/setup-gpio-lcd.sh --check
+```
+
+The service owns only the six documented LCD GPIO lines. It does not request or
+drive SPI, PTT, UART, fan, or WS2812 lines.
 
 ## MAX7219 Live Statistics
 
