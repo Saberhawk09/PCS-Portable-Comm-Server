@@ -74,9 +74,10 @@ python3 scripts/pcs_gpio.py lcd-status
 Simulation is the default. Real writes require both `--hardware` and `--apply`.
 The `lcd` command accepts two lines, trims/pads each to 16 characters, and keeps
 the written text visible unless `--clear` is requested.
-The `lcd-status` command rotates four 16x2 pages: PCS state and uptime, CPU
-temperature in Celsius/Fahrenheit, cellular state and signal quality, then GPS
-fix state with paired satellites-in-view and satellites-used counts.
+The `lcd-status` command rotates six 16x2 pages: PCS state and uptime, CPU
+temperature in Celsius/Fahrenheit, active network uplink, cellular state and
+signal quality, GPS fix state with paired satellites-in-view/used counts, then
+active AP client count and six-character Maidenhead grid square.
 PTT and SA818 UART are never driven by this tool. See
 [PCS GPIO Allocation](../docs/gpio-allocation.md) for the pin map and hardware
 commissioning commands.

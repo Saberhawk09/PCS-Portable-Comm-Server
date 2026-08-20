@@ -292,8 +292,11 @@ class StatsSnapshot:
     gps_locked: bool | None
     cellular_online: bool | None = None
     gps_satellites_used: int | None = None
+    network_uplink: str | None = None
+    ap_clients: int | None = None
+    grid_square: str | None = None
 
-    def as_dict(self) -> dict[str, int | bool | None]:
+    def as_dict(self) -> dict[str, int | bool | str | None]:
         return asdict(self)
 
 
@@ -427,6 +430,91 @@ def read_cellular_quality() -> int | None:
     return read_cellular_status()[1]
 
 
+def parse_network_uplink(output: str) -> str:
+    match = re.search(r"\bdev\s+(\S+)", output)
+    if not match:
+        return "Offline"
+    interface = match.group(1)
+    if interface == "wlan0":
+        return "WiFi"
+    if interface in {"wwan0", "ppp0"} or interface.startswith(("wwan", "ppp")):
+        return "Cellular"
+    return "Offline"
+
+
+def read_network_uplink() -> str:
+    try:
+        result = subprocess.run(
+            ["ip", "route", "get", "8.8.8.8"],
+            text=True,
+            capture_output=True,
+            timeout=4,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "Offline"
+    return parse_network_uplink(result.stdout if result.returncode == 0 else "")
+
+
+def parse_ap_client_count(output: str) -> int:
+    """Count active PCS client neighbors while excluding fixed infrastructure."""
+    clients: set[str] = set()
+    for line in output.splitlines():
+        parts = line.split()
+        if not parts or not parts[0].startswith("10.42.0."):
+            continue
+        if any(state in parts for state in ("FAILED", "INCOMPLETE")):
+            continue
+        try:
+            host = int(parts[0].rsplit(".", 1)[1])
+        except (ValueError, IndexError):
+            continue
+        if host not in {1, 2, 3}:
+            clients.add(parts[0])
+    return len(clients)
+
+
+def read_ap_client_count() -> int | None:
+    try:
+        result = subprocess.run(
+            ["ip", "neigh", "show", "dev", "eth0"],
+            text=True,
+            capture_output=True,
+            timeout=4,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_ap_client_count(result.stdout) if result.returncode == 0 else None
+
+
+def maidenhead_grid(latitude: float, longitude: float) -> str | None:
+    """Return the same six-character Maidenhead locator used by PCS web status."""
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None
+    lon = longitude + 180
+    lat = latitude + 90
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWX"
+    field_lon = int(lon // 20)
+    field_lat = int(lat // 10)
+    lon -= field_lon * 20
+    lat -= field_lat * 10
+    square_lon = int(lon // 2)
+    square_lat = int(lat // 1)
+    lon -= square_lon * 2
+    lat -= square_lat
+    subsquare_lon = int(lon / (2 / 24))
+    subsquare_lat = int(lat / (1 / 24))
+    return (
+        letters[field_lon]
+        + letters[field_lat]
+        + str(square_lon)
+        + str(square_lat)
+        + letters[subsquare_lon].lower()
+        + letters[subsquare_lat].lower()
+    )
+
+
 def satellite_count_from_sky(record: dict[str, object]) -> int | None:
     """Return gpsd's satellites-in-view count without retaining satellite details."""
     count = record.get("nSat")
@@ -491,12 +579,13 @@ def merge_gps_status(
 def read_gps_details(
     host: str = "127.0.0.1",
     port: int = 2947,
-) -> tuple[int | None, int | None, bool | None]:
-    """Read gpsd view/used counts and fix; coordinates are neither retained nor logged."""
+) -> tuple[int | None, int | None, bool | None, str | None]:
+    """Read gpsd counts, fix and grid; coordinates are neither retained nor logged."""
     deadline = time.monotonic() + 2.0
     satellites_view: int | None = None
     satellites_used: int | None = None
     locked: bool | None = None
+    grid_square: str | None = None
     try:
         with socket.create_connection((host, port), timeout=1.0) as connection:
             connection.settimeout(0.5)
@@ -522,19 +611,33 @@ def read_gps_details(
                         locked,
                         record,
                     )
+                    if record.get("class") == "TPV":
+                        mode = record.get("mode")
+                        latitude = record.get("lat")
+                        longitude = record.get("lon")
+                        if (
+                            isinstance(mode, int)
+                            and not isinstance(mode, bool)
+                            and mode >= 2
+                            and isinstance(latitude, (int, float))
+                            and not isinstance(latitude, bool)
+                            and isinstance(longitude, (int, float))
+                            and not isinstance(longitude, bool)
+                        ):
+                            grid_square = maidenhead_grid(float(latitude), float(longitude))
     except OSError:
         pass
-    return satellites_view, satellites_used, locked
+    return satellites_view, satellites_used, locked, grid_square
 
 
 def read_gps_status(host: str = "127.0.0.1", port: int = 2947) -> tuple[int | None, bool | None]:
-    satellites_view, _satellites_used, locked = read_gps_details(host, port)
+    satellites_view, _satellites_used, locked, _grid_square = read_gps_details(host, port)
     return satellites_view, locked
 
 
 def collect_stats() -> StatsSnapshot:
     cellular_online, cellular_quality = read_cellular_status()
-    gps_satellites, gps_satellites_used, gps_locked = read_gps_details()
+    gps_satellites, gps_satellites_used, gps_locked, grid_square = read_gps_details()
     return StatsSnapshot(
         temperature_c=read_temperature(),
         cellular_quality=cellular_quality,
@@ -542,6 +645,9 @@ def collect_stats() -> StatsSnapshot:
         gps_locked=gps_locked,
         cellular_online=cellular_online,
         gps_satellites_used=gps_satellites_used,
+        network_uplink=read_network_uplink(),
+        ap_clients=read_ap_client_count(),
+        grid_square=grid_square,
     )
 
 
@@ -583,11 +689,16 @@ def lcd_status_pages(
         gps_heading = "GPS Status: Err"
     gps_view = "--" if snapshot.gps_satellites is None else f"{snapshot.gps_satellites:02d}"
     gps_used = "--" if snapshot.gps_satellites_used is None else f"{snapshot.gps_satellites_used:02d}"
+    network_uplink = snapshot.network_uplink or "Offline"
+    ap_clients = "--" if snapshot.ap_clients is None else str(snapshot.ap_clients)
+    grid_square = snapshot.grid_square or "------"
     return (
         ("PCS Online", format_uptime(uptime_seconds)),
         ("Pi CPU Temp", temperature_line),
+        ("Network Uplink", network_uplink),
         (f"Cell Status: {cellular_state}", f"Signal: {cellular_quality:03d}%"),
         (gps_heading, f"View {gps_view} Used {gps_used}"),
+        (f"AP Clients: {ap_clients}", f"GridSq: {grid_square}"),
     )
 
 

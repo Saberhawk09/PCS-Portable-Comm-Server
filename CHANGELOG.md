@@ -38,6 +38,8 @@ All notable user-facing PCS changes are recorded here.
   with rotating PCS/uptime, CPU/LTE, and GPS/fix pages
 - revised the LCD rotation to four operator-defined pages with dual-unit CPU
   temperature, cellular on/off state, and paired GPS view/used satellite counts
+- expanded the LCD rotation with active network-uplink and AP-client/grid-square
+  pages using the PCS route, neighbor, and GPS definitions
 - recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
   capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel

@@ -81,6 +81,26 @@ class PcsGpioTests(unittest.TestCase):
         self.assertFalse(pcs_gpio.parse_cellular_state("modem.generic.state : disabled\n"))
         self.assertIsNone(pcs_gpio.parse_cellular_quality(""))
 
+    def test_network_uplink_parser_uses_pcs_interface_classes(self):
+        self.assertEqual(pcs_gpio.parse_network_uplink("default dev wlan0"), "WiFi")
+        self.assertEqual(pcs_gpio.parse_network_uplink("8.8.8.8 dev wwan0 src 10.0.0.2"), "Cellular")
+        self.assertEqual(pcs_gpio.parse_network_uplink("8.8.8.8 dev ppp1"), "Cellular")
+        self.assertEqual(pcs_gpio.parse_network_uplink(""), "Offline")
+
+    def test_ap_client_count_excludes_infrastructure_and_inactive_neighbors(self):
+        neighbors = "\n".join((
+            "10.42.0.2 lladdr aa:aa:aa:aa:aa:02 STALE",
+            "10.42.0.3 lladdr aa:aa:aa:aa:aa:03 REACHABLE",
+            "10.42.0.105 lladdr aa:aa:aa:aa:aa:05 REACHABLE",
+            "10.42.0.232 lladdr aa:aa:aa:aa:aa:32 DELAY",
+            "10.42.0.150 FAILED",
+        ))
+        self.assertEqual(pcs_gpio.parse_ap_client_count(neighbors), 2)
+
+    def test_maidenhead_grid_matches_pcs_web_algorithm(self):
+        self.assertEqual(pcs_gpio.maidenhead_grid(38.123456, -77.123456), "FM18kc")
+        self.assertIsNone(pcs_gpio.maidenhead_grid(100, 0))
+
     def test_two_digit_renderer_clamps_and_handles_unknown(self):
         self.assertEqual(len(pcs_gpio.render_two_digits(39)), 8)
         self.assertEqual(pcs_gpio.render_two_digits(150), pcs_gpio.render_two_digits(99))
@@ -121,27 +141,31 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pcs_gpio.format_uptime(None), "Up: --d --h --m")
 
     def test_lcd_status_pages_are_concise_and_cover_unknown_gps(self):
-        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14)
+        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "Cellular", 2, "EN91qs")
         pages = pcs_gpio.lcd_status_pages(snapshot, 93784)
         self.assertEqual(pages, (
             ("PCS Online", "Up: 1d 02h 03m"),
             ("Pi CPU Temp", "39°C / 102°F"),
+            ("Network Uplink", "Cellular"),
             ("Cell Status: On", "Signal: 012%"),
             ("GPS Status: Lock", "View 21 Used 14"),
+            ("AP Clients: 2", "GridSq: EN91qs"),
         ))
         unknown = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(None, None, None, None), None)
         self.assertEqual(unknown, (
             ("PCS Online", "Up: --d --h --m"),
             ("Pi CPU Temp", "--°C / --°F"),
+            ("Network Uplink", "Offline"),
             ("Cell Status: Off", "Signal: 000%"),
             ("GPS Status: Err", "View -- Used --"),
+            ("AP Clients: --", "GridSq: ------"),
         ))
         self.assertTrue(all(len(line) <= 16 for page in pages + unknown for line in page))
 
         no_fix = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(39, 12, 8, False, True, 0), 60)
-        self.assertEqual(no_fix[-1], ("GPS Status: NoFx", "View 08 Used 00"))
+        self.assertEqual(no_fix[-2], ("GPS Status: NoFx", "View 08 Used 00"))
 
-    def test_one_lcd_status_rotation_writes_four_pages(self):
+    def test_one_lcd_status_rotation_writes_six_pages(self):
         class FakeLcd:
             def __init__(self):
                 self.pages = []
@@ -153,7 +177,7 @@ class PcsGpioTests(unittest.TestCase):
                 pass
 
         lcd = FakeLcd()
-        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14)
+        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
         output = io.StringIO()
         with redirect_stdout(output):
             pcs_gpio.run_lcd_status(
@@ -289,7 +313,7 @@ class PcsGpioTests(unittest.TestCase):
             result = pcs_gpio.main(("lcd-status", "--once", "--page-seconds", "0"))
         self.assertEqual(result, 0)
         parsed = json.loads(output.getvalue())
-        self.assertEqual(len(parsed["pages"]), 4)
+        self.assertEqual(len(parsed["pages"]), 6)
         self.assertFalse(parsed["writes_performed"])
 
     def test_real_lcd_status_requires_double_confirmation(self):
