@@ -381,7 +381,7 @@ def parse_cellular_quality(output: str) -> int | None:
     match = re.search(r"^modem\.generic\.signal-quality\.value\s*:\s*(\d+)", output, re.MULTILINE)
     if not match:
         return None
-    return max(0, min(99, int(match.group(1))))
+    return max(0, min(100, int(match.group(1))))
 
 
 def parse_cellular_state(output: str) -> bool | None:

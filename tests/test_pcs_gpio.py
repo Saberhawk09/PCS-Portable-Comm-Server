@@ -73,6 +73,10 @@ class PcsGpioTests(unittest.TestCase):
             "modem.generic.signal-quality.value              : 12\n"
         )
         self.assertEqual(pcs_gpio.parse_cellular_quality(output), 12)
+        self.assertEqual(
+            pcs_gpio.parse_cellular_quality("modem.generic.signal-quality.value : 100\n"),
+            100,
+        )
         self.assertTrue(pcs_gpio.parse_cellular_state(output))
         self.assertFalse(pcs_gpio.parse_cellular_state("modem.generic.state : disabled\n"))
         self.assertIsNone(pcs_gpio.parse_cellular_quality(""))
