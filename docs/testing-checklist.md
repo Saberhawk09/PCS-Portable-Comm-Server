@@ -522,6 +522,27 @@ Expected:
 Pi-Star coordinated shutdown pairing is ready.
 ```
 
+## MAX7219 LED Matrix Test
+
+These checks apply when `PCS_SETUP_GPIO_STATS=yes` is selected. On builds
+without the matrix, keep the value `no` and the self-test reports it as skipped.
+
+```bash
+./scripts/setup-gpio-stats.sh --check
+systemctl is-enabled pcs-gpio-stats.service
+systemctl is-active pcs-gpio-stats.service
+```
+
+Expected when installed:
+
+```text
+Driver: installed
+SPI0 CE0: available
+Python spidev: available
+enabled
+active
+```
+
 ## Dire Wolf / APRS Safety Test
 
 These checks apply when Dire Wolf / APRS is selected during setup. They validate
@@ -566,6 +587,7 @@ systemctl status smbd
 systemctl status chrony
 systemctl status gpsd
 systemctl status cockpit
+systemctl status pcs-gpio-stats.service  # when selected
 ```
 
 If PCS services are installed:

@@ -109,11 +109,12 @@ The intended profile supplied by the operator is recorded in the repository:
 | Role | GPS-backed two-way digi-IGate | Selected |
 | Callsign / SSID | `W8IJC-2` | Selected |
 | RF channel | `144.555 MHz` local tactical APRS channel | Selected; radio programming and on-air confirmation pending |
+| USB audio | Unitek Y-247A / C-Media `0d8c:0014`; ALSA card ID `Device` | Installed and detected for capture/playback; stable physical-port naming, levels, and radio path pending |
 | APRS-IS | Conventional two-way IGate through `noam.aprs2.net` | All eligible RF to APRS-IS; normal APRS message gating back to RF; passcode pending |
 | GPS | EM7565 NMEA through local gpsd at `localhost:2947` | Selected and configured in the template |
 | Network TNC | KISS on 8001/tcp | Persistent nftables PCS-LAN-only rule implemented; deployment validation pending |
 | RF transmit | Intended | Hardware validation pending |
-| PTT | Active-high BCM GPIO17 / physical pin 11 through EasyDigi; radio side closes PTT to ground | Selected; wiring and bench validation pending |
+| PTT | Active-high BCM GPIO6 / physical pin 31 through EasyDigi; radio side closes PTT to ground | Selected; wiring and bench validation pending |
 | Beacon | GPS tracker every 10 minutes | RF path, symbol, and final comment pending |
 | Digipeater | WIDE1-1 fill-in on the local tactical channel | Rule selected; hardware/on-air validation pending |
 | FX.25 transmit | Enabled in intended profile | On-air compatibility validation pending |
@@ -186,7 +187,7 @@ network.
 | `PCS_APRS_TX_ENABLED` | `yes` / `no` | Desired state only; never activates RF by itself. |
 | `PCS_APRS_PTT_METHOD` | `none`, `cm108`, `serial-rts`, `serial-dtr`, `gpio`, `hamlib`, `vox` | Exact device, line, polarity, or Hamlib model is collected after hardware detection. |
 | `PCS_APRS_PTT_INTERFACE` | Hardware label | Selected as `EasyDigi`. |
-| `PCS_APRS_PTT_GPIO_LINE` | BCM GPIO line | Selected as GPIO17, physical header pin 11. |
+| `PCS_APRS_PTT_GPIO_LINE` | BCM GPIO line | Selected as GPIO6, physical header pin 31. |
 | `PCS_APRS_PTT_ACTIVE_LEVEL` | `high` / `low` | Selected as `high`: GPIO high energizes the EasyDigi optocoupler and its isolated output pulls radio PTT to ground. |
 | `PCS_APRS_BEACON` | `yes` / `no` | Enables `TBEACON` in the guarded TX profile after interval/path/symbol review. |
 | `PCS_APRS_BEACON_TYPE` | `gps-tracker` / `fixed` | Selected as `gps-tracker`. |
@@ -297,7 +298,7 @@ print the complete current blocker list without changing the system.
 - a Dire Wolf build that reports compiled-in gpsd support, plus a successful
   local `localhost:2947` protocol/fix check
 - detected ALSA capture/playback identifier
-- GPIO17 / physical pin 11 wiring to the EasyDigi; active-high polarity is
+- GPIO6 / physical pin 31 wiring to the EasyDigi; active-high polarity is
   selected and must be confirmed with a disconnected-radio bench test
 - APRS-IS passcode entered interactively on the Pi
 - tracker beacon interval, RF path, symbol, and final comment
@@ -320,7 +321,7 @@ detecting a USB sound card does not satisfy any evidence gate.
 
 ## Hardware Arrival Checklist
 
-With the USB sound card attached, collect evidence before editing a live
+With the detected USB sound card attached, collect evidence before editing a live
 configuration:
 
 ```bash

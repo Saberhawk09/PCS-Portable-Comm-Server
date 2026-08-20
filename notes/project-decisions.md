@@ -48,7 +48,7 @@ Reasoning: centralizing routing and field services on the Pi makes the software 
 
 ### Optional expansion boundaries
 
-Dire Wolf / APRS is software-staged with its service and RF path disabled until purchased radio/audio/PTT hardware arrives and passes bench and operator-supervised RF validation. Meshtastic hardware is purchased and awaiting delivery; PCS integration is not yet implemented.
+Dire Wolf / APRS is software-staged with its service and RF path disabled. The C-Media/Unitek Y-247A USB sound adapter is installed and detected for capture/playback, but the radio/PTT hardware, audio levels, and RF path remain unvalidated and require bench and operator-supervised RF testing. Meshtastic hardware is purchased and awaiting delivery; PCS integration is not yet implemented.
 
 Reasoning: purchased or staged hardware must not be described as installed, RF-ready, or validated before observed commissioning evidence exists.
 

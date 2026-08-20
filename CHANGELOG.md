@@ -15,8 +15,23 @@ All notable user-facing PCS changes are recorded here.
   APRS message gating back to RF
 - active-high Raspberry Pi GPIO PTT intent for an optoisolated EasyDigi
   active-low radio closure-to-ground output
-- selected BCM GPIO17 / physical pin 11 for EasyDigi PTT and documented the
-  tentative PCS-wide GPIO allocation
+- selected BCM GPIO6 / physical pin 31 for EasyDigi PTT and documented the
+  finalized schematic's PCS-wide GPIO allocation
+- added an offline-safe GPIO commissioning utility with simulated-by-default
+  LCD, MAX7219, WS2812, and explicit-duty fan tests
+- recorded the installed MAX7219/AHCT125 path as bench-tested at 500 kHz and
+  selected the proven `0x03` indoor intensity for its driver
+- added a hardened SPI-only MAX7219 daemon that rotates CPU temperature,
+  cellular quality and a coordinate-free GPS
+  satellite count using compact icons and digits; no-fix and unavailable states
+  replace the count with explicit status symbols
+- changed the matrix temperature identifier from a thermometer to a clear `°C`
+  unit symbol before the numeric Celsius reading
+- added `PCS_SETUP_GPIO_STATS=yes|no` as an optional base-installer choice,
+  including SPI enablement, the `python3-spidev` dependency, and conditional
+  PCS status/self-test coverage
+- recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
+  capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel
 - selected a 10-minute GPS beacon interval and conventional WIDE1-1-only
   fill-in digipeater policy with no preemptive handling
@@ -45,8 +60,8 @@ All notable user-facing PCS changes are recorded here.
   testing/release guidance, and reinstall record with the August 18 PCS state
 - archived superseded bring-up notes while preserving their dated evidence and
   appending the current Pi/OpenWrt/Pi-Star architecture decisions
-- recorded APRS and Meshtastic expansion hardware as purchased but not installed
-  or validated; Meshtastic integration remains unimplemented
+- recorded the remaining APRS radio/PTT and Meshtastic expansion hardware as
+  purchased but not installed or validated; Meshtastic integration remains unimplemented
 
 ### Security
 

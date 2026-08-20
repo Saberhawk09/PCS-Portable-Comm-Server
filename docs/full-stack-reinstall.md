@@ -89,6 +89,7 @@ Configure WWAN modem NMEA GPS:       yes
 Share GPSD with trusted PCS clients: yes
 Include Pi-Star in PCS monitoring:   yes
 Stage Dire Wolf / APRS software:     yes
+Install MAX7219 LED matrix display:  yes (only when physically fitted)
 ```
 
 The generated `config/pcs-install.conf` should therefore contain:
@@ -98,6 +99,7 @@ PCS_SETUP_WWAN_GPS=yes
 PCS_SETUP_GPSD_LAN=yes
 PCS_SETUP_PISTAR=yes
 PCS_SETUP_APRS=staged
+PCS_SETUP_GPIO_STATS=yes
 ```
 
 The GPSD setting installs a socket proxy bound only to
@@ -119,6 +121,10 @@ configuration as credential-bearing/manual recovery material. The APRS-IS
 passcode is intentionally absent from Git. See
 [Dire Wolf / APRS Integration](direwolf-aprs.md) for `--render-config`,
 `--validate-config`, guarded activation, and `--rollback`.
+
+`PCS_SETUP_GPIO_STATS=yes` enables SPI0 if necessary and installs the hardened
+MAX7219 display service. Set it to `no` on builds without the matrix; status and
+self-test then treat the display as an intentionally omitted optional feature.
 
 Reboot:
 

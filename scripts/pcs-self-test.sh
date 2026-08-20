@@ -50,6 +50,7 @@ PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
@@ -753,6 +754,42 @@ case "${PCS_SETUP_APRS}" in
         skip "Dire Wolf / APRS is not selected in the install configuration"
         ;;
 esac
+
+section "MAX7219 LED Matrix"
+
+if [[ "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+    if [[ -x /usr/local/sbin/pcs-gpio ]]; then
+        pass "PCS GPIO driver is installed"
+    else
+        fail "MAX7219 selected but /usr/local/sbin/pcs-gpio is missing"
+    fi
+
+    if [[ -e /dev/spidev0.0 ]]; then
+        pass "SPI0 CE0 device is available"
+    else
+        fail "MAX7219 selected but /dev/spidev0.0 is unavailable"
+    fi
+
+    if python3 -c 'import spidev' 2>/dev/null; then
+        pass "Python spidev is available"
+    else
+        fail "MAX7219 selected but Python spidev is unavailable"
+    fi
+
+    if service_enabled pcs-gpio-stats.service; then
+        pass "pcs-gpio-stats.service is enabled"
+    else
+        fail "MAX7219 selected but pcs-gpio-stats.service is disabled"
+    fi
+
+    if service_active pcs-gpio-stats.service; then
+        pass "pcs-gpio-stats.service is active"
+    else
+        fail "MAX7219 selected but pcs-gpio-stats.service is inactive"
+    fi
+else
+    skip "MAX7219 LED matrix is not selected in the install configuration"
+fi
 
 section "WWAN / GPS"
 

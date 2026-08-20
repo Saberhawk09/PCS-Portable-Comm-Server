@@ -19,7 +19,7 @@ PCS is intended to feature/provide:
 
 PCS is an operational v1 hardware and software prototype. The core Pi-side software baseline is rebuild-tested, and the assembled hardware provides the intended LAN, storage, time, GNSS, monitoring, optional cellular, and Pi-Star services.
 
-Dire Wolf / APRS is software-staged with the service and RF path disabled. The APRS radio/audio/PTT and Meshtastic expansion hardware has been purchased and is awaiting delivery; neither expansion is installed or hardware-validated. The exact as-built power, wiring, grounding, thermal, enclosure, and mounting records are also still pending.
+Dire Wolf / APRS is software-staged with the service and RF path disabled. Its C-Media/Unitek Y-247A USB sound adapter is installed and detected for capture/playback, but radio/PTT hardware, audio levels, and RF behavior remain unvalidated. Meshtastic hardware has been purchased and is awaiting delivery. The exact as-built power, wiring, grounding, thermal, enclosure, and mounting records are also still pending.
 
 Current focus:
 
@@ -44,7 +44,7 @@ Current tested hardware includes:
 
 Purchased and awaiting delivery or installation:
 
-- APRS radio/audio/PTT hardware
+- remaining APRS radio/PTT hardware
 - Meshtastic expansion hardware
 
 Purchased hardware is not treated as installed or validated until it has been commissioned and tested.

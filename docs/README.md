@@ -69,7 +69,7 @@ The current documentation uses these status boundaries:
 - **Purchased / awaiting delivery:** acquired but not installed or validated
 - **As-built record pending:** operational hardware whose exact wiring, measurements, mounting, or part reconciliation is still incomplete
 
-APRS remains software-staged until its purchased radio/audio/PTT hardware arrives and passes bench and operator-supervised RF validation. Meshtastic hardware has been purchased and is awaiting delivery; PCS integration is not yet implemented or documented as a working subsystem.
+APRS remains software-staged. Its C-Media/Unitek Y-247A USB sound adapter is installed and detected, while radio/PTT hardware, audio-level calibration, and RF validation remain pending. Meshtastic hardware has been purchased and is awaiting delivery; PCS integration is not yet implemented or documented as a working subsystem.
 
 Current documentation priorities:
 

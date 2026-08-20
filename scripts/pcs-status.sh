@@ -35,6 +35,7 @@ PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
 PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_AUDIO_INPUT="${PCS_APRS_AUDIO_INPUT:-auto}"
 PCS_APRS_AUDIO_OUTPUT="${PCS_APRS_AUDIO_OUTPUT:-null}"
@@ -383,6 +384,18 @@ case "${PCS_SETUP_APRS}" in
 esac
 echo
 
+echo "--- MAX7219 LED Matrix ---"
+echo "PCS state: ${PCS_SETUP_GPIO_STATS}"
+if [[ "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+    echo "Driver:          $([[ -x /usr/local/sbin/pcs-gpio ]] && echo installed || echo missing)"
+    echo "SPI0 CE0:        $([[ -e /dev/spidev0.0 ]] && echo available || echo missing)"
+    echo "Service active:  $(systemctl is-active pcs-gpio-stats.service 2>/dev/null || true)"
+    echo "Service enabled: $(systemctl is-enabled pcs-gpio-stats.service 2>/dev/null || true)"
+else
+    echo "LED matrix statistics display is not selected."
+fi
+echo
+
 echo "--- Key Services ---"
 for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket pcs-control-panel.service pcs-dashboard-redirect.service; do
     echo
@@ -543,6 +556,16 @@ case "${PCS_SETUP_APRS}" in
         ;;
 esac
 
+if [[ "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+    if systemctl is-active --quiet pcs-gpio-stats.service; then
+        GPIO_STATS_STATUS="active"
+    else
+        GPIO_STATS_STATUS="configured / inactive"
+    fi
+else
+    GPIO_STATS_STATUS="not configured"
+fi
+
 if [[ -d "${PCS_SHARE_PATH}" ]] && testparm -s 2>/dev/null | grep -q "^\[${PCS_SHARE_NAME}\]"; then
     PRIMARY_SHARE_STATUS="present"
 else
@@ -576,6 +599,7 @@ echo "Cockpit:                  ${COCKPIT_STATUS}"
 echo "PCS Homepage/Admin:       ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
 echo "Legacy Admin Redirect:    ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
 echo "Dire Wolf / APRS:         ${APRS_STATUS}"
+echo "MAX7219 LED Matrix:       ${GPIO_STATS_STATUS}"
 printf "%-27s %s
 " "WWAN modem:" "${WWAN_SUMMARY}"
 echo "GPSD:                     ${GPSD_STATUS}"

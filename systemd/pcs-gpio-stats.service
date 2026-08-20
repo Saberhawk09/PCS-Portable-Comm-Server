@@ -1,0 +1,28 @@
+[Unit]
+Description=PCS MAX7219 live statistics display
+After=local-fs.target ModemManager.service gpsd.service
+Wants=ModemManager.service gpsd.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+SupplementaryGroups=spi
+ExecStart=/usr/local/sbin/pcs-gpio stats --hardware --apply
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+DevicePolicy=closed
+DeviceAllow=/dev/spidev0.0 rw
+
+[Install]
+WantedBy=multi-user.target

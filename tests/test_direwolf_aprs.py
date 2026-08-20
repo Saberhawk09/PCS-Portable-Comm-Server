@@ -82,10 +82,15 @@ class DireWolfAprsTests(unittest.TestCase):
         example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
         documentation = DOC.read_text(encoding="utf-8")
 
-        self.assertIn('PCS_APRS_PTT_GPIO_LINE="17"', example)
+        self.assertIn('PCS_APRS_PTT_GPIO_LINE="6"', example)
         self.assertIn('PCS_APRS_PTT_ACTIVE_LEVEL="high"', example)
-        self.assertIn("physical header pin 11", documentation)
+        self.assertIn("physical header pin 31", documentation)
         self.assertIn("radio PTT to ground", documentation)
+
+    def test_stale_gpio17_ptt_config_is_an_activation_blocker(self):
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('[[ "${PCS_APRS_PTT_GPIO_LINE}" == "6" ]]', setup)
+        self.assertIn("conflicts with the finalized GPIO6 schematic allocation", setup)
 
     def test_selected_tactical_frequency_is_documented(self):
         example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
@@ -207,7 +212,7 @@ class DireWolfAprsTests(unittest.TestCase):
                 check=True,
             )
 
-        self.assertIn("PTT GPIO 17", result.stdout)
+        self.assertIn("PTT GPIO 6", result.stdout)
         self.assertIn("IGTXVIA 0", result.stdout)
         self.assertIn("DIGIPEAT 0 0 ^W8IJC-2$ ^WIDE1-1$ OFF", result.stdout)
         self.assertIn("FX25TX 1", result.stdout)

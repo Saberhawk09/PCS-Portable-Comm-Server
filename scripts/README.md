@@ -54,6 +54,46 @@ Installs baseline packages used by PCS.
 
 Includes tools for networking, Samba, Chrony, GPSD, ModemManager, Cockpit, and general diagnostics.
 
+## GPIO Devices
+
+### pcs_gpio.py
+
+Prints the finalized GPIO map, performs read-only dependency discovery, and
+runs guarded commissioning patterns for the LCD, MAX7219 matrix, WS2812 LEDs,
+or fan:
+
+```bash
+python3 scripts/pcs_gpio.py pins
+python3 scripts/pcs_gpio.py check
+python3 scripts/pcs_gpio.py demo all --duration 0
+python3 scripts/pcs_gpio.py stats
+```
+
+Simulation is the default. Real writes require both `--hardware` and `--apply`.
+PTT and SA818 UART are never driven by this tool. See
+[PCS GPIO Allocation](../docs/gpio-allocation.md) for the pin map and hardware
+commissioning commands.
+
+### setup-gpio-stats.sh
+
+Installs or inspects the persistent SPI-only MAX7219 statistics rotation:
+
+```bash
+bash scripts/setup-gpio-stats.sh --install
+bash scripts/setup-gpio-stats.sh --check
+```
+
+The base installer exposes this as the optional
+`PCS_SETUP_GPIO_STATS=yes|no` choice. The standalone installer enables SPI0
+when necessary, installs `python3-spidev` if missing, and reports when a reboot
+is needed before `/dev/spidev0.0` becomes available.
+
+The service starts with a `°C` unit frame followed by CPU temperature in Celsius,
+then rotates cellular quality and a two-frame GPS sequence: satellite/dish icon,
+then satellites in view. The satellite number is replaced by `X` for no fix or
+zero satellites and `?` when gpsd data is unavailable. It does not retain GPS
+coordinates or control APRS PTT or radio UART lines.
+
 ## Dire Wolf / APRS
 
 ### setup-direwolf-aprs.sh
