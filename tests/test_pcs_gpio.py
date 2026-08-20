@@ -127,16 +127,19 @@ class PcsGpioTests(unittest.TestCase):
             ("PCS Online", "Up: 1d 02h 03m"),
             ("Pi CPU Temp", "39°C / 102°F"),
             ("Cell Status: On", "Signal: 012%"),
-            ("GPS Status Lock", "View 21 Used 14"),
+            ("GPS Status: Lock", "View 21 Used 14"),
         ))
         unknown = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(None, None, None, None), None)
         self.assertEqual(unknown, (
             ("PCS Online", "Up: --d --h --m"),
             ("Pi CPU Temp", "--°C / --°F"),
             ("Cell Status: Off", "Signal: 000%"),
-            ("GPS Status --", "View -- Used --"),
+            ("GPS Status: Err", "View -- Used --"),
         ))
         self.assertTrue(all(len(line) <= 16 for page in pages + unknown for line in page))
+
+        no_fix = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(39, 12, 8, False, True, 0), 60)
+        self.assertEqual(no_fix[-1], ("GPS Status: NoFx", "View 08 Used 00"))
 
     def test_one_lcd_status_rotation_writes_four_pages(self):
         class FakeLcd:

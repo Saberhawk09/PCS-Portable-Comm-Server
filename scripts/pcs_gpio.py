@@ -576,11 +576,11 @@ def lcd_status_pages(
     cellular_quality = snapshot.cellular_quality if snapshot.cellular_quality is not None else 0
 
     if snapshot.gps_locked is True:
-        gps_heading = "GPS Status Lock"
+        gps_heading = "GPS Status: Lock"
     elif snapshot.gps_locked is False or snapshot.gps_satellites == 0:
-        gps_heading = "GPS Status NoFix"
+        gps_heading = "GPS Status: NoFx"
     else:
-        gps_heading = "GPS Status --"
+        gps_heading = "GPS Status: Err"
     gps_view = "--" if snapshot.gps_satellites is None else f"{snapshot.gps_satellites:02d}"
     gps_used = "--" if snapshot.gps_satellites_used is None else f"{snapshot.gps_satellites_used:02d}"
     return (
