@@ -126,15 +126,15 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pages, (
             ("PCS Online", "Up: 1d 02h 03m"),
             ("Pi CPU Temp", "39°C / 102°F"),
-            ("Cell Status", "On Sig 012%"),
-            ("GPS Status Lock", "21 View/14 Used"),
+            ("Cell Status", "On Signal: 012%"),
+            ("GPS Status Lock", "View 21 Used 14"),
         ))
         unknown = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(None, None, None, None), None)
         self.assertEqual(unknown, (
             ("PCS Online", "Up: --d --h --m"),
             ("Pi CPU Temp", "--°C / --°F"),
-            ("Cell Status", "Off Sig 000%"),
-            ("GPS Status --", "-- View/-- Used"),
+            ("Cell Status", "Off Signal: 000%"),
+            ("GPS Status --", "View -- Used --"),
         ))
         self.assertTrue(all(len(line) <= 16 for page in pages + unknown for line in page))
 

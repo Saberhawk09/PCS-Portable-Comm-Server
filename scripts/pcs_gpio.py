@@ -586,8 +586,8 @@ def lcd_status_pages(
     return (
         ("PCS Online", format_uptime(uptime_seconds)),
         ("Pi CPU Temp", temperature_line),
-        ("Cell Status", f"{cellular_state} Sig {cellular_quality:03d}%"),
-        (gps_heading, f"{gps_view} View/{gps_used} Used"),
+        ("Cell Status", f"{cellular_state} Signal: {cellular_quality:03d}%"),
+        (gps_heading, f"View {gps_view} Used {gps_used}"),
     )
 
 
