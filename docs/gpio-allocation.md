@@ -77,10 +77,10 @@ modules plus `rpi_ws281x` for the LEDs. Run `check` before commissioning.
 
 ## HD44780 Live Status
 
-The installed 16x2 LCD rotates three pages every three seconds: PCS state and
-uptime; CPU temperature and the same ModemManager LTE signal-quality percentage
-used by PCS; then gpsd satellites in view and fix state. Unknown data is shown
-explicitly rather than substituted with zero. Coordinates are never retained
+The installed 16x2 LCD rotates four pages every three seconds: PCS state and
+uptime; CPU temperature in Celsius and Fahrenheit; ModemManager cellular state
+and signal-quality percentage; then gpsd fix state with paired satellites in
+view and used from the same fullest `SKY` report. Coordinates are never retained
 or logged.
 
 Install or inspect its GPIO-only service with:

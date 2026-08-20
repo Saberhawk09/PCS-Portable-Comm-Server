@@ -53,6 +53,7 @@ class PcsGpioTests(unittest.TestCase):
             ("PCS ONLINE      ", "A line that is m"),
         )
         self.assertEqual(pcs_gpio.normalize_lcd_lines(("one\nline",)), ("one line        ", "                "))
+        self.assertEqual(pcs_gpio.HD44780_CHARACTER_CODES["°"], 0xDF)
 
     def test_max7219_uses_the_proven_pcs_spi_settings(self):
         self.assertEqual(pcs_gpio.MAX7219_SPI_BUS, 0)
@@ -67,8 +68,13 @@ class PcsGpioTests(unittest.TestCase):
             self.assertEqual(pcs_gpio.read_temperature(path), 39)
 
     def test_cellular_quality_parser(self):
-        output = "modem.generic.signal-quality.value              : 12\n"
+        output = (
+            "modem.generic.state                             : registered\n"
+            "modem.generic.signal-quality.value              : 12\n"
+        )
         self.assertEqual(pcs_gpio.parse_cellular_quality(output), 12)
+        self.assertTrue(pcs_gpio.parse_cellular_state(output))
+        self.assertFalse(pcs_gpio.parse_cellular_state("modem.generic.state : disabled\n"))
         self.assertIsNone(pcs_gpio.parse_cellular_quality(""))
 
     def test_two_digit_renderer_clamps_and_handles_unknown(self):
@@ -81,6 +87,7 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pcs_gpio.satellite_count_from_sky({"nSat": 120}), 99)
         self.assertEqual(pcs_gpio.satellite_count_from_sky({"satellites": [{}, {}, {}]}), 3)
         self.assertIsNone(pcs_gpio.satellite_count_from_sky({}))
+        self.assertEqual(pcs_gpio.satellite_counts_from_sky({"nSat": 21, "uSat": 14}), (21, 14))
 
     def test_gps_status_keeps_fullest_sky_report_and_best_fix(self):
         status = (None, None)
@@ -96,26 +103,38 @@ class PcsGpioTests(unittest.TestCase):
             status = pcs_gpio.merge_gps_status(*status, record)
         self.assertEqual(status, (21, True))
 
+        details = (None, None, None)
+        for record in records:
+            details = pcs_gpio.merge_gps_details(*details, record)
+        self.assertEqual(details, (21, 14, True))
+
     def test_uptime_reader_and_formatter(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "uptime"
             path.write_text("93784.44 123.0\n", encoding="ascii")
             self.assertEqual(pcs_gpio.read_uptime_seconds(path), 93784)
-        self.assertEqual(pcs_gpio.format_uptime(93784), "UP 1d 02h 03m")
-        self.assertEqual(pcs_gpio.format_uptime(None), "UPTIME UNKNOWN")
+        self.assertEqual(pcs_gpio.format_uptime(93784), "Up: 1d 02h 03m")
+        self.assertEqual(pcs_gpio.format_uptime(None), "Up: --d --h --m")
 
     def test_lcd_status_pages_are_concise_and_cover_unknown_gps(self):
-        pages = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(39, 12, 21, True), 93784)
+        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14)
+        pages = pcs_gpio.lcd_status_pages(snapshot, 93784)
         self.assertEqual(pages, (
-            ("PCS ONLINE", "UP 1d 02h 03m"),
-            ("CPU TEMP 39C", "LTE SIGNAL 12%"),
-            ("GPS 21 SAT VIEW", "GPS FIX OK"),
+            ("PCS Online", "Up: 1d 02h 03m"),
+            ("Pi CPU Temp", "39°C / 102°F"),
+            ("Cell Status", "On Sig 012%"),
+            ("GPS Status Lock", "21 View/14 Used"),
         ))
         unknown = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(None, None, None, None), None)
-        self.assertEqual(unknown[-1], ("GPS DATA UNKNOWN", "FIX UNKNOWN"))
+        self.assertEqual(unknown, (
+            ("PCS Online", "Up: --d --h --m"),
+            ("Pi CPU Temp", "--°C / --°F"),
+            ("Cell Status", "Off Sig 000%"),
+            ("GPS Status --", "-- View/-- Used"),
+        ))
         self.assertTrue(all(len(line) <= 16 for page in pages + unknown for line in page))
 
-    def test_one_lcd_status_rotation_writes_three_pages(self):
+    def test_one_lcd_status_rotation_writes_four_pages(self):
         class FakeLcd:
             def __init__(self):
                 self.pages = []
@@ -127,7 +146,7 @@ class PcsGpioTests(unittest.TestCase):
                 pass
 
         lcd = FakeLcd()
-        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True)
+        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14)
         output = io.StringIO()
         with redirect_stdout(output):
             pcs_gpio.run_lcd_status(
@@ -263,7 +282,7 @@ class PcsGpioTests(unittest.TestCase):
             result = pcs_gpio.main(("lcd-status", "--once", "--page-seconds", "0"))
         self.assertEqual(result, 0)
         parsed = json.loads(output.getvalue())
-        self.assertEqual(len(parsed["pages"]), 3)
+        self.assertEqual(len(parsed["pages"]), 4)
         self.assertFalse(parsed["writes_performed"])
 
     def test_real_lcd_status_requires_double_confirmation(self):

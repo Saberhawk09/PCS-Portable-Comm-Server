@@ -54,6 +54,7 @@ PIN_ASSIGNMENTS: tuple[PinAssignment, ...] = (
 LCD_PINS = {"rs": 4, "enable": 17, "d4": 27, "d5": 22, "d6": 23, "d7": 24}
 LCD_COLUMNS = 16
 LCD_ROWS = 2
+HD44780_CHARACTER_CODES = {"°": 0xDF}
 WS2812_PIN = 21
 WS2812_COUNT = 6
 FAN_PWM_PIN = 18
@@ -138,7 +139,8 @@ class HD44780:
         for address, line in zip((0x00, 0x40), padded):
             self.command(0x80 | address)
             for character in line:
-                self._send(ord(character), data=True)
+                code = HD44780_CHARACTER_CODES.get(character, ord(character))
+                self._send(code if 0 <= code <= 0xFF else ord("?"), data=True)
 
     def close(self, *, clear: bool = True) -> None:
         if clear:
@@ -288,6 +290,8 @@ class StatsSnapshot:
     cellular_quality: int | None
     gps_satellites: int | None
     gps_locked: bool | None
+    cellular_online: bool | None = None
+    gps_satellites_used: int | None = None
 
     def as_dict(self) -> dict[str, int | bool | None]:
         return asdict(self)
@@ -380,7 +384,28 @@ def parse_cellular_quality(output: str) -> int | None:
     return max(0, min(99, int(match.group(1))))
 
 
-def read_cellular_quality() -> int | None:
+def parse_cellular_state(output: str) -> bool | None:
+    match = re.search(r"^modem\.generic\.state\s*:\s*(\S+)", output, re.MULTILINE)
+    if not match:
+        return None
+    state = match.group(1).lower()
+    if state in {"failed", "disabled", "disabling", "locked"}:
+        return False
+    if state in {
+        "initializing",
+        "enabling",
+        "enabled",
+        "searching",
+        "registered",
+        "disconnecting",
+        "connecting",
+        "connected",
+    }:
+        return True
+    return None
+
+
+def read_cellular_status() -> tuple[bool | None, int | None]:
     try:
         result = subprocess.run(
             ["mmcli", "-m", "any", "-K"],
@@ -390,8 +415,16 @@ def read_cellular_quality() -> int | None:
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return None
-    return parse_cellular_quality(result.stdout)
+        return None, None
+    quality = parse_cellular_quality(result.stdout)
+    online = parse_cellular_state(result.stdout)
+    if online is None and quality is not None:
+        online = True
+    return online, quality
+
+
+def read_cellular_quality() -> int | None:
+    return read_cellular_status()[1]
 
 
 def satellite_count_from_sky(record: dict[str, object]) -> int | None:
@@ -405,28 +438,64 @@ def satellite_count_from_sky(record: dict[str, object]) -> int | None:
     return None
 
 
+def satellite_counts_from_sky(record: dict[str, object]) -> tuple[int | None, int | None]:
+    """Return gpsd satellites in view and used from one SKY report."""
+    viewed = satellite_count_from_sky(record)
+    used = record.get("uSat")
+    if isinstance(used, int) and not isinstance(used, bool):
+        return viewed, max(0, min(99, used))
+    satellites = record.get("satellites")
+    if isinstance(satellites, list):
+        used_count = sum(
+            1 for satellite in satellites
+            if isinstance(satellite, dict) and satellite.get("used") is True
+        )
+        return viewed, min(99, used_count)
+    return viewed, None
+
+
+def merge_gps_details(
+    satellites_view: int | None,
+    satellites_used: int | None,
+    locked: bool | None,
+    record: dict[str, object],
+) -> tuple[int | None, int | None, bool | None]:
+    """Keep paired counts from the fullest SKY report and the best TPV fix."""
+    if record.get("class") == "SKY":
+        candidate_view, candidate_used = satellite_counts_from_sky(record)
+        if candidate_view is not None and (
+            satellites_view is None
+            or candidate_view > satellites_view
+            or (candidate_view == satellites_view and (candidate_used or 0) > (satellites_used or 0))
+        ):
+            satellites_view = candidate_view
+            satellites_used = candidate_used
+    elif record.get("class") == "TPV":
+        mode = record.get("mode")
+        if isinstance(mode, int) and not isinstance(mode, bool):
+            candidate_lock = mode >= 2
+            locked = candidate_lock if locked is None else locked or candidate_lock
+    return satellites_view, satellites_used, locked
+
+
 def merge_gps_status(
     satellites: int | None,
     locked: bool | None,
     record: dict[str, object],
 ) -> tuple[int | None, bool | None]:
     """Keep the fullest SKY report and best TPV fix without retaining coordinates."""
-    if record.get("class") == "SKY":
-        candidate = satellite_count_from_sky(record)
-        if candidate is not None and (satellites is None or candidate > satellites):
-            satellites = candidate
-    elif record.get("class") == "TPV":
-        mode = record.get("mode")
-        if isinstance(mode, int) and not isinstance(mode, bool):
-            candidate_lock = mode >= 2
-            locked = candidate_lock if locked is None else locked or candidate_lock
+    satellites, _used, locked = merge_gps_details(satellites, None, locked, record)
     return satellites, locked
 
 
-def read_gps_status(host: str = "127.0.0.1", port: int = 2947) -> tuple[int | None, bool | None]:
-    """Read gpsd satellite count and fix lock; coordinates are neither retained nor logged."""
+def read_gps_details(
+    host: str = "127.0.0.1",
+    port: int = 2947,
+) -> tuple[int | None, int | None, bool | None]:
+    """Read gpsd view/used counts and fix; coordinates are neither retained nor logged."""
     deadline = time.monotonic() + 2.0
-    satellites: int | None = None
+    satellites_view: int | None = None
+    satellites_used: int | None = None
     locked: bool | None = None
     try:
         with socket.create_connection((host, port), timeout=1.0) as connection:
@@ -447,19 +516,32 @@ def read_gps_status(host: str = "127.0.0.1", port: int = 2947) -> tuple[int | No
                         record = json.loads(raw_line.decode("utf-8", errors="replace"))
                     except (json.JSONDecodeError, UnicodeError):
                         continue
-                    satellites, locked = merge_gps_status(satellites, locked, record)
+                    satellites_view, satellites_used, locked = merge_gps_details(
+                        satellites_view,
+                        satellites_used,
+                        locked,
+                        record,
+                    )
     except OSError:
         pass
-    return satellites, locked
+    return satellites_view, satellites_used, locked
+
+
+def read_gps_status(host: str = "127.0.0.1", port: int = 2947) -> tuple[int | None, bool | None]:
+    satellites_view, _satellites_used, locked = read_gps_details(host, port)
+    return satellites_view, locked
 
 
 def collect_stats() -> StatsSnapshot:
-    gps_satellites, gps_locked = read_gps_status()
+    cellular_online, cellular_quality = read_cellular_status()
+    gps_satellites, gps_satellites_used, gps_locked = read_gps_details()
     return StatsSnapshot(
         temperature_c=read_temperature(),
-        cellular_quality=read_cellular_quality(),
+        cellular_quality=cellular_quality,
         gps_satellites=gps_satellites,
         gps_locked=gps_locked,
+        cellular_online=cellular_online,
+        gps_satellites_used=gps_satellites_used,
     )
 
 
@@ -473,33 +555,39 @@ def read_uptime_seconds(path: Path = Path("/proc/uptime")) -> int | None:
 
 def format_uptime(seconds: int | None) -> str:
     if seconds is None:
-        return "UPTIME UNKNOWN"
+        return "Up: --d --h --m"
     minutes = max(0, int(seconds)) // 60
     days, minutes = divmod(minutes, 24 * 60)
     hours, minutes = divmod(minutes, 60)
-    return f"UP {min(days, 999)}d {hours:02}h {minutes:02}m"
+    return f"Up: {min(days, 999)}d {hours:02}h {minutes:02}m"
 
 
 def lcd_status_pages(
     snapshot: StatsSnapshot,
     uptime_seconds: int | None,
 ) -> tuple[tuple[str, str], ...]:
-    temperature = "--" if snapshot.temperature_c is None else str(snapshot.temperature_c)
-    cellular = "--" if snapshot.cellular_quality is None else str(snapshot.cellular_quality)
-    if snapshot.gps_satellites is None:
-        gps_line1 = "GPS DATA UNKNOWN"
+    if snapshot.temperature_c is None:
+        temperature_line = "--°C / --°F"
     else:
-        gps_line1 = f"GPS {snapshot.gps_satellites} SAT VIEW"
-    if snapshot.gps_satellites == 0 or snapshot.gps_locked is False:
-        gps_line2 = "NO GPS FIX"
-    elif snapshot.gps_locked is True:
-        gps_line2 = "GPS FIX OK"
+        temperature_f = round(snapshot.temperature_c * 9 / 5 + 32)
+        temperature_line = f"{snapshot.temperature_c:02d}°C / {temperature_f:02d}°F"
+
+    cellular_state = "On" if snapshot.cellular_online is True else "Off"
+    cellular_quality = snapshot.cellular_quality if snapshot.cellular_quality is not None else 0
+
+    if snapshot.gps_locked is True:
+        gps_heading = "GPS Status Lock"
+    elif snapshot.gps_locked is False or snapshot.gps_satellites == 0:
+        gps_heading = "GPS Status NoFix"
     else:
-        gps_line2 = "FIX UNKNOWN"
+        gps_heading = "GPS Status --"
+    gps_view = "--" if snapshot.gps_satellites is None else f"{snapshot.gps_satellites:02d}"
+    gps_used = "--" if snapshot.gps_satellites_used is None else f"{snapshot.gps_satellites_used:02d}"
     return (
-        ("PCS ONLINE", format_uptime(uptime_seconds)),
-        (f"CPU TEMP {temperature}C", f"LTE SIGNAL {cellular}%"),
-        (gps_line1, gps_line2),
+        ("PCS Online", format_uptime(uptime_seconds)),
+        ("Pi CPU Temp", temperature_line),
+        ("Cell Status", f"{cellular_state} Sig {cellular_quality:03d}%"),
+        (gps_heading, f"{gps_view} View/{gps_used} Used"),
     )
 
 
