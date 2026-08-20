@@ -19,7 +19,7 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | SA818S UART TX | GPIO14 | 8 | Reserved; logic level unverified | Pi TX to radio RXD. Do not connect until the radio UART level is measured. |
 | SA818S UART RX | GPIO15 | 10 | Reserved; logic level unverified | Pi RX from radio TXD. Do not connect until the radio UART level is measured. |
 | LCD E | GPIO17 | 11 | Installed and bench-tested | HD44780 enable. |
-| Fan PWM | GPIO18 | 12 | Selected; behavior not measured | PWM-capable line; no automatic fan curve is selected yet. |
+| Fan PWM | GPIO18 | 12 | Hardware PWM control implemented; RPM unmeasured | PWM0/ALT5, 100 Hz, fail-safe full duty. |
 | WS2812 data | GPIO21 | 40 | Selected; not bench-tested | PCM-capable output through the 74AHCT125; six LEDs are planned. |
 | LCD D4 | GPIO27 | 13 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 | LCD D5 | GPIO22 | 15 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
@@ -42,6 +42,9 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
   interface has been confirmed.
 - GPIO21 uses the WS2812 driver's PCM path so GPIO18 remains available for
   hardware PWM fan control.
+- GPIO18 uses PWM0/ALT5 at the cooler vendor's documented 100 Hz frequency.
+  PCS disables only the unused onboard analogue audio function that otherwise
+  shares the PWM block; the separate USB Dire Wolf sound adapter is unaffected.
 - Confirm the live pin function with the Raspberry Pi `pinout` and `pinctrl`
   tools before connecting hardware.
 
@@ -58,22 +61,29 @@ python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY"
 python3 scripts/pcs_gpio.py lcd-status
 ```
 
-Real LCD, MAX7219, or WS2812 writes require the two-part
+Real LCD, MAX7219, fan, or WS2812 writes require the two-part
 `--hardware --apply` confirmation. `demo all` intentionally excludes the fan,
-PTT, UART, and RTC. The fan has a separate command that also requires an
-explicit duty value because the Armor Lite control behavior and a safe thermal
-curve have not been measured:
+PTT, UART, and RTC. The guarded fan demo requires an explicit duty value:
 
 ```bash
 python3 scripts/pcs_gpio.py demo lcd --hardware --apply
 python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY" --hardware --apply
 python3 scripts/pcs_gpio.py demo matrix --hardware --apply
 sudo python3 scripts/pcs_gpio.py demo leds --hardware --apply
-python3 scripts/pcs_gpio.py demo fan --fan-duty 100 --hardware --apply
+sudo python3 scripts/pcs_gpio.py demo fan --fan-duty 100 --hardware --apply
 ```
 
 The real backends expect the Raspberry Pi OS `gpiozero` and `spidev` Python
 modules plus `rpi_ws281x` for the LEDs. Run `check` before commissioning.
+
+The persistent fan service uses a conservative 40/55/70/85/100% curve at
+0/45/55/65/75 C with 3 C downshift hysteresis. Missing temperature data and
+service startup/shutdown force 100% duty. Install it with
+`scripts/setup-gpio-fan.sh --install`; one reboot is normally required for the
+PWM0 overlay. The fan provides no tachometer feedback, so duty is verified in
+software while physical RPM remains unmeasured. See the
+[52Pi Armor Lite Pi 4 documentation](https://wiki.52pi.com/index.php?title=ZP-0110)
+for the vendor's PWM capability and 100 Hz example.
 
 ## HD44780 Live Status
 

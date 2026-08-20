@@ -51,6 +51,16 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('./scripts/setup-gpio-stats.sh --install', self.source)
         self.assertIn('PCS_SETUP_GPIO_STATS="no"', self.source)
 
+    def test_hardware_pwm_fan_setup_is_optional_and_persisted(self):
+        self.assertIn('PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"', self.source)
+        self.assertIn('printf "PCS_SETUP_GPIO_FAN=%q\\n"', self.source)
+        self.assertIn(
+            'Install GPIO18 hardware PWM thermal fan control?',
+            self.source,
+        )
+        self.assertIn('./scripts/setup-gpio-fan.sh --install', self.source)
+        self.assertIn('PCS_SETUP_GPIO_FAN="no"', self.source)
+
 
 if __name__ == "__main__":
     unittest.main()

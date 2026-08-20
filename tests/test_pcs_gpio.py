@@ -17,6 +17,8 @@ STATS_SERVICE = ROOT / "systemd" / "pcs-gpio-stats.service"
 STATS_SETUP = ROOT / "scripts" / "setup-gpio-stats.sh"
 LCD_SERVICE = ROOT / "systemd" / "pcs-gpio-lcd.service"
 LCD_SETUP = ROOT / "scripts" / "setup-gpio-lcd.sh"
+FAN_SERVICE = ROOT / "systemd" / "pcs-gpio-fan.service"
+FAN_SETUP = ROOT / "scripts" / "setup-gpio-fan.sh"
 
 
 class PcsGpioTests(unittest.TestCase):
@@ -60,6 +62,39 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pcs_gpio.MAX7219_SPI_DEVICE, 0)
         self.assertEqual(pcs_gpio.MAX7219_SPI_HZ, 500_000)
         self.assertEqual(pcs_gpio.MAX7219_INTENSITY, 3)
+
+    def test_fan_uses_gpio18_hardware_pwm_at_vendor_frequency(self):
+        self.assertEqual(pcs_gpio.FAN_PWM_PIN, 18)
+        self.assertEqual(pcs_gpio.FAN_PWM_CHANNEL, 0)
+        self.assertEqual(pcs_gpio.FAN_PWM_FREQUENCY_HZ, 100)
+        self.assertEqual(pcs_gpio.FAN_PWM_PERIOD_NS, 10_000_000)
+
+    def test_hardware_pwm_fan_initializes_and_closes_at_full_duty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            chip = Path(temp_dir) / "pwmchip0"
+            channel = chip / "pwm0"
+            channel.mkdir(parents=True)
+            (channel / "enable").write_text("0\n", encoding="ascii")
+            (channel / "period").write_text("0\n", encoding="ascii")
+            (channel / "duty_cycle").write_text("0\n", encoding="ascii")
+            fan = pcs_gpio.HardwarePwmFan(chip_path=chip)
+            self.assertEqual((channel / "period").read_text(encoding="ascii"), "10000000\n")
+            self.assertEqual((channel / "duty_cycle").read_text(encoding="ascii"), "10000000\n")
+            self.assertEqual((channel / "enable").read_text(encoding="ascii"), "1\n")
+            fan.duty(40)
+            self.assertEqual((channel / "duty_cycle").read_text(encoding="ascii"), "4000000\n")
+            fan.close()
+            self.assertEqual((channel / "duty_cycle").read_text(encoding="ascii"), "10000000\n")
+
+    def test_fan_curve_is_conservative_hysteretic_and_fail_safe(self):
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(None), 100)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(39), 40)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(45), 55)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(55), 70)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(65), 85)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(75), 100)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(44, 55), 55)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(42, 55), 40)
 
     def test_temperature_reader_rounds_millidegrees(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -372,6 +407,32 @@ class PcsGpioTests(unittest.TestCase):
         self.assertNotIn("PTT", service)
         self.assertIn("systemctl enable --now pcs-gpio-lcd.service", setup)
         self.assertIn("apt-get install -y python3-gpiozero", setup)
+
+    def test_fan_service_uses_hardware_pwm_and_full_duty_stop_failsafe(self):
+        service = FAN_SERVICE.read_text(encoding="utf-8")
+        setup = FAN_SETUP.read_text(encoding="utf-8")
+        self.assertIn("pcs-gpio fan-control --hardware --apply", service)
+        self.assertIn("pcs-gpio fan-failsafe --hardware --apply", service)
+        self.assertIn("User=root", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+        self.assertNotIn("ProtectKernelTunables=yes", service)
+        self.assertIn("dtparam=audio=off", setup)
+        self.assertIn("dtoverlay=pwm,pin=18,func=2", setup)
+        self.assertIn("systemctl enable pcs-gpio-fan.service", setup)
+
+    def test_fan_control_is_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("fan-control", "--once"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["frequency_hz"], 100)
+        self.assertEqual(parsed["failsafe_duty_percent"], 100)
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_fan_control_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("fan-control", "--hardware", "--once"))
 
     def test_all_demo_excludes_fan_ptt_uart_and_rtc(self):
         backend = pcs_gpio.MockBackend()

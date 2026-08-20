@@ -19,6 +19,9 @@ All notable user-facing PCS changes are recorded here.
   finalized schematic's PCS-wide GPIO allocation
 - added an offline-safe GPIO commissioning utility with simulated-by-default
   LCD, MAX7219, WS2812, and explicit-duty fan tests
+- added optional GPIO18 PWM0 thermal fan control at the vendor-documented
+  100 Hz frequency, with a conservative five-step curve, hysteresis, runtime
+  status, and full-duty startup/shutdown/missing-temperature fail-safe behavior
 - recorded the installed MAX7219/AHCT125 path as bench-tested at 500 kHz and
   selected the proven `0x03` indoor intensity for its driver
 - added a hardened SPI-only MAX7219 daemon that rotates CPU temperature,

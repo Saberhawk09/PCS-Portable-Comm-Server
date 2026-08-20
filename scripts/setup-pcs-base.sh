@@ -36,6 +36,7 @@ PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"
+PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
 PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-W8IJC-2}"
 PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-144.555 MHz}"
@@ -183,6 +184,7 @@ write_install_config() {
         printf "PCS_SETUP_PISTAR=%q\n" "${PCS_SETUP_PISTAR}"
         printf "PCS_SETUP_APRS=%q\n" "${PCS_SETUP_APRS}"
         printf "PCS_SETUP_GPIO_STATS=%q\n" "${PCS_SETUP_GPIO_STATS}"
+        printf "PCS_SETUP_GPIO_FAN=%q\n" "${PCS_SETUP_GPIO_FAN}"
         printf "PCS_APRS_ROLE=%q\n" "${PCS_APRS_ROLE}"
         printf "PCS_APRS_CALLSIGN=%q\n" "${PCS_APRS_CALLSIGN}"
         printf "PCS_APRS_FREQUENCY=%q\n" "${PCS_APRS_FREQUENCY}"
@@ -275,6 +277,7 @@ collect_install_answers() {
     local pistar_default
     local aprs_default
     local gpio_stats_default
+    local gpio_fan_default
 
     case "${PCS_SETUP_MODE}" in
         DEFAULTS)
@@ -293,6 +296,7 @@ collect_install_answers() {
             PCS_SETUP_PISTAR="no"
             PCS_SETUP_APRS="no"
             PCS_SETUP_GPIO_STATS="no"
+            PCS_SETUP_GPIO_FAN="no"
             ;;
         ALL)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -308,6 +312,7 @@ collect_install_answers() {
             pistar_default="${PCS_SETUP_PISTAR}"
             aprs_default="${PCS_SETUP_APRS}"
             gpio_stats_default="${PCS_SETUP_GPIO_STATS}"
+            gpio_fan_default="${PCS_SETUP_GPIO_FAN}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
             [[ "${gpsd_lan_default}" == "ask" ]] && gpsd_lan_default="no"
@@ -315,6 +320,7 @@ collect_install_answers() {
             [[ "${aprs_default}" == "ask" ]] && aprs_default="no"
             [[ "${aprs_default}" == "staged" ]] && aprs_default="yes"
             [[ "${gpio_stats_default}" == "ask" ]] && gpio_stats_default="no"
+            [[ "${gpio_fan_default}" == "ask" ]] && gpio_fan_default="no"
             PCS_SETUP_USB_PRIMARY="$(ask_yes_no "Configure detected USB storage as PCS-Share primary storage?" "${usb_default}")"
             if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" ]]; then
                 PCS_SETUP_USB_DEVICE="$(ask_value "USB storage device or UUID" "${PCS_SETUP_USB_DEVICE}")"
@@ -326,6 +332,7 @@ collect_install_answers() {
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
             PCS_SETUP_APRS="$(ask_yes_no "Stage optional Dire Wolf / APRS software without enabling radio or RF transmit?" "${aprs_default}")"
             PCS_SETUP_GPIO_STATS="$(ask_yes_no "Install and start the optional MAX7219 LED matrix statistics display?" "${gpio_stats_default}")"
+            PCS_SETUP_GPIO_FAN="$(ask_yes_no "Install GPIO18 hardware PWM thermal fan control?" "${gpio_fan_default}")"
             ;;
         ASK)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -338,6 +345,7 @@ collect_install_answers() {
             PCS_SETUP_GPSD_LAN="ask"
             PCS_SETUP_APRS="ask"
             PCS_SETUP_GPIO_STATS="ask"
+            PCS_SETUP_GPIO_FAN="ask"
             pistar_default="${PCS_SETUP_PISTAR}"
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
@@ -392,6 +400,7 @@ confirm_install_answers() {
     echo "  Pi-Star monitoring: ${PCS_SETUP_PISTAR}"
     echo "  Dire Wolf / APRS:   ${PCS_SETUP_APRS}"
     echo "  MAX7219 LED matrix: ${PCS_SETUP_GPIO_STATS}"
+    echo "  GPIO18 PWM fan:     ${PCS_SETUP_GPIO_FAN}"
     echo
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
@@ -428,6 +437,7 @@ echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
 echo "  - Optional Pi-Star monitoring and local-access links"
 echo "  - Optional hardware-safe Dire Wolf / APRS software staging"
 echo "  - Optional MAX7219 LED matrix statistics display"
+echo "  - Optional GPIO18 hardware PWM thermal fan control"
 echo "  - Cockpit/systemd restart button install"
 echo "  - PCS public homepage and authenticated control panel setup"
 echo "  - Legacy port 8080 admin compatibility redirect"
@@ -518,6 +528,7 @@ ensure_executable "scripts/setup-pistar-shutdown.sh"
 ensure_executable "scripts/setup-direwolf-aprs.sh"
 ensure_executable "scripts/setup-gpio-lcd.sh"
 ensure_executable "scripts/setup-gpio-stats.sh"
+ensure_executable "scripts/setup-gpio-fan.sh"
 ensure_executable "scripts/pcs-aprs-kiss-firewall.sh"
 ensure_executable "scripts/test-direwolf-aprs-software.sh"
 ensure_executable "scripts/pcs_aprs_telemetry.py"
@@ -771,6 +782,38 @@ case "${gpsd_lan_answer}" in
         echo "Skipping LAN-only GPSD proxy setup."
         echo "You can run this later:"
         echo "  ./scripts/setup-gpsd-lan-proxy.sh"
+        ;;
+esac
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Install GPIO18 hardware PWM thermal fan control"
+echo "============================================================"
+echo
+echo "This disables unused onboard analog audio, enables PWM0 on GPIO18, and"
+echo "installs a fail-safe temperature-controlled fan service. A reboot is normally"
+echo "required before the hardware PWM interface and service become active."
+echo
+
+if [[ "${PCS_SETUP_GPIO_FAN}" == "yes" || "${PCS_SETUP_GPIO_FAN}" == "no" ]]; then
+    gpio_fan_answer="${PCS_SETUP_GPIO_FAN}"
+else
+    gpio_fan_answer="$(ask_yes_no "Install GPIO18 hardware PWM thermal fan control?" "no")"
+fi
+PCS_SETUP_GPIO_FAN="${gpio_fan_answer}"
+export PCS_SETUP_GPIO_FAN
+write_install_config
+
+case "${gpio_fan_answer}" in
+    y|Y|yes|YES|Yes)
+        run_optional_step \
+            "Install GPIO18 hardware PWM thermal fan control" \
+            "./scripts/setup-gpio-fan.sh --install"
+        ;;
+    *)
+        echo "Skipping GPIO18 hardware PWM thermal fan control."
+        echo "You can install it later with:"
+        echo "  ./scripts/setup-gpio-fan.sh --install"
         ;;
 esac
 

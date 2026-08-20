@@ -69,6 +69,7 @@ python3 scripts/pcs_gpio.py demo all --duration 0
 python3 scripts/pcs_gpio.py stats
 python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY"
 python3 scripts/pcs_gpio.py lcd-status
+python3 scripts/pcs_gpio.py fan-control
 ```
 
 Simulation is the default. Real writes require both `--hardware` and `--apply`.
@@ -124,6 +125,28 @@ duplicating the LCD's normal telemetry. It does not retain GPS coordinates or
 control APRS PTT or radio UART lines.
 Healthy frames use low intensity levels 1-2; warnings use 4 and critical alerts
 use 6, well below the MAX7219 maximum of 15.
+
+### setup-gpio-fan.sh
+
+Configures GPIO18/physical pin 12 as PWM0 and installs the persistent thermal
+fan controller:
+
+```bash
+bash scripts/setup-gpio-fan.sh --install
+bash scripts/setup-gpio-fan.sh --check
+```
+
+The base installer exposes this as the optional `PCS_SETUP_GPIO_FAN=yes|no`
+choice. Installation disables the unused onboard analogue audio PWM function,
+adds `dtoverlay=pwm,pin=18,func=2`, and normally requires one reboot. Dire
+Wolf's separate USB sound adapter is unaffected.
+
+The controller uses the 52Pi-documented 100 Hz PWM frequency and a conservative
+five-step curve: 40% below 45 C, then 55/70/85% at 45/55/65 C and 100% at 75 C.
+It uses 3 C downshift hysteresis and polls every five seconds. Startup, shutdown,
+missing temperature data, or daemon failure leave the PWM channel enabled at
+100% duty. The hardware has no tachometer feedback, so configured duty and CPU
+temperature are observable but actual fan RPM is not measured.
 
 ## Dire Wolf / APRS
 

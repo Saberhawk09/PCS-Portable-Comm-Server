@@ -51,6 +51,7 @@ PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
+PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
@@ -789,6 +790,45 @@ if [[ "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
     fi
 else
     skip "MAX7219 LED matrix is not selected in the install configuration"
+fi
+
+section "GPIO18 Hardware PWM Fan"
+
+if [[ "${PCS_SETUP_GPIO_FAN}" == "yes" ]]; then
+    PCS_BOOT_CONFIG="/boot/firmware/config.txt"
+    [[ -f "${PCS_BOOT_CONFIG}" ]] || PCS_BOOT_CONFIG="/boot/config.txt"
+
+    if [[ -f "${PCS_BOOT_CONFIG}" ]] \
+        && grep -Fqx "dtparam=audio=off" "${PCS_BOOT_CONFIG}" \
+        && grep -Fqx "dtoverlay=pwm,pin=18,func=2" "${PCS_BOOT_CONFIG}"; then
+        pass "GPIO18 PWM0 boot configuration is present"
+    else
+        fail "GPIO18 fan selected but its hardware PWM boot configuration is missing"
+    fi
+
+    if service_enabled pcs-gpio-fan.service; then
+        pass "pcs-gpio-fan.service is enabled"
+    else
+        fail "GPIO18 fan selected but pcs-gpio-fan.service is disabled"
+    fi
+
+    if [[ -d /sys/class/pwm/pwmchip0 ]]; then
+        pass "PWM0 hardware interface is available"
+        if service_active pcs-gpio-fan.service; then
+            pass "pcs-gpio-fan.service is active"
+        else
+            fail "PWM0 is available but pcs-gpio-fan.service is inactive"
+        fi
+        if [[ -r /run/pcs-gpio-fan/status.json ]]; then
+            pass "Fan controller runtime status is available"
+        else
+            warn "Fan service is selected but runtime status is unavailable"
+        fi
+    else
+        warn "GPIO18 PWM0 is configured but unavailable until the Pi reboots"
+    fi
+else
+    skip "GPIO18 hardware PWM fan is not selected in the install configuration"
 fi
 
 section "WWAN / GPS"

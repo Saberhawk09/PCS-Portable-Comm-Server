@@ -36,6 +36,7 @@ PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
+PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_AUDIO_INPUT="${PCS_APRS_AUDIO_INPUT:-auto}"
 PCS_APRS_AUDIO_OUTPUT="${PCS_APRS_AUDIO_OUTPUT:-null}"
@@ -396,6 +397,21 @@ else
 fi
 echo
 
+echo "--- GPIO18 Hardware PWM Fan ---"
+echo "PCS state: ${PCS_SETUP_GPIO_FAN}"
+if [[ "${PCS_SETUP_GPIO_FAN}" == "yes" ]]; then
+    echo "PWM0 interface:  $([[ -d /sys/class/pwm/pwmchip0 ]] && echo available || echo reboot-required)"
+    echo "Service active:  $(systemctl is-active pcs-gpio-fan.service 2>/dev/null || true)"
+    echo "Service enabled: $(systemctl is-enabled pcs-gpio-fan.service 2>/dev/null || true)"
+    if [[ -r /run/pcs-gpio-fan/status.json ]]; then
+        echo -n "Controller:      "
+        cat /run/pcs-gpio-fan/status.json
+    fi
+else
+    echo "GPIO18 hardware PWM fan control is not selected."
+fi
+echo
+
 echo "--- Key Services ---"
 for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket pcs-control-panel.service pcs-dashboard-redirect.service; do
     echo
@@ -566,6 +582,18 @@ else
     GPIO_STATS_STATUS="not configured"
 fi
 
+if [[ "${PCS_SETUP_GPIO_FAN}" == "yes" ]]; then
+    if systemctl is-active --quiet pcs-gpio-fan.service; then
+        GPIO_FAN_STATUS="active"
+    elif [[ ! -d /sys/class/pwm/pwmchip0 ]]; then
+        GPIO_FAN_STATUS="configured / reboot required"
+    else
+        GPIO_FAN_STATUS="configured / inactive"
+    fi
+else
+    GPIO_FAN_STATUS="not configured"
+fi
+
 if [[ -d "${PCS_SHARE_PATH}" ]] && testparm -s 2>/dev/null | grep -q "^\[${PCS_SHARE_NAME}\]"; then
     PRIMARY_SHARE_STATUS="present"
 else
@@ -600,6 +628,7 @@ echo "PCS Homepage/Admin:       ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
 echo "Legacy Admin Redirect:    ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
 echo "Dire Wolf / APRS:         ${APRS_STATUS}"
 echo "MAX7219 LED Matrix:       ${GPIO_STATS_STATUS}"
+echo "GPIO18 PWM Fan:           ${GPIO_FAN_STATUS}"
 printf "%-27s %s
 " "WWAN modem:" "${WWAN_SUMMARY}"
 echo "GPSD:                     ${GPSD_STATUS}"

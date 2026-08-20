@@ -44,7 +44,7 @@ PIN_ASSIGNMENTS: tuple[PinAssignment, ...] = (
     PinAssignment("SA818 UART TX", 14, 8, "Linux UART", "reserved; logic level unverified"),
     PinAssignment("SA818 UART RX", 15, 10, "Linux UART", "reserved; logic level unverified"),
     PinAssignment("LCD E", 17, 11, "pcs_gpio", "installed and bench-tested"),
-    PinAssignment("Fan PWM", 18, 12, "pcs_gpio", "selected; behavior not measured"),
+    PinAssignment("Fan PWM", 18, 12, "pcs_gpio", "hardware PWM control; RPM unmeasured"),
     PinAssignment("WS2812 data", 21, 40, "pcs_gpio", "selected; not bench-tested"),
     PinAssignment("LCD D4", 27, 13, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("LCD D5", 22, 15, "pcs_gpio", "installed and bench-tested"),
@@ -59,6 +59,21 @@ HD44780_CHARACTER_CODES = {"°": 0xDF}
 WS2812_PIN = 21
 WS2812_COUNT = 6
 FAN_PWM_PIN = 18
+FAN_PWM_CHANNEL = 0
+FAN_PWM_FREQUENCY_HZ = 100
+FAN_PWM_PERIOD_NS = 1_000_000_000 // FAN_PWM_FREQUENCY_HZ
+FAN_PWM_CHIP_PATH = Path("/sys/class/pwm/pwmchip0")
+FAN_STATUS_PATH = Path("/run/pcs-gpio-fan/status.json")
+FAN_FAILSAFE_DUTY = 100
+FAN_HYSTERESIS_C = 3
+FAN_POLL_SECONDS = 5.0
+FAN_CURVE: tuple[tuple[int, int], ...] = (
+    (0, 40),
+    (45, 55),
+    (55, 70),
+    (65, 85),
+    (75, 100),
+)
 MAX7219_SPI_BUS = 0
 MAX7219_SPI_DEVICE = 0
 MAX7219_SPI_HZ = 500_000
@@ -70,6 +85,11 @@ class Backend(Protocol):
     def matrix(self, rows: Sequence[int]) -> None: ...
     def leds(self, colors: Sequence[tuple[int, int, int]]) -> None: ...
     def fan(self, duty_percent: float) -> None: ...
+    def close(self) -> None: ...
+
+
+class FanController(Protocol):
+    def duty(self, duty_percent: float) -> None: ...
     def close(self) -> None: ...
 
 
@@ -213,22 +233,54 @@ class Ws2812:
         self.colors([(0, 0, 0)] * WS2812_COUNT)
 
 
-class FanPwm:
-    def __init__(self) -> None:
-        from gpiozero import PWMOutputDevice
+class HardwarePwmFan:
+    """GPIO18 PWM0 controller using the kernel hardware-PWM sysfs interface."""
 
-        # The commissioning command begins at full duty. Automatic thermal
-        # control waits for measured fan behavior and a reviewed fan curve.
-        self.output = PWMOutputDevice(FAN_PWM_PIN, frequency=25_000, initial_value=1.0)
+    def __init__(
+        self,
+        chip_path: Path = FAN_PWM_CHIP_PATH,
+        channel: int = FAN_PWM_CHANNEL,
+        period_ns: int = FAN_PWM_PERIOD_NS,
+    ) -> None:
+        self.chip_path = chip_path
+        self.channel = channel
+        self.period_ns = period_ns
+        self.channel_path = chip_path / f"pwm{channel}"
+        if not chip_path.is_dir():
+            raise RuntimeError(
+                f"hardware PWM is unavailable at {chip_path}; enable the GPIO18 pwm overlay and reboot"
+            )
+        if not self.channel_path.is_dir():
+            try:
+                (chip_path / "export").write_text(f"{channel}\n", encoding="ascii")
+            except OSError as error:
+                if not self.channel_path.is_dir():
+                    raise RuntimeError(f"cannot export PWM channel {channel}: {error}") from error
+            deadline = time.monotonic() + 2.0
+            while not self.channel_path.is_dir() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            if not self.channel_path.is_dir():
+                raise RuntimeError(f"PWM channel {channel} did not appear after export")
+
+        enabled_path = self.channel_path / "enable"
+        if enabled_path.read_text(encoding="ascii").strip() == "1":
+            enabled_path.write_text("0\n", encoding="ascii")
+        (self.channel_path / "period").write_text(f"{period_ns}\n", encoding="ascii")
+        (self.channel_path / "duty_cycle").write_text(f"{period_ns}\n", encoding="ascii")
+        enabled_path.write_text("1\n", encoding="ascii")
+        self.current_duty = FAN_FAILSAFE_DUTY
 
     def duty(self, duty_percent: float) -> None:
         if not 0 <= duty_percent <= 100:
             raise ValueError("fan duty must be between 0 and 100 percent")
-        self.output.value = duty_percent / 100.0
+        duty_ns = round(self.period_ns * float(duty_percent) / 100.0)
+        (self.channel_path / "duty_cycle").write_text(f"{duty_ns}\n", encoding="ascii")
+        self.current_duty = float(duty_percent)
 
     def close(self) -> None:
-        self.output.value = 1.0
-        self.output.close()
+        # Leave PWM enabled at full duty so stopping or restarting the daemon
+        # fails toward maximum cooling instead of silently stopping the fan.
+        self.duty(FAN_FAILSAFE_DUTY)
 
 
 class RaspberryPiBackend:
@@ -253,7 +305,7 @@ class RaspberryPiBackend:
         device.colors(colors)
 
     def fan(self, duty_percent: float) -> None:
-        device = FanPwm()
+        device = HardwarePwmFan()
         self._devices.append(device)
         device.duty(duty_percent)
 
@@ -428,6 +480,81 @@ def read_temperature(path: Path = Path("/sys/class/thermal/thermal_zone0/temp"))
     except (OSError, ValueError):
         return None
     return max(0, min(99, round(millidegrees / 1000)))
+
+
+def fan_duty_for_temperature(
+    temperature_c: int | None,
+    current_duty: int | None = None,
+) -> int:
+    if temperature_c is None:
+        return FAN_FAILSAFE_DUTY
+
+    target_index = 0
+    for index, (threshold_c, _duty_percent) in enumerate(FAN_CURVE):
+        if temperature_c >= threshold_c:
+            target_index = index
+
+    if current_duty is None:
+        return FAN_CURVE[target_index][1]
+
+    current_index = min(
+        range(len(FAN_CURVE)),
+        key=lambda index: abs(FAN_CURVE[index][1] - current_duty),
+    )
+    if target_index >= current_index:
+        return FAN_CURVE[target_index][1]
+
+    while current_index > target_index:
+        threshold_c = FAN_CURVE[current_index][0]
+        if temperature_c > threshold_c - FAN_HYSTERESIS_C:
+            break
+        current_index -= 1
+    return FAN_CURVE[current_index][1]
+
+
+def write_fan_status(
+    status: dict[str, object],
+    path: Path = FAN_STATUS_PATH,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(status, separators=(",", ":")) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def run_fan_control(
+    fan: FanController,
+    *,
+    once: bool = False,
+    poll_seconds: float = FAN_POLL_SECONDS,
+    temperature_reader: Callable[[], int | None] = read_temperature,
+    status_writer: Callable[[dict[str, object]], None] = write_fan_status,
+    sleeper: Callable[[float], None] = time.sleep,
+    should_stop: Callable[[], bool] = lambda: False,
+) -> None:
+    fan.duty(FAN_FAILSAFE_DUTY)
+    current_duty: int | None = None
+    while not should_stop():
+        temperature_c = temperature_reader()
+        target_duty = fan_duty_for_temperature(temperature_c, current_duty)
+        changed = target_duty != current_duty
+        if changed:
+            fan.duty(target_duty)
+        status = {
+            "temperature_c": temperature_c,
+            "duty_percent": target_duty,
+            "frequency_hz": FAN_PWM_FREQUENCY_HZ,
+            "gpio": FAN_PWM_PIN,
+            "mode": "failsafe" if temperature_c is None else "automatic",
+            "timestamp": int(time.time()),
+        }
+        status_writer(status)
+        if changed or temperature_c is None:
+            print(json.dumps(status, separators=(",", ":")), flush=True)
+        current_duty = target_duty
+        if once:
+            break
+        sleeper(poll_seconds)
 
 
 def parse_cellular_quality(output: str) -> int | None:
@@ -1022,6 +1149,7 @@ def dependency_report() -> dict[str, object]:
         "raspberry_pi_model": model,
         "gpio_header_available": bool(model),
         "spi0_device": Path("/dev/spidev0.0").exists(),
+        "fan_pwm_chip": FAN_PWM_CHIP_PATH.exists(),
         "python_modules": modules,
         "effective_uid": os.geteuid() if hasattr(os, "geteuid") else None,
         "writes_performed": False,
@@ -1048,6 +1176,16 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--apply", action="store_true", help="confirm that GPIO writes are intended")
     demo.add_argument("--duration", type=float, default=3.0)
     demo.add_argument("--fan-duty", type=float)
+
+    fan_control = subparsers.add_parser("fan-control", help="run the GPIO18 hardware-PWM thermal fan curve")
+    fan_control.add_argument("--hardware", action="store_true", help="select the real PWM0 hardware")
+    fan_control.add_argument("--apply", action="store_true", help="confirm that fan PWM writes are intended")
+    fan_control.add_argument("--once", action="store_true", help="apply one temperature sample, then leave full duty")
+    fan_control.add_argument("--poll-seconds", type=float, default=FAN_POLL_SECONDS)
+
+    fan_failsafe = subparsers.add_parser("fan-failsafe", help="leave the GPIO18 fan PWM enabled at full duty")
+    fan_failsafe.add_argument("--hardware", action="store_true", help="select the real PWM0 hardware")
+    fan_failsafe.add_argument("--apply", action="store_true", help="confirm that full-duty fan PWM is intended")
 
     lcd = subparsers.add_parser("lcd", help="write two lines to the HD44780-compatible 16x2 LCD")
     lcd.add_argument("--line1", default="PCS ONLINE")
@@ -1098,6 +1236,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             print(f"Platform:       {report['platform']}")
             print(f"Raspberry Pi:   {report['raspberry_pi_model'] or 'not detected'}")
             print(f"SPI0 / CE0:     {'available' if report['spi0_device'] else 'missing'}")
+            print(f"Fan PWM0:       {'available' if report['fan_pwm_chip'] else 'missing; overlay/reboot required'}")
             for name, available in report["python_modules"].items():  # type: ignore[union-attr]
                 print(f"Python {name:<10} {'available' if available else 'missing'}")
             print("GPIO writes:    none")
@@ -1107,6 +1246,69 @@ def main(argv: Iterable[str] | None = None) -> int:
         raise SystemExit("ERROR: real GPIO operation requires both --hardware and --apply")
     if args.apply and not args.hardware:
         raise SystemExit("ERROR: --apply is valid only together with --hardware")
+
+    if args.command == "fan-control":
+        if args.poll_seconds <= 0:
+            raise SystemExit("ERROR: --poll-seconds must be positive")
+        if not args.hardware:
+            print(json.dumps({
+                "backend": "simulation",
+                "gpio": FAN_PWM_PIN,
+                "channel": FAN_PWM_CHANNEL,
+                "frequency_hz": FAN_PWM_FREQUENCY_HZ,
+                "curve": [
+                    {"temperature_c": temperature_c, "duty_percent": duty_percent}
+                    for temperature_c, duty_percent in FAN_CURVE
+                ],
+                "hysteresis_c": FAN_HYSTERESIS_C,
+                "failsafe_duty_percent": FAN_FAILSAFE_DUTY,
+                "writes_performed": False,
+            }, indent=2))
+            return 0
+
+        stopped = False
+
+        def request_fan_stop(_signum: int, _frame: object) -> None:
+            nonlocal stopped
+            stopped = True
+
+        signal.signal(signal.SIGTERM, request_fan_stop)
+        signal.signal(signal.SIGINT, request_fan_stop)
+        fan: HardwarePwmFan | None = None
+        try:
+            fan = HardwarePwmFan()
+            run_fan_control(
+                fan,
+                once=args.once,
+                poll_seconds=args.poll_seconds,
+                should_stop=lambda: stopped,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            raise SystemExit(f"ERROR: {error}") from error
+        finally:
+            if fan is not None:
+                fan.close()
+        return 0
+
+    if args.command == "fan-failsafe":
+        if not args.hardware:
+            print(json.dumps({
+                "backend": "simulation",
+                "gpio": FAN_PWM_PIN,
+                "duty_percent": FAN_FAILSAFE_DUTY,
+                "writes_performed": False,
+            }, indent=2))
+            return 0
+        fan: HardwarePwmFan | None = None
+        try:
+            fan = HardwarePwmFan()
+            fan.duty(FAN_FAILSAFE_DUTY)
+        except (OSError, RuntimeError, ValueError) as error:
+            raise SystemExit(f"ERROR: {error}") from error
+        finally:
+            if fan is not None:
+                fan.close()
+        return 0
 
     if args.command == "stats":
         durations = (args.icon_seconds, args.value_seconds, args.cycle_pause)
