@@ -1,5 +1,5 @@
 [Unit]
-Description=PCS MAX7219 live statistics display
+Description=PCS MAX7219 health annunciator
 After=local-fs.target ModemManager.service gpsd.service
 Wants=ModemManager.service gpsd.service
 
@@ -8,7 +8,7 @@ Type=simple
 User=pi
 Group=pi
 SupplementaryGroups=spi
-ExecStart=/usr/local/sbin/pcs-gpio stats --hardware --apply
+ExecStart=/usr/local/sbin/pcs-gpio alerts --hardware --apply
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=yes

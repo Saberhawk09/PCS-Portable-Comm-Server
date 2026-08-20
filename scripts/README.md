@@ -99,7 +99,7 @@ WS2812 lines.
 
 ### setup-gpio-stats.sh
 
-Installs or inspects the persistent SPI-only MAX7219 statistics rotation:
+Installs or inspects the persistent SPI-only MAX7219 health annunciator:
 
 ```bash
 bash scripts/setup-gpio-stats.sh --install
@@ -111,11 +111,14 @@ The base installer exposes this as the optional
 when necessary, installs `python3-spidev` if missing, and reports when a reboot
 is needed before `/dev/spidev0.0` becomes available.
 
-The service starts with a `°C` unit frame followed by CPU temperature in Celsius,
-then rotates cellular quality and a two-frame GPS sequence: satellite/dish icon,
-then satellites in view. The satellite number is replaced by `X` for no fix or
-zero satellites and `?` when gpsd data is unavailable. It does not retain GPS
-coordinates or control APRS PTT or radio UART lines.
+The service uses a heartbeat/checkmark animation when PCS is healthy. Warnings
+alternate an attention symbol with a subsystem icon; critical faults alternate
+an `X` with the subsystem icon. It watches CPU temperature, root-disk capacity,
+primary USB mounting, failed systemd units, active uplink, and GPS fix without
+duplicating the LCD's normal telemetry. It does not retain GPS coordinates or
+control APRS PTT or radio UART lines.
+Healthy frames use low intensity levels 1-2; warnings use 4 and critical alerts
+use 6, well below the MAX7219 maximum of 15.
 
 ## Dire Wolf / APRS
 

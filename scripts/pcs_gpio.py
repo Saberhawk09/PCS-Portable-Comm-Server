@@ -14,6 +14,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import signal
 import socket
 import subprocess
@@ -178,6 +179,11 @@ class Max7219:
         for register, value in enumerate(rows, start=1):
             self._write(register, value)
 
+    def intensity(self, value: int) -> None:
+        if not 0 <= value <= 15:
+            raise ValueError("MAX7219 intensity must be from 0 to 15")
+        self._write(0x0A, value)
+
     def close(self) -> None:
         self.rows([0] * 8)
         self._write(0x0C, 0)
@@ -282,6 +288,16 @@ SIGNAL_ICON = (0x00, 0x00, 0x02, 0x02, 0x0A, 0x0A, 0x2A, 0xAA)
 SATELLITE_DISH_ICON = (0x01, 0x05, 0x12, 0x0A, 0x3C, 0x18, 0x18, 0x3C)
 NO_FIX_ICON = (0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81)
 UNKNOWN_ICON = (0x3C, 0x42, 0x02, 0x0C, 0x10, 0x00, 0x10, 0x00)
+HEART_SMALL_ICON = (0x00, 0x00, 0x36, 0x7F, 0x3E, 0x1C, 0x08, 0x00)
+HEART_LARGE_ICON = (0x00, 0x66, 0xFF, 0xFF, 0x7E, 0x3C, 0x18, 0x00)
+CHECK_ICON = (0x00, 0x01, 0x03, 0x06, 0xCC, 0x78, 0x30, 0x00)
+WARNING_ICON = (0x18, 0x3C, 0x66, 0x66, 0xC3, 0xDB, 0xFF, 0x00)
+STORAGE_ICON = (0x7E, 0x42, 0x5A, 0x42, 0x42, 0x5A, 0x42, 0x7E)
+SERVICE_ICON = (0x24, 0x7E, 0xDB, 0xBD, 0xBD, 0xDB, 0x7E, 0x24)
+TEMPERATURE_WARNING_C = 75
+TEMPERATURE_CRITICAL_C = 85
+DISK_WARNING_PERCENT = 85
+DISK_CRITICAL_PERCENT = 95
 
 
 @dataclass(frozen=True)
@@ -302,6 +318,7 @@ class StatsSnapshot:
 
 class MatrixDisplay(Protocol):
     def rows(self, rows: Sequence[int]) -> None: ...
+    def intensity(self, value: int) -> None: ...
     def close(self) -> None: ...
 
 
@@ -316,9 +333,41 @@ class StatsFrame:
     metric: str
     kind: str
     rows: tuple[int, ...]
+    intensity: int | None = None
 
-    def as_dict(self) -> dict[str, str | list[int]]:
-        return {"metric": self.metric, "kind": self.kind, "rows": list(self.rows)}
+    def as_dict(self) -> dict[str, str | int | list[int] | None]:
+        return {
+            "metric": self.metric,
+            "kind": self.kind,
+            "rows": list(self.rows),
+            "intensity": self.intensity,
+        }
+
+
+@dataclass(frozen=True)
+class MatrixHealthSnapshot:
+    stats: StatsSnapshot
+    root_used_percent: int | None
+    primary_usb_mounted: bool | None
+    failed_services: int | None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "stats": self.stats.as_dict(),
+            "root_used_percent": self.root_used_percent,
+            "primary_usb_mounted": self.primary_usb_mounted,
+            "failed_services": self.failed_services,
+        }
+
+
+@dataclass(frozen=True)
+class MatrixAlert:
+    name: str
+    severity: str
+    icon: tuple[int, ...]
+
+    def as_dict(self) -> dict[str, str]:
+        return {"name": self.name, "severity": self.severity}
 
 
 def selected_targets(target: str) -> tuple[str, ...]:
@@ -764,6 +813,128 @@ def run_stats(
         sleeper(cycle_pause)
 
 
+def read_disk_used_percent(path: Path = Path("/")) -> int | None:
+    try:
+        usage = shutil.disk_usage(path)
+    except OSError:
+        return None
+    if usage.total <= 0:
+        return None
+    return max(0, min(100, round(usage.used * 100 / usage.total)))
+
+
+def read_primary_usb_mounted(path: Path = Path("/mnt/pcs-usb")) -> bool | None:
+    try:
+        return path.is_mount()
+    except OSError:
+        return None
+
+
+def parse_failed_service_count(output: str) -> int:
+    return sum(1 for line in output.splitlines() if line.strip())
+
+
+def read_failed_service_count() -> int | None:
+    try:
+        result = subprocess.run(
+            ["systemctl", "--failed", "--no-legend", "--plain"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_failed_service_count(result.stdout) if result.returncode in (0, 1) else None
+
+
+def collect_matrix_health() -> MatrixHealthSnapshot:
+    return MatrixHealthSnapshot(
+        stats=collect_stats(),
+        root_used_percent=read_disk_used_percent(),
+        primary_usb_mounted=read_primary_usb_mounted(),
+        failed_services=read_failed_service_count(),
+    )
+
+
+def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
+    alerts: list[MatrixAlert] = []
+    temperature = snapshot.stats.temperature_c
+    if temperature is not None and temperature >= TEMPERATURE_CRITICAL_C:
+        alerts.append(MatrixAlert("cpu_temperature", "critical", DEGREE_C_ICON))
+    elif temperature is not None and temperature >= TEMPERATURE_WARNING_C:
+        alerts.append(MatrixAlert("cpu_temperature", "warning", DEGREE_C_ICON))
+
+    root_used = snapshot.root_used_percent
+    if root_used is not None and root_used >= DISK_CRITICAL_PERCENT:
+        alerts.append(MatrixAlert("root_disk", "critical", STORAGE_ICON))
+    elif root_used is not None and root_used >= DISK_WARNING_PERCENT:
+        alerts.append(MatrixAlert("root_disk", "warning", STORAGE_ICON))
+
+    if snapshot.primary_usb_mounted is False:
+        alerts.append(MatrixAlert("primary_usb", "warning", STORAGE_ICON))
+    if snapshot.failed_services is not None and snapshot.failed_services > 0:
+        alerts.append(MatrixAlert("failed_services", "critical", SERVICE_ICON))
+    if snapshot.stats.network_uplink == "Offline":
+        alerts.append(MatrixAlert("network_uplink", "warning", SIGNAL_ICON))
+    if snapshot.stats.gps_locked is not True:
+        alerts.append(MatrixAlert("gps_fix", "warning", SATELLITE_DISH_ICON))
+    return tuple(sorted(alerts, key=lambda alert: 0 if alert.severity == "critical" else 1))
+
+
+def matrix_alert_frames(alerts: Sequence[MatrixAlert]) -> tuple[StatsFrame, ...]:
+    if not alerts:
+        return (
+            StatsFrame("system_health", "heartbeat", HEART_SMALL_ICON, 1),
+            StatsFrame("system_health", "heartbeat", HEART_LARGE_ICON, 2),
+            StatsFrame("system_health", "healthy", CHECK_ICON, 1),
+        )
+    frames: list[StatsFrame] = []
+    for alert in alerts:
+        attention = NO_FIX_ICON if alert.severity == "critical" else WARNING_ICON
+        intensity = 6 if alert.severity == "critical" else 4
+        frames.append(StatsFrame(alert.name, alert.severity, attention, intensity))
+        frames.append(StatsFrame(alert.name, "subsystem", alert.icon, intensity))
+    return tuple(frames)
+
+
+def run_matrix_alerts(
+    matrix: MatrixDisplay,
+    *,
+    once: bool = False,
+    frame_seconds: float = 0.7,
+    cycle_pause: float = 2.5,
+    collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
+    sleeper: Callable[[float], None] = time.sleep,
+    should_stop: Callable[[], bool] = lambda: False,
+) -> None:
+    previous_summary = ""
+    while not should_stop():
+        snapshot = collector()
+        alerts = matrix_alerts(snapshot)
+        frames = matrix_alert_frames(alerts)
+        summary = json.dumps(
+            {
+                "health": snapshot.as_dict(),
+                "alerts": [alert.as_dict() for alert in alerts],
+            },
+            separators=(",", ":"),
+        )
+        if summary != previous_summary:
+            print(summary, flush=True)
+            previous_summary = summary
+        for frame in frames:
+            if should_stop():
+                break
+            if frame.intensity is not None:
+                matrix.intensity(frame.intensity)
+            matrix.rows(frame.rows)
+            sleeper(frame_seconds)
+        if once:
+            break
+        sleeper(cycle_pause)
+
+
 def run_lcd_status(
     lcd: LcdDisplay,
     *,
@@ -852,6 +1023,13 @@ def build_parser() -> argparse.ArgumentParser:
     stats.add_argument("--value-seconds", type=float, default=1.5)
     stats.add_argument("--cycle-pause", type=float, default=0.3)
 
+    alerts = subparsers.add_parser("alerts", help="show prioritized PCS health alerts on the MAX7219")
+    alerts.add_argument("--hardware", action="store_true", help="select the real SPI0 MAX7219")
+    alerts.add_argument("--apply", action="store_true", help="confirm that matrix writes are intended")
+    alerts.add_argument("--once", action="store_true", help="show one complete health sequence, then exit")
+    alerts.add_argument("--frame-seconds", type=float, default=0.7)
+    alerts.add_argument("--cycle-pause", type=float, default=2.5)
+
     lcd_status = subparsers.add_parser("lcd-status", help="rotate live PCS status on the 16x2 LCD")
     lcd_status.add_argument("--hardware", action="store_true", help="select the real Raspberry Pi LCD")
     lcd_status.add_argument("--apply", action="store_true", help="confirm that LCD GPIO writes are intended")
@@ -918,6 +1096,46 @@ def main(argv: Iterable[str] | None = None) -> int:
                 once=args.once,
                 icon_seconds=args.icon_seconds,
                 value_seconds=args.value_seconds,
+                cycle_pause=args.cycle_pause,
+                should_stop=lambda: stopped,
+            )
+        except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
+            raise SystemExit(f"ERROR: {error}") from error
+        finally:
+            if matrix is not None:
+                matrix.close()
+        return 0
+
+    if args.command == "alerts":
+        if args.frame_seconds < 0 or args.cycle_pause < 0:
+            raise SystemExit("ERROR: alert durations cannot be negative")
+        if not args.hardware:
+            snapshot = collect_matrix_health()
+            alerts = matrix_alerts(snapshot)
+            print(json.dumps({
+                "backend": "simulation",
+                "health": snapshot.as_dict(),
+                "alerts": [alert.as_dict() for alert in alerts],
+                "frames": [frame.as_dict() for frame in matrix_alert_frames(alerts)],
+                "writes_performed": False,
+            }, indent=2))
+            return 0
+
+        stopped = False
+
+        def request_alert_stop(_signum: int, _frame: object) -> None:
+            nonlocal stopped
+            stopped = True
+
+        signal.signal(signal.SIGTERM, request_alert_stop)
+        signal.signal(signal.SIGINT, request_alert_stop)
+        matrix: Max7219 | None = None
+        try:
+            matrix = Max7219()
+            run_matrix_alerts(
+                matrix,
+                once=args.once,
+                frame_seconds=args.frame_seconds,
                 cycle_pause=args.cycle_pause,
                 should_stop=lambda: stopped,
             )

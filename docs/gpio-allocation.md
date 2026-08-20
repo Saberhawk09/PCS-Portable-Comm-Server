@@ -96,19 +96,17 @@ bash scripts/setup-gpio-lcd.sh --check
 The service owns only the six documented LCD GPIO lines. It does not request or
 drive SPI, PTT, UART, fan, or WS2812 lines.
 
-## MAX7219 Live Statistics
+## MAX7219 Health Annunciator
 
-The installed matrix rotates three privacy-preserving PCS health indicators:
-
-1. a `°C` unit symbol followed by CPU temperature in degrees Celsius
-2. ModemManager cellular signal quality percentage
-3. gpsd satellites in view, without retaining or logging coordinates
-
-The first two metrics show an identifying icon followed by two large digits.
-GPS shows a satellite/dish icon followed by the two-digit satellites-in-view
-count. The count is replaced by `X` when there is no fix or no satellites and
-`?` when gpsd data is unavailable. The service owns only `/dev/spidev0.0`; it
-does not request or drive PTT, UART, fan, LCD, or WS2812 GPIO lines.
+The installed matrix is an across-the-room health annunciator. A heartbeat and
+checkmark indicate normal operation. Warnings alternate an attention symbol
+with the affected subsystem icon; critical faults alternate an `X` with the
+subsystem icon. Alert sources are CPU temperature (75/85 C warning/critical),
+root-disk use (85/95 percent), missing primary USB storage, failed systemd units,
+no active uplink, and unavailable GPS fix. Detailed live values remain on the
+LCD. Healthy frames use intensity 1-2, warnings 4, and critical alerts 6 out of
+the MAX7219's 0-15 range. The matrix service owns only `/dev/spidev0.0`; it does not request or drive
+PTT, UART, fan, LCD, or WS2812 GPIO lines.
 
 Install or inspect the persistent service explicitly:
 

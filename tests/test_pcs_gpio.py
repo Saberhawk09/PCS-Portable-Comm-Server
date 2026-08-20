@@ -225,6 +225,82 @@ class PcsGpioTests(unittest.TestCase):
         self.assertNotIn("field_clients", snapshot.as_dict())
         self.assertNotIn("usb_used_percent", snapshot.as_dict())
 
+    def test_healthy_matrix_annunciator_uses_heartbeat_and_checkmark(self):
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs"),
+            20,
+            True,
+            0,
+        )
+        alerts = pcs_gpio.matrix_alerts(health)
+        frames = pcs_gpio.matrix_alert_frames(alerts)
+        self.assertEqual(alerts, ())
+        self.assertEqual([frame.rows for frame in frames], [
+            pcs_gpio.HEART_SMALL_ICON,
+            pcs_gpio.HEART_LARGE_ICON,
+            pcs_gpio.CHECK_ICON,
+        ])
+        self.assertEqual([frame.intensity for frame in frames], [1, 2, 1])
+
+    def test_matrix_annunciator_prioritizes_critical_and_warning_conditions(self):
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(86, 12, 0, False, False, 0, "Offline", 0, None),
+            96,
+            False,
+            2,
+        )
+        alerts = pcs_gpio.matrix_alerts(health)
+        self.assertEqual([alert.severity for alert in alerts[:3]], ["critical"] * 3)
+        self.assertEqual({alert.name for alert in alerts}, {
+            "cpu_temperature",
+            "root_disk",
+            "primary_usb",
+            "failed_services",
+            "network_uplink",
+            "gps_fix",
+        })
+        frames = pcs_gpio.matrix_alert_frames(alerts)
+        self.assertEqual(frames[0].rows, pcs_gpio.NO_FIX_ICON)
+        self.assertEqual(frames[0].intensity, 6)
+
+    def test_one_matrix_alert_rotation_writes_only_health_frames(self):
+        class FakeMatrix:
+            def __init__(self):
+                self.frames = []
+                self.intensities = []
+
+            def intensity(self, value):
+                self.intensities.append(value)
+
+            def rows(self, rows):
+                self.frames.append(tuple(rows))
+
+            def close(self):
+                pass
+
+        matrix = FakeMatrix()
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs"),
+            20,
+            True,
+            0,
+        )
+        output = io.StringIO()
+        with redirect_stdout(output):
+            pcs_gpio.run_matrix_alerts(
+                matrix,
+                once=True,
+                collector=lambda: health,
+                sleeper=lambda _: None,
+            )
+        self.assertEqual(matrix.frames, [
+            pcs_gpio.HEART_SMALL_ICON,
+            pcs_gpio.HEART_LARGE_ICON,
+            pcs_gpio.CHECK_ICON,
+        ])
+        self.assertEqual(matrix.intensities, [1, 2, 1])
+        self.assertEqual(json.loads(output.getvalue())["alerts"], [])
+
     def test_temperature_unit_frame_is_degree_c_not_thermometer(self):
         self.assertEqual(len(pcs_gpio.DEGREE_C_ICON), 8)
         self.assertEqual(pcs_gpio.DEGREE_C_ICON[:3], (0xE7, 0xA8, 0xE8))
@@ -240,7 +316,7 @@ class PcsGpioTests(unittest.TestCase):
     def test_stats_service_is_spi_only_and_hardened(self):
         service = STATS_SERVICE.read_text(encoding="utf-8")
         setup = STATS_SETUP.read_text(encoding="utf-8")
-        self.assertIn("pcs-gpio stats --hardware --apply", service)
+        self.assertIn("pcs-gpio alerts --hardware --apply", service)
         self.assertIn("DeviceAllow=/dev/spidev0.0 rw", service)
         self.assertIn("NoNewPrivileges=yes", service)
         self.assertNotIn("GPIO6", service)
@@ -324,6 +400,18 @@ class PcsGpioTests(unittest.TestCase):
     def test_real_lcd_status_requires_double_confirmation(self):
         with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
             pcs_gpio.main(("lcd-status", "--hardware", "--once"))
+
+    def test_matrix_alerts_are_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("alerts", "--once", "--frame-seconds", "0"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_matrix_alerts_require_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("alerts", "--hardware", "--once"))
 
 
 if __name__ == "__main__":
