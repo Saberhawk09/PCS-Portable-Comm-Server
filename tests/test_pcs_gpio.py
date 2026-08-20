@@ -152,7 +152,7 @@ class PcsGpioTests(unittest.TestCase):
             ("PCS Online", "Up: 1d 02h 03m"),
             ("Pi CPU Temp", "39°C / 102°F"),
             ("Network Uplink", "Cellular"),
-            ("Cell Status: On", "Signal: 012%"),
+            ("Cell Data: On", "Signal: 012%"),
             ("GPS Status: Lock", "View 21 Used 14"),
             ("AP Clients: 2", "GridSq: EN91qs"),
         ))
@@ -161,7 +161,7 @@ class PcsGpioTests(unittest.TestCase):
             ("PCS Online", "Up: --d --h --m"),
             ("Pi CPU Temp", "--°C / --°F"),
             ("Network Uplink", "Offline"),
-            ("Cell Status: Off", "Signal: 000%"),
+            ("Cell Data: Off", "Signal: 000%"),
             ("GPS Status: Err", "View -- Used --"),
             ("AP Clients: --", "GridSq: ------"),
         ))

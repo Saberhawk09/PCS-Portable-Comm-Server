@@ -717,7 +717,7 @@ def lcd_status_pages(
         ("PCS Online", format_uptime(uptime_seconds)),
         ("Pi CPU Temp", temperature_line),
         ("Network Uplink", network_uplink),
-        (f"Cell Status: {cellular_state}", f"Signal: {cellular_quality:03d}%"),
+        (f"Cell Data: {cellular_state}", f"Signal: {cellular_quality:03d}%"),
         (gps_heading, f"View {gps_view} Used {gps_used}"),
         (f"AP Clients: {ap_clients}", f"GridSq: {grid_square}"),
     )
