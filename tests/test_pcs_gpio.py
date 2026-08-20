@@ -1,0 +1,515 @@
+import io
+import json
+import tempfile
+import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
+import sys
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import pcs_gpio  # noqa: E402
+
+
+STATS_SERVICE = ROOT / "systemd" / "pcs-gpio-stats.service"
+STATS_SETUP = ROOT / "scripts" / "setup-gpio-stats.sh"
+LCD_SERVICE = ROOT / "systemd" / "pcs-gpio-lcd.service"
+LCD_SETUP = ROOT / "scripts" / "setup-gpio-lcd.sh"
+FAN_SERVICE = ROOT / "systemd" / "pcs-gpio-fan.service"
+FAN_SETUP = ROOT / "scripts" / "setup-gpio-fan.sh"
+
+
+class PcsGpioTests(unittest.TestCase):
+    def test_final_schematic_assignments_have_no_gpio_conflicts(self):
+        gpio_lines = [pin.gpio for pin in pcs_gpio.PIN_ASSIGNMENTS]
+        self.assertEqual(len(gpio_lines), len(set(gpio_lines)))
+        expected = {
+            "APRS PTT": (6, 31),
+            "Fan PWM": (18, 12),
+            "WS2812 data": (21, 40),
+            "MAX7219 DIN": (10, 19),
+            "MAX7219 CLK": (11, 23),
+            "MAX7219 CS": (8, 24),
+            "SA818 UART TX": (14, 8),
+            "SA818 UART RX": (15, 10),
+            "LCD D4": (27, 13),
+            "LCD D5": (22, 15),
+            "LCD D6": (23, 16),
+            "LCD D7": (24, 18),
+        }
+        actual = {pin.function: (pin.gpio, pin.physical) for pin in pcs_gpio.PIN_ASSIGNMENTS}
+        for function, assignment in expected.items():
+            self.assertEqual(actual[function], assignment)
+
+    def test_lcd_uses_the_six_schematic_gpio_lines(self):
+        self.assertEqual(
+            pcs_gpio.LCD_PINS,
+            {"rs": 4, "enable": 17, "d4": 27, "d5": 22, "d6": 23, "d7": 24},
+        )
+
+    def test_lcd_line_normalization_is_exactly_two_rows_of_sixteen(self):
+        self.assertEqual(
+            pcs_gpio.normalize_lcd_lines(("PCS ONLINE", "A line that is much too long", "ignored")),
+            ("   PCS ONLINE   ", "A line that is m"),
+        )
+        self.assertEqual(pcs_gpio.normalize_lcd_lines(("one\nline",)), ("    one line    ", "                "))
+        self.assertEqual(pcs_gpio.HD44780_CHARACTER_CODES["°"], 0xDF)
+
+    def test_max7219_uses_the_proven_pcs_spi_settings(self):
+        self.assertEqual(pcs_gpio.MAX7219_SPI_BUS, 0)
+        self.assertEqual(pcs_gpio.MAX7219_SPI_DEVICE, 0)
+        self.assertEqual(pcs_gpio.MAX7219_SPI_HZ, 500_000)
+        self.assertEqual(pcs_gpio.MAX7219_INTENSITY, 3)
+
+    def test_fan_uses_gpio18_hardware_pwm_at_vendor_frequency(self):
+        self.assertEqual(pcs_gpio.FAN_PWM_PIN, 18)
+        self.assertEqual(pcs_gpio.FAN_PWM_CHANNEL, 0)
+        self.assertEqual(pcs_gpio.FAN_PWM_FREQUENCY_HZ, 100)
+        self.assertEqual(pcs_gpio.FAN_PWM_PERIOD_NS, 10_000_000)
+
+    def test_hardware_pwm_fan_initializes_and_closes_at_full_duty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            chip = Path(temp_dir) / "pwmchip0"
+            channel = chip / "pwm0"
+            channel.mkdir(parents=True)
+            (channel / "enable").write_text("0\n", encoding="ascii")
+            (channel / "period").write_text("0\n", encoding="ascii")
+            (channel / "duty_cycle").write_text("0\n", encoding="ascii")
+            fan = pcs_gpio.HardwarePwmFan(chip_path=chip)
+            self.assertEqual((channel / "period").read_text(encoding="ascii"), "10000000\n")
+            self.assertEqual((channel / "duty_cycle").read_text(encoding="ascii"), "10000000\n")
+            self.assertEqual((channel / "enable").read_text(encoding="ascii"), "1\n")
+            fan.duty(40)
+            self.assertEqual((channel / "duty_cycle").read_text(encoding="ascii"), "4000000\n")
+            fan.close()
+            self.assertEqual((channel / "duty_cycle").read_text(encoding="ascii"), "10000000\n")
+
+    def test_fan_curve_is_conservative_hysteretic_and_fail_safe(self):
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(None), 100)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(39), 40)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(45), 55)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(55), 70)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(65), 85)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(75), 100)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(44, 55), 55)
+        self.assertEqual(pcs_gpio.fan_duty_for_temperature(42, 55), 40)
+
+    def test_temperature_reader_rounds_millidegrees(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "temp"
+            path.write_text("38925\n", encoding="ascii")
+            self.assertEqual(pcs_gpio.read_temperature(path), 39)
+
+    def test_cellular_quality_parser(self):
+        output = (
+            "modem.generic.state                             : registered\n"
+            "modem.generic.signal-quality.value              : 12\n"
+        )
+        self.assertEqual(pcs_gpio.parse_cellular_quality(output), 12)
+        self.assertEqual(
+            pcs_gpio.parse_cellular_quality("modem.generic.signal-quality.value : 100\n"),
+            100,
+        )
+        self.assertTrue(pcs_gpio.parse_cellular_state(output))
+        self.assertFalse(pcs_gpio.parse_cellular_state("modem.generic.state : disabled\n"))
+        self.assertIsNone(pcs_gpio.parse_cellular_quality(""))
+
+    def test_cellular_data_state_follows_networkmanager_not_modem_registration(self):
+        self.assertTrue(pcs_gpio.parse_cellular_data_state("cdc-wdm0:gsm:connected\n"))
+        self.assertFalse(pcs_gpio.parse_cellular_data_state("cdc-wdm0:gsm:disconnected\n"))
+        self.assertIsNone(pcs_gpio.parse_cellular_data_state("wlan0:wifi:connected\n"))
+
+    def test_network_uplink_parser_uses_pcs_interface_classes(self):
+        self.assertEqual(pcs_gpio.parse_network_uplink("default dev wlan0"), "WiFi")
+        self.assertEqual(pcs_gpio.parse_network_uplink("8.8.8.8 dev wwan0 src 10.0.0.2"), "Cellular")
+        self.assertEqual(pcs_gpio.parse_network_uplink("8.8.8.8 dev ppp1"), "Cellular")
+        self.assertEqual(pcs_gpio.parse_network_uplink(""), "Offline")
+
+    def test_ap_client_count_excludes_infrastructure_and_inactive_neighbors(self):
+        neighbors = "\n".join((
+            "10.42.0.2 lladdr aa:aa:aa:aa:aa:02 STALE",
+            "10.42.0.3 lladdr aa:aa:aa:aa:aa:03 REACHABLE",
+            "10.42.0.105 lladdr aa:aa:aa:aa:aa:05 REACHABLE",
+            "10.42.0.232 lladdr aa:aa:aa:aa:aa:32 DELAY",
+            "10.42.0.150 FAILED",
+        ))
+        self.assertEqual(pcs_gpio.parse_ap_client_count(neighbors), 2)
+
+    def test_maidenhead_grid_matches_pcs_web_algorithm(self):
+        self.assertEqual(pcs_gpio.maidenhead_grid(38.123456, -77.123456), "FM18kc")
+        self.assertIsNone(pcs_gpio.maidenhead_grid(100, 0))
+
+    def test_two_digit_renderer_clamps_and_handles_unknown(self):
+        self.assertEqual(len(pcs_gpio.render_two_digits(39)), 8)
+        self.assertEqual(pcs_gpio.render_two_digits(150), pcs_gpio.render_two_digits(99))
+        self.assertNotEqual(pcs_gpio.render_two_digits(None), pcs_gpio.render_two_digits(0))
+
+    def test_gps_sky_satellite_count_prefers_nsats_and_has_array_fallback(self):
+        self.assertEqual(pcs_gpio.satellite_count_from_sky({"nSat": 9}), 9)
+        self.assertEqual(pcs_gpio.satellite_count_from_sky({"nSat": 120}), 99)
+        self.assertEqual(pcs_gpio.satellite_count_from_sky({"satellites": [{}, {}, {}]}), 3)
+        self.assertIsNone(pcs_gpio.satellite_count_from_sky({}))
+        self.assertEqual(pcs_gpio.satellite_counts_from_sky({"nSat": 21, "uSat": 14}), (21, 14))
+
+    def test_gps_status_keeps_fullest_sky_report_and_best_fix(self):
+        status = (None, None)
+        records = (
+            {"class": "SKY", "nSat": 9, "uSat": 5},
+            {"class": "TPV", "mode": 1},
+            {"class": "SKY", "nSat": 21, "uSat": 14},
+            {"class": "TPV", "mode": 3},
+            {"class": "SKY", "nSat": 9, "uSat": 5},
+            {"class": "TPV", "mode": 1},
+        )
+        for record in records:
+            status = pcs_gpio.merge_gps_status(*status, record)
+        self.assertEqual(status, (21, True))
+
+        details = (None, None, None)
+        for record in records:
+            details = pcs_gpio.merge_gps_details(*details, record)
+        self.assertEqual(details, (21, 14, True))
+
+    def test_uptime_reader_and_formatter(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "uptime"
+            path.write_text("93784.44 123.0\n", encoding="ascii")
+            self.assertEqual(pcs_gpio.read_uptime_seconds(path), 93784)
+        self.assertEqual(pcs_gpio.format_uptime(93784), "Up: 1d 02h 03m")
+        self.assertEqual(pcs_gpio.format_uptime(None), "Up: --d --h --m")
+
+    def test_lcd_status_pages_are_concise_and_cover_unknown_gps(self):
+        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "Cellular", 2, "EN91qs")
+        pages = pcs_gpio.lcd_status_pages(snapshot, 93784)
+        self.assertEqual(pages, (
+            ("PCS Online", "Up: 1d 02h 03m"),
+            ("Pi CPU Temp", "39°C / 102°F"),
+            ("Network Uplink", "Cellular"),
+            ("Cell Data: On", "Signal: 012%"),
+            ("GPS Status: Lock", "View 21 Used 14"),
+            ("AP Clients: 2", "GridSq: EN91qs"),
+        ))
+        unknown = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(None, None, None, None), None)
+        self.assertEqual(unknown, (
+            ("PCS Online", "Up: --d --h --m"),
+            ("Pi CPU Temp", "--°C / --°F"),
+            ("Network Uplink", "Offline"),
+            ("Cell Data: Off", "Signal: 000%"),
+            ("GPS Status: Err", "View -- Used --"),
+            ("AP Clients: --", "GridSq: ------"),
+        ))
+        self.assertTrue(all(len(line) <= 16 for page in pages + unknown for line in page))
+
+        no_fix = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(39, 12, 8, False, True, 0), 60)
+        self.assertEqual(no_fix[-2], ("GPS Status: NoFx", "View 08 Used 00"))
+
+    def test_lcd_warnings_append_explanation_pages(self):
+        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, False, 0)
+        pages = pcs_gpio.lcd_health_pages(health, 93784)
+        self.assertEqual(pages[:6], pcs_gpio.lcd_status_pages(stats, 93784))
+        self.assertEqual(pages[6:], (("WARNING", "USB NOT MOUNTED"),))
+
+    def test_lcd_hard_faults_replace_normal_status_pages(self):
+        stats = pcs_gpio.StatsSnapshot(86, 12, 0, False, False, 0, "Offline", 0, None)
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 96, False, 2)
+        pages = pcs_gpio.lcd_health_pages(health, 93784)
+        self.assertEqual(pages, (
+            ("HARD FAULT", "CPU TEMP: 86°C"),
+            ("HARD FAULT", "ROOT DISK: 96%"),
+            ("HARD FAULT", "SERVICE FAILURE"),
+        ))
+        self.assertNotIn(("PCS Online", "Up: 1d 02h 03m"), pages)
+        self.assertTrue(all(len(line) <= 16 for page in pages for line in page))
+
+    def test_one_lcd_status_rotation_writes_six_pages_when_healthy(self):
+        class FakeLcd:
+            def __init__(self):
+                self.pages = []
+
+            def text(self, lines):
+                self.pages.append(tuple(lines))
+
+            def close(self, *, clear=True):
+                pass
+
+        lcd = FakeLcd()
+        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        snapshot = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            pcs_gpio.run_lcd_status(
+                lcd,
+                once=True,
+                collector=lambda: snapshot,
+                uptime_reader=lambda: 93784,
+                sleeper=lambda _: None,
+            )
+        self.assertEqual(lcd.pages, list(pcs_gpio.lcd_status_pages(stats, 93784)))
+        self.assertEqual(json.loads(output.getvalue())["health"], snapshot.as_dict())
+
+    def test_one_stats_rotation_writes_only_matrix_frames(self):
+        class FakeMatrix:
+            def __init__(self):
+                self.frames = []
+
+            def rows(self, rows):
+                self.frames.append(tuple(rows))
+
+            def close(self):
+                pass
+
+        matrix = FakeMatrix()
+        snapshot = pcs_gpio.StatsSnapshot(39, 12, 7, True)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            pcs_gpio.run_stats(
+                matrix,
+                once=True,
+                collector=lambda: snapshot,
+                sleeper=lambda _: None,
+            )
+        self.assertEqual(len(matrix.frames), 6)
+        self.assertEqual(matrix.frames[0], pcs_gpio.DEGREE_C_ICON)
+        self.assertEqual(matrix.frames[1], pcs_gpio.render_two_digits(39))
+        self.assertEqual(matrix.frames[-2], pcs_gpio.SATELLITE_DISH_ICON)
+        self.assertEqual(matrix.frames[-1], pcs_gpio.render_two_digits(7))
+        self.assertEqual(json.loads(output.getvalue()), snapshot.as_dict())
+        self.assertNotIn("field_clients", snapshot.as_dict())
+        self.assertNotIn("usb_used_percent", snapshot.as_dict())
+
+    def test_healthy_matrix_annunciator_uses_heartbeat_and_checkmark(self):
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs"),
+            20,
+            True,
+            0,
+        )
+        alerts = pcs_gpio.matrix_alerts(health)
+        frames = pcs_gpio.matrix_alert_frames(alerts)
+        self.assertEqual(alerts, ())
+        self.assertEqual([frame.rows for frame in frames], [
+            pcs_gpio.HEART_SMALL_ICON,
+            pcs_gpio.HEART_LARGE_ICON,
+            pcs_gpio.CHECK_ICON,
+        ])
+        self.assertEqual([frame.intensity for frame in frames], [1, 2, 1])
+
+    def test_matrix_annunciator_prioritizes_critical_and_warning_conditions(self):
+        self.assertEqual(
+            pcs_gpio.EXCLAMATION_ICON,
+            (0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x18),
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(86, 12, 0, False, False, 0, "Offline", 0, None),
+            96,
+            False,
+            2,
+        )
+        alerts = pcs_gpio.matrix_alerts(health)
+        self.assertEqual([alert.severity for alert in alerts[:3]], ["critical"] * 3)
+        self.assertEqual({alert.name for alert in alerts}, {
+            "cpu_temperature",
+            "root_disk",
+            "primary_usb",
+            "failed_services",
+            "network_uplink",
+            "gps_fix",
+        })
+        frames = pcs_gpio.matrix_alert_frames(alerts)
+        for index, alert in enumerate(alerts):
+            prefix, subsystem = frames[index * 2:index * 2 + 2]
+            expected_prefix = (
+                pcs_gpio.X_ICON
+                if alert.severity == "critical"
+                else pcs_gpio.EXCLAMATION_ICON
+            )
+            expected_intensity = 6 if alert.severity == "critical" else 4
+            self.assertEqual(prefix.rows, expected_prefix)
+            self.assertEqual(prefix.intensity, expected_intensity)
+            self.assertEqual(subsystem.rows, alert.icon)
+            self.assertEqual(subsystem.intensity, expected_intensity)
+
+    def test_one_matrix_alert_rotation_writes_only_health_frames(self):
+        class FakeMatrix:
+            def __init__(self):
+                self.frames = []
+                self.intensities = []
+
+            def intensity(self, value):
+                self.intensities.append(value)
+
+            def rows(self, rows):
+                self.frames.append(tuple(rows))
+
+            def close(self):
+                pass
+
+        matrix = FakeMatrix()
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs"),
+            20,
+            True,
+            0,
+        )
+        output = io.StringIO()
+        with redirect_stdout(output):
+            pcs_gpio.run_matrix_alerts(
+                matrix,
+                once=True,
+                collector=lambda: health,
+                sleeper=lambda _: None,
+            )
+        self.assertEqual(matrix.frames, [
+            pcs_gpio.HEART_SMALL_ICON,
+            pcs_gpio.HEART_LARGE_ICON,
+            pcs_gpio.CHECK_ICON,
+        ])
+        self.assertEqual(matrix.intensities, [1, 2, 1])
+        self.assertEqual(json.loads(output.getvalue())["alerts"], [])
+
+    def test_temperature_unit_frame_is_degree_c_not_thermometer(self):
+        self.assertEqual(len(pcs_gpio.DEGREE_C_ICON), 8)
+        self.assertEqual(pcs_gpio.DEGREE_C_ICON[:3], (0xE7, 0xA8, 0xE8))
+
+    def test_gps_value_replaces_satellite_number_when_fix_is_unavailable(self):
+        no_fix = pcs_gpio.stats_frames(pcs_gpio.StatsSnapshot(39, 12, 7, False))[-1]
+        no_satellites = pcs_gpio.stats_frames(pcs_gpio.StatsSnapshot(39, 12, 0, True))[-1]
+        unknown = pcs_gpio.stats_frames(pcs_gpio.StatsSnapshot(39, 12, None, None))[-1]
+        self.assertEqual(no_fix.rows, pcs_gpio.NO_FIX_ICON)
+        self.assertEqual(no_satellites.rows, pcs_gpio.NO_FIX_ICON)
+        self.assertEqual(unknown.rows, pcs_gpio.UNKNOWN_ICON)
+
+    def test_stats_service_is_spi_only_and_hardened(self):
+        service = STATS_SERVICE.read_text(encoding="utf-8")
+        setup = STATS_SETUP.read_text(encoding="utf-8")
+        self.assertIn("pcs-gpio alerts --hardware --apply", service)
+        self.assertIn("DeviceAllow=/dev/spidev0.0 rw", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+        self.assertNotIn("GPIO6", service)
+        self.assertNotIn("PTT", service)
+        self.assertIn("systemctl enable --now pcs-gpio-stats.service", setup)
+        self.assertIn("raspi-config nonint do_spi 0", setup)
+        self.assertIn("apt-get install -y python3-spidev", setup)
+
+    def test_lcd_service_is_gpio_only_and_hardened(self):
+        service = LCD_SERVICE.read_text(encoding="utf-8")
+        setup = LCD_SETUP.read_text(encoding="utf-8")
+        self.assertIn("pcs-gpio lcd-status --hardware --apply", service)
+        self.assertIn("DeviceAllow=/dev/gpiochip0 rw", service)
+        self.assertIn("SupplementaryGroups=gpio", service)
+        self.assertIn("RuntimeDirectory=pcs-gpio-lcd", service)
+        self.assertIn("WorkingDirectory=/run/pcs-gpio-lcd", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+        self.assertNotIn("spidev", service)
+        self.assertNotIn("PTT", service)
+        self.assertIn("systemctl enable --now pcs-gpio-lcd.service", setup)
+        self.assertIn("apt-get install -y python3-gpiozero", setup)
+
+    def test_fan_service_uses_hardware_pwm_and_full_duty_stop_failsafe(self):
+        service = FAN_SERVICE.read_text(encoding="utf-8")
+        setup = FAN_SETUP.read_text(encoding="utf-8")
+        self.assertIn("pcs-gpio fan-control --hardware --apply", service)
+        self.assertIn("pcs-gpio fan-failsafe --hardware --apply", service)
+        self.assertIn("User=root", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+        self.assertNotIn("ProtectKernelTunables=yes", service)
+        self.assertIn("dtparam=audio=off", setup)
+        self.assertIn("dtoverlay=pwm,pin=18,func=2", setup)
+        self.assertIn("systemctl enable pcs-gpio-fan.service", setup)
+
+    def test_fan_control_is_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("fan-control", "--once"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["frequency_hz"], 100)
+        self.assertEqual(parsed["failsafe_duty_percent"], 100)
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_fan_control_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("fan-control", "--hardware", "--once"))
+
+    def test_all_demo_excludes_fan_ptt_uart_and_rtc(self):
+        backend = pcs_gpio.MockBackend()
+        pcs_gpio.run_demo(backend, "all", duration=0, pause=lambda _: None)
+        devices = [event["device"] for event in backend.events]
+        self.assertEqual(devices, ["lcd", "matrix", "leds", "controller"])
+        self.assertNotIn("fan", devices)
+        self.assertNotIn("ptt", devices)
+        self.assertNotIn("uart", devices)
+
+    def test_fan_requires_explicit_duty(self):
+        with self.assertRaisesRegex(ValueError, "explicit --fan-duty"):
+            pcs_gpio.run_demo(pcs_gpio.MockBackend(), "fan", duration=0, pause=lambda _: None)
+
+    def test_fan_duty_is_recorded_in_simulation(self):
+        backend = pcs_gpio.MockBackend()
+        pcs_gpio.run_demo(backend, "fan", duration=0, fan_duty=72.5, pause=lambda _: None)
+        self.assertEqual(backend.events[0], {"device": "fan", "duty_percent": 72.5})
+
+    def test_invalid_fan_duty_is_rejected_before_any_write(self):
+        backend = pcs_gpio.MockBackend()
+        with self.assertRaisesRegex(ValueError, "between 0 and 100"):
+            pcs_gpio.run_demo(backend, "fan", duration=0, fan_duty=101, pause=lambda _: None)
+        self.assertEqual(backend.events, [])
+
+    def test_pin_json_command_is_machine_readable(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("pins", "--json"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertTrue(any(pin["function"] == "APRS PTT" and pin["gpio"] == 6 for pin in parsed))
+
+    def test_real_demo_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("demo", "lcd", "--hardware", "--duration", "0"))
+
+    def test_lcd_command_is_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("lcd", "--line1", "PCS ONLINE", "--line2", "READY"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["lines"], ["   PCS ONLINE   ", "     READY      "])
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_lcd_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("lcd", "--hardware"))
+
+    def test_lcd_status_is_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("lcd-status", "--once", "--page-seconds", "0"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertGreaterEqual(len(parsed["pages"]), 1)
+        self.assertIn("health", parsed)
+        self.assertIn("alerts", parsed)
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_lcd_status_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("lcd-status", "--hardware", "--once"))
+
+    def test_matrix_alerts_are_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("alerts", "--once", "--frame-seconds", "0"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_matrix_alerts_require_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("alerts", "--hardware", "--once"))
+
+
+if __name__ == "__main__":
+    unittest.main()

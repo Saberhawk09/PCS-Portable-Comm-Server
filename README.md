@@ -31,7 +31,7 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, optional Pi-Star support, and hardware-safe APRS staging. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF commissioning remain deliberate operator-supervised steps.
 
-The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 120 mm cooling fans, Pi-Star hotspot, cellular/GNSS path, and external SMA antennas are working in the current build. The remaining APRS and Meshtastic expansion hardware has been purchased and is awaiting delivery; it is not yet installed or validated. Front-panel expansion and the exact as-built electrical and mechanical record are also unfinished.
+The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 120 mm cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas, and APRS USB sound adapter are installed. The sound adapter is detected for capture/playback but its audio levels and radio path are not validated; APRS PTT/radio hardware and the Meshtastic expansion remain unfinished. Front-panel expansion and the exact as-built electrical and mechanical record are also unfinished.
 
 ### Hardware
 
@@ -43,7 +43,7 @@ The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 
 - Removable USB primary storage with an SD-card backup mirror
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
 - Operational AC/DC power system with source selector switch; as-built electrical measurements and wiring records remain pending
-- Optional Dire Wolf / APRS software staging; radio/audio interface hardware purchased and awaiting delivery
+- C-Media/Unitek Y-247A APRS USB sound adapter detected for capture/playback; Dire Wolf remains staged and radio/PTT/audio-level validation remains pending
 - Optional Meshtastic expansion hardware purchased and awaiting delivery; integration is not yet implemented
 
 ### Software
@@ -63,7 +63,7 @@ The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 
 - Capture final enclosure dimensions, mounting details, photos, and CAD references
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
-- Install and commission the APRS and Meshtastic expansion hardware after it arrives
+- Install and commission the remaining APRS radio/PTT and Meshtastic expansion hardware
 - Continue expanding automated and operator-supervised field validation
 
 ## Hardware Setup
@@ -96,7 +96,7 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing and can stage Dire Wolf without activating an RF path.
+The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can stage Dire Wolf without activating an RF path, and can install the 16x2 HD44780 status display, MAX7219 annunciator, and GPIO18 hardware-PWM thermal fan controller.
 
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 
@@ -280,7 +280,7 @@ Installed and tested hardware:
 
 Purchased and awaiting delivery or installation:
 
-- APRS radio/audio interface hardware
+- remaining APRS radio/PTT interface hardware
 - Meshtastic expansion hardware
 
 Remaining documentation and validation:

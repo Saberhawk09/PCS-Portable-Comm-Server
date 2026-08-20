@@ -47,7 +47,7 @@ PCS_APRS_AUDIO_CHANNELS="${PCS_APRS_AUDIO_CHANNELS:-1}"
 PCS_APRS_MODEM="${PCS_APRS_MODEM:-1200}"
 PCS_APRS_PTT_METHOD="${PCS_APRS_PTT_METHOD:-gpio}"
 PCS_APRS_PTT_INTERFACE="${PCS_APRS_PTT_INTERFACE:-EasyDigi}"
-PCS_APRS_PTT_GPIO_LINE="${PCS_APRS_PTT_GPIO_LINE:-17}"
+PCS_APRS_PTT_GPIO_LINE="${PCS_APRS_PTT_GPIO_LINE:-6}"
 PCS_APRS_PTT_ACTIVE_LEVEL="${PCS_APRS_PTT_ACTIVE_LEVEL:-high}"
 PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-8001}"
@@ -323,7 +323,7 @@ configure_options() {
     echo
     echo "Desired APRS options saved to ${INSTALL_CONFIG}."
     echo "Dire Wolf remains unconfigured and disabled. Run --list-audio after the"
-    echo "sound card arrives, then review docs/direwolf-aprs.md before activation."
+    echo "sound card and radio/PTT path are present, then review docs/direwolf-aprs.md before activation."
 }
 
 record_validation() {
@@ -861,7 +861,8 @@ collect_activation_blockers() {
         [[ "${PCS_APRS_TX_ENABLED}" == "yes" ]] || record_blocker "the desired profile does not enable RF transmit"
         [[ "${PCS_APRS_AUDIO_OUTPUT}" != "auto" && "${PCS_APRS_AUDIO_OUTPUT}" != "null" ]] || record_blocker "ALSA playback device is unresolved or null"
         [[ "${PCS_APRS_PTT_METHOD}" == "gpio" ]] || record_blocker "PCS live generation currently supports only the selected GPIO PTT method"
-        [[ "${PCS_APRS_PTT_VALIDATED}" == "yes" ]] || record_blocker "GPIO17/EasyDigi PTT polarity has not been bench-validated"
+        [[ "${PCS_APRS_PTT_GPIO_LINE}" == "6" ]] || record_blocker "configured PTT GPIO${PCS_APRS_PTT_GPIO_LINE} conflicts with the finalized GPIO6 schematic allocation"
+        [[ "${PCS_APRS_PTT_VALIDATED}" == "yes" ]] || record_blocker "GPIO6/EasyDigi PTT polarity has not been bench-validated"
         [[ "${PCS_APRS_TX_AUDIO_VALIDATED}" == "yes" ]] || record_blocker "transmit audio level and deviation have not been validated"
         [[ "${PCS_APRS_TX_TIMING_VALIDATED}" == "yes" ]] || record_blocker "DWAIT/SLOTTIME/PERSIST/TXDELAY/TXTAIL have not been validated"
         command -v gpioinfo >/dev/null 2>&1 || record_blocker "libgpiod gpioinfo is unavailable"

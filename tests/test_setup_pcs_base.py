@@ -41,6 +41,36 @@ class SetupPcsBaseTests(unittest.TestCase):
             self.source,
         )
 
+    def test_max7219_setup_is_optional_and_reuses_configured_answer(self):
+        self.assertIn('PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"', self.source)
+        self.assertIn('printf "PCS_SETUP_GPIO_STATS=%q\\n"', self.source)
+        self.assertIn(
+            'Install and start the optional MAX7219 LED matrix statistics display?',
+            self.source,
+        )
+        self.assertIn('./scripts/setup-gpio-stats.sh --install', self.source)
+        self.assertIn('PCS_SETUP_GPIO_STATS="no"', self.source)
+
+    def test_hd44780_lcd_setup_is_optional_and_persisted(self):
+        self.assertIn('PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-ask}"', self.source)
+        self.assertIn('printf "PCS_SETUP_GPIO_LCD=%q\\n"', self.source)
+        self.assertIn(
+            'Install and start the optional 16x2 HD44780 LCD status display?',
+            self.source,
+        )
+        self.assertIn('./scripts/setup-gpio-lcd.sh --install', self.source)
+        self.assertIn('PCS_SETUP_GPIO_LCD="no"', self.source)
+
+    def test_hardware_pwm_fan_setup_is_optional_and_persisted(self):
+        self.assertIn('PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"', self.source)
+        self.assertIn('printf "PCS_SETUP_GPIO_FAN=%q\\n"', self.source)
+        self.assertIn(
+            'Install GPIO18 hardware PWM thermal fan control?',
+            self.source,
+        )
+        self.assertIn('./scripts/setup-gpio-fan.sh --install', self.source)
+        self.assertIn('PCS_SETUP_GPIO_FAN="no"', self.source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,104 @@ Installs baseline packages used by PCS.
 
 Includes tools for networking, Samba, Chrony, GPSD, ModemManager, Cockpit, and general diagnostics.
 
+## GPIO Devices
+
+### pcs_gpio.py
+
+Prints the finalized GPIO map, performs read-only dependency discovery, and
+runs guarded commissioning patterns for the LCD, MAX7219 matrix, WS2812 LEDs,
+or fan:
+
+```bash
+python3 scripts/pcs_gpio.py pins
+python3 scripts/pcs_gpio.py check
+python3 scripts/pcs_gpio.py demo all --duration 0
+python3 scripts/pcs_gpio.py stats
+python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY"
+python3 scripts/pcs_gpio.py lcd-status
+python3 scripts/pcs_gpio.py fan-control
+```
+
+Simulation is the default. Real writes require both `--hardware` and `--apply`.
+The `lcd` command accepts two lines, trims/centers each to 16 characters, and
+keeps the written text visible unless `--clear` is requested.
+The `lcd-status` command normally rotates six 16x2 pages: PCS state and uptime, CPU
+temperature in Celsius/Fahrenheit, active network uplink, cellular state and
+signal quality, GPS fix state with paired satellites-in-view/used counts, then
+active AP client count and six-character Maidenhead grid square.
+Warnings append centered plain-language explanation pages after those six
+pages. A hard fault suppresses normal statistics and rotates only centered
+critical-fault pages. CPU temperature, root-disk use, primary USB mounting,
+failed services, uplink state, and GPS fix use the same conditions and priority
+as the matrix annunciator.
+The cellular `On`/`Off` state follows NetworkManager's actual data session;
+signal quality may remain available while cellular data is disconnected.
+PTT and SA818 UART are never driven by this tool. See
+[PCS GPIO Allocation](../docs/gpio-allocation.md) for the pin map and hardware
+commissioning commands.
+
+### setup-gpio-lcd.sh
+
+Installs or inspects the persistent GPIO-only HD44780 status rotation:
+
+```bash
+bash scripts/setup-gpio-lcd.sh --install
+bash scripts/setup-gpio-lcd.sh --check
+```
+
+The base installer exposes this as the optional `PCS_SETUP_GPIO_LCD=yes|no`
+choice, persists the answer in `config/pcs-install.conf`, and restores the
+service during a reinstall when selected.
+
+The service uses the same privacy-preserving data collectors as the matrix and
+does not retain coordinates or control APRS PTT, radio UART, SPI, fan, or
+WS2812 lines.
+
+### setup-gpio-stats.sh
+
+Installs or inspects the persistent SPI-only MAX7219 health annunciator:
+
+```bash
+bash scripts/setup-gpio-stats.sh --install
+bash scripts/setup-gpio-stats.sh --check
+```
+
+The base installer exposes this as the optional
+`PCS_SETUP_GPIO_STATS=yes|no` choice. The standalone installer enables SPI0
+when necessary, installs `python3-spidev` if missing, and reports when a reboot
+is needed before `/dev/spidev0.0` becomes available.
+
+The service uses a heartbeat/checkmark animation when PCS is healthy. Every
+warning shows an `!` followed by its subsystem icon; every critical fault shows
+an `X` followed by its subsystem icon. It watches CPU temperature, root-disk capacity,
+primary USB mounting, failed systemd units, active uplink, and GPS fix without
+duplicating the LCD's normal telemetry. It does not retain GPS coordinates or
+control APRS PTT or radio UART lines.
+Healthy frames use low intensity levels 1-2; warnings use 4 and critical alerts
+use 6, well below the MAX7219 maximum of 15.
+
+### setup-gpio-fan.sh
+
+Configures GPIO18/physical pin 12 as PWM0 and installs the persistent thermal
+fan controller:
+
+```bash
+bash scripts/setup-gpio-fan.sh --install
+bash scripts/setup-gpio-fan.sh --check
+```
+
+The base installer exposes this as the optional `PCS_SETUP_GPIO_FAN=yes|no`
+choice. Installation disables the unused onboard analogue audio PWM function,
+adds `dtoverlay=pwm,pin=18,func=2`, and normally requires one reboot. Dire
+Wolf's separate USB sound adapter is unaffected.
+
+The controller uses the 52Pi-documented 100 Hz PWM frequency and a conservative
+five-step curve: 40% below 45 C, then 55/70/85% at 45/55/65 C and 100% at 75 C.
+It uses 3 C downshift hysteresis and polls every five seconds. Startup, shutdown,
+missing temperature data, or daemon failure leave the PWM channel enabled at
+100% duty. The hardware has no tachometer feedback, so configured duty and CPU
+temperature are observable but actual fan RPM is not measured.
+
 ## Dire Wolf / APRS
 
 ### setup-direwolf-aprs.sh

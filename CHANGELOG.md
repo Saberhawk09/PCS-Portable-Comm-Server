@@ -15,8 +15,44 @@ All notable user-facing PCS changes are recorded here.
   APRS message gating back to RF
 - active-high Raspberry Pi GPIO PTT intent for an optoisolated EasyDigi
   active-low radio closure-to-ground output
-- selected BCM GPIO17 / physical pin 11 for EasyDigi PTT and documented the
-  tentative PCS-wide GPIO allocation
+- selected BCM GPIO6 / physical pin 31 for EasyDigi PTT and documented the
+  finalized schematic's PCS-wide GPIO allocation
+- added an offline-safe GPIO commissioning utility with simulated-by-default
+  LCD, MAX7219, WS2812, and explicit-duty fan tests
+- added optional GPIO18 PWM0 thermal fan control at the vendor-documented
+  100 Hz frequency, with a conservative five-step curve, hysteresis, runtime
+  status, and full-duty startup/shutdown/missing-temperature fail-safe behavior
+- recorded the installed MAX7219/AHCT125 path as bench-tested at 500 kHz and
+  selected the proven `0x03` indoor intensity for its driver
+- added a hardened SPI-only MAX7219 daemon that rotates CPU temperature,
+  cellular quality and a coordinate-free GPS
+  satellite count using compact icons and digits; no-fix and unavailable states
+  replace the count with explicit status symbols
+- changed the matrix temperature identifier from a thermometer to a clear `°C`
+  unit symbol before the numeric Celsius reading
+- added `PCS_SETUP_GPIO_STATS=yes|no` as an optional base-installer choice,
+  including SPI enablement, the `python3-spidev` dependency, and conditional
+  PCS status/self-test coverage
+- matched the matrix satellite count to the web admin by keeping gpsd's fullest
+  recent multi-constellation `SKY` report instead of the first partial report
+- added a guarded two-line HD44780 LCD command and aligned its data pins with
+  the installed GPIO27/GPIO22/GPIO23/GPIO24 wiring
+- bench-tested the installed HD44780 path and added a hardened GPIO-only daemon
+  with rotating PCS/uptime, CPU/LTE, and GPS/fix pages
+- revised the LCD rotation to four operator-defined pages with dual-unit CPU
+  temperature, cellular on/off state, and paired GPS view/used satellite counts
+- expanded the LCD rotation with active network-uplink and AP-client/grid-square
+  pages using the PCS route, neighbor, and GPS definitions
+- centered all HD44780 text fields within their 16-character rows
+- added plain-language LCD warning pages and a critical-only hard-fault mode
+  using the same health conditions as the MAX7219 annunciator
+- corrected the LCD cellular state to follow the actual NetworkManager data
+  session instead of treating a registered idle modem as connected
+- repurposed the MAX7219 from duplicate telemetry into a priority health
+  annunciator with healthy heartbeat/checkmark, `!` plus subsystem warning, and
+  `X` plus subsystem critical patterns
+- recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
+  capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel
 - selected a 10-minute GPS beacon interval and conventional WIDE1-1-only
   fill-in digipeater policy with no preemptive handling
@@ -45,8 +81,8 @@ All notable user-facing PCS changes are recorded here.
   testing/release guidance, and reinstall record with the August 18 PCS state
 - archived superseded bring-up notes while preserving their dated evidence and
   appending the current Pi/OpenWrt/Pi-Star architecture decisions
-- recorded APRS and Meshtastic expansion hardware as purchased but not installed
-  or validated; Meshtastic integration remains unimplemented
+- recorded the remaining APRS radio/PTT and Meshtastic expansion hardware as
+  purchased but not installed or validated; Meshtastic integration remains unimplemented
 
 ### Security
 
