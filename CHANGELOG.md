@@ -41,6 +41,8 @@ All notable user-facing PCS changes are recorded here.
 - expanded the LCD rotation with active network-uplink and AP-client/grid-square
   pages using the PCS route, neighbor, and GPS definitions
 - centered all HD44780 text fields within their 16-character rows
+- added plain-language LCD warning pages and a critical-only hard-fault mode
+  using the same health conditions as the MAX7219 annunciator
 - corrected the LCD cellular state to follow the actual NetworkManager data
   session instead of treating a registered idle modem as connected
 - repurposed the MAX7219 from duplicate telemetry into a priority health

@@ -85,6 +85,9 @@ six-character Maidenhead grid square. Raw coordinates are never retained or
 logged by the display daemon.
 The displayed cellular `On`/`Off` state follows the NetworkManager data session,
 not the modem's separate registered/available state.
+Warnings append a centered plain-language condition page after the six normal
+pages. Critical CPU, root-disk, or service faults suppress the normal rotation
+and show only centered `HARD FAULT` pages until the critical condition clears.
 
 Install or inspect its GPIO-only service with:
 

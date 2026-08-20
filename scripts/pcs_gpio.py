@@ -773,6 +773,42 @@ def lcd_status_pages(
     )
 
 
+def lcd_alert_page(
+    snapshot: MatrixHealthSnapshot,
+    alert: MatrixAlert,
+) -> tuple[str, str]:
+    heading = "HARD FAULT" if alert.severity == "critical" else "WARNING"
+    if alert.name == "cpu_temperature":
+        value = snapshot.stats.temperature_c
+        condition = "CPU TEMP ERROR" if value is None else f"CPU TEMP: {value}°C"
+    elif alert.name == "root_disk":
+        value = snapshot.root_used_percent
+        condition = "ROOT DISK ERROR" if value is None else f"ROOT DISK: {value}%"
+    elif alert.name == "primary_usb":
+        condition = "USB NOT MOUNTED"
+    elif alert.name == "failed_services":
+        condition = "SERVICE FAILURE"
+    elif alert.name == "network_uplink":
+        condition = "UPLINK OFFLINE"
+    elif alert.name == "gps_fix":
+        condition = "NO GPS FIX"
+    else:
+        condition = alert.name.replace("_", " ").upper()
+    return heading, condition[:LCD_COLUMNS]
+
+
+def lcd_health_pages(
+    snapshot: MatrixHealthSnapshot,
+    uptime_seconds: int | None,
+) -> tuple[tuple[str, str], ...]:
+    alerts = matrix_alerts(snapshot)
+    critical = tuple(alert for alert in alerts if alert.severity == "critical")
+    if critical:
+        return tuple(lcd_alert_page(snapshot, alert) for alert in critical)
+    warning_pages = tuple(lcd_alert_page(snapshot, alert) for alert in alerts)
+    return lcd_status_pages(snapshot.stats, uptime_seconds) + warning_pages
+
+
 def stats_frames(snapshot: StatsSnapshot) -> tuple[StatsFrame, ...]:
     if snapshot.gps_satellites == 0 or snapshot.gps_locked is False:
         gps_value = NO_FIX_ICON
@@ -941,17 +977,22 @@ def run_lcd_status(
     *,
     once: bool = False,
     page_seconds: float = 3.0,
-    collector: Callable[[], StatsSnapshot] = collect_stats,
+    collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
     uptime_reader: Callable[[], int | None] = read_uptime_seconds,
     sleeper: Callable[[float], None] = time.sleep,
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
     while not should_stop():
         snapshot = collector()
-        pages = lcd_status_pages(snapshot, uptime_reader())
+        alerts = matrix_alerts(snapshot)
+        pages = lcd_health_pages(snapshot, uptime_reader())
         print(
             json.dumps(
-                {"snapshot": snapshot.as_dict(), "pages": [list(page) for page in pages]},
+                {
+                    "health": snapshot.as_dict(),
+                    "alerts": [alert.as_dict() for alert in alerts],
+                    "pages": [list(page) for page in pages],
+                },
                 separators=(",", ":"),
             ),
             flush=True,
@@ -1151,11 +1192,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         if args.page_seconds < 0:
             raise SystemExit("ERROR: --page-seconds cannot be negative")
         if not args.hardware:
-            snapshot = collect_stats()
+            snapshot = collect_matrix_health()
+            alerts = matrix_alerts(snapshot)
             print(json.dumps({
                 "backend": "simulation",
-                "snapshot": snapshot.as_dict(),
-                "pages": [list(page) for page in lcd_status_pages(snapshot, read_uptime_seconds())],
+                "health": snapshot.as_dict(),
+                "alerts": [alert.as_dict() for alert in alerts],
+                "pages": [list(page) for page in lcd_health_pages(snapshot, read_uptime_seconds())],
                 "writes_performed": False,
             }, indent=2))
             return 0

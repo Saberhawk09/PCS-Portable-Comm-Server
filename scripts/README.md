@@ -74,10 +74,15 @@ python3 scripts/pcs_gpio.py lcd-status
 Simulation is the default. Real writes require both `--hardware` and `--apply`.
 The `lcd` command accepts two lines, trims/centers each to 16 characters, and
 keeps the written text visible unless `--clear` is requested.
-The `lcd-status` command rotates six 16x2 pages: PCS state and uptime, CPU
+The `lcd-status` command normally rotates six 16x2 pages: PCS state and uptime, CPU
 temperature in Celsius/Fahrenheit, active network uplink, cellular state and
 signal quality, GPS fix state with paired satellites-in-view/used counts, then
 active AP client count and six-character Maidenhead grid square.
+Warnings append centered plain-language explanation pages after those six
+pages. A hard fault suppresses normal statistics and rotates only centered
+critical-fault pages. CPU temperature, root-disk use, primary USB mounting,
+failed services, uplink state, and GPS fix use the same conditions and priority
+as the matrix annunciator.
 The cellular `On`/`Off` state follows NetworkManager's actual data session;
 signal quality may remain available while cellular data is disconnected.
 PTT and SA818 UART are never driven by this tool. See

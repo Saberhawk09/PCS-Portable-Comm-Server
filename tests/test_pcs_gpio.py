@@ -170,7 +170,26 @@ class PcsGpioTests(unittest.TestCase):
         no_fix = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(39, 12, 8, False, True, 0), 60)
         self.assertEqual(no_fix[-2], ("GPS Status: NoFx", "View 08 Used 00"))
 
-    def test_one_lcd_status_rotation_writes_six_pages(self):
+    def test_lcd_warnings_append_explanation_pages(self):
+        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, False, 0)
+        pages = pcs_gpio.lcd_health_pages(health, 93784)
+        self.assertEqual(pages[:6], pcs_gpio.lcd_status_pages(stats, 93784))
+        self.assertEqual(pages[6:], (("WARNING", "USB NOT MOUNTED"),))
+
+    def test_lcd_hard_faults_replace_normal_status_pages(self):
+        stats = pcs_gpio.StatsSnapshot(86, 12, 0, False, False, 0, "Offline", 0, None)
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 96, False, 2)
+        pages = pcs_gpio.lcd_health_pages(health, 93784)
+        self.assertEqual(pages, (
+            ("HARD FAULT", "CPU TEMP: 86°C"),
+            ("HARD FAULT", "ROOT DISK: 96%"),
+            ("HARD FAULT", "SERVICE FAILURE"),
+        ))
+        self.assertNotIn(("PCS Online", "Up: 1d 02h 03m"), pages)
+        self.assertTrue(all(len(line) <= 16 for page in pages for line in page))
+
+    def test_one_lcd_status_rotation_writes_six_pages_when_healthy(self):
         class FakeLcd:
             def __init__(self):
                 self.pages = []
@@ -182,7 +201,8 @@ class PcsGpioTests(unittest.TestCase):
                 pass
 
         lcd = FakeLcd()
-        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        snapshot = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0)
         output = io.StringIO()
         with redirect_stdout(output):
             pcs_gpio.run_lcd_status(
@@ -192,8 +212,8 @@ class PcsGpioTests(unittest.TestCase):
                 uptime_reader=lambda: 93784,
                 sleeper=lambda _: None,
             )
-        self.assertEqual(lcd.pages, list(pcs_gpio.lcd_status_pages(snapshot, 93784)))
-        self.assertEqual(json.loads(output.getvalue())["snapshot"], snapshot.as_dict())
+        self.assertEqual(lcd.pages, list(pcs_gpio.lcd_status_pages(stats, 93784)))
+        self.assertEqual(json.loads(output.getvalue())["health"], snapshot.as_dict())
 
     def test_one_stats_rotation_writes_only_matrix_frames(self):
         class FakeMatrix:
@@ -408,7 +428,9 @@ class PcsGpioTests(unittest.TestCase):
             result = pcs_gpio.main(("lcd-status", "--once", "--page-seconds", "0"))
         self.assertEqual(result, 0)
         parsed = json.loads(output.getvalue())
-        self.assertEqual(len(parsed["pages"]), 6)
+        self.assertGreaterEqual(len(parsed["pages"]), 1)
+        self.assertIn("health", parsed)
+        self.assertIn("alerts", parsed)
         self.assertFalse(parsed["writes_performed"])
 
     def test_real_lcd_status_requires_double_confirmation(self):
