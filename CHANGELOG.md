@@ -30,6 +30,8 @@ All notable user-facing PCS changes are recorded here.
 - added `PCS_SETUP_GPIO_STATS=yes|no` as an optional base-installer choice,
   including SPI enablement, the `python3-spidev` dependency, and conditional
   PCS status/self-test coverage
+- matched the matrix satellite count to the web admin by keeping gpsd's fullest
+  recent multi-constellation `SKY` report instead of the first partial report
 - recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
   capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel

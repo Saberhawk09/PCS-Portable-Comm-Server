@@ -69,6 +69,20 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pcs_gpio.satellite_count_from_sky({"satellites": [{}, {}, {}]}), 3)
         self.assertIsNone(pcs_gpio.satellite_count_from_sky({}))
 
+    def test_gps_status_keeps_fullest_sky_report_and_best_fix(self):
+        status = (None, None)
+        records = (
+            {"class": "SKY", "nSat": 9, "uSat": 5},
+            {"class": "TPV", "mode": 1},
+            {"class": "SKY", "nSat": 21, "uSat": 14},
+            {"class": "TPV", "mode": 3},
+            {"class": "SKY", "nSat": 9, "uSat": 5},
+            {"class": "TPV", "mode": 1},
+        )
+        for record in records:
+            status = pcs_gpio.merge_gps_status(*status, record)
+        self.assertEqual(status, (21, True))
+
     def test_one_stats_rotation_writes_only_matrix_frames(self):
         class FakeMatrix:
             def __init__(self):

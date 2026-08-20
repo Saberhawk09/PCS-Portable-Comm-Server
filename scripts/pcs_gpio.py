@@ -387,6 +387,24 @@ def satellite_count_from_sky(record: dict[str, object]) -> int | None:
     return None
 
 
+def merge_gps_status(
+    satellites: int | None,
+    locked: bool | None,
+    record: dict[str, object],
+) -> tuple[int | None, bool | None]:
+    """Keep the fullest SKY report and best TPV fix without retaining coordinates."""
+    if record.get("class") == "SKY":
+        candidate = satellite_count_from_sky(record)
+        if candidate is not None and (satellites is None or candidate > satellites):
+            satellites = candidate
+    elif record.get("class") == "TPV":
+        mode = record.get("mode")
+        if isinstance(mode, int) and not isinstance(mode, bool):
+            candidate_lock = mode >= 2
+            locked = candidate_lock if locked is None else locked or candidate_lock
+    return satellites, locked
+
+
 def read_gps_status(host: str = "127.0.0.1", port: int = 2947) -> tuple[int | None, bool | None]:
     """Read gpsd satellite count and fix lock; coordinates are neither retained nor logged."""
     deadline = time.monotonic() + 2.0
@@ -411,14 +429,7 @@ def read_gps_status(host: str = "127.0.0.1", port: int = 2947) -> tuple[int | No
                         record = json.loads(raw_line.decode("utf-8", errors="replace"))
                     except (json.JSONDecodeError, UnicodeError):
                         continue
-                    if record.get("class") == "SKY":
-                        satellites = satellite_count_from_sky(record)
-                    elif record.get("class") == "TPV":
-                        mode = record.get("mode")
-                        if isinstance(mode, int) and not isinstance(mode, bool):
-                            locked = mode >= 2
-                    if satellites is not None and locked is not None:
-                        return satellites, locked
+                    satellites, locked = merge_gps_status(satellites, locked, record)
     except OSError:
         pass
     return satellites, locked
