@@ -78,6 +78,8 @@ The `lcd-status` command rotates six 16x2 pages: PCS state and uptime, CPU
 temperature in Celsius/Fahrenheit, active network uplink, cellular state and
 signal quality, GPS fix state with paired satellites-in-view/used counts, then
 active AP client count and six-character Maidenhead grid square.
+The cellular `On`/`Off` state follows NetworkManager's actual data session;
+signal quality may remain available while cellular data is disconnected.
 PTT and SA818 UART are never driven by this tool. See
 [PCS GPIO Allocation](../docs/gpio-allocation.md) for the pin map and hardware
 commissioning commands.

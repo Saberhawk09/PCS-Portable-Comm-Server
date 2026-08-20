@@ -79,10 +79,12 @@ modules plus `rpi_ws281x` for the LEDs. Run `check` before commissioning.
 
 The installed 16x2 LCD rotates six pages every three seconds: PCS state and
 uptime; CPU temperature in Celsius and Fahrenheit; active Cellular/WiFi/Offline
-uplink; ModemManager cellular state and signal quality; gpsd fix state with
+uplink; NetworkManager cellular data state and ModemManager signal quality; gpsd fix state with
 paired satellites in view/used; then active AP client count and the current
 six-character Maidenhead grid square. Raw coordinates are never retained or
 logged by the display daemon.
+The displayed cellular `On`/`Off` state follows the NetworkManager data session,
+not the modem's separate registered/available state.
 
 Install or inspect its GPIO-only service with:
 

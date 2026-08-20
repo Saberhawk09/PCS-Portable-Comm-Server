@@ -408,6 +408,30 @@ def parse_cellular_state(output: str) -> bool | None:
     return None
 
 
+def parse_cellular_data_state(output: str) -> bool | None:
+    """Return NetworkManager's cellular data-session state."""
+    for line in output.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) != 3 or parts[1] != "gsm":
+            continue
+        return parts[2] == "connected"
+    return None
+
+
+def read_cellular_data_state() -> bool | None:
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "--escape", "no", "-f", "DEVICE,TYPE,STATE", "device", "status"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_cellular_data_state(result.stdout) if result.returncode == 0 else None
+
+
 def read_cellular_status() -> tuple[bool | None, int | None]:
     try:
         result = subprocess.run(
@@ -420,10 +444,7 @@ def read_cellular_status() -> tuple[bool | None, int | None]:
     except (OSError, subprocess.SubprocessError):
         return None, None
     quality = parse_cellular_quality(result.stdout)
-    online = parse_cellular_state(result.stdout)
-    if online is None and quality is not None:
-        online = True
-    return online, quality
+    return read_cellular_data_state(), quality
 
 
 def read_cellular_quality() -> int | None:

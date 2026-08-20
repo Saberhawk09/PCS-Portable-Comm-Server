@@ -41,6 +41,8 @@ All notable user-facing PCS changes are recorded here.
 - expanded the LCD rotation with active network-uplink and AP-client/grid-square
   pages using the PCS route, neighbor, and GPS definitions
 - centered all HD44780 text fields within their 16-character rows
+- corrected the LCD cellular state to follow the actual NetworkManager data
+  session instead of treating a registered idle modem as connected
 - recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
   capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel

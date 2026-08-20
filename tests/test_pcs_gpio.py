@@ -81,6 +81,11 @@ class PcsGpioTests(unittest.TestCase):
         self.assertFalse(pcs_gpio.parse_cellular_state("modem.generic.state : disabled\n"))
         self.assertIsNone(pcs_gpio.parse_cellular_quality(""))
 
+    def test_cellular_data_state_follows_networkmanager_not_modem_registration(self):
+        self.assertTrue(pcs_gpio.parse_cellular_data_state("cdc-wdm0:gsm:connected\n"))
+        self.assertFalse(pcs_gpio.parse_cellular_data_state("cdc-wdm0:gsm:disconnected\n"))
+        self.assertIsNone(pcs_gpio.parse_cellular_data_state("wlan0:wifi:connected\n"))
+
     def test_network_uplink_parser_uses_pcs_interface_classes(self):
         self.assertEqual(pcs_gpio.parse_network_uplink("default dev wlan0"), "WiFi")
         self.assertEqual(pcs_gpio.parse_network_uplink("8.8.8.8 dev wwan0 src 10.0.0.2"), "Cellular")
