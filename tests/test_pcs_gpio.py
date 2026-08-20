@@ -245,7 +245,7 @@ class PcsGpioTests(unittest.TestCase):
     def test_matrix_annunciator_prioritizes_critical_and_warning_conditions(self):
         self.assertEqual(
             pcs_gpio.EXCLAMATION_ICON,
-            (0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x3C, 0x00),
+            (0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x18),
         )
         health = pcs_gpio.MatrixHealthSnapshot(
             pcs_gpio.StatsSnapshot(86, 12, 0, False, False, 0, "Offline", 0, None),
