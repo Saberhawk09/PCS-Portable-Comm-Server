@@ -89,6 +89,7 @@ Configure WWAN modem NMEA GPS:       yes
 Share GPSD with trusted PCS clients: yes
 Include Pi-Star in PCS monitoring:   yes
 Stage Dire Wolf / APRS software:     yes
+Install 16x2 HD44780 LCD display:    yes (when physically fitted)
 Install MAX7219 LED matrix display:  yes (only when physically fitted)
 Install GPIO18 hardware PWM fan:     yes (when the Armor Lite cooler is fitted)
 ```
@@ -100,6 +101,7 @@ PCS_SETUP_WWAN_GPS=yes
 PCS_SETUP_GPSD_LAN=yes
 PCS_SETUP_PISTAR=yes
 PCS_SETUP_APRS=staged
+PCS_SETUP_GPIO_LCD=yes
 PCS_SETUP_GPIO_STATS=yes
 PCS_SETUP_GPIO_FAN=yes
 ```
@@ -123,6 +125,10 @@ configuration as credential-bearing/manual recovery material. The APRS-IS
 passcode is intentionally absent from Git. See
 [Dire Wolf / APRS Integration](direwolf-aprs.md) for `--render-config`,
 `--validate-config`, guarded activation, and `--rollback`.
+
+`PCS_SETUP_GPIO_LCD=yes` installs and enables the GPIO-only 16x2 HD44780
+status display. Set it to `no` on builds without the LCD; self-test then treats
+the display as an intentionally omitted optional feature.
 
 `PCS_SETUP_GPIO_STATS=yes` enables SPI0 if necessary and installs the hardened
 MAX7219 display service. Set it to `no` on builds without the matrix; status and

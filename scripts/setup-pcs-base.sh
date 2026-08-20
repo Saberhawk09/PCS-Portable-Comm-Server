@@ -35,6 +35,7 @@ PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
+PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-ask}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
@@ -183,6 +184,7 @@ write_install_config() {
         printf "PCS_SETUP_GPSD_LAN=%q\n" "${PCS_SETUP_GPSD_LAN}"
         printf "PCS_SETUP_PISTAR=%q\n" "${PCS_SETUP_PISTAR}"
         printf "PCS_SETUP_APRS=%q\n" "${PCS_SETUP_APRS}"
+        printf "PCS_SETUP_GPIO_LCD=%q\n" "${PCS_SETUP_GPIO_LCD}"
         printf "PCS_SETUP_GPIO_STATS=%q\n" "${PCS_SETUP_GPIO_STATS}"
         printf "PCS_SETUP_GPIO_FAN=%q\n" "${PCS_SETUP_GPIO_FAN}"
         printf "PCS_APRS_ROLE=%q\n" "${PCS_APRS_ROLE}"
@@ -276,6 +278,7 @@ collect_install_answers() {
     local gpsd_lan_default
     local pistar_default
     local aprs_default
+    local gpio_lcd_default
     local gpio_stats_default
     local gpio_fan_default
 
@@ -295,6 +298,7 @@ collect_install_answers() {
             PCS_SETUP_GPSD_LAN="no"
             PCS_SETUP_PISTAR="no"
             PCS_SETUP_APRS="no"
+            PCS_SETUP_GPIO_LCD="no"
             PCS_SETUP_GPIO_STATS="no"
             PCS_SETUP_GPIO_FAN="no"
             ;;
@@ -311,6 +315,7 @@ collect_install_answers() {
             gpsd_lan_default="${PCS_SETUP_GPSD_LAN}"
             pistar_default="${PCS_SETUP_PISTAR}"
             aprs_default="${PCS_SETUP_APRS}"
+            gpio_lcd_default="${PCS_SETUP_GPIO_LCD}"
             gpio_stats_default="${PCS_SETUP_GPIO_STATS}"
             gpio_fan_default="${PCS_SETUP_GPIO_FAN}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
@@ -319,6 +324,7 @@ collect_install_answers() {
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
             [[ "${aprs_default}" == "ask" ]] && aprs_default="no"
             [[ "${aprs_default}" == "staged" ]] && aprs_default="yes"
+            [[ "${gpio_lcd_default}" == "ask" ]] && gpio_lcd_default="no"
             [[ "${gpio_stats_default}" == "ask" ]] && gpio_stats_default="no"
             [[ "${gpio_fan_default}" == "ask" ]] && gpio_fan_default="no"
             PCS_SETUP_USB_PRIMARY="$(ask_yes_no "Configure detected USB storage as PCS-Share primary storage?" "${usb_default}")"
@@ -331,6 +337,7 @@ collect_install_answers() {
             PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
             PCS_SETUP_APRS="$(ask_yes_no "Stage optional Dire Wolf / APRS software without enabling radio or RF transmit?" "${aprs_default}")"
+            PCS_SETUP_GPIO_LCD="$(ask_yes_no "Install and start the optional 16x2 HD44780 LCD status display?" "${gpio_lcd_default}")"
             PCS_SETUP_GPIO_STATS="$(ask_yes_no "Install and start the optional MAX7219 LED matrix statistics display?" "${gpio_stats_default}")"
             PCS_SETUP_GPIO_FAN="$(ask_yes_no "Install GPIO18 hardware PWM thermal fan control?" "${gpio_fan_default}")"
             ;;
@@ -344,6 +351,7 @@ collect_install_answers() {
             PCS_SETUP_WWAN_GPS="ask"
             PCS_SETUP_GPSD_LAN="ask"
             PCS_SETUP_APRS="ask"
+            PCS_SETUP_GPIO_LCD="ask"
             PCS_SETUP_GPIO_STATS="ask"
             PCS_SETUP_GPIO_FAN="ask"
             pistar_default="${PCS_SETUP_PISTAR}"
@@ -365,7 +373,9 @@ collect_install_answers() {
     export PCS_SETUP_GPSD_LAN
     export PCS_SETUP_PISTAR
     export PCS_SETUP_APRS
+    export PCS_SETUP_GPIO_LCD
     export PCS_SETUP_GPIO_STATS
+    export PCS_SETUP_GPIO_FAN
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
         unset PCS_ROUTER_WAN_SHARE_CONFIRM
@@ -399,6 +409,7 @@ confirm_install_answers() {
     echo "  LAN GPSD policy:    ${PCS_SETUP_GPSD_LAN}"
     echo "  Pi-Star monitoring: ${PCS_SETUP_PISTAR}"
     echo "  Dire Wolf / APRS:   ${PCS_SETUP_APRS}"
+    echo "  HD44780 LCD:         ${PCS_SETUP_GPIO_LCD}"
     echo "  MAX7219 LED matrix: ${PCS_SETUP_GPIO_STATS}"
     echo "  GPIO18 PWM fan:     ${PCS_SETUP_GPIO_FAN}"
     echo
@@ -782,6 +793,37 @@ case "${gpsd_lan_answer}" in
         echo "Skipping LAN-only GPSD proxy setup."
         echo "You can run this later:"
         echo "  ./scripts/setup-gpsd-lan-proxy.sh"
+        ;;
+esac
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Install 16x2 HD44780 LCD status display"
+echo "============================================================"
+echo
+echo "This installs the GPIO-only LCD driver and starts pcs-gpio-lcd.service."
+echo "Select it only when the HD44780-compatible 16x2 display is installed."
+echo
+
+if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" || "${PCS_SETUP_GPIO_LCD}" == "no" ]]; then
+    gpio_lcd_answer="${PCS_SETUP_GPIO_LCD}"
+else
+    gpio_lcd_answer="$(ask_yes_no "Install and start the optional 16x2 HD44780 LCD status display?" "no")"
+fi
+PCS_SETUP_GPIO_LCD="${gpio_lcd_answer}"
+export PCS_SETUP_GPIO_LCD
+write_install_config
+
+case "${gpio_lcd_answer}" in
+    y|Y|yes|YES|Yes)
+        run_optional_step \
+            "Install 16x2 HD44780 LCD status display" \
+            "./scripts/setup-gpio-lcd.sh --install"
+        ;;
+    *)
+        echo "Skipping 16x2 HD44780 LCD status display."
+        echo "You can install it later with:"
+        echo "  ./scripts/setup-gpio-lcd.sh --install"
         ;;
 esac
 

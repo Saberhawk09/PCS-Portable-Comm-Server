@@ -51,6 +51,16 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('./scripts/setup-gpio-stats.sh --install', self.source)
         self.assertIn('PCS_SETUP_GPIO_STATS="no"', self.source)
 
+    def test_hd44780_lcd_setup_is_optional_and_persisted(self):
+        self.assertIn('PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-ask}"', self.source)
+        self.assertIn('printf "PCS_SETUP_GPIO_LCD=%q\\n"', self.source)
+        self.assertIn(
+            'Install and start the optional 16x2 HD44780 LCD status display?',
+            self.source,
+        )
+        self.assertIn('./scripts/setup-gpio-lcd.sh --install', self.source)
+        self.assertIn('PCS_SETUP_GPIO_LCD="no"', self.source)
+
     def test_hardware_pwm_fan_setup_is_optional_and_persisted(self):
         self.assertIn('PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"', self.source)
         self.assertIn('printf "PCS_SETUP_GPIO_FAN=%q\\n"', self.source)

@@ -96,7 +96,7 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can stage Dire Wolf without activating an RF path, and can install the MAX7219 annunciator and GPIO18 hardware-PWM thermal fan controller.
+The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can stage Dire Wolf without activating an RF path, and can install the 16x2 HD44780 status display, MAX7219 annunciator, and GPIO18 hardware-PWM thermal fan controller.
 
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 

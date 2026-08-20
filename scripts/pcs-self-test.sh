@@ -50,6 +50,7 @@ PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-no}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
@@ -755,6 +756,42 @@ case "${PCS_SETUP_APRS}" in
         skip "Dire Wolf / APRS is not selected in the install configuration"
         ;;
 esac
+
+section "16x2 HD44780 LCD"
+
+if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" ]]; then
+    if [[ -x /usr/local/sbin/pcs-gpio ]]; then
+        pass "PCS GPIO driver is installed"
+    else
+        fail "HD44780 LCD selected but /usr/local/sbin/pcs-gpio is missing"
+    fi
+
+    if [[ -e /dev/gpiochip0 ]]; then
+        pass "GPIO chip is available"
+    else
+        fail "HD44780 LCD selected but /dev/gpiochip0 is unavailable"
+    fi
+
+    if python3 -c 'import gpiozero' 2>/dev/null; then
+        pass "Python gpiozero is available"
+    else
+        fail "HD44780 LCD selected but Python gpiozero is unavailable"
+    fi
+
+    if service_enabled pcs-gpio-lcd.service; then
+        pass "pcs-gpio-lcd.service is enabled"
+    else
+        fail "HD44780 LCD selected but pcs-gpio-lcd.service is disabled"
+    fi
+
+    if service_active pcs-gpio-lcd.service; then
+        pass "pcs-gpio-lcd.service is active"
+    else
+        fail "HD44780 LCD selected but pcs-gpio-lcd.service is inactive"
+    fi
+else
+    skip "16x2 HD44780 LCD is not selected in the install configuration"
+fi
 
 section "MAX7219 LED Matrix"
 

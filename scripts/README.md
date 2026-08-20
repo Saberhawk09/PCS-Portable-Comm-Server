@@ -99,6 +99,10 @@ bash scripts/setup-gpio-lcd.sh --install
 bash scripts/setup-gpio-lcd.sh --check
 ```
 
+The base installer exposes this as the optional `PCS_SETUP_GPIO_LCD=yes|no`
+choice, persists the answer in `config/pcs-install.conf`, and restores the
+service during a reinstall when selected.
+
 The service uses the same privacy-preserving data collectors as the matrix and
 does not retain coordinates or control APRS PTT, radio UART, SPI, fan, or
 WS2812 lines.
