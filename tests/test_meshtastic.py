@@ -100,18 +100,19 @@ class MeshtasticStatusTests(unittest.TestCase):
             meshtastic_status.write_status(target, {"state": "connected"})
             self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"state": "connected"})
 
-    def test_gateway_only_uses_dedicated_mqtt_proxy_send_api(self):
+    def test_gateway_limits_radio_writes_to_proxy_and_opt_in_position(self):
         source = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")
         for forbidden in (
             "sendText(",
             "sendData(",
-            "sendPosition(",
             "writeConfig(",
             "setOwner(",
             "setFixedPosition(",
         ):
             self.assertNotIn(forbidden, source)
         self.assertIn("sendMqttClientProxyMessage(topic, payload)", source)
+        self.assertIn("self.interface.sendPosition(", source)
+        self.assertIn('getattr(self.args, "gpsd_position", False)', source)
         self.assertIn("noNodes=True", source)
 
     def test_gateway_uses_pcs_ble_startup_drain_adapter(self):
@@ -492,6 +493,69 @@ class MeshtasticStatusTests(unittest.TestCase):
         source = (ROOT / "scripts" / "pcs_meshtastic_import_mqtt.py").read_text(encoding="utf-8")
         self.assertNotIn("print(mqtt.password", source)
         self.assertNotIn("print(mqtt.username", source)
+
+    def test_gpsd_reader_requires_valid_tpv_fix(self):
+        class FakeSocket:
+            def __init__(self):
+                self.chunks = [
+                    b'{"class":"VERSION"}\n'
+                    b'{"class":"TPV","mode":1}\n'
+                    b'{"class":"TPV","mode":3,"lat":41.5,"lon":-81.7,"altHAE":245.6}\n'
+                ]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def settimeout(self, _timeout):
+                pass
+
+            def sendall(self, payload):
+                self.payload = payload
+
+            def recv(self, _size):
+                return self.chunks.pop(0) if self.chunks else b""
+
+        fake_socket = FakeSocket()
+        with mock.patch.object(
+            meshtastic_gateway.socket,
+            "create_connection",
+            return_value=fake_socket,
+        ):
+            position = meshtastic_gateway.read_gpsd_position(timeout=1)
+
+        self.assertEqual(position, (41.5, -81.7, 246))
+        self.assertIn(b"WATCH", fake_socket.payload)
+
+    def test_gpsd_position_update_uses_radio_api_without_storing_coordinates(self):
+        gateway = meshtastic_gateway.Gateway.__new__(meshtastic_gateway.Gateway)
+        gateway.args = SimpleNamespace(
+            gpsd_host="127.0.0.1",
+            gpsd_port=2947,
+            gpsd_timeout=3.0,
+            position_channel=0,
+        )
+        gateway.interface = mock.Mock()
+        gateway.counts = {"position_updates": 0, "gpsd_failures": 0}
+        gateway.last_position_update = None
+
+        with mock.patch.object(
+            meshtastic_gateway,
+            "read_gpsd_position",
+            return_value=(41.5, -81.7, 246),
+        ):
+            gateway._send_gpsd_position()
+
+        gateway.interface.sendPosition.assert_called_once_with(
+            latitude=41.5,
+            longitude=-81.7,
+            altitude=246,
+            channelIndex=0,
+        )
+        self.assertEqual(gateway.counts["position_updates"], 1)
+        self.assertIsNotNone(gateway.last_position_update)
 
 
 if __name__ == "__main__":
