@@ -15,7 +15,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [GPS Network Sharing](gps-network-sharing.md)
 - [Pi-Star Integration](pi-star-integration.md)
 - [Dire Wolf / APRS Integration](direwolf-aprs.md)
-- [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md)
+- [Meshtastic USB/Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md)
 - [PCS GPIO Allocation](gpio-allocation.md)
 - [Linksys EA4500 OpenWrt AP Setup](linksys-ea4500-ap.md)
 - [Samba File Share](samba-file-share.md)

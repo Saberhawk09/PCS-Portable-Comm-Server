@@ -833,8 +833,10 @@ case "${PCS_SETUP_MESHTASTIC}" in
         if [[ -x /opt/pcs-meshtastic/bin/meshtastic ]] \
             && [[ -x /opt/pcs-meshtastic/bin/python ]] \
             && [[ -r /usr/local/sbin/pcs_meshtastic_status.py ]] \
+            && [[ -r /usr/local/sbin/pcs_meshtastic_ble.py ]] \
+            && [[ -x /usr/local/sbin/pcs-meshtastic-ready ]] \
             && [[ -x /usr/local/sbin/pcs-meshtastic-gateway ]]; then
-            pass "Meshtastic Bluetooth/MQTT gateway software is installed"
+            pass "Meshtastic USB/Bluetooth MQTT gateway software is installed"
         else
             fail "Meshtastic selected but its pinned client or gateway is missing"
         fi

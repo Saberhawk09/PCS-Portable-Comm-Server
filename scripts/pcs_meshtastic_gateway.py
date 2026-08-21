@@ -120,8 +120,6 @@ class Gateway:
         self.pub = pub
         self.stop_event = threading.Event()
         self.interface: Any = None
-        self._ble_connect_thread: threading.Thread | None = None
-        self._ble_connect_result: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
         self.mqtt_connected = False
         self._mqtt_ever_connected = False
         self.ble_connected = False
@@ -225,14 +223,13 @@ class Gateway:
                 self.interface.myInfo,
                 self.interface.metadata,
             )
-        elif self._ble_connect_thread is not None:
-            status = classify_error(RuntimeError("ble-connecting"))
-            status["reason"] = "ble-connecting"
         elif self.last_error:
             status = classify_error(RuntimeError(self.last_error))
             status["reason"] = self.last_error
         else:
             status = classify_error(RuntimeError("connection failed"))
+
+        status["transport"] = "usb-serial" if getattr(self.args, "port", "") else "bluetooth-le"
 
         radio_mqtt: Any = None
         if self.interface is not None:
@@ -311,6 +308,9 @@ class Gateway:
     def _disconnect_stale_ble(self) -> None:
         """Release a BlueZ link left behind by a failed BLEInterface startup."""
 
+        if getattr(self.args, "port", ""):
+            return
+
         try:
             subprocess.run(
                 ["bluetoothctl", "disconnect", self.args.device],
@@ -323,69 +323,40 @@ class Gateway:
             LOG.warning("Could not release stale Meshtastic BlueZ connection")
 
     def _open_ble(self) -> Any:
-        from meshtastic.ble_interface import BLEInterface
+        if getattr(self.args, "port", ""):
+            from meshtastic.serial_interface import SerialInterface
+
+            return SerialInterface(
+                devPath=self.args.port,
+                noNodes=True,
+                timeout=self.args.ble_timeout,
+            )
+
+        from pcs_meshtastic_ble import PCSBLEInterface
 
         # The gateway needs local config and live proxy events, not the radio's
         # historical remote-node database. Large node DBs can exceed the BLE
         # client's fixed configuration timeout and expose data PCS does not
         # retain.
-        return BLEInterface(
+        return PCSBLEInterface(
             self.args.device,
             noNodes=True,
             timeout=self.args.ble_timeout,
         )
 
-    def _start_ble_connect(self) -> None:
-        """Start one BLE handshake without blocking service shutdown."""
+    def _start_ble_connect(self) -> str:
+        """Run one BLE handshake on the main thread as BlueZ requires here."""
 
-        if self._ble_connect_thread is not None:
-            return
         self._close_ble()
-        while True:
-            try:
-                self._ble_connect_result.get_nowait()
-            except queue.Empty:
-                break
-
-        def connect_worker() -> None:
-            try:
-                result = (True, self._open_ble())
-            except Exception as exc:  # reported by the responsive main loop
-                result = (False, exc)
-            try:
-                self._ble_connect_result.put_nowait(result)
-            except queue.Full:
-                if result[0]:
-                    # The main process is stopping. Process exit is the final
-                    # fallback if this third-party close call also blocks.
-                    threading.Thread(
-                        target=result[1].close,
-                        name="BLEDiscardClose",
-                        daemon=True,
-                    ).start()
-
-        self._ble_connect_thread = threading.Thread(
-            target=connect_worker,
-            name="BLEConnect",
-            daemon=True,
-        )
-        self._ble_connect_thread.start()
-
-    def _poll_ble_connect(self) -> str | None:
-        """Apply a completed worker result and return any failure reason."""
-
         try:
-            succeeded, result = self._ble_connect_result.get_nowait()
-        except queue.Empty:
-            return None
-        self._ble_connect_thread = None
-        if not succeeded:
-            reason = classify_error(result)["reason"]
+            interface = self._open_ble()
+        except Exception as exc:
+            reason = classify_error(exc)["reason"]
             self._disconnect_stale_ble()
             LOG.warning("Meshtastic BLE connection failed (%s)", reason)
             return reason
 
-        self.interface = result
+        self.interface = interface
         self.ble_connected = True
         self.last_error = None
         LOG.info("Meshtastic BLE session established")
@@ -414,26 +385,21 @@ class Gateway:
                     next_ble_attempt = now
                     LOG.warning("Meshtastic BLE disconnected; reconnecting")
 
-                connect_result = self._poll_ble_connect()
-                if connect_result and connect_result != "connected":
-                    self.last_error = connect_result
-                    if connect_result != "device-not-found":
-                        # BLEInterface can leave daemon helper threads behind
-                        # when its constructor fails after GATT connection.
-                        # Exit this process so systemd gives the next attempt a
-                        # completely fresh Python and BlueZ client state.
-                        LOG.warning("Restarting gateway process after BLE handshake failure")
-                        break
-                    next_ble_attempt = now + self.args.ble_retry_seconds
-
                 if (
                     not self.ble_connected
-                    and self._ble_connect_thread is None
                     and now >= next_ble_attempt
                 ):
                     self.last_error = "ble-connecting"
                     self._write_status()
-                    self._start_ble_connect()
+                    connect_result = self._start_ble_connect()
+                    if connect_result != "connected":
+                        self.last_error = connect_result
+                        if connect_result != "device-not-found":
+                            # A fresh process ensures that a failed Bleak event
+                            # loop cannot poison the next BlueZ attempt.
+                            LOG.warning("Restarting gateway process after BLE handshake failure")
+                            break
+                        next_ble_attempt = time.monotonic() + self.args.ble_retry_seconds
 
                 if self.ble_connected:
                     try:
@@ -454,9 +420,6 @@ class Gateway:
         finally:
             self.client.disconnect()
             self.client.loop_stop()
-            if self._ble_connect_thread is not None:
-                self._disconnect_stale_ble()
-                self._ble_connect_thread.join(timeout=2)
             self._close_ble()
             self.mqtt_connected = False
             self.last_error = "service-stopped"
@@ -471,6 +434,7 @@ class Gateway:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", default=os.environ.get("PCS_MESHTASTIC_DEVICE", ""))
+    parser.add_argument("--port", default=os.environ.get("PCS_MESHTASTIC_PORT", ""))
     parser.add_argument("--status-file", default=os.environ.get("PCS_MESHTASTIC_STATUS_FILE", DEFAULT_STATUS_FILE))
     parser.add_argument("--mqtt-host", default=os.environ.get("PCS_MESHTASTIC_MQTT_HOST", ""))
     parser.add_argument("--mqtt-port", type=int, default=int(os.environ.get("PCS_MESHTASTIC_MQTT_PORT", "1883")))
@@ -485,8 +449,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ble-retry-seconds", type=int, default=15)
     parser.add_argument("--status-interval", type=int, default=10)
     args = parser.parse_args(argv)
-    if not args.device.strip():
-        parser.error("PCS_MESHTASTIC_DEVICE is required")
+    if not args.device.strip() and not args.port.strip():
+        parser.error("PCS_MESHTASTIC_DEVICE or PCS_MESHTASTIC_PORT is required")
     if not args.mqtt_host.strip():
         parser.error("PCS_MESHTASTIC_MQTT_HOST is required")
     if not 1 <= args.mqtt_port <= 65535:

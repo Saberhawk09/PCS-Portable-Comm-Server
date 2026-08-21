@@ -14,26 +14,32 @@ COLLECTOR_SOURCE="${REPO_DIR}/scripts/pcs_meshtastic_status.py"
 COLLECTOR_TARGET="/usr/local/sbin/pcs_meshtastic_status.py"
 GATEWAY_SOURCE="${REPO_DIR}/scripts/pcs_meshtastic_gateway.py"
 GATEWAY_TARGET="/usr/local/sbin/pcs-meshtastic-gateway"
+BLE_SOURCE="${REPO_DIR}/scripts/pcs_meshtastic_ble.py"
+BLE_TARGET="/usr/local/sbin/pcs_meshtastic_ble.py"
 IMPORT_SOURCE="${REPO_DIR}/scripts/pcs_meshtastic_import_mqtt.py"
 IMPORT_TARGET="/usr/local/sbin/pcs-meshtastic-import-mqtt"
 BLUETOOTH_READY_SOURCE="${REPO_DIR}/scripts/pcs-bluetooth-ready.sh"
 BLUETOOTH_READY_TARGET="/usr/local/sbin/pcs-bluetooth-ready"
+RADIO_READY_SOURCE="${REPO_DIR}/scripts/pcs-meshtastic-ready.sh"
+RADIO_READY_TARGET="/usr/local/sbin/pcs-meshtastic-ready"
+MODEMMANAGER_RULE_SOURCE="${REPO_DIR}/config-examples/99-pcs-meshtastic.rules"
 SERVICE_SOURCE="${REPO_DIR}/systemd/pcs-meshtastic.service"
 BLUETOOTH_READY_SERVICE_SOURCE="${REPO_DIR}/systemd/pcs-bluetooth-ready.service"
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--scan|--import-radio-mqtt DEVICE|--configure DEVICE MQTT_HOST [MQTT_PORT]|--check|--disable
+Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--scan|--import-radio-mqtt DEVICE|--configure DEVICE MQTT_HOST [MQTT_PORT]|--configure-usb /dev/ttyACM0 MQTT_HOST [MQTT_PORT]|--check|--disable
 
   --prepare           Install pinned Bluetooth/MQTT support; leave gateway disabled.
   --scan              List discoverable Meshtastic BLE devices (10-second scan).
   --import-radio-mqtt DEVICE
                       Copy the radio's broker credentials into PCS without displaying them.
   --configure ...     Record a paired BLE target and broker, then enable the gateway.
+  --configure-usb ... Use the directly attached RAK at /dev/ttyACM0 and enable the gateway.
   --check             Inspect installed, paired, gateway service, and status state.
   --disable           Stop and disable the PCS gateway without changing the radio.
 
-The service keeps BLE connected continuously. It transparently relays the
+The service keeps the selected radio transport connected continuously. It transparently relays the
 radio's MQTT proxy envelopes; it does not send arbitrary text messages or modify
 Meshtastic radio/channel configuration. Downlink is disabled until explicit MQTT
 subscription filters are added to /etc/pcs/meshtastic.env.
@@ -90,8 +96,11 @@ prepare() {
     require_normal_user
     [[ -f "${COLLECTOR_SOURCE}" ]] || { echo "ERROR: Missing ${COLLECTOR_SOURCE}"; exit 1; }
     [[ -f "${GATEWAY_SOURCE}" ]] || { echo "ERROR: Missing ${GATEWAY_SOURCE}"; exit 1; }
+    [[ -f "${BLE_SOURCE}" ]] || { echo "ERROR: Missing ${BLE_SOURCE}"; exit 1; }
     [[ -f "${IMPORT_SOURCE}" ]] || { echo "ERROR: Missing ${IMPORT_SOURCE}"; exit 1; }
     [[ -f "${BLUETOOTH_READY_SOURCE}" ]] || { echo "ERROR: Missing ${BLUETOOTH_READY_SOURCE}"; exit 1; }
+    [[ -f "${RADIO_READY_SOURCE}" ]] || { echo "ERROR: Missing ${RADIO_READY_SOURCE}"; exit 1; }
+    [[ -f "${MODEMMANAGER_RULE_SOURCE}" ]] || { echo "ERROR: Missing ${MODEMMANAGER_RULE_SOURCE}"; exit 1; }
     [[ -f "${SERVICE_SOURCE}" ]] || { echo "ERROR: Missing ${SERVICE_SOURCE}"; exit 1; }
     [[ -f "${BLUETOOTH_READY_SERVICE_SOURCE}" ]] || { echo "ERROR: Missing ${BLUETOOTH_READY_SERVICE_SOURCE}"; exit 1; }
 
@@ -109,8 +118,11 @@ prepare() {
 
     sudo install -o root -g root -m 0644 "${COLLECTOR_SOURCE}" "${COLLECTOR_TARGET}"
     sudo install -o root -g root -m 0755 "${GATEWAY_SOURCE}" "${GATEWAY_TARGET}"
+    sudo install -o root -g root -m 0644 "${BLE_SOURCE}" "${BLE_TARGET}"
     sudo install -o root -g root -m 0755 "${IMPORT_SOURCE}" "${IMPORT_TARGET}"
     sudo install -o root -g root -m 0755 "${BLUETOOTH_READY_SOURCE}" "${BLUETOOTH_READY_TARGET}"
+    sudo install -o root -g root -m 0755 "${RADIO_READY_SOURCE}" "${RADIO_READY_TARGET}"
+    sudo install -o root -g root -m 0644 "${MODEMMANAGER_RULE_SOURCE}" /etc/udev/rules.d/99-pcs-meshtastic.rules
     sudo install -o root -g root -m 0644 "${BLUETOOTH_READY_SERVICE_SOURCE}" /etc/systemd/system/pcs-bluetooth-ready.service
     sudo install -o root -g root -m 0644 "${SERVICE_SOURCE}" /etc/systemd/system/pcs-meshtastic.service
     sudo install -d -o root -g root -m 0755 /etc/pcs
@@ -119,6 +131,7 @@ prepare() {
         env_temp="$(mktemp)"
         {
             printf 'PCS_MESHTASTIC_DEVICE=\n'
+            printf 'PCS_MESHTASTIC_PORT=\n'
             printf 'PCS_MESHTASTIC_MQTT_HOST=\n'
             printf 'PCS_MESHTASTIC_MQTT_PORT=1883\n'
             printf 'PCS_MESHTASTIC_MQTT_TLS=no\n'
@@ -139,6 +152,8 @@ prepare() {
     fi
 
     sudo systemctl daemon-reload
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger --subsystem-match=tty
     sudo systemctl disable --now pcs-meshtastic.service >/dev/null 2>&1 || true
 
     echo "Meshtastic Python ${MESHTASTIC_VERSION} and Paho MQTT ${PAHO_MQTT_VERSION} are staged."
@@ -197,6 +212,7 @@ configure() {
     env_temp="$(mktemp)"
     {
         printf 'PCS_MESHTASTIC_DEVICE=%s\n' "${device}"
+        printf 'PCS_MESHTASTIC_PORT=\n'
         printf 'PCS_MESHTASTIC_MQTT_HOST=%s\n' "${mqtt_host}"
         printf 'PCS_MESHTASTIC_MQTT_PORT=%s\n' "${mqtt_port}"
         printf 'PCS_MESHTASTIC_MQTT_TLS=%s\n' "${mqtt_tls}"
@@ -214,18 +230,62 @@ configure() {
     echo "Downlink remains off until explicit subscription filters are configured."
 }
 
+configure_usb() {
+    require_normal_user
+    require_prepared
+    port="${1:-}"
+    mqtt_host="${2:-}"
+    mqtt_port="${3:-1883}"
+    if [[ "${port}" != "/dev/ttyACM0" ]]; then
+        echo "ERROR: The hardened service exposes only /dev/ttyACM0."
+        exit 2
+    fi
+    if [[ -z "${mqtt_host}" || ! "${mqtt_host}" =~ ^[A-Za-z0-9.-]{1,253}$ ]]; then
+        echo "ERROR: MQTT_HOST must be a hostname or IP address without a URL scheme."
+        exit 2
+    fi
+    if [[ ! "${mqtt_port}" =~ ^[0-9]{1,5}$ ]] || (( mqtt_port < 1 || mqtt_port > 65535 )); then
+        echo "ERROR: MQTT_PORT must be between 1 and 65535."
+        exit 2
+    fi
+
+    mqtt_tls="no"
+    [[ "${mqtt_port}" == "8883" ]] && mqtt_tls="yes"
+    subscriptions="$(sudo awk -F= '$1 == "PCS_MESHTASTIC_MQTT_SUBSCRIPTIONS" { sub(/^[^=]*=/, ""); print; exit }' "${ENV_FILE}" 2>/dev/null || true)"
+    env_temp="$(mktemp)"
+    {
+        printf 'PCS_MESHTASTIC_DEVICE=\n'
+        printf 'PCS_MESHTASTIC_PORT=%s\n' "${port}"
+        printf 'PCS_MESHTASTIC_MQTT_HOST=%s\n' "${mqtt_host}"
+        printf 'PCS_MESHTASTIC_MQTT_PORT=%s\n' "${mqtt_port}"
+        printf 'PCS_MESHTASTIC_MQTT_TLS=%s\n' "${mqtt_tls}"
+        printf 'PCS_MESHTASTIC_MQTT_SUBSCRIPTIONS=%s\n' "${subscriptions}"
+    } > "${env_temp}"
+    sudo install -o root -g root -m 0600 "${env_temp}" "${ENV_FILE}"
+    rm -f "${env_temp}"
+
+    sudo systemctl enable --now pcs-meshtastic.service
+    set_install_state yes
+    echo "Configured Meshtastic USB port: ${port}"
+    echo "Configured MQTT broker: ${mqtt_host}:${mqtt_port}"
+    echo "PCS will keep the serial session open continuously."
+}
+
 check() {
     echo "=== PCS Meshtastic Bluetooth ==="
     echo "Pinned client: Meshtastic Python ${MESHTASTIC_VERSION}; Paho MQTT ${PAHO_MQTT_VERSION}"
     echo "Virtual env:   $([[ -x "${VENV_DIR}/bin/python" ]] && echo installed || echo missing)"
     echo "Status helper: $([[ -r "${COLLECTOR_TARGET}" ]] && echo installed || echo missing)"
     echo "Gateway:       $([[ -x "${GATEWAY_TARGET}" ]] && echo installed || echo missing)"
+    echo "BLE transport: $([[ -r "${BLE_TARGET}" ]] && echo installed || echo missing)"
     echo "Bluetooth:     $(systemctl is-active bluetooth.service 2>/dev/null || true)"
     echo "BT controller: $(bluetoothctl show 2>/dev/null | awk -F': ' '/^[[:space:]]*Powered:/ { print $2; exit }')"
     echo "BT ready unit: $(systemctl is-active pcs-bluetooth-ready.service 2>/dev/null || true)"
+    echo "Radio ready:   $([[ -x "${RADIO_READY_TARGET}" ]] && echo installed || echo missing)"
     echo "Service:       $(systemctl is-active pcs-meshtastic.service 2>/dev/null || true)"
     echo "Enabled:       $(systemctl is-enabled pcs-meshtastic.service 2>/dev/null || true)"
     echo "BLE target:    $(has_config_value PCS_MESHTASTIC_DEVICE && echo configured || echo not-configured)"
+    echo "USB target:    $(has_config_value PCS_MESHTASTIC_PORT && echo configured || echo not-configured)"
     echo "MQTT broker:   $(has_config_value PCS_MESHTASTIC_MQTT_HOST && echo configured || echo not-configured)"
     if [[ -r "${STATUS_FILE}" ]]; then
         echo "Status:"
@@ -254,6 +314,9 @@ case "${1:-}" in
         ;;
     --configure)
         configure "${2:-}" "${3:-}" "${4:-1883}"
+        ;;
+    --configure-usb)
+        configure_usb "${2:-}" "${3:-}" "${4:-1883}"
         ;;
     --check)
         check
