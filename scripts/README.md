@@ -59,9 +59,10 @@ Meshtastic node and transparently relays its MQTT client-proxy traffic:
 ```
 
 Staging never contacts or configures the radio. Configured operation keeps the
-selected transport connected continuously. USB mode exposes only
-`/dev/ttyACM0` inside the hardened service. MQTT downlink starts with no
-subscriptions and must be given exact topic filters deliberately. The status snapshot also
+selected transport connected continuously. USB configuration disables the
+node's Bluetooth radio and exposes only `/dev/ttyACM0` inside the hardened
+service. MQTT downlink starts with no subscriptions and must be given exact
+topic filters deliberately. The status snapshot also
 exposes temperature/humidity from the local node's environment sensor for a
 future PCS case-telemetry display. See [Meshtastic USB/Bluetooth MQTT Gateway](../docs/meshtastic-bluetooth-gateway.md).
 

@@ -134,10 +134,11 @@ passcode is intentionally absent from Git. See
 persistent gateway service but leaves it stopped and disabled. After the
 RAK4631 and broker are selected, restore the root-only MQTT credentials. Use
 `setup-meshtastic-bluetooth.sh --configure-usb /dev/ttyACM0 HOST PORT` for the
-deployed wired node, or `--configure` for a validated BLE host, and explicitly
-restore any required downlink topic filters. Bluetooth trust, the radio's MQTT
-and channel settings, broker credentials, RF behavior, and sensor calibration
-remain manual state. See [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md).
+deployed wired node; this also disables the node's Bluetooth radio. Use
+`--configure` only for a separately validated BLE host, and explicitly restore
+any required downlink topic filters. The radio's MQTT and channel settings,
+broker credentials, RF behavior, and sensor calibration remain manual state.
+See [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md).
 
 `PCS_SETUP_GPIO_LCD=yes` installs and enables the GPIO-only 16x2 HD44780
 status display. Set it to `no` on builds without the LCD; self-test then treats

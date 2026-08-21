@@ -194,6 +194,11 @@ when configuration is refreshed. Runtime status reports `transport` as
 `usb-serial`; the legacy `gateway.ble_connected` compatibility field means the
 selected radio transport is connected in either mode.
 
+`--configure-usb` also disables Bluetooth in the connected Meshtastic node.
+This prevents the RAK from continuing to advertise its no-PIN management
+interface when PCS is deployed in a busy environment. Re-enabling BLE later is
+an explicit maintenance operation performed over USB before selecting BLE mode.
+
 The installer also excludes the RAK4631 USB identity from ModemManager probing.
 After a cold boot, a bounded readiness gate waits for the serial device and for
 110 seconds of system uptime before the long-running gateway takes ownership.
