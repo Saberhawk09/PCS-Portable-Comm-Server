@@ -114,6 +114,39 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn("sendMqttClientProxyMessage(topic, payload)", source)
         self.assertIn("noNodes=True", source)
 
+    def test_gateway_uses_pcs_ble_startup_drain_adapter(self):
+        gateway = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")
+        transport = (ROOT / "scripts" / "pcs_meshtastic_ble.py").read_text(encoding="utf-8")
+        setup = (ROOT / "scripts" / "setup-meshtastic-bluetooth.sh").read_text(encoding="utf-8")
+
+        self.assertIn("from pcs_meshtastic_ble import PCSBLEInterface", gateway)
+        self.assertIn("return PCSBLEInterface(", gateway)
+        self.assertIn("self.client.start_notify(FROMNUM_UUID", transport)
+        self.assertLess(
+            transport.index("self.client.start_notify(FROMNUM_UUID"),
+            transport.index("self._startConfig()"),
+        )
+        self.assertIn("def _drain_startup(self)", transport)
+        self.assertIn("target=self._receive_from_radio", transport)
+        self.assertNotIn("disconnected_callback=lambda _: self.close()", transport)
+        self.assertIn('BLE_TARGET="/usr/local/sbin/pcs_meshtastic_ble.py"', setup)
+        self.assertIn('"${BLE_SOURCE}" "${BLE_TARGET}"', setup)
+
+    def test_gateway_supports_scoped_usb_serial_fallback(self):
+        gateway = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")
+        service = (ROOT / "systemd" / "pcs-meshtastic.service").read_text(encoding="utf-8")
+        setup = (ROOT / "scripts" / "setup-meshtastic-bluetooth.sh").read_text(encoding="utf-8")
+
+        self.assertIn("from meshtastic.serial_interface import SerialInterface", gateway)
+        self.assertIn("devPath=self.args.port", gateway)
+        self.assertIn('"usb-serial" if getattr(self.args, "port", "") else "bluetooth-le"', gateway)
+        self.assertIn("PrivateDevices=yes", service)
+        self.assertIn("BindPaths=-/dev/ttyACM0", service)
+        self.assertIn("DeviceAllow=/dev/ttyACM0 rw", service)
+        self.assertIn("SupplementaryGroups=dialout", service)
+        self.assertIn("--configure-usb", setup)
+        self.assertIn("99-pcs-meshtastic.rules", setup)
+
     def test_ble_collectors_skip_the_historical_remote_node_database(self):
         status_source = (ROOT / "scripts" / "pcs_meshtastic_status.py").read_text(encoding="utf-8")
         import_source = (ROOT / "scripts" / "pcs_meshtastic_import_mqtt.py").read_text(encoding="utf-8")
@@ -124,9 +157,11 @@ class MeshtasticStatusTests(unittest.TestCase):
         service = (ROOT / "systemd" / "pcs-meshtastic.service").read_text(encoding="utf-8")
         bluetooth_ready = (ROOT / "systemd" / "pcs-bluetooth-ready.service").read_text(encoding="utf-8")
         bluetooth_ready_script = (ROOT / "scripts" / "pcs-bluetooth-ready.sh").read_text(encoding="utf-8")
+        radio_ready_script = (ROOT / "scripts" / "pcs-meshtastic-ready.sh").read_text(encoding="utf-8")
         setup = (ROOT / "scripts" / "setup-meshtastic-bluetooth.sh").read_text(encoding="utf-8")
         self.assertIn("Type=simple", service)
         self.assertIn("Restart=always", service)
+        self.assertIn("TimeoutStartSec=150", service)
         self.assertIn("WantedBy=multi-user.target", service)
         self.assertIn("AF_UNIX AF_BLUETOOTH AF_INET AF_INET6", service)
         self.assertIn('meshtastic[cli]==${MESHTASTIC_VERSION}', setup)
@@ -140,6 +175,9 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn("bluetoothctl power on", bluetooth_ready_script)
         self.assertIn("Powered: yes", bluetooth_ready_script)
         self.assertIn("power_retries", bluetooth_ready_script)
+        self.assertIn("/proc/uptime", radio_ready_script)
+        self.assertIn("minimum_boot_seconds=110", radio_ready_script)
+        self.assertIn("ExecStartPre=/usr/local/sbin/pcs-meshtastic-ready", service)
         self.assertIn("python3-venv rfkill", setup)
         self.assertIn("BT ready unit:", setup)
         self.assertNotIn("pcs-meshtastic.timer", setup)
@@ -338,7 +376,7 @@ class MeshtasticStatusTests(unittest.TestCase):
             timeout=10,
         )
 
-    def test_gateway_ble_connect_worker_does_not_block_stop(self):
+    def test_gateway_constructs_ble_interface_on_main_thread(self):
         class FakeClient:
             def __init__(self, *_args, **_kwargs):
                 pass
@@ -365,23 +403,17 @@ class MeshtasticStatusTests(unittest.TestCase):
             status_file="unused.json",
         )
         gateway = meshtastic_gateway.Gateway(args, FakeMqtt, SimpleNamespace())
-        release = meshtastic_gateway.threading.Event()
+        current_thread = meshtastic_gateway.threading.current_thread()
+        interface = SimpleNamespace(close=lambda: None)
 
-        def block_open():
-            release.wait(1)
-            raise RuntimeError("connection timeout")
+        def open_ble():
+            self.assertIs(meshtastic_gateway.threading.current_thread(), current_thread)
+            return interface
 
-        with mock.patch.object(gateway, "_open_ble", side_effect=block_open):
-            gateway._start_ble_connect()
-            gateway.stop()
-            self.assertTrue(gateway.stop_event.is_set())
-            self.assertTrue(gateway._ble_connect_thread.is_alive())
-            release.set()
-            gateway._ble_connect_thread.join(timeout=1)
-
-        with mock.patch.object(gateway, "_disconnect_stale_ble") as disconnect:
-            self.assertEqual(gateway._poll_ble_connect(), "connection-timeout")
-        disconnect.assert_called_once_with()
+        with mock.patch.object(gateway, "_open_ble", side_effect=open_ble):
+            self.assertEqual(gateway._start_ble_connect(), "connected")
+        self.assertIs(gateway.interface, interface)
+        self.assertTrue(gateway.ble_connected)
 
     def test_post_gatt_failure_restarts_process_to_release_client_threads(self):
         source = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")

@@ -130,10 +130,11 @@ passcode is intentionally absent from Git. See
 [Dire Wolf / APRS Integration](direwolf-aprs.md) for `--render-config`,
 `--validate-config`, guarded activation, and `--rollback`.
 
-`PCS_SETUP_MESHTASTIC=staged` installs the pinned Bluetooth/MQTT client and
+`PCS_SETUP_MESHTASTIC=staged` installs the pinned USB/Bluetooth MQTT client and
 persistent gateway service but leaves it stopped and disabled. After the
-RAK4631 is paired and the broker is selected, restore the root-only MQTT
-credentials, run `setup-meshtastic-bluetooth.sh --configure`, and explicitly
+RAK4631 and broker are selected, restore the root-only MQTT credentials. Use
+`setup-meshtastic-bluetooth.sh --configure-usb /dev/ttyACM0 HOST PORT` for the
+deployed wired node, or `--configure` for a validated BLE host, and explicitly
 restore any required downlink topic filters. Bluetooth trust, the radio's MQTT
 and channel settings, broker credentials, RF behavior, and sensor calibration
 remain manual state. See [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md).

@@ -47,21 +47,23 @@ the rest of the PCS installation continues.
 
 ### setup-meshtastic-bluetooth.sh
 
-Stages or configures a persistent BLE connection to a dedicated Meshtastic node
-and transparently relays the node's MQTT client-proxy traffic:
+Stages or configures a persistent USB serial or BLE connection to a dedicated
+Meshtastic node and transparently relays its MQTT client-proxy traffic:
 
 ```bash
 ./scripts/setup-meshtastic-bluetooth.sh --prepare
 ./scripts/setup-meshtastic-bluetooth.sh --scan
 ./scripts/setup-meshtastic-bluetooth.sh --configure DEVICE MQTT_HOST MQTT_PORT
+./scripts/setup-meshtastic-bluetooth.sh --configure-usb /dev/ttyACM0 MQTT_HOST MQTT_PORT
 ./scripts/setup-meshtastic-bluetooth.sh --check
 ```
 
-Staging never contacts or configures the radio. Configured operation keeps BLE
-connected continuously. MQTT downlink starts with no subscriptions and must be
-given exact topic filters deliberately. The privacy-safe status snapshot also
+Staging never contacts or configures the radio. Configured operation keeps the
+selected transport connected continuously. USB mode exposes only
+`/dev/ttyACM0` inside the hardened service. MQTT downlink starts with no
+subscriptions and must be given exact topic filters deliberately. The status snapshot also
 exposes temperature/humidity from the local node's environment sensor for a
-future PCS case-telemetry display. See [Meshtastic Bluetooth MQTT Gateway](../docs/meshtastic-bluetooth-gateway.md).
+future PCS case-telemetry display. See [Meshtastic USB/Bluetooth MQTT Gateway](../docs/meshtastic-bluetooth-gateway.md).
 
 ## Dependencies
 

@@ -8,18 +8,25 @@ Requires=pcs-bluetooth-ready.service
 Type=simple
 User=pi
 Group=pi
+SupplementaryGroups=dialout
 EnvironmentFile=/etc/pcs/meshtastic.env
 EnvironmentFile=-/etc/pcs/meshtastic-mqtt.env
 Environment=PCS_MESHTASTIC_STATUS_FILE=/var/lib/pcs-meshtastic/status.json
 Environment=PYTHONDONTWRITEBYTECODE=1
 StateDirectory=pcs-meshtastic
 StateDirectoryMode=0755
+ExecStartPre=/usr/local/sbin/pcs-meshtastic-ready
 ExecStart=/opt/pcs-meshtastic/bin/python /usr/local/sbin/pcs-meshtastic-gateway
 Restart=always
 RestartSec=10
+TimeoutStartSec=150
 TimeoutStopSec=20
 NoNewPrivileges=yes
 PrivateDevices=yes
+# The optional USB transport gets only the RAK's expected serial node; the
+# leading '-' lets the service keep retrying if the node is absent at boot.
+BindPaths=-/dev/ttyACM0
+DeviceAllow=/dev/ttyACM0 rw
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes

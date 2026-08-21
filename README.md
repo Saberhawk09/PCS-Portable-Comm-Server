@@ -176,7 +176,7 @@ For additional documentation, start here:
 - [WWAN Card Setup](docs/wwan-card-setup.md)
 - [GPS Network Sharing](docs/gps-network-sharing.md)
 - [Pi-Star Integration](docs/pi-star-integration.md)
-- [Meshtastic Bluetooth MQTT Gateway](docs/meshtastic-bluetooth-gateway.md)
+- [Meshtastic USB/Bluetooth MQTT Gateway](docs/meshtastic-bluetooth-gateway.md)
 - [Samba File Share](docs/samba-file-share.md)
 - [PCS Control Panel](docs/pcs-control-panel.md)
 - [PCS GPIO Allocation](docs/gpio-allocation.md)

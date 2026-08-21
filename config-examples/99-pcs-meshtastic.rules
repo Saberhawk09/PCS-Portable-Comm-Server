@@ -1,0 +1,2 @@
+# Keep the directly attached RAK4631 out of ModemManager's serial probing.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="239a", ATTRS{idProduct}=="8029", ENV{ID_MM_DEVICE_IGNORE}="1", ENV{ID_MM_PORT_IGNORE}="1"

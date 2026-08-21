@@ -1,13 +1,13 @@
-# Meshtastic Bluetooth MQTT Gateway
+# Meshtastic USB/Bluetooth MQTT Gateway
 
-PCS can maintain a continuous Bluetooth Low Energy connection to one dedicated
-Meshtastic node and provide that node with local or internet MQTT access. The
-initial target is a RAK4631. USB serial is not required for normal operation.
+PCS can maintain a continuous connection to one dedicated Meshtastic node and
+provide that node with local or internet MQTT access. The initial target is a
+RAK4631. USB serial is the deployed PCS transport; a BLE transport adapter is
+also included for hosts whose systemd device isolation permits BlueZ GATT.
 
-This subsystem is implemented in the repository but has not yet been deployed
-or hardware-validated on PCS. Pairing, the installed RAK4631 firmware, its radio
-configuration, broker connectivity, mesh RF behavior, and the environmental
-sensor readings remain operator-validated steps.
+The persistent USB session, broker connection, MQTT client-proxy uplink, and
+service restart have been hardware-validated on PCS. Mesh RF behavior and the
+environmental sensor readings remain operator-validated steps.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ Meshtastic mesh
       v
 RAK4631
       |
-      | persistent BLE PhoneAPI session
+      | persistent USB serial or BLE PhoneAPI session
       v
 pcs-meshtastic.service on PCS
       |
@@ -36,10 +36,9 @@ returned through Meshtastic's dedicated MQTT proxy API.
 PCS does not call general message, position, owner, channel, or configuration
 write methods. Radio and channel configuration remains on the RAK4631.
 
-The RAK4631 is dedicated to PCS while this service is active. Normal BLE
-peripherals accept one client connection, so disconnect the Meshtastic mobile
-app before starting the PCS gateway and stop the gateway before using the app
-for supervised configuration.
+The RAK4631 is dedicated to PCS while this service is active. Stop the gateway
+before using another serial client. In BLE mode, disconnect the Meshtastic
+mobile app before starting PCS because normal peripherals accept one client.
 
 ## Safety and Privacy Boundaries
 
@@ -74,6 +73,7 @@ Staging installs:
 - Meshtastic Python `2.7.11`
 - Paho MQTT `2.1.0`
 - `/usr/local/sbin/pcs-meshtastic-gateway`
+- `/usr/local/sbin/pcs_meshtastic_ble.py` (BlueZ startup compatibility adapter)
 - `/usr/local/sbin/pcs_meshtastic_status.py` (gateway status helper)
 - `pcs-bluetooth-ready.service` (unblocks and powers Bluetooth for the gateway)
 - `pcs-meshtastic.service`
@@ -181,6 +181,31 @@ This starts and enables `pcs-meshtastic.service`. The service keeps the BLE
 session open, retries BLE every 15 seconds after loss, and lets the MQTT client
 reconnect with bounded backoff. BLE shutdown is also bounded so a BlueZ or
 firmware disconnect stall cannot prevent a service restart or system shutdown.
+
+For the deployed USB-connected RAK4631, use the scoped serial mode instead:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --configure-usb /dev/ttyACM0 mqtt.example.net 8883
+```
+
+The hardened unit retains `PrivateDevices=yes` and receives access only to
+`/dev/ttyACM0`. USB mode preserves an existing explicit subscription allowlist
+when configuration is refreshed. Runtime status reports `transport` as
+`usb-serial`; the legacy `gateway.ble_connected` compatibility field means the
+selected radio transport is connected in either mode.
+
+The installer also excludes the RAK4631 USB identity from ModemManager probing.
+After a cold boot, a bounded readiness gate waits for the serial device and for
+110 seconds of system uptime before the long-running gateway takes ownership.
+It deliberately does not probe the port repeatedly while the nRF52 stack is
+booting. The unit allows up to 150 seconds for this precheck; systemd does not
+report the gateway active until the cold-boot delay has passed.
+
+On this PCS/Raspberry Pi combination, the RAK4631 served a complete BLE
+configuration stream outside the service sandbox, but `PrivateDevices=yes`
+caused BlueZ to drop that GATT configuration session. Do not disable the entire
+device sandbox merely to force BLE; use the scoped USB transport unless a
+narrow BLE-safe systemd policy is validated later.
 
 Inspect it with:
 
