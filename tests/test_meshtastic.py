@@ -145,6 +145,14 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn("DeviceAllow=/dev/ttyACM0 rw", service)
         self.assertIn("SupplementaryGroups=dialout", service)
         self.assertIn("--configure-usb", setup)
+        self.assertIn("--set bluetooth.enabled false", setup)
+        self.assertLess(
+            setup.index("--set bluetooth.enabled false"),
+            setup.index(
+                "sudo systemctl enable --now pcs-meshtastic.service",
+                setup.index("configure_usb()"),
+            ),
+        )
         self.assertIn("99-pcs-meshtastic.rules", setup)
 
     def test_ble_collectors_skip_the_historical_remote_node_database(self):

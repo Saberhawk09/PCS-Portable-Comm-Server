@@ -35,14 +35,15 @@ Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--scan|--import-radio-m
   --import-radio-mqtt DEVICE
                       Copy the radio's broker credentials into PCS without displaying them.
   --configure ...     Record a paired BLE target and broker, then enable the gateway.
-  --configure-usb ... Use the directly attached RAK at /dev/ttyACM0 and enable the gateway.
+  --configure-usb ... Disable radio Bluetooth, use /dev/ttyACM0, and enable the gateway.
   --check             Inspect installed, paired, gateway service, and status state.
   --disable           Stop and disable the PCS gateway without changing the radio.
 
 The service keeps the selected radio transport connected continuously. It transparently relays the
 radio's MQTT proxy envelopes; it does not send arbitrary text messages or modify
-Meshtastic radio/channel configuration. Downlink is disabled until explicit MQTT
-subscription filters are added to /etc/pcs/meshtastic.env.
+Meshtastic radio/channel configuration. USB configuration makes one security
+change by disabling the node's Bluetooth radio. Downlink is disabled until
+explicit MQTT subscription filters are added to /etc/pcs/meshtastic.env.
 EOF
 }
 
@@ -252,6 +253,17 @@ configure_usb() {
     mqtt_tls="no"
     [[ "${mqtt_port}" == "8883" ]] && mqtt_tls="yes"
     subscriptions="$(sudo awk -F= '$1 == "PCS_MESHTASTIC_MQTT_SUBSCRIPTIONS" { sub(/^[^=]*=/, ""); print; exit }' "${ENV_FILE}" 2>/dev/null || true)"
+
+    sudo systemctl stop pcs-meshtastic.service
+    echo "Disabling Bluetooth on the USB-connected Meshtastic node..."
+    if ! timeout 45 "${VENV_DIR}/bin/meshtastic" \
+        --port "${port}" \
+        --set bluetooth.enabled false; then
+        echo "ERROR: Could not disable Bluetooth on ${port}; restoring the previous gateway state."
+        sudo systemctl start pcs-meshtastic.service || true
+        exit 1
+    fi
+
     env_temp="$(mktemp)"
     {
         printf 'PCS_MESHTASTIC_DEVICE=\n'
@@ -267,6 +279,7 @@ configure_usb() {
     sudo systemctl enable --now pcs-meshtastic.service
     set_install_state yes
     echo "Configured Meshtastic USB port: ${port}"
+    echo "Disabled Bluetooth on the Meshtastic node."
     echo "Configured MQTT broker: ${mqtt_host}:${mqtt_port}"
     echo "PCS will keep the serial session open continuously."
 }

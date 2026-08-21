@@ -1,5 +1,5 @@
 [Unit]
-Description=PCS persistent Meshtastic Bluetooth MQTT gateway
+Description=PCS persistent Meshtastic MQTT gateway
 After=pcs-bluetooth-ready.service dbus.service network-online.target
 Wants=network-online.target
 Requires=pcs-bluetooth-ready.service
