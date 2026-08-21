@@ -19,14 +19,20 @@ PCS is intended to feature/provide:
 
 PCS is an operational v1 hardware and software prototype. The core Pi-side software baseline is rebuild-tested, and the assembled hardware provides the intended LAN, storage, time, GNSS, monitoring, optional cellular, and Pi-Star services.
 
-Dire Wolf / APRS is software-staged with the service and RF path disabled. Its C-Media/Unitek Y-247A USB sound adapter is installed and detected for capture/playback, but radio/PTT hardware, audio levels, and RF behavior remain unvalidated. A RAK4631 is on hand, and its persistent Bluetooth/MQTT gateway plus local environment telemetry are implemented in the repository but not yet deployed or hardware-validated. The exact as-built power, wiring, grounding, thermal, enclosure, and mounting records are also still pending.
+Dire Wolf / APRS is software-staged with the service and RF path disabled. Its
+C-Media/Unitek Y-247A USB sound adapter is installed and detected for
+capture/playback, but radio/PTT hardware, audio levels, and RF behavior remain
+unvalidated. The RAK4631 gateway software is deployed to PCS, but its persistent
+BLE/MQTT connection, RF behavior, and local environment telemetry remain
+hardware-unvalidated. The exact as-built power, wiring, grounding, thermal,
+enclosure, and mounting records are also still pending.
 
 Current focus:
 
 - Polish the software
 - Improve reliability and error handling with setup and operation
 - Install and commission the purchased APRS radio/PTT hardware
-- Deploy and validate the RAK4631 BLE/MQTT gateway and case sensor
+- Complete and validate the RAK4631 BLE/MQTT connection and case sensor
 - Keep documentation and releases aligned with the fielded system
 
 ## Current Tested Hardware
@@ -42,11 +48,15 @@ Current tested hardware includes:
 - Pi-Star hotspot at `10.42.0.3`
 - Operational AC/DC source-selector power system
 - Two 120 mm cooling fans
+- HD44780 16x2 LCD status display
+- MAX7219 8x8 health-annunciator matrix
+- Six-pixel WS2812 status-indicator chain
+- Armor Lite cooler with GPIO18 hardware-PWM fan control
 
 Purchased and awaiting installation or validation:
 
 - remaining APRS radio/PTT hardware
-- RAK4631 Meshtastic node and attached environment sensor
+- RAK4631 persistent BLE/MQTT connection and attached environment sensor validation
 
 Purchased hardware is not treated as installed or validated until it has been commissioned and tested.
 
@@ -205,9 +215,8 @@ The working build is operational. Remaining work is primarily documentation, mea
 - record actual fuse values, wire gauge, rail voltage, current draw, and thermal results
 - finish permanent external LTE and GNSS antenna labeling and mounting documentation
 - install and bench-validate the APRS hardware before any supervised RF activation
-- document and validate the Meshtastic integration after its hardware arrives
+- complete and validate the Meshtastic BLE/MQTT connection and sensor baseline
 - consider battery voltage monitoring and low-voltage safe shutdown hardware
-- consider a small local status display
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
 
 The PCS Pi SD-card wipe/rebuild was most recently verified on August 18, 2026. Credential entry, external-appliance recovery, radio identity, firmware flashing, and on-air RF checks intentionally remain manual.

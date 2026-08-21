@@ -4,6 +4,8 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.2] - 2026-08-21
+
 ### Added
 
 - hardware-safe Dire Wolf / APRS software staging and validation workflow
@@ -19,6 +21,10 @@ All notable user-facing PCS changes are recorded here.
   finalized schematic's PCS-wide GPIO allocation
 - added an offline-safe GPIO commissioning utility with simulated-by-default
   LCD, MAX7219, WS2812, and explicit-duty fan tests
+- added a persistent six-pixel GPIO21 WS2812 health-indicator daemon with
+  stable CPU, disk, USB, service/Pi-Star, uplink/router, and GPS assignments
+- added repeatable installers, status reporting, and self-test coverage for
+  the HD44780 LCD, WS2812 indicators, MAX7219 matrix, and GPIO18 PWM fan
 - added optional GPIO18 PWM0 thermal fan control at the vendor-documented
   100 Hz frequency, with a conservative five-step curve, hysteresis, runtime
   status, and full-duty startup/shutdown/missing-temperature fail-safe behavior
@@ -49,8 +55,10 @@ All notable user-facing PCS changes are recorded here.
 - corrected the LCD cellular state to follow the actual NetworkManager data
   session instead of treating a registered idle modem as connected
 - repurposed the MAX7219 from duplicate telemetry into a priority health
-  annunciator with healthy heartbeat/checkmark, `!` plus subsystem warning, and
-  `X` plus subsystem critical patterns
+  annunciator with a dim healthy checkmark, `!` plus subsystem warning, and
+  `X` plus subsystem critical patterns at a subdued alert intensity
+- aligned the web panel, LCD, matrix, and WS2812 indicators so internet-only
+  loss remains a warning while an unreachable OpenWrt AP is a hard fault
 - recorded the installed C-Media/Unitek Y-247A APRS USB sound adapter as
   capture/playback-detected while keeping PTT, audio levels, and RF validation pending
 - selected 144.555 MHz as the operator-defined tactical APRS channel
@@ -70,6 +78,9 @@ All notable user-facing PCS changes are recorded here.
   interactive RF confirmation
 - added synthetic AX.25/FX.25 packet tests, capability reporting, persistent
   LAN-only KISS filtering, managed log retention, and APRS dashboard telemetry
+- added a privacy-preserving persistent Meshtastic BLE/MQTT client-proxy
+  gateway with reconnect handling, explicit downlink filters, echo suppression,
+  local environment telemetry, guarded staging, and recovery documentation
 
 ### Changed
 
@@ -81,13 +92,17 @@ All notable user-facing PCS changes are recorded here.
   testing/release guidance, and reinstall record with the August 18 PCS state
 - archived superseded bring-up notes while preserving their dated evidence and
   appending the current Pi/OpenWrt/Pi-Star architecture decisions
-- recorded the remaining APRS radio/PTT and Meshtastic expansion hardware as
-  purchased but not installed or validated; Meshtastic integration remains unimplemented
+- recorded the installed and live-tested LCD, matrix, WS2812 indicators, and
+  PWM fan while preserving the unmeasured RPM, power, and thermal boundaries
+- deployed the Meshtastic gateway software to PCS while leaving the unproven
+  persistent BLE/MQTT link, RF behavior, and sensor baseline explicitly pending
 
 ### Security
 
 - Dire Wolf remains stopped and disabled during staging, with no live APRS-IS
   credential, PTT, beacon, or RF transmit path configured
+- Meshtastic credentials remain outside Git, runtime status excludes message,
+  position, channel-key, and remote-identity storage, and downlink begins denied
 
 ## [1.1] - 2026-08-13
 
@@ -120,5 +135,7 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.2...HEAD
+[1.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.1...v1.2
 [1.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.0...v1.1
 [1.0]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/releases/tag/v1.0

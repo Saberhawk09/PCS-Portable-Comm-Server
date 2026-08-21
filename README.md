@@ -31,7 +31,14 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, optional Pi-Star support, and hardware-safe APRS staging. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF commissioning remain deliberate operator-supervised steps.
 
-The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 120 mm cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas, and APRS USB sound adapter are installed. The sound adapter is detected for capture/playback but its audio levels and radio path are not validated; APRS PTT/radio hardware remains unfinished. A RAK4631 is on hand for Meshtastic integration, with its persistent Bluetooth/MQTT gateway implemented locally but not yet deployed or hardware-validated. Front-panel expansion and the exact as-built electrical and mechanical record are also unfinished.
+The PCS hardware is an operational v1 prototype. The AC/DC source selector,
+cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas,
+HD44780 LCD, MAX7219 matrix, WS2812 indicators, and APRS USB sound adapter are
+installed. The sound adapter is detected for capture/playback but its audio
+levels and radio path are not validated; APRS PTT/radio hardware remains
+unfinished. The RAK4631 gateway software is deployed but its persistent
+BLE/MQTT connection, RF behavior, and case-sensor baseline remain unvalidated.
+The exact as-built electrical and mechanical record is also unfinished.
 
 ### Hardware
 
@@ -43,8 +50,10 @@ The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 
 - Removable USB primary storage with an SD-card backup mirror
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
 - Operational AC/DC power system with source selector switch; as-built electrical measurements and wiring records remain pending
+- HD44780 16x2 LCD, MAX7219 8x8 annunciator, and six-pixel WS2812 status chain
+- GPIO18 hardware-PWM Armor Lite fan control; commanded duty is validated but RPM is not measured
 - C-Media/Unitek Y-247A APRS USB sound adapter detected for capture/playback; Dire Wolf remains staged and radio/PTT/audio-level validation remains pending
-- RAK4631 Meshtastic expansion on hand; persistent BLE/MQTT gateway and local case-sensor telemetry implemented locally, deployment and validation pending
+- RAK4631 Meshtastic expansion connected to PCS with its gateway software deployed; persistent BLE/MQTT operation and sensor validation pending
 
 ### Software
 
@@ -65,7 +74,7 @@ The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
 - Install and commission the remaining APRS radio/PTT hardware
-- Deploy and validate the RAK4631 BLE/MQTT gateway and establish a case temperature/humidity baseline
+- Complete and validate the RAK4631 BLE/MQTT connection and establish a case temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
 
 ## Hardware Setup
@@ -283,18 +292,22 @@ Installed and tested hardware:
 - Sierra Wireless EM7565 WWAN modem with external LTE and active GNSS antennas
 - Pi-Star hotspot
 - AC/DC source-selector power system and two 120 mm cooling fans
+- HD44780 16x2 LCD status display
+- MAX7219 8x8 health-annunciator matrix
+- Six-pixel WS2812 status-indicator chain
+- Armor Lite cooler with GPIO18 hardware-PWM fan control
 
 Purchased and awaiting installation or validation:
 
 - remaining APRS radio/PTT interface hardware
-- RAK4631 Meshtastic node and attached environment sensor
+- RAK4631 persistent BLE/MQTT connection and attached environment sensor validation
 
 Remaining documentation and validation:
 
 - Record the exact as-built power components, fuses, wiring, grounding, rail measurements, and thermal results
 - Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
 - Bench-test and operator-supervise APRS activation before enabling any RF transmit path
-- Deploy and validate the RAK4631 persistent BLE/MQTT gateway and case-sensor baseline
+- Complete and validate the RAK4631 persistent BLE/MQTT connection and case-sensor baseline
 
 For more detail, see [Bill of Materials](docs/bill-of-materials.md) and [Power System](docs/power-system.md).
 
