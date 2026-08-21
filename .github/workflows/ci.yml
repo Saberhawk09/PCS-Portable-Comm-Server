@@ -54,7 +54,10 @@ jobs:
       - name: Check executable hardware and APRS helpers
         run: |
           test -x scripts/pcs-aprs-kiss-firewall.sh
+          test -x scripts/pcs-bluetooth-ready.sh
           test -x scripts/pcs_aprs_telemetry.py
+          test -x scripts/setup-gpio-leds.sh
           test -x scripts/setup-gpio-stats.sh
+          test -x scripts/setup-meshtastic-bluetooth.sh
           test -x scripts/setup-direwolf-aprs.sh
           test -x scripts/test-direwolf-aprs-software.sh
