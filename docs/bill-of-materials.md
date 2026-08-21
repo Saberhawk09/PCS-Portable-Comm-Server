@@ -35,7 +35,7 @@ Status reflects the latest known acquisition state. **Purchased / awaiting deliv
 | Pi-Star hotspot                    |   1 | Installed / tested             |     - | Fixed PCS-LAN node at `10.42.0.3`          |
 | APRS USB sound adapter             | Unitek Y-247A / C-Media 0d8c:0014 | Installed / detected | 1 | ALSA capture/playback detected as card ID `Device`; levels and radio path unvalidated |
 | APRS radio/PTT hardware            | TBD | Purchased / awaiting delivery or installation | - | Exact radio/PTT as-built components and validation pending |
-| Meshtastic expansion hardware      | TBD | Purchased / awaiting delivery  |     - | Exact nodes and integration details TBD    |
+| RAK4631 Meshtastic expansion       | TBD | Purchased / as-built record pending | - | BLE/MQTT gateway staged; deployment, sensor model, and validation pending |
 
 ## Power System
 

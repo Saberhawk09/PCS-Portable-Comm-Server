@@ -11,7 +11,7 @@ PCS is intended to feature/provide:
 - Cellular internet access when available
 - GPS/Internet disciplined NTP server
 - Web-based system monitoring and control
-- Optional Pi-Star, APRS, and future Meshtastic integration
+- Optional Pi-Star, APRS, and Meshtastic Bluetooth/MQTT integration
 - Simple operation by non-technical users
 - Rugged enclosure and field power support
 
@@ -19,13 +19,14 @@ PCS is intended to feature/provide:
 
 PCS is an operational v1 hardware and software prototype. The core Pi-side software baseline is rebuild-tested, and the assembled hardware provides the intended LAN, storage, time, GNSS, monitoring, optional cellular, and Pi-Star services.
 
-Dire Wolf / APRS is software-staged with the service and RF path disabled. Its C-Media/Unitek Y-247A USB sound adapter is installed and detected for capture/playback, but radio/PTT hardware, audio levels, and RF behavior remain unvalidated. Meshtastic hardware has been purchased and is awaiting delivery. The exact as-built power, wiring, grounding, thermal, enclosure, and mounting records are also still pending.
+Dire Wolf / APRS is software-staged with the service and RF path disabled. Its C-Media/Unitek Y-247A USB sound adapter is installed and detected for capture/playback, but radio/PTT hardware, audio levels, and RF behavior remain unvalidated. A RAK4631 is on hand, and its persistent Bluetooth/MQTT gateway plus local environment telemetry are implemented in the repository but not yet deployed or hardware-validated. The exact as-built power, wiring, grounding, thermal, enclosure, and mounting records are also still pending.
 
 Current focus:
 
 - Polish the software
 - Improve reliability and error handling with setup and operation
-- Install and commission the purchased APRS and Meshtastic expansion hardware after delivery
+- Install and commission the purchased APRS radio/PTT hardware
+- Deploy and validate the RAK4631 BLE/MQTT gateway and case sensor
 - Keep documentation and releases aligned with the fielded system
 
 ## Current Tested Hardware
@@ -42,10 +43,10 @@ Current tested hardware includes:
 - Operational AC/DC source-selector power system
 - Two 120 mm cooling fans
 
-Purchased and awaiting delivery or installation:
+Purchased and awaiting installation or validation:
 
 - remaining APRS radio/PTT hardware
-- Meshtastic expansion hardware
+- RAK4631 Meshtastic node and attached environment sensor
 
 Purchased hardware is not treated as installed or validated until it has been commissioned and tested.
 
@@ -113,7 +114,7 @@ The current software baseline includes:
 - Cockpit access
 - systemd service integration
 
-Meshtastic integration is not yet implemented. Its purchased hardware remains an expansion item awaiting delivery and design validation.
+Meshtastic integration is locally implemented as a repeatable, persistent RAK4631 BLE-to-MQTT client-proxy gateway. It includes reconnect handling, explicit downlink topic filters, echo suppression, privacy-safe counters, and temperature/humidity from the locally attached node. It remains unverified on PCS hardware until the RAK4631 is paired, the broker path is commissioned, RF behavior is observed, and the case sensor is compared with a reference.
 
 ## Current Client Access
 

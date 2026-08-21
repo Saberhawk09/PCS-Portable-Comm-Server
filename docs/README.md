@@ -15,6 +15,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [GPS Network Sharing](gps-network-sharing.md)
 - [Pi-Star Integration](pi-star-integration.md)
 - [Dire Wolf / APRS Integration](direwolf-aprs.md)
+- [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md)
 - [PCS GPIO Allocation](gpio-allocation.md)
 - [Linksys EA4500 OpenWrt AP Setup](linksys-ea4500-ap.md)
 - [Samba File Share](samba-file-share.md)
@@ -69,15 +70,15 @@ The current documentation uses these status boundaries:
 - **Purchased / awaiting delivery:** acquired but not installed or validated
 - **As-built record pending:** operational hardware whose exact wiring, measurements, mounting, or part reconciliation is still incomplete
 
-APRS remains software-staged. Its C-Media/Unitek Y-247A USB sound adapter is installed and detected, while radio/PTT hardware, audio-level calibration, and RF validation remain pending. Meshtastic hardware has been purchased and is awaiting delivery; PCS integration is not yet implemented or documented as a working subsystem.
+APRS remains software-staged. Its C-Media/Unitek Y-247A USB sound adapter is installed and detected, while radio/PTT hardware, audio-level calibration, and RF validation remain pending. A persistent RAK4631 Bluetooth/MQTT gateway is implemented locally and repeatably staged, including local temperature/humidity telemetry, but it has not yet been deployed or hardware-validated on PCS.
 
 Current documentation priorities:
 
 - capture exact enclosure dimensions, mounting locations, and CAD/export references
 - reconcile power and wiring notes with the physical build
 - record measured rail voltage, current draw, fuse sizes, wire gauge, and thermal results
-- install and validate the APRS and Meshtastic expansion hardware after delivery
-- add a Meshtastic integration document only after its PCS design and observed behavior are established
+- install and validate the APRS radio/PTT path
+- deploy and validate the RAK4631 BLE pairing, MQTT proxy, RF behavior, and case-sensor baseline
 - extend the general testing and release checklists for the guarded APRS workflow
 - keep install and validation steps copy/paste friendly
 - update the changelog and release checklist with every public release

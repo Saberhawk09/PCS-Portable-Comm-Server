@@ -20,7 +20,7 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | SA818S UART RX | GPIO15 | 10 | Reserved; logic level unverified | Pi RX from radio TXD. Do not connect until the radio UART level is measured. |
 | LCD E | GPIO17 | 11 | Installed and bench-tested | HD44780 enable. |
 | Fan PWM | GPIO18 | 12 | Hardware PWM control implemented; RPM unmeasured | PWM0/ALT5, 100 Hz, fail-safe full duty. |
-| WS2812 data | GPIO21 | 40 | Selected; not bench-tested | PCM-capable output through the 74AHCT125; six LEDs are planned. |
+| WS2812 data | GPIO21 | 40 | Installed and live-tested | PCM output through the 74AHCT125 to six WS2812-compatible status pixels. |
 | LCD D4 | GPIO27 | 13 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 | LCD D5 | GPIO22 | 15 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 | LCD D6 | GPIO23 | 16 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
@@ -41,7 +41,8 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
   until the module logic voltage has been measured and an appropriate level
   interface has been confirmed.
 - GPIO21 uses the WS2812 driver's PCM path so GPIO18 remains available for
-  hardware PWM fan control.
+  hardware PWM fan control. PCM cannot simultaneously serve an I2S audio
+  device; the separate USB Dire Wolf sound adapter does not use PCM.
 - GPIO18 uses PWM0/ALT5 at the cooler vendor's documented 100 Hz frequency.
   PCS disables only the unused onboard analogue audio function that otherwise
   shares the PWM block; the separate USB Dire Wolf sound adapter is unaffected.
@@ -59,6 +60,7 @@ python3 scripts/pcs_gpio.py check
 python3 scripts/pcs_gpio.py demo all --duration 0
 python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY"
 python3 scripts/pcs_gpio.py lcd-status
+python3 scripts/pcs_gpio.py led-status
 ```
 
 Real LCD, MAX7219, fan, or WS2812 writes require the two-part
@@ -70,6 +72,7 @@ python3 scripts/pcs_gpio.py demo lcd --hardware --apply
 python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY" --hardware --apply
 python3 scripts/pcs_gpio.py demo matrix --hardware --apply
 sudo python3 scripts/pcs_gpio.py demo leds --hardware --apply
+sudo python3 scripts/pcs_gpio.py led-status --once --hold-seconds 10 --hardware --apply
 sudo python3 scripts/pcs_gpio.py demo fan --fan-duty 100 --hardware --apply
 ```
 
@@ -96,8 +99,13 @@ logged by the display daemon.
 The displayed cellular `On`/`Off` state follows the NetworkManager data session,
 not the modem's separate registered/available state.
 Warnings append a centered plain-language condition page after the six normal
-pages. Critical CPU, root-disk, or service faults suppress the normal rotation
-and show only centered `HARD FAULT` pages until the critical condition clears.
+pages. An unreachable OpenWrt AP is a hard fault that suppresses the normal
+rotation and shows `HARD FAULT` / `ROUTER OFFLINE`. When
+Pi-Star monitoring is configured, an unreachable hotspot appends
+`WARNING` / `PI-STAR OFFLINE`; builds without Pi-Star do not generate that
+warning. Critical CPU, root-disk, or local-service faults suppress the normal
+rotation and show only centered `HARD FAULT` pages until the critical condition
+clears.
 
 Install or inspect its GPIO-only service with:
 
@@ -109,17 +117,54 @@ bash scripts/setup-gpio-lcd.sh --check
 The service owns only the six documented LCD GPIO lines. It does not request or
 drive SPI, PTT, UART, fan, or WS2812 lines.
 
+## Six-Pixel WS2812 Status Indicators
+
+The GPIO21 chain assigns one stable responsibility to each pixel, starting at
+the Pi-side `DATA IN` end:
+
+| Pixel | Condition | Normal / informational color | Fault color |
+| ---: | --- | --- | --- |
+| 0 | Pi CPU temperature | Green | Amber at 75 C; red at 85 C |
+| 1 | Root filesystem use | Green | Amber at 85%; red at 95% |
+| 2 | Primary USB storage | Green when mounted | Amber when missing |
+| 3 | Local services / configured Pi-Star dependency | Green when local services are healthy and Pi-Star is reachable or not configured | Amber when configured Pi-Star is unreachable; red when one or more local systemd units fail |
+| 4 | Active network uplink / OpenWrt AP | Green for Cellular or WiFi when the AP is reachable | Amber when the uplink is offline; red when the OpenWrt AP is offline |
+| 5 | GPS fix | Green when locked | Amber for no fix |
+
+A dim blue-violet pixel means the corresponding collector returned no usable
+data. The chain is configured for 800 kHz GRB ordering and a global brightness
+of 32/255, so the status display remains subdued. The daemon rewrites the chain
+only when a status color changes and turns all six pixels off during a clean
+service stop.
+
+Install or inspect the persistent service explicitly:
+
+```bash
+bash scripts/setup-gpio-leds.sh --install
+bash scripts/setup-gpio-leds.sh --check
+```
+
+The installer keeps the pinned `rpi-ws281x` dependency in an isolated virtual
+environment and enables `pcs-gpio-leds.service`. The base installer exposes it
+as `PCS_SETUP_GPIO_LEDS=yes|no`. Stop the service before running a manual LED
+demo so only one process owns the PCM/DMA output.
+
 ## MAX7219 Health Annunciator
 
-The installed matrix is an across-the-room health annunciator. A heartbeat and
-checkmark indicate normal operation. Every warning shows an `!` followed by the
+The installed matrix is an across-the-room health annunciator. A dim checkmark
+indicates normal operation. Every warning shows an `!` followed by the
 affected subsystem icon; every critical fault shows an `X` followed by the
 subsystem icon. Alert sources are CPU temperature (75/85 C warning/critical),
 root-disk use (85/95 percent), missing primary USB storage, failed systemd units,
-no active uplink, and unavailable GPS fix. Detailed live values remain on the
-LCD. Healthy frames use intensity 1-2, warnings 4, and critical alerts 6 out of
-the MAX7219's 0-15 range. The matrix service owns only `/dev/spidev0.0`; it does not request or drive
-PTT, UART, fan, LCD, or WS2812 GPIO lines.
+an unreachable OpenWrt AP/switch, a configured but unreachable Pi-Star hotspot,
+no active uplink, and unavailable GPS fix. The OpenWrt fault uses the Wi-Fi
+symbol and critical severity; Pi-Star uses a dedicated raspberry symbol and
+warning severity. Local systemd failures remain critical. Detailed live values
+remain on the LCD.
+The healthy checkmark uses intensity 1; warning and critical frames use
+intensity 10 out of the MAX7219's 0-15 range. The matrix service owns only
+`/dev/spidev0.0`; it does not request or drive PTT, UART, fan, LCD, or WS2812
+GPIO lines.
 
 Install or inspect the persistent service explicitly:
 

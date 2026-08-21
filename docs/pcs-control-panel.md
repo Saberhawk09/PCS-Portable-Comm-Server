@@ -31,6 +31,26 @@ The public JSON used by the page is also available read-only at:
 http://10.42.0.1/api/public-status
 ```
 
+PCS treats an intentionally absent internet uplink as a degraded operating
+mode, not a system failure. When the `eth0` client LAN and `10.42.0.1/24`
+gateway remain healthy but no usable Wi-Fi or cellular internet path exists:
+
+- the Network card shows `WARN` and identifies the uplink as `Offline`;
+- the machine-readable network status is `warn`;
+- the overall machine-readable status remains `ok` if no independent fault or
+  warning is present; and
+- the main header shows `OK - Offline`.
+
+Independent warnings are not hidden. For example, an additional GNSS warning
+changes the header to `WARN - Offline`, while a real client-LAN failure remains
+`BAD` even when no internet uplink is present.
+
+The OpenWrt AP/switch at `10.42.0.2` is the required PCS client-access path. If
+it is unreachable, the Network and Client LAN cards show `BAD`, the public
+OpenWrt field shows `No`, and the overall header shows `BAD`. The Pi may still
+be running locally, but PCS is functionally unavailable to field clients, so
+this condition is a hard fault rather than an offline-mode warning.
+
 ## Administrative Control Panel
 
 The `/admin/` area contains the detailed dashboard and all operator action groups:

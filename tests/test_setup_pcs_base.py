@@ -61,6 +61,27 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('./scripts/setup-gpio-lcd.sh --install', self.source)
         self.assertIn('PCS_SETUP_GPIO_LCD="no"', self.source)
 
+    def test_ws2812_status_setup_is_optional_and_persisted(self):
+        self.assertIn('PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-ask}"', self.source)
+        self.assertIn('printf "PCS_SETUP_GPIO_LEDS=%q\\n"', self.source)
+        self.assertIn(
+            'Install and start the optional six-pixel WS2812 status indicators?',
+            self.source,
+        )
+        self.assertIn('./scripts/setup-gpio-leds.sh --install', self.source)
+        self.assertIn('PCS_SETUP_GPIO_LEDS="no"', self.source)
+
+    def test_meshtastic_bluetooth_setup_is_staged_and_persisted(self):
+        self.assertIn('PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-ask}"', self.source)
+        self.assertIn('printf "PCS_SETUP_MESHTASTIC=%q\\n"', self.source)
+        self.assertIn(
+            'Stage optional Meshtastic Bluetooth support without connecting to or configuring a radio?',
+            self.source,
+        )
+        self.assertIn('./scripts/setup-meshtastic-bluetooth.sh --prepare', self.source)
+        self.assertIn('PCS_SETUP_MESHTASTIC="staged"', self.source)
+        self.assertIn('PCS_SETUP_MESHTASTIC="no"', self.source)
+
     def test_hardware_pwm_fan_setup_is_optional_and_persisted(self):
         self.assertIn('PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"', self.source)
         self.assertIn('printf "PCS_SETUP_GPIO_FAN=%q\\n"', self.source)

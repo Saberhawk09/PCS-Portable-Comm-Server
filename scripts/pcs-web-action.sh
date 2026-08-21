@@ -1788,10 +1788,18 @@ eth0_method = nm_connection_method("pcs-router-wan-share")
 backup_info = backup_health()
 web_admin = web_admin_status()
 pi_star = pi_star_health() if PI_STAR_CONFIGURED else {}
-openwrt_online = ping_ok("10.42.0.2")
+openwrt_probe_host = os.environ.get("PCS_OPENWRT_HOST", "10.42.0.2")
+openwrt_online = ping_ok(openwrt_probe_host)
+router_offline = not openwrt_online
 
 uplink_status = "ok" if route_details.get("interface") else "warn"
-client_lan_status = "ok" if eth0_ip.startswith("10.42.0.1/") else "warn"
+client_lan_status = (
+    "bad"
+    if router_offline
+    else "ok"
+    if eth0_ip.startswith("10.42.0.1/")
+    else "warn"
+)
 web_admin_core_ok = (
     web_admin["control_panel_active"]
     and web_admin["redirect_active"]
@@ -2014,7 +2022,6 @@ chrony_gps_source_present = any(term in chrony_sources_out.upper() for term in [
     "NMEA",
 ])
 
-network_status = "ok" if wifi_ok and eth_ok and internet_ok and dns_ok and eth_ip_ok else "bad"
 storage_status = "ok" if usb_mount and primary_share_ok and backup_share_ok and last_sync else "warn"
 time_status = "ok" if chrony_active and clock_sync == "yes" else "warn"
 samba_status = "ok" if smbd_active and primary_share_ok and backup_share_ok else "bad"
@@ -2038,6 +2045,8 @@ gps_status = "ok" if gps_has_valid_fix else "warn" if gps_has_modem_data or (gps
 
 # BEGIN PCS ACTIVE UPLINK MODE
 active_uplink_ok = bool(default_iface) and default_iface not in {"lo"}
+internet_uplink_ok = active_uplink_ok and internet_ok and dns_ok
+offline_mode = not internet_uplink_ok and eth_ok and eth_ip_ok
 
 active_uplink_label = (
     "Wi-Fi"
@@ -2046,10 +2055,17 @@ active_uplink_label = (
     if default_iface in {"wwan0", "ppp0"} or str(default_iface).startswith("wwan") or str(default_iface).startswith("ppp")
     else default_iface
     if default_iface
-    else "unknown"
+    else "Offline"
 )
 
-network_status = "ok" if active_uplink_ok and eth_ok and eth_ip_ok and internet_ok and dns_ok else "bad"
+network_core_ok = eth_ok and eth_ip_ok
+network_status = (
+    "bad"
+    if not network_core_ok or router_offline
+    else "warn"
+    if not internet_uplink_ok
+    else "ok"
+)
 # END PCS ACTIVE UPLINK MODE
 
 cards = [
@@ -2120,6 +2136,10 @@ cards = [
         "summary": (
             f"Online via {active_uplink_label} and router handoff active"
             if network_status == "ok"
+            else "OpenWrt AP / switch offline at 10.42.0.2"
+            if router_offline
+            else "PCS local network healthy; internet uplink offline"
+            if offline_mode
             else "Network needs attention"
         ),
         "items": [
@@ -2127,6 +2147,7 @@ cards = [
             {"label": "Wi-Fi uplink", "value": f"{'connected' if wifi_ok else 'not connected'} ({wifi_conn or 'unknown'})"},
             {"label": "Ethernet handoff", "value": f"{'connected' if eth_ok else 'not connected'} ({eth_conn or 'unknown'})"},
             {"label": "Router-side IP", "value": "10.42.0.1/24 present" if eth_ip_ok else "missing"},
+            {"label": "OpenWrt AP / switch", "value": "online at 10.42.0.2" if openwrt_online else "OFFLINE at 10.42.0.2"},
             {"label": "Default route", "value": default_iface or "unknown"},
             {"label": "Internet ping", "value": "ok" if internet_ok else "failed"},
             {"label": "DNS ping", "value": "ok" if dns_ok else "failed"},
@@ -2299,10 +2320,21 @@ card_order = [
 card_rank = {card_id: index for index, card_id in enumerate(card_order)}
 cards.sort(key=lambda card: card_rank.get(card.get("id", ""), len(card_order)))
 
+overall_cards = [
+    card
+    for card in cards
+    if not (
+        offline_mode
+        and (
+            card.get("id") == "uplink-details"
+            or (card.get("id") == "network" and openwrt_online)
+        )
+    )
+]
 overall = "ok"
-if any(card["status"] == "bad" for card in cards):
+if any(card["status"] == "bad" for card in overall_cards):
     overall = "bad"
-elif any(card["status"] == "warn" for card in cards):
+elif any(card["status"] == "warn" for card in overall_cards):
     overall = "warn"
 
 client_info = {
@@ -2322,6 +2354,7 @@ if PI_STAR_CONFIGURED:
 data = {
     "generated_at": datetime.now().isoformat(timespec="seconds"),
     "overall": overall,
+    "offline": offline_mode,
     "client_info": client_info,
     "cards": cards,
 }
@@ -2345,6 +2378,7 @@ if PUBLIC_VIEW:
         },
         "network": {
             "status": network_status,
+            "offline": offline_mode,
             "lan_gateway": "10.42.0.1",
             "openwrt_online": openwrt_online,
             "openwrt_url": "http://10.42.0.2/",
@@ -2427,8 +2461,10 @@ if PUBLIC_VIEW:
     public_overall = "ok"
     public_statuses = [
         section.get("status")
-        for section in public_sections.values()
-        if isinstance(section, dict) and section.get("status")
+        for section_name, section in public_sections.items()
+        if isinstance(section, dict)
+        and section.get("status")
+        and not (offline_mode and section_name == "network" and openwrt_online)
     ]
     if "bad" in public_statuses:
         public_overall = "bad"
@@ -2438,6 +2474,7 @@ if PUBLIC_VIEW:
     data = {
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "overall": public_overall,
+        "offline": offline_mode,
         **public_sections,
     }
 

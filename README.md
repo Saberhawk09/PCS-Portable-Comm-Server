@@ -31,7 +31,7 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, optional Pi-Star support, and hardware-safe APRS staging. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF commissioning remain deliberate operator-supervised steps.
 
-The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 120 mm cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas, and APRS USB sound adapter are installed. The sound adapter is detected for capture/playback but its audio levels and radio path are not validated; APRS PTT/radio hardware and the Meshtastic expansion remain unfinished. Front-panel expansion and the exact as-built electrical and mechanical record are also unfinished.
+The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 120 mm cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas, and APRS USB sound adapter are installed. The sound adapter is detected for capture/playback but its audio levels and radio path are not validated; APRS PTT/radio hardware remains unfinished. A RAK4631 is on hand for Meshtastic integration, with its persistent Bluetooth/MQTT gateway implemented locally but not yet deployed or hardware-validated. Front-panel expansion and the exact as-built electrical and mechanical record are also unfinished.
 
 ### Hardware
 
@@ -44,7 +44,7 @@ The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
 - Operational AC/DC power system with source selector switch; as-built electrical measurements and wiring records remain pending
 - C-Media/Unitek Y-247A APRS USB sound adapter detected for capture/playback; Dire Wolf remains staged and radio/PTT/audio-level validation remains pending
-- Optional Meshtastic expansion hardware purchased and awaiting delivery; integration is not yet implemented
+- RAK4631 Meshtastic expansion on hand; persistent BLE/MQTT gateway and local case-sensor telemetry implemented locally, deployment and validation pending
 
 ### Software
 
@@ -56,6 +56,7 @@ The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 
 - Manual cellular data control with Wi-Fi fallback during development and testing
 - LAN GPSD, NTP, and installer-assisted coordinated Pi-Star shutdown integration
 - Hardware-safe Dire Wolf staging with APRS activation intentionally deferred
+- Repeatable Meshtastic BLE/MQTT gateway staging; persistent pairing, broker relay, and RAK4631 environmental telemetry validation pending
 - PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; credentials, external-device recovery, and RF checks remain manual
 
 ### Current Finish Work
@@ -63,7 +64,8 @@ The PCS hardware is an operational v1 prototype. The AC/DC source selector, two 
 - Capture final enclosure dimensions, mounting details, photos, and CAD references
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
-- Install and commission the remaining APRS radio/PTT and Meshtastic expansion hardware
+- Install and commission the remaining APRS radio/PTT hardware
+- Deploy and validate the RAK4631 BLE/MQTT gateway and establish a case temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
 
 ## Hardware Setup
@@ -77,6 +79,9 @@ Before running setup, connect the hardware you want the installer to configure:
 - The WWAN modem installed and connected over USB, if this build includes cellular/GPS.
 - The GPS/GNSS antenna connected to the WWAN modem, if configuring WWAN GPS/NMEA.
 - The intended USB storage device connected, if using USB primary file storage.
+- The 16x2 HD44780 LCD, six-pixel WS2812 indicator chain, and MAX7219 matrix
+  connected to their documented GPIO lines, when fitted.
+- The GPIO18 PWM fan connected, when using the Armor Lite cooler.
 - The APRS USB sound card and radio interface, only when moving beyond software staging.
 
 ## Software Setup
@@ -96,7 +101,7 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can stage Dire Wolf without activating an RF path, and can install the 16x2 HD44780 status display, MAX7219 annunciator, and GPIO18 hardware-PWM thermal fan controller.
+The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can stage Dire Wolf without activating an RF path, can stage the persistent Meshtastic Bluetooth/MQTT gateway without connecting to a radio, and can install the 16x2 HD44780 status display, six-pixel WS2812 indicators, MAX7219 annunciator, and GPIO18 hardware-PWM thermal fan controller.
 
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 
@@ -162,6 +167,7 @@ For additional documentation, start here:
 - [WWAN Card Setup](docs/wwan-card-setup.md)
 - [GPS Network Sharing](docs/gps-network-sharing.md)
 - [Pi-Star Integration](docs/pi-star-integration.md)
+- [Meshtastic Bluetooth MQTT Gateway](docs/meshtastic-bluetooth-gateway.md)
 - [Samba File Share](docs/samba-file-share.md)
 - [PCS Control Panel](docs/pcs-control-panel.md)
 - [PCS GPIO Allocation](docs/gpio-allocation.md)
@@ -278,17 +284,17 @@ Installed and tested hardware:
 - Pi-Star hotspot
 - AC/DC source-selector power system and two 120 mm cooling fans
 
-Purchased and awaiting delivery or installation:
+Purchased and awaiting installation or validation:
 
 - remaining APRS radio/PTT interface hardware
-- Meshtastic expansion hardware
+- RAK4631 Meshtastic node and attached environment sensor
 
 Remaining documentation and validation:
 
 - Record the exact as-built power components, fuses, wiring, grounding, rail measurements, and thermal results
 - Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
 - Bench-test and operator-supervise APRS activation before enabling any RF transmit path
-- Document and validate the Meshtastic integration after the hardware arrives
+- Deploy and validate the RAK4631 persistent BLE/MQTT gateway and case-sensor baseline
 
 For more detail, see [Bill of Materials](docs/bill-of-materials.md) and [Power System](docs/power-system.md).
 

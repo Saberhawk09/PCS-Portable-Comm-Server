@@ -5,6 +5,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 import sys
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,10 @@ LCD_SERVICE = ROOT / "systemd" / "pcs-gpio-lcd.service"
 LCD_SETUP = ROOT / "scripts" / "setup-gpio-lcd.sh"
 FAN_SERVICE = ROOT / "systemd" / "pcs-gpio-fan.service"
 FAN_SETUP = ROOT / "scripts" / "setup-gpio-fan.sh"
+LEDS_SERVICE = ROOT / "systemd" / "pcs-gpio-leds.service"
+LEDS_SETUP = ROOT / "scripts" / "setup-gpio-leds.sh"
+PCS_STATUS = ROOT / "scripts" / "pcs-status.sh"
+PCS_SELF_TEST = ROOT / "scripts" / "pcs-self-test.sh"
 
 
 class PcsGpioTests(unittest.TestCase):
@@ -68,6 +73,17 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pcs_gpio.FAN_PWM_CHANNEL, 0)
         self.assertEqual(pcs_gpio.FAN_PWM_FREQUENCY_HZ, 100)
         self.assertEqual(pcs_gpio.FAN_PWM_PERIOD_NS, 10_000_000)
+
+    def test_ws2812_uses_six_dim_grb_pixels_on_gpio21_pcm(self):
+        self.assertEqual(pcs_gpio.WS2812_PIN, 21)
+        self.assertEqual(pcs_gpio.WS2812_COUNT, 6)
+        self.assertEqual(pcs_gpio.WS2812_FREQUENCY_HZ, 800_000)
+        self.assertEqual(pcs_gpio.WS2812_DMA_CHANNEL, 10)
+        self.assertEqual(pcs_gpio.WS2812_BRIGHTNESS, 32)
+        self.assertEqual(pcs_gpio.LED_WARNING, (220, 48, 0))
+        self.assertEqual(pcs_gpio.LED_CRITICAL, (176, 0, 0))
+        source = (ROOT / "scripts" / "pcs_gpio.py").read_text(encoding="utf-8")
+        self.assertIn("ws.WS2811_STRIP_GRB", source)
 
     def test_hardware_pwm_fan_initializes_and_closes_at_full_duty(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -136,6 +152,43 @@ class PcsGpioTests(unittest.TestCase):
             "10.42.0.150 FAILED",
         ))
         self.assertEqual(pcs_gpio.parse_ap_client_count(neighbors), 2)
+
+    def test_pistar_probe_is_optional_and_uses_configured_reachability(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = Path(temp_dir) / "pcs-install.conf"
+            config.write_text("PCS_SETUP_PISTAR=no\n", encoding="utf-8")
+            with patch("pcs_gpio.subprocess.run") as run:
+                self.assertIsNone(pcs_gpio.read_pistar_online(config, "10.42.0.3"))
+                run.assert_not_called()
+
+            config.write_text("PCS_SETUP_PISTAR='yes'\n", encoding="utf-8")
+            with patch("pcs_gpio.subprocess.run", return_value=Mock(returncode=0)):
+                self.assertTrue(pcs_gpio.read_pistar_online(config, "10.42.0.3"))
+
+            config.unlink()
+            pair_dir = Path(temp_dir) / "pistar-shutdown"
+            pair_dir.mkdir()
+            with patch("pcs_gpio.subprocess.run", return_value=Mock(returncode=0)):
+                self.assertTrue(
+                    pcs_gpio.read_pistar_online(config, "10.42.0.3", pair_dir)
+                )
+
+            config.write_text("PCS_SETUP_PISTAR=yes\n", encoding="utf-8")
+            with (
+                patch("pcs_gpio.subprocess.run", return_value=Mock(returncode=1)),
+                patch("pcs_gpio.socket.create_connection", side_effect=OSError),
+            ):
+                self.assertFalse(pcs_gpio.read_pistar_online(config, "10.42.0.3"))
+
+    def test_openwrt_router_probe_uses_bounded_reachability(self):
+        with patch("pcs_gpio.subprocess.run", return_value=Mock(returncode=0)):
+            self.assertTrue(pcs_gpio.read_router_online("10.42.0.2"))
+
+        with (
+            patch("pcs_gpio.subprocess.run", return_value=Mock(returncode=1)),
+            patch("pcs_gpio.socket.create_connection", side_effect=OSError),
+        ):
+            self.assertFalse(pcs_gpio.read_router_online("10.42.0.2"))
 
     def test_maidenhead_grid_matches_pcs_web_algorithm(self):
         self.assertEqual(pcs_gpio.maidenhead_grid(38.123456, -77.123456), "FM18kc")
@@ -212,6 +265,59 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pages[:6], pcs_gpio.lcd_status_pages(stats, 93784))
         self.assertEqual(pages[6:], (("WARNING", "USB NOT MOUNTED"),))
 
+    def test_configured_offline_pistar_warns_on_all_gpio_displays(self):
+        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, False)
+
+        alerts = pcs_gpio.matrix_alerts(health)
+        self.assertEqual(
+            [(alert.name, alert.severity, alert.icon) for alert in alerts],
+            [("pistar", "warning", pcs_gpio.PISTAR_ICON)],
+        )
+        self.assertEqual(
+            pcs_gpio.PISTAR_ICON,
+            (0x66, 0x3C, 0x7E, 0xFF, 0xFF, 0x7E, 0x3C, 0x18),
+        )
+        self.assertNotEqual(pcs_gpio.PISTAR_ICON, pcs_gpio.SERVICE_ICON)
+        self.assertEqual(
+            pcs_gpio.lcd_health_pages(health, 93784)[-1],
+            ("WARNING", "PI-STAR OFFLINE"),
+        )
+        service_led = pcs_gpio.led_status_indicators(health)[3]
+        self.assertEqual(service_led.state, "dependency_warning")
+        self.assertEqual(service_led.color, pcs_gpio.LED_WARNING)
+
+        local_failure = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 2, False)
+        failed_service_led = pcs_gpio.led_status_indicators(local_failure)[3]
+        self.assertEqual(failed_service_led.state, "failed")
+        self.assertEqual(failed_service_led.color, pcs_gpio.LED_CRITICAL)
+
+    def test_offline_openwrt_router_faults_on_all_gpio_displays(self):
+        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, True, False)
+
+        alerts = pcs_gpio.matrix_alerts(health)
+        self.assertEqual(
+            [(alert.name, alert.severity, alert.icon) for alert in alerts],
+            [("router", "critical", pcs_gpio.ROUTER_ICON)],
+        )
+        self.assertEqual(
+            pcs_gpio.ROUTER_ICON,
+            (0x7E, 0x81, 0x81, 0x3C, 0x42, 0x42, 0x18, 0x18),
+        )
+        self.assertEqual(
+            pcs_gpio.lcd_health_pages(health, 93784),
+            (("HARD FAULT", "ROUTER OFFLINE"),),
+        )
+        network_led = pcs_gpio.led_status_indicators(health)[4]
+        self.assertEqual(network_led.state, "router_offline")
+        self.assertEqual(network_led.color, pcs_gpio.LED_CRITICAL)
+        self.assertFalse(health.as_dict()["router_online"])
+
+        self_test = (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8")
+        self.assertIn('fail "OpenWrt AP does not respond', self_test)
+        self.assertNotIn('warn "OpenWrt AP does not respond', self_test)
+
     def test_lcd_hard_faults_replace_normal_status_pages(self):
         stats = pcs_gpio.StatsSnapshot(86, 12, 0, False, False, 0, "Offline", 0, None)
         health = pcs_gpio.MatrixHealthSnapshot(stats, 96, False, 2)
@@ -280,7 +386,7 @@ class PcsGpioTests(unittest.TestCase):
         self.assertNotIn("field_clients", snapshot.as_dict())
         self.assertNotIn("usb_used_percent", snapshot.as_dict())
 
-    def test_healthy_matrix_annunciator_uses_heartbeat_and_checkmark(self):
+    def test_healthy_matrix_annunciator_uses_dim_checkmark_only(self):
         health = pcs_gpio.MatrixHealthSnapshot(
             pcs_gpio.StatsSnapshot(39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs"),
             20,
@@ -290,12 +396,8 @@ class PcsGpioTests(unittest.TestCase):
         alerts = pcs_gpio.matrix_alerts(health)
         frames = pcs_gpio.matrix_alert_frames(alerts)
         self.assertEqual(alerts, ())
-        self.assertEqual([frame.rows for frame in frames], [
-            pcs_gpio.HEART_SMALL_ICON,
-            pcs_gpio.HEART_LARGE_ICON,
-            pcs_gpio.CHECK_ICON,
-        ])
-        self.assertEqual([frame.intensity for frame in frames], [1, 2, 1])
+        self.assertEqual([frame.rows for frame in frames], [pcs_gpio.CHECK_ICON])
+        self.assertEqual([frame.intensity for frame in frames], [1])
 
     def test_matrix_annunciator_prioritizes_critical_and_warning_conditions(self):
         self.assertEqual(
@@ -326,7 +428,7 @@ class PcsGpioTests(unittest.TestCase):
                 if alert.severity == "critical"
                 else pcs_gpio.EXCLAMATION_ICON
             )
-            expected_intensity = 6 if alert.severity == "critical" else 4
+            expected_intensity = 10
             self.assertEqual(prefix.rows, expected_prefix)
             self.assertEqual(prefix.intensity, expected_intensity)
             self.assertEqual(subsystem.rows, alert.icon)
@@ -362,13 +464,79 @@ class PcsGpioTests(unittest.TestCase):
                 collector=lambda: health,
                 sleeper=lambda _: None,
             )
-        self.assertEqual(matrix.frames, [
-            pcs_gpio.HEART_SMALL_ICON,
-            pcs_gpio.HEART_LARGE_ICON,
-            pcs_gpio.CHECK_ICON,
-        ])
-        self.assertEqual(matrix.intensities, [1, 2, 1])
+        self.assertEqual(matrix.frames, [pcs_gpio.CHECK_ICON])
+        self.assertEqual(matrix.intensities, [1])
         self.assertEqual(json.loads(output.getvalue())["alerts"], [])
+
+    def test_led_status_has_one_stable_responsibility_per_pixel(self):
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs"),
+            20,
+            True,
+            0,
+        )
+        indicators = pcs_gpio.led_status_indicators(health)
+        self.assertEqual([indicator.pixel for indicator in indicators], list(range(6)))
+        self.assertEqual([indicator.name for indicator in indicators], [
+            "cpu_temperature",
+            "root_disk",
+            "primary_usb",
+            "failed_services",
+            "network_uplink",
+            "gps_fix",
+        ])
+        self.assertEqual([indicator.state for indicator in indicators], [
+            "healthy", "healthy", "mounted", "healthy", "wifi", "locked",
+        ])
+        self.assertEqual(indicators[4].color, pcs_gpio.LED_HEALTHY)
+
+    def test_led_status_uses_fault_warning_and_unknown_colors(self):
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(86, 12, None, None, False, None, "Offline", 0, None),
+            90,
+            False,
+            2,
+        )
+        indicators = pcs_gpio.led_status_indicators(health)
+        self.assertEqual([indicator.state for indicator in indicators], [
+            "critical", "warning", "missing", "failed", "offline", "unknown",
+        ])
+        self.assertEqual(indicators[0].color, pcs_gpio.LED_CRITICAL)
+        self.assertEqual(indicators[1].color, pcs_gpio.LED_WARNING)
+        self.assertEqual(indicators[3].color, pcs_gpio.LED_CRITICAL)
+        self.assertEqual(indicators[5].color, pcs_gpio.LED_UNKNOWN)
+
+    def test_one_led_status_sample_writes_exactly_six_colors(self):
+        class FakeLeds:
+            def __init__(self):
+                self.frames = []
+
+            def colors(self, colors):
+                self.frames.append(tuple(colors))
+
+            def close(self):
+                pass
+
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "Cellular", 1, "EN91qs"),
+            20,
+            True,
+            0,
+        )
+        leds = FakeLeds()
+        output = io.StringIO()
+        with redirect_stdout(output):
+            pcs_gpio.run_led_status(
+                leds,
+                once=True,
+                collector=lambda: health,
+                sleeper=lambda _: None,
+            )
+        self.assertEqual(len(leds.frames), 1)
+        self.assertEqual(len(leds.frames[0]), 6)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["health"], health.as_dict())
+        self.assertEqual(parsed["indicators"][4]["state"], "cellular")
 
     def test_temperature_unit_frame_is_degree_c_not_thermometer(self):
         self.assertEqual(len(pcs_gpio.DEGREE_C_ICON), 8)
@@ -420,6 +588,51 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("dtoverlay=pwm,pin=18,func=2", setup)
         self.assertIn("systemctl enable pcs-gpio-fan.service", setup)
 
+    def test_led_service_uses_gpio21_pcm_and_is_reinstallable(self):
+        service = LEDS_SERVICE.read_text(encoding="utf-8")
+        setup = LEDS_SETUP.read_text(encoding="utf-8")
+        self.assertIn("pcs-gpio led-status --hardware --apply", service)
+        self.assertIn("User=root", service)
+        self.assertIn("DeviceAllow=/dev/mem rw", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+        self.assertIn("rpi-ws281x==${WS281X_VERSION}", setup)
+        self.assertIn("python3 -m venv", setup)
+        self.assertIn("systemctl enable --now pcs-gpio-leds.service", setup)
+        self.assertNotIn("dtparam=audio=off", setup)
+        self.assertNotIn("GPIO6", service)
+        self.assertNotIn("PTT", service)
+
+    def test_status_and_self_test_cover_every_gpio_daemon(self):
+        status = PCS_STATUS.read_text(encoding="utf-8")
+        self_test = PCS_SELF_TEST.read_text(encoding="utf-8")
+        expected = {
+            "PCS_SETUP_GPIO_LCD": "pcs-gpio-lcd.service",
+            "PCS_SETUP_GPIO_LEDS": "pcs-gpio-leds.service",
+            "PCS_SETUP_GPIO_STATS": "pcs-gpio-stats.service",
+            "PCS_SETUP_GPIO_FAN": "pcs-gpio-fan.service",
+        }
+        for setting, service in expected.items():
+            with self.subTest(script="pcs-status.sh", setting=setting):
+                self.assertIn(setting, status)
+                self.assertIn(service, status)
+            with self.subTest(script="pcs-self-test.sh", setting=setting):
+                self.assertIn(setting, self_test)
+                self.assertIn(service, self_test)
+
+    def test_dependency_report_accepts_isolated_ws2812_environment(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            isolated_python = Path(temp_dir) / "python"
+            isolated_python.touch()
+            completed = Mock(returncode=0)
+            with (
+                patch("pcs_gpio.importlib.util.find_spec", return_value=None),
+                patch("pcs_gpio.subprocess.run", return_value=completed) as run,
+            ):
+                self.assertTrue(
+                    pcs_gpio.python_module_available("rpi_ws281x", isolated_python)
+                )
+            run.assert_called_once()
+
     def test_fan_control_is_simulated_by_default(self):
         output = io.StringIO()
         with redirect_stdout(output):
@@ -433,6 +646,20 @@ class PcsGpioTests(unittest.TestCase):
     def test_real_fan_control_requires_double_confirmation(self):
         with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
             pcs_gpio.main(("fan-control", "--hardware", "--once"))
+
+    def test_led_status_is_simulated_by_default(self):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = pcs_gpio.main(("led-status", "--once"))
+        self.assertEqual(result, 0)
+        parsed = json.loads(output.getvalue())
+        self.assertEqual(parsed["gpio"], 21)
+        self.assertEqual(parsed["pixel_count"], 6)
+        self.assertFalse(parsed["writes_performed"])
+
+    def test_real_led_status_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("led-status", "--hardware", "--once"))
 
     def test_all_demo_excludes_fan_ptt_uart_and_rtc(self):
         backend = pcs_gpio.MockBackend()

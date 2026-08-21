@@ -120,6 +120,10 @@ Possible uplinks:
 - no uplink / offline LAN only
 
 Cellular data is intentionally controlled manually through the PCS Control Panel.
+The web panel reports offline-LAN-only operation as a Network-card warning while
+keeping overall health `OK - Offline` when local PCS services have no separate
+warning or fault. Loss of the `eth0` handoff or `10.42.0.1/24` gateway remains a
+network failure rather than being reclassified as intentional offline use.
 
 ## Current Service Model
 

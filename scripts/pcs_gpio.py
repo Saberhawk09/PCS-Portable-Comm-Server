@@ -14,6 +14,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -45,7 +46,7 @@ PIN_ASSIGNMENTS: tuple[PinAssignment, ...] = (
     PinAssignment("SA818 UART RX", 15, 10, "Linux UART", "reserved; logic level unverified"),
     PinAssignment("LCD E", 17, 11, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("Fan PWM", 18, 12, "pcs_gpio", "hardware PWM control; RPM unmeasured"),
-    PinAssignment("WS2812 data", 21, 40, "pcs_gpio", "selected; not bench-tested"),
+    PinAssignment("WS2812 data", 21, 40, "pcs_gpio", "installed and live-tested"),
     PinAssignment("LCD D4", 27, 13, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("LCD D5", 22, 15, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("LCD D6", 23, 16, "pcs_gpio", "installed and bench-tested"),
@@ -58,6 +59,17 @@ LCD_ROWS = 2
 HD44780_CHARACTER_CODES = {"°": 0xDF}
 WS2812_PIN = 21
 WS2812_COUNT = 6
+WS2812_FREQUENCY_HZ = 800_000
+WS2812_DMA_CHANNEL = 10
+WS2812_BRIGHTNESS = 32
+WS2812_POLL_SECONDS = 3.0
+WS2812_PYTHON_PATH = Path("/opt/pcs-gpio-leds/bin/python")
+# Full RGB values are deliberately scaled by the strip-wide 32/255 brightness.
+LED_OFF = (0, 0, 0)
+LED_HEALTHY = (0, 255, 0)
+LED_WARNING = (220, 48, 0)
+LED_CRITICAL = (176, 0, 0)
+LED_UNKNOWN = (32, 32, 96)
 FAN_PWM_PIN = 18
 FAN_PWM_CHANNEL = 0
 FAN_PWM_FREQUENCY_HZ = 100
@@ -78,6 +90,17 @@ MAX7219_SPI_BUS = 0
 MAX7219_SPI_DEVICE = 0
 MAX7219_SPI_HZ = 500_000
 MAX7219_INTENSITY = 3
+INSTALL_CONFIG_PATH = Path(
+    os.environ.get(
+        "PCS_INSTALL_CONFIG",
+        "/home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf",
+    )
+)
+PISTAR_HOST = os.environ.get("PCS_PISTAR_HOST", "10.42.0.3")
+OPENWRT_HOST = os.environ.get("PCS_OPENWRT_HOST", "10.42.0.2")
+PISTAR_PAIR_DIR = Path(
+    os.environ.get("PCS_PISTAR_PAIR_DIR", "/etc/pcs/pistar-shutdown")
+)
 
 
 class Backend(Protocol):
@@ -90,6 +113,11 @@ class Backend(Protocol):
 
 class FanController(Protocol):
     def duty(self, duty_percent: float) -> None: ...
+    def close(self) -> None: ...
+
+
+class LedDisplay(Protocol):
+    def colors(self, colors: Sequence[tuple[int, int, int]]) -> None: ...
     def close(self) -> None: ...
 
 
@@ -212,12 +240,21 @@ class Max7219:
 
 class Ws2812:
     def __init__(self) -> None:
-        from rpi_ws281x import Color, PixelStrip
+        from rpi_ws281x import Color, PixelStrip, ws
 
         self._color = Color
         # GPIO21 selects the PCM output path, leaving GPIO18 available for the
         # cooler's independent PWM signal. Brightness is intentionally low.
-        self.strip = PixelStrip(WS2812_COUNT, WS2812_PIN, 800_000, 10, False, 32, 0)
+        self.strip = PixelStrip(
+            WS2812_COUNT,
+            WS2812_PIN,
+            WS2812_FREQUENCY_HZ,
+            WS2812_DMA_CHANNEL,
+            False,
+            WS2812_BRIGHTNESS,
+            0,
+            ws.WS2811_STRIP_GRB,
+        )
         self.strip.begin()
 
     def colors(self, colors: Sequence[tuple[int, int, int]]) -> None:
@@ -230,7 +267,7 @@ class Ws2812:
         self.strip.show()
 
     def close(self) -> None:
-        self.colors([(0, 0, 0)] * WS2812_COUNT)
+        self.colors([LED_OFF] * WS2812_COUNT)
 
 
 class HardwarePwmFan:
@@ -341,12 +378,12 @@ SATELLITE_DISH_ICON = (0x01, 0x05, 0x12, 0x0A, 0x3C, 0x18, 0x18, 0x3C)
 X_ICON = (0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81)
 NO_FIX_ICON = X_ICON
 UNKNOWN_ICON = (0x3C, 0x42, 0x02, 0x0C, 0x10, 0x00, 0x10, 0x00)
-HEART_SMALL_ICON = (0x00, 0x00, 0x36, 0x7F, 0x3E, 0x1C, 0x08, 0x00)
-HEART_LARGE_ICON = (0x00, 0x66, 0xFF, 0xFF, 0x7E, 0x3C, 0x18, 0x00)
 CHECK_ICON = (0x00, 0x01, 0x03, 0x06, 0xCC, 0x78, 0x30, 0x00)
 EXCLAMATION_ICON = (0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x18)
 STORAGE_ICON = (0x7E, 0x42, 0x5A, 0x42, 0x42, 0x5A, 0x42, 0x7E)
 SERVICE_ICON = (0x24, 0x7E, 0xDB, 0xBD, 0xBD, 0xDB, 0x7E, 0x24)
+PISTAR_ICON = (0x66, 0x3C, 0x7E, 0xFF, 0xFF, 0x7E, 0x3C, 0x18)
+ROUTER_ICON = (0x7E, 0x81, 0x81, 0x3C, 0x42, 0x42, 0x18, 0x18)
 TEMPERATURE_WARNING_C = 75
 TEMPERATURE_CRITICAL_C = 85
 DISK_WARNING_PERCENT = 85
@@ -403,6 +440,8 @@ class MatrixHealthSnapshot:
     root_used_percent: int | None
     primary_usb_mounted: bool | None
     failed_services: int | None
+    pistar_online: bool | None = None
+    router_online: bool | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -410,6 +449,8 @@ class MatrixHealthSnapshot:
             "root_used_percent": self.root_used_percent,
             "primary_usb_mounted": self.primary_usb_mounted,
             "failed_services": self.failed_services,
+            "pistar_online": self.pistar_online,
+            "router_online": self.router_online,
         }
 
 
@@ -421,6 +462,22 @@ class MatrixAlert:
 
     def as_dict(self) -> dict[str, str]:
         return {"name": self.name, "severity": self.severity}
+
+
+@dataclass(frozen=True)
+class LedIndicator:
+    pixel: int
+    name: str
+    state: str
+    color: tuple[int, int, int]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "pixel": self.pixel,
+            "name": self.name,
+            "state": self.state,
+            "color": list(self.color),
+        }
 
 
 def selected_targets(target: str) -> tuple[str, ...]:
@@ -915,6 +972,10 @@ def lcd_alert_page(
         condition = "USB NOT MOUNTED"
     elif alert.name == "failed_services":
         condition = "SERVICE FAILURE"
+    elif alert.name == "pistar":
+        condition = "PI-STAR OFFLINE"
+    elif alert.name == "router":
+        condition = "ROUTER OFFLINE"
     elif alert.name == "network_uplink":
         condition = "UPLINK OFFLINE"
     elif alert.name == "gps_fix":
@@ -1012,12 +1073,84 @@ def read_failed_service_count() -> int | None:
     return parse_failed_service_count(result.stdout) if result.returncode in (0, 1) else None
 
 
+def read_install_setting(
+    key: str,
+    path: Path = INSTALL_CONFIG_PATH,
+) -> str | None:
+    """Read one simple shell assignment without executing the config file."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        candidate, value = stripped.split("=", 1)
+        if candidate.strip() != key:
+            continue
+        try:
+            parsed = shlex.split(value, comments=True, posix=True)
+        except ValueError:
+            return value.strip().strip("\"'")
+        return parsed[0] if parsed else ""
+    return None
+
+
+def read_host_online(host: str, ports: Sequence[int] = (80, 22)) -> bool:
+    """Return reachability using ICMP first and bounded TCP fallbacks."""
+    try:
+        result = subprocess.run(
+            ["ping", "-c", "1", "-W", "1", host],
+            text=True,
+            capture_output=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode == 0:
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    for port in ports:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def read_router_online(host: str = OPENWRT_HOST) -> bool:
+    """Return reachability for the required OpenWrt AP/switch."""
+    return read_host_online(host)
+
+
+def read_pistar_online(
+    config_path: Path = INSTALL_CONFIG_PATH,
+    host: str = PISTAR_HOST,
+    pair_dir: Path = PISTAR_PAIR_DIR,
+) -> bool | None:
+    """Return Pi-Star reachability only when its monitoring is configured."""
+    configured = read_install_setting("PCS_SETUP_PISTAR", config_path)
+    if configured is None and pair_dir.is_dir():
+        # ProtectHome=yes deliberately hides the private install config from
+        # the LCD and matrix daemons. The dedicated pairing directory is a
+        # non-secret /etc marker created only for configured Pi-Star builds.
+        configured = "yes"
+    if configured is None or configured.lower() != "yes":
+        return None
+    return read_host_online(host)
+
+
 def collect_matrix_health() -> MatrixHealthSnapshot:
     return MatrixHealthSnapshot(
         stats=collect_stats(),
         root_used_percent=read_disk_used_percent(),
         primary_usb_mounted=read_primary_usb_mounted(),
         failed_services=read_failed_service_count(),
+        pistar_online=read_pistar_online(),
+        router_online=read_router_online(),
     )
 
 
@@ -1039,6 +1172,10 @@ def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
         alerts.append(MatrixAlert("primary_usb", "warning", STORAGE_ICON))
     if snapshot.failed_services is not None and snapshot.failed_services > 0:
         alerts.append(MatrixAlert("failed_services", "critical", SERVICE_ICON))
+    if snapshot.router_online is False:
+        alerts.append(MatrixAlert("router", "critical", ROUTER_ICON))
+    if snapshot.pistar_online is False:
+        alerts.append(MatrixAlert("pistar", "warning", PISTAR_ICON))
     if snapshot.stats.network_uplink == "Offline":
         alerts.append(MatrixAlert("network_uplink", "warning", SIGNAL_ICON))
     if snapshot.stats.gps_locked is not True:
@@ -1046,17 +1183,117 @@ def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
     return tuple(sorted(alerts, key=lambda alert: 0 if alert.severity == "critical" else 1))
 
 
+def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator, ...]:
+    """Map the six installed status pixels to stable, documented PCS conditions."""
+    temperature = snapshot.stats.temperature_c
+    if temperature is None:
+        cpu = ("unknown", LED_UNKNOWN)
+    elif temperature >= TEMPERATURE_CRITICAL_C:
+        cpu = ("critical", LED_CRITICAL)
+    elif temperature >= TEMPERATURE_WARNING_C:
+        cpu = ("warning", LED_WARNING)
+    else:
+        cpu = ("healthy", LED_HEALTHY)
+
+    root_used = snapshot.root_used_percent
+    if root_used is None:
+        root_disk = ("unknown", LED_UNKNOWN)
+    elif root_used >= DISK_CRITICAL_PERCENT:
+        root_disk = ("critical", LED_CRITICAL)
+    elif root_used >= DISK_WARNING_PERCENT:
+        root_disk = ("warning", LED_WARNING)
+    else:
+        root_disk = ("healthy", LED_HEALTHY)
+
+    if snapshot.primary_usb_mounted is None:
+        primary_usb = ("unknown", LED_UNKNOWN)
+    elif snapshot.primary_usb_mounted:
+        primary_usb = ("mounted", LED_HEALTHY)
+    else:
+        primary_usb = ("missing", LED_WARNING)
+
+    if snapshot.failed_services is None:
+        services = ("unknown", LED_UNKNOWN)
+    elif snapshot.failed_services > 0:
+        services = ("failed", LED_CRITICAL)
+    elif snapshot.pistar_online is False:
+        services = ("dependency_warning", LED_WARNING)
+    else:
+        services = ("healthy", LED_HEALTHY)
+
+    uplink = snapshot.stats.network_uplink
+    if snapshot.router_online is False:
+        network = ("router_offline", LED_CRITICAL)
+    elif uplink == "Cellular":
+        network = ("cellular", LED_HEALTHY)
+    elif uplink == "WiFi":
+        network = ("wifi", LED_HEALTHY)
+    elif uplink == "Offline":
+        network = ("offline", LED_WARNING)
+    else:
+        network = ("unknown", LED_UNKNOWN)
+
+    if snapshot.stats.gps_locked is True:
+        gps = ("locked", LED_HEALTHY)
+    elif snapshot.stats.gps_locked is False:
+        gps = ("no_fix", LED_WARNING)
+    else:
+        gps = ("unknown", LED_UNKNOWN)
+
+    assignments = (
+        ("cpu_temperature", cpu),
+        ("root_disk", root_disk),
+        ("primary_usb", primary_usb),
+        ("failed_services", services),
+        ("network_uplink", network),
+        ("gps_fix", gps),
+    )
+    return tuple(
+        LedIndicator(pixel, name, state, color)
+        for pixel, (name, (state, color)) in enumerate(assignments)
+    )
+
+
+def run_led_status(
+    leds: LedDisplay,
+    *,
+    once: bool = False,
+    poll_seconds: float = WS2812_POLL_SECONDS,
+    collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
+    sleeper: Callable[[float], None] = time.sleep,
+    should_stop: Callable[[], bool] = lambda: False,
+) -> None:
+    previous_summary = ""
+    previous_colors: tuple[tuple[int, int, int], ...] | None = None
+    while not should_stop():
+        snapshot = collector()
+        indicators = led_status_indicators(snapshot)
+        colors = tuple(indicator.color for indicator in indicators)
+        if colors != previous_colors:
+            leds.colors(colors)
+            previous_colors = colors
+        summary = json.dumps(
+            {
+                "health": snapshot.as_dict(),
+                "indicators": [indicator.as_dict() for indicator in indicators],
+            },
+            separators=(",", ":"),
+        )
+        if summary != previous_summary:
+            print(summary, flush=True)
+            previous_summary = summary
+        if once:
+            break
+        sleeper(poll_seconds)
+
+
 def matrix_alert_frames(alerts: Sequence[MatrixAlert]) -> tuple[StatsFrame, ...]:
     if not alerts:
-        return (
-            StatsFrame("system_health", "heartbeat", HEART_SMALL_ICON, 1),
-            StatsFrame("system_health", "heartbeat", HEART_LARGE_ICON, 2),
-            StatsFrame("system_health", "healthy", CHECK_ICON, 1),
-        )
+        return (StatsFrame("system_health", "healthy", CHECK_ICON, 1),)
     frames: list[StatsFrame] = []
     for alert in alerts:
         attention = X_ICON if alert.severity == "critical" else EXCLAMATION_ICON
-        intensity = 6 if alert.severity == "critical" else 4
+        intensity = 10
         frames.append(StatsFrame(alert.name, alert.severity, attention, intensity))
         frames.append(StatsFrame(alert.name, "subsystem", alert.icon, intensity))
     return tuple(frames)
@@ -1133,6 +1370,24 @@ def run_lcd_status(
             break
 
 
+def python_module_available(name: str, isolated_python: Path | None = None) -> bool:
+    if importlib.util.find_spec(name) is not None:
+        return True
+    if isolated_python is None or not isolated_python.is_file():
+        return False
+    try:
+        result = subprocess.run(
+            (str(isolated_python), "-c", f"import {name}"),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=3,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
 def dependency_report() -> dict[str, object]:
     model_path = Path("/proc/device-tree/model")
     model = ""
@@ -1141,8 +1396,9 @@ def dependency_report() -> dict[str, object]:
     except OSError:
         pass
     modules = {
-        name: importlib.util.find_spec(name) is not None
-        for name in ("gpiozero", "spidev", "rpi_ws281x")
+        "gpiozero": python_module_available("gpiozero"),
+        "spidev": python_module_available("spidev"),
+        "rpi_ws281x": python_module_available("rpi_ws281x", WS2812_PYTHON_PATH),
     }
     return {
         "platform": platform.system(),
@@ -1176,6 +1432,13 @@ def build_parser() -> argparse.ArgumentParser:
     demo.add_argument("--apply", action="store_true", help="confirm that GPIO writes are intended")
     demo.add_argument("--duration", type=float, default=3.0)
     demo.add_argument("--fan-duty", type=float)
+
+    led_status = subparsers.add_parser("led-status", help="show six persistent PCS health indicators")
+    led_status.add_argument("--hardware", action="store_true", help="select the real GPIO21 WS2812 chain")
+    led_status.add_argument("--apply", action="store_true", help="confirm that LED writes are intended")
+    led_status.add_argument("--once", action="store_true", help="apply one health snapshot, then exit")
+    led_status.add_argument("--poll-seconds", type=float, default=WS2812_POLL_SECONDS)
+    led_status.add_argument("--hold-seconds", type=float, default=0.0, help="hold a one-shot hardware frame before clearing")
 
     fan_control = subparsers.add_parser("fan-control", help="run the GPIO18 hardware-PWM thermal fan curve")
     fan_control.add_argument("--hardware", action="store_true", help="select the real PWM0 hardware")
@@ -1246,6 +1509,51 @@ def main(argv: Iterable[str] | None = None) -> int:
         raise SystemExit("ERROR: real GPIO operation requires both --hardware and --apply")
     if args.apply and not args.hardware:
         raise SystemExit("ERROR: --apply is valid only together with --hardware")
+
+    if args.command == "led-status":
+        if args.poll_seconds <= 0:
+            raise SystemExit("ERROR: --poll-seconds must be positive")
+        if args.hold_seconds < 0:
+            raise SystemExit("ERROR: --hold-seconds cannot be negative")
+        if not args.hardware:
+            snapshot = collect_matrix_health()
+            indicators = led_status_indicators(snapshot)
+            print(json.dumps({
+                "backend": "simulation",
+                "gpio": WS2812_PIN,
+                "pixel_count": WS2812_COUNT,
+                "brightness": WS2812_BRIGHTNESS,
+                "health": snapshot.as_dict(),
+                "indicators": [indicator.as_dict() for indicator in indicators],
+                "writes_performed": False,
+            }, indent=2))
+            return 0
+
+        stopped = False
+
+        def request_led_stop(_signum: int, _frame: object) -> None:
+            nonlocal stopped
+            stopped = True
+
+        signal.signal(signal.SIGTERM, request_led_stop)
+        signal.signal(signal.SIGINT, request_led_stop)
+        leds: Ws2812 | None = None
+        try:
+            leds = Ws2812()
+            run_led_status(
+                leds,
+                once=args.once,
+                poll_seconds=args.poll_seconds,
+                should_stop=lambda: stopped,
+            )
+            if args.once and args.hold_seconds:
+                time.sleep(args.hold_seconds)
+        except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
+            raise SystemExit(f"ERROR: {error}") from error
+        finally:
+            if leds is not None:
+                leds.close()
+        return 0
 
     if args.command == "fan-control":
         if args.poll_seconds <= 0:

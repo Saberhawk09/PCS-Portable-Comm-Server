@@ -89,7 +89,9 @@ Configure WWAN modem NMEA GPS:       yes
 Share GPSD with trusted PCS clients: yes
 Include Pi-Star in PCS monitoring:   yes
 Stage Dire Wolf / APRS software:     yes
+Stage Meshtastic BLE/MQTT software:  yes
 Install 16x2 HD44780 LCD display:    yes (when physically fitted)
+Install six-pixel WS2812 indicators: yes (when physically fitted)
 Install MAX7219 LED matrix display:  yes (only when physically fitted)
 Install GPIO18 hardware PWM fan:     yes (when the Armor Lite cooler is fitted)
 ```
@@ -101,7 +103,9 @@ PCS_SETUP_WWAN_GPS=yes
 PCS_SETUP_GPSD_LAN=yes
 PCS_SETUP_PISTAR=yes
 PCS_SETUP_APRS=staged
+PCS_SETUP_MESHTASTIC=staged
 PCS_SETUP_GPIO_LCD=yes
+PCS_SETUP_GPIO_LEDS=yes
 PCS_SETUP_GPIO_STATS=yes
 PCS_SETUP_GPIO_FAN=yes
 ```
@@ -126,9 +130,24 @@ passcode is intentionally absent from Git. See
 [Dire Wolf / APRS Integration](direwolf-aprs.md) for `--render-config`,
 `--validate-config`, guarded activation, and `--rollback`.
 
+`PCS_SETUP_MESHTASTIC=staged` installs the pinned Bluetooth/MQTT client and
+persistent gateway service but leaves it stopped and disabled. After the
+RAK4631 is paired and the broker is selected, restore the root-only MQTT
+credentials, run `setup-meshtastic-bluetooth.sh --configure`, and explicitly
+restore any required downlink topic filters. Bluetooth trust, the radio's MQTT
+and channel settings, broker credentials, RF behavior, and sensor calibration
+remain manual state. See [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md).
+
 `PCS_SETUP_GPIO_LCD=yes` installs and enables the GPIO-only 16x2 HD44780
 status display. Set it to `no` on builds without the LCD; self-test then treats
 the display as an intentionally omitted optional feature.
+
+`PCS_SETUP_GPIO_LEDS=yes` installs and enables the six-pixel GPIO21 WS2812
+status chain. Its pinned `rpi-ws281x` dependency is isolated in
+`/opt/pcs-gpio-leds`. The driver uses the PCM output path, so it is compatible
+with the separate USB Dire Wolf sound adapter but cannot share PCM with an I2S
+sound device. Set it to `no` on builds without the indicators; status and
+self-test then treat them as an intentionally omitted optional feature.
 
 `PCS_SETUP_GPIO_STATS=yes` enables SPI0 if necessary and installs the hardened
 MAX7219 display service. Set it to `no` on builds without the matrix; status and
@@ -255,6 +274,7 @@ complete when:
 - Pi-Star receives a GPSD protocol response from PCS
 - coordinated shutdown readiness check passes
 - Dire Wolf is safely staged and its software test passes, or its active mode has completed the documented hardware/RF validation
+- Meshtastic is safely staged, or its active mode has a stable BLE session, broker connection, and validated allowlisted uplink/downlink
 - required radio modes pass an operator-supervised on-air test
 
 ## Remaining Manual Checkpoints
@@ -264,9 +284,11 @@ unattended. These actions remain manual:
 
 - flashing SD cards and OpenWrt firmware
 - entering or restoring Wi-Fi, callsign, and radio-network credentials
+- pairing/trusting the RAK4631 and restoring its MQTT broker credentials and topic allowlist
 - entering the Samba password
 - selecting the correct USB storage device if detection is ambiguous
 - validating RF behavior on air
+- comparing the RAK4631 environment sensor with a known reference before using it for thermal alarms
 
 These checkpoints prevent secrets from entering Git and prevent an installer
 from guessing hardware or radio identity.

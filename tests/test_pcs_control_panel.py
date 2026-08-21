@@ -11,7 +11,8 @@ from unittest import mock
 from urllib.parse import urlencode
 
 
-MODULE_PATH = Path(__file__).parents[1] / "web" / "pcs-control-panel" / "pcs_control_panel.py"
+ROOT = Path(__file__).resolve().parents[1]
+MODULE_PATH = ROOT / "web" / "pcs-control-panel" / "pcs_control_panel.py"
 SPEC = importlib.util.spec_from_file_location("pcs_control_panel", MODULE_PATH)
 pcs = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(pcs)
@@ -100,6 +101,50 @@ class PublicDataTests(unittest.TestCase):
         self.assertNotIn("imei", sanitized["cellular"])
         self.assertEqual(sanitized["gnss"]["coordinates"], "38.123456, -77.123456")
         self.assertEqual(sanitized["gnss"]["grid_square"], "FM18kc")
+
+    def test_offline_mode_is_warning_card_but_healthy_overall_header(self):
+        offline = deepcopy(PUBLIC_DATA)
+        offline["offline"] = True
+        offline["overall"] = "ok"
+        offline["network"].update({
+            "status": "warn",
+            "offline": True,
+            "internet_available": False,
+            "uplink_type": "Offline",
+        })
+        sanitized = pcs.sanitize_public_dashboard(offline)
+        page = pcs.render_public_page(sanitized).decode("utf-8")
+        self.assertTrue(sanitized["offline"])
+        self.assertEqual(sanitized["overall"], "ok")
+        self.assertEqual(sanitized["network"]["status"], "warn")
+        self.assertIn('<span class="badge ok">OK - Offline</span>', page)
+        self.assertIn('<span class="badge warn">WARN</span>', page)
+
+    def test_openwrt_router_offline_is_a_hard_fault(self):
+        router_offline = deepcopy(PUBLIC_DATA)
+        router_offline["overall"] = "bad"
+        router_offline["network"].update({
+            "status": "bad",
+            "openwrt_online": False,
+        })
+        sanitized = pcs.sanitize_public_dashboard(router_offline)
+        page = pcs.render_public_page(sanitized).decode("utf-8")
+        self.assertEqual(sanitized["overall"], "bad")
+        self.assertEqual(sanitized["network"]["status"], "bad")
+        self.assertIn('<span class="badge bad">BAD</span>', page)
+        self.assertIn("OpenWrt AP online", page)
+        self.assertIn(">No<", page)
+
+        collector = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")
+        self.assertIn("router_offline = not openwrt_online", collector)
+        self.assertIn("if not network_core_ok or router_offline", collector)
+        self.assertIn("OpenWrt AP / switch offline at 10.42.0.2", collector)
+
+    def test_admin_header_uses_offline_suffix_without_bad_status(self):
+        offline = deepcopy(ADMIN_DATA)
+        offline["offline"] = True
+        page = pcs.render_admin_page(offline, "csrf-token").decode("utf-8")
+        self.assertIn('<span class="badge ok">OK - Offline</span>', page)
 
     def test_aprs_card_is_hidden_until_hardware_profile_is_active(self):
         staged = deepcopy(PUBLIC_DATA)

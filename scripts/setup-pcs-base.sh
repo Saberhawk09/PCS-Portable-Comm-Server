@@ -35,7 +35,9 @@ PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
+PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-ask}"
 PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-ask}"
+PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-ask}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
@@ -184,7 +186,9 @@ write_install_config() {
         printf "PCS_SETUP_GPSD_LAN=%q\n" "${PCS_SETUP_GPSD_LAN}"
         printf "PCS_SETUP_PISTAR=%q\n" "${PCS_SETUP_PISTAR}"
         printf "PCS_SETUP_APRS=%q\n" "${PCS_SETUP_APRS}"
+        printf "PCS_SETUP_MESHTASTIC=%q\n" "${PCS_SETUP_MESHTASTIC}"
         printf "PCS_SETUP_GPIO_LCD=%q\n" "${PCS_SETUP_GPIO_LCD}"
+        printf "PCS_SETUP_GPIO_LEDS=%q\n" "${PCS_SETUP_GPIO_LEDS}"
         printf "PCS_SETUP_GPIO_STATS=%q\n" "${PCS_SETUP_GPIO_STATS}"
         printf "PCS_SETUP_GPIO_FAN=%q\n" "${PCS_SETUP_GPIO_FAN}"
         printf "PCS_APRS_ROLE=%q\n" "${PCS_APRS_ROLE}"
@@ -278,7 +282,9 @@ collect_install_answers() {
     local gpsd_lan_default
     local pistar_default
     local aprs_default
+    local meshtastic_default
     local gpio_lcd_default
+    local gpio_leds_default
     local gpio_stats_default
     local gpio_fan_default
 
@@ -298,7 +304,9 @@ collect_install_answers() {
             PCS_SETUP_GPSD_LAN="no"
             PCS_SETUP_PISTAR="no"
             PCS_SETUP_APRS="no"
+            PCS_SETUP_MESHTASTIC="no"
             PCS_SETUP_GPIO_LCD="no"
+            PCS_SETUP_GPIO_LEDS="no"
             PCS_SETUP_GPIO_STATS="no"
             PCS_SETUP_GPIO_FAN="no"
             ;;
@@ -315,7 +323,9 @@ collect_install_answers() {
             gpsd_lan_default="${PCS_SETUP_GPSD_LAN}"
             pistar_default="${PCS_SETUP_PISTAR}"
             aprs_default="${PCS_SETUP_APRS}"
+            meshtastic_default="${PCS_SETUP_MESHTASTIC}"
             gpio_lcd_default="${PCS_SETUP_GPIO_LCD}"
+            gpio_leds_default="${PCS_SETUP_GPIO_LEDS}"
             gpio_stats_default="${PCS_SETUP_GPIO_STATS}"
             gpio_fan_default="${PCS_SETUP_GPIO_FAN}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
@@ -324,7 +334,10 @@ collect_install_answers() {
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
             [[ "${aprs_default}" == "ask" ]] && aprs_default="no"
             [[ "${aprs_default}" == "staged" ]] && aprs_default="yes"
+            [[ "${meshtastic_default}" == "ask" ]] && meshtastic_default="no"
+            [[ "${meshtastic_default}" == "staged" ]] && meshtastic_default="yes"
             [[ "${gpio_lcd_default}" == "ask" ]] && gpio_lcd_default="no"
+            [[ "${gpio_leds_default}" == "ask" ]] && gpio_leds_default="no"
             [[ "${gpio_stats_default}" == "ask" ]] && gpio_stats_default="no"
             [[ "${gpio_fan_default}" == "ask" ]] && gpio_fan_default="no"
             PCS_SETUP_USB_PRIMARY="$(ask_yes_no "Configure detected USB storage as PCS-Share primary storage?" "${usb_default}")"
@@ -337,7 +350,9 @@ collect_install_answers() {
             PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
             PCS_SETUP_APRS="$(ask_yes_no "Stage optional Dire Wolf / APRS software without enabling radio or RF transmit?" "${aprs_default}")"
+            PCS_SETUP_MESHTASTIC="$(ask_yes_no "Stage optional Meshtastic Bluetooth support without connecting to or configuring a radio?" "${meshtastic_default}")"
             PCS_SETUP_GPIO_LCD="$(ask_yes_no "Install and start the optional 16x2 HD44780 LCD status display?" "${gpio_lcd_default}")"
+            PCS_SETUP_GPIO_LEDS="$(ask_yes_no "Install and start the optional six-pixel WS2812 status indicators?" "${gpio_leds_default}")"
             PCS_SETUP_GPIO_STATS="$(ask_yes_no "Install and start the optional MAX7219 LED matrix statistics display?" "${gpio_stats_default}")"
             PCS_SETUP_GPIO_FAN="$(ask_yes_no "Install GPIO18 hardware PWM thermal fan control?" "${gpio_fan_default}")"
             ;;
@@ -351,7 +366,9 @@ collect_install_answers() {
             PCS_SETUP_WWAN_GPS="ask"
             PCS_SETUP_GPSD_LAN="ask"
             PCS_SETUP_APRS="ask"
+            PCS_SETUP_MESHTASTIC="ask"
             PCS_SETUP_GPIO_LCD="ask"
+            PCS_SETUP_GPIO_LEDS="ask"
             PCS_SETUP_GPIO_STATS="ask"
             PCS_SETUP_GPIO_FAN="ask"
             pistar_default="${PCS_SETUP_PISTAR}"
@@ -373,7 +390,9 @@ collect_install_answers() {
     export PCS_SETUP_GPSD_LAN
     export PCS_SETUP_PISTAR
     export PCS_SETUP_APRS
+    export PCS_SETUP_MESHTASTIC
     export PCS_SETUP_GPIO_LCD
+    export PCS_SETUP_GPIO_LEDS
     export PCS_SETUP_GPIO_STATS
     export PCS_SETUP_GPIO_FAN
 
@@ -409,7 +428,9 @@ confirm_install_answers() {
     echo "  LAN GPSD policy:    ${PCS_SETUP_GPSD_LAN}"
     echo "  Pi-Star monitoring: ${PCS_SETUP_PISTAR}"
     echo "  Dire Wolf / APRS:   ${PCS_SETUP_APRS}"
+    echo "  Meshtastic BLE:      ${PCS_SETUP_MESHTASTIC}"
     echo "  HD44780 LCD:         ${PCS_SETUP_GPIO_LCD}"
+    echo "  WS2812 indicators:   ${PCS_SETUP_GPIO_LEDS}"
     echo "  MAX7219 LED matrix: ${PCS_SETUP_GPIO_STATS}"
     echo "  GPIO18 PWM fan:     ${PCS_SETUP_GPIO_FAN}"
     echo
@@ -447,6 +468,7 @@ echo "  - Optional WWAN modem NMEA GPS setup, if WWAN GPS hardware is present"
 echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
 echo "  - Optional Pi-Star monitoring and local-access links"
 echo "  - Optional hardware-safe Dire Wolf / APRS software staging"
+echo "  - Optional six-pixel WS2812 status indicators"
 echo "  - Optional MAX7219 LED matrix statistics display"
 echo "  - Optional GPIO18 hardware PWM thermal fan control"
 echo "  - Cockpit/systemd restart button install"
@@ -537,7 +559,9 @@ ensure_executable "scripts/setup-wwan-gps-nmea.sh"
 ensure_executable "scripts/setup-gpsd-lan-proxy.sh"
 ensure_executable "scripts/setup-pistar-shutdown.sh"
 ensure_executable "scripts/setup-direwolf-aprs.sh"
+ensure_executable "scripts/setup-meshtastic-bluetooth.sh"
 ensure_executable "scripts/setup-gpio-lcd.sh"
+ensure_executable "scripts/setup-gpio-leds.sh"
 ensure_executable "scripts/setup-gpio-stats.sh"
 ensure_executable "scripts/setup-gpio-fan.sh"
 ensure_executable "scripts/pcs-aprs-kiss-firewall.sh"
@@ -829,6 +853,38 @@ esac
 
 echo
 echo "============================================================"
+echo "OPTIONAL STEP: Install six-pixel WS2812 status indicators"
+echo "============================================================"
+echo
+echo "This installs the isolated WS2812 driver and starts pcs-gpio-leds.service."
+echo "Select it only when the six-pixel chain is connected to GPIO21 through the"
+echo "74AHCT125 level shifter. GPIO21 PCM must not be shared with an I2S device."
+echo
+
+if [[ "${PCS_SETUP_GPIO_LEDS}" == "yes" || "${PCS_SETUP_GPIO_LEDS}" == "no" ]]; then
+    gpio_leds_answer="${PCS_SETUP_GPIO_LEDS}"
+else
+    gpio_leds_answer="$(ask_yes_no "Install and start the optional six-pixel WS2812 status indicators?" "no")"
+fi
+PCS_SETUP_GPIO_LEDS="${gpio_leds_answer}"
+export PCS_SETUP_GPIO_LEDS
+write_install_config
+
+case "${gpio_leds_answer}" in
+    y|Y|yes|YES|Yes)
+        run_optional_step \
+            "Install six-pixel WS2812 status indicators" \
+            "./scripts/setup-gpio-leds.sh --install"
+        ;;
+    *)
+        echo "Skipping six-pixel WS2812 status indicators."
+        echo "You can install them later with:"
+        echo "  ./scripts/setup-gpio-leds.sh --install"
+        ;;
+esac
+
+echo
+echo "============================================================"
 echo "OPTIONAL STEP: Install GPIO18 hardware PWM thermal fan control"
 echo "============================================================"
 echo
@@ -893,6 +949,46 @@ case "${aprs_answer}" in
         echo "  ./scripts/setup-direwolf-aprs.sh --prepare"
         ;;
 esac
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Stage Meshtastic Bluetooth support"
+echo "============================================================"
+echo
+echo "This installs a pinned Meshtastic BLE/MQTT client and privacy-preserving"
+echo "gateway status collector. The persistent gateway stays disabled until a"
+echo "paired node and MQTT broker are explicitly configured."
+echo
+
+if [[ "${PCS_SETUP_MESHTASTIC}" == "yes" || "${PCS_SETUP_MESHTASTIC}" == "no" ]]; then
+    meshtastic_answer="${PCS_SETUP_MESHTASTIC}"
+elif [[ "${PCS_SETUP_MESHTASTIC}" == "staged" ]]; then
+    meshtastic_answer="yes"
+else
+    meshtastic_answer="$(ask_yes_no "Stage Meshtastic Bluetooth support now?" "no")"
+fi
+
+case "${meshtastic_answer}" in
+    y|Y|yes|YES|Yes)
+        if ./scripts/setup-meshtastic-bluetooth.sh --prepare; then
+            PCS_SETUP_MESHTASTIC="staged"
+            echo "Meshtastic Bluetooth software staging completed."
+        else
+            echo
+            echo "WARNING: Meshtastic Bluetooth software staging failed."
+            echo "You can retry it later with:"
+            echo "  ./scripts/setup-meshtastic-bluetooth.sh --prepare"
+        fi
+        ;;
+    *)
+        PCS_SETUP_MESHTASTIC="no"
+        echo "Skipping Meshtastic Bluetooth software staging."
+        echo "You can run it later with:"
+        echo "  ./scripts/setup-meshtastic-bluetooth.sh --prepare"
+        ;;
+esac
+export PCS_SETUP_MESHTASTIC
+write_install_config
 
 echo
 echo "--- Ensure ModemManager is running for dashboard and self-test ---"
