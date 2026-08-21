@@ -70,7 +70,12 @@ The current documentation uses these status boundaries:
 - **Purchased / awaiting delivery:** acquired but not installed or validated
 - **As-built record pending:** operational hardware whose exact wiring, measurements, mounting, or part reconciliation is still incomplete
 
-APRS remains software-staged. Its C-Media/Unitek Y-247A USB sound adapter is installed and detected, while radio/PTT hardware, audio-level calibration, and RF validation remain pending. A persistent RAK4631 Bluetooth/MQTT gateway is implemented locally and repeatably staged, including local temperature/humidity telemetry, but it has not yet been deployed or hardware-validated on PCS.
+APRS remains software-staged. Its C-Media/Unitek Y-247A USB sound adapter is
+installed and detected, while radio/PTT hardware, audio-level calibration, and
+RF validation remain pending. The persistent RAK4631 Bluetooth/MQTT gateway is
+deployed to PCS and repeatably staged, including local temperature/humidity
+telemetry, but the continuous BLE/MQTT link, RF behavior, and sensor accuracy
+remain hardware-unvalidated.
 
 Current documentation priorities:
 
@@ -78,7 +83,7 @@ Current documentation priorities:
 - reconcile power and wiring notes with the physical build
 - record measured rail voltage, current draw, fuse sizes, wire gauge, and thermal results
 - install and validate the APRS radio/PTT path
-- deploy and validate the RAK4631 BLE pairing, MQTT proxy, RF behavior, and case-sensor baseline
+- complete and validate the RAK4631 BLE pairing, MQTT proxy, RF behavior, and case-sensor baseline
 - extend the general testing and release checklists for the guarded APRS workflow
 - keep install and validation steps copy/paste friendly
 - update the changelog and release checklist with every public release

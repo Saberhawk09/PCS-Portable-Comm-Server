@@ -35,7 +35,17 @@ Status reflects the latest known acquisition state. **Purchased / awaiting deliv
 | Pi-Star hotspot                    |   1 | Installed / tested             |     - | Fixed PCS-LAN node at `10.42.0.3`          |
 | APRS USB sound adapter             | Unitek Y-247A / C-Media 0d8c:0014 | Installed / detected | 1 | ALSA capture/playback detected as card ID `Device`; levels and radio path unvalidated |
 | APRS radio/PTT hardware            | TBD | Purchased / awaiting delivery or installation | - | Exact radio/PTT as-built components and validation pending |
-| RAK4631 Meshtastic expansion       | TBD | Purchased / as-built record pending | - | BLE/MQTT gateway staged; deployment, sensor model, and validation pending |
+| RAK4631 Meshtastic expansion       | TBD | Purchased / as-built record pending | - | Gateway software deployed; persistent BLE/MQTT operation, sensor model, mounting, and validation pending |
+
+## Local Status Hardware
+
+| Item | Qty | Status | Price | Notes |
+| ---- | --: | ------ | ----: | ----- |
+| HD44780-compatible 16x2 LCD | 1 | Installed / tested | - | GPIO-only rotating status and plain-language fault display |
+| MAX7219 8x8 LED matrix | 1 | Installed / tested | - | SPI health annunciator through the 74AHCT125 |
+| WS2812-compatible status pixels | 6 | Installed / tested | - | GPIO21 PCM health-indicator chain through the 74AHCT125 |
+| 74AHCT125 level shifter | 1 | Installed / tested | - | 3.3 V to 5 V logic for the matrix and WS2812 paths |
+| Armor Lite PWM fan | 1 | Installed / tested | - | GPIO18 hardware PWM duty validated; RPM unmeasured |
 
 ## Power System
 
