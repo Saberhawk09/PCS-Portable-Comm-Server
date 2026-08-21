@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Maintain a Meshtastic BLE link and transparently proxy its MQTT traffic."""
+"""Maintain a Meshtastic radio link and transparently proxy its MQTT traffic."""
 
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ class EchoCache:
 
 
 class Gateway:
-    """Own one persistent BLE session and one reconnecting MQTT session."""
+    """Own one persistent radio session and one reconnecting MQTT session."""
 
     def __init__(self, args: argparse.Namespace, mqtt_module: Any, pub: Any) -> None:
         self.args = args
@@ -303,7 +303,7 @@ class Gateway:
         close_thread.start()
         close_thread.join(timeout=float(getattr(self.args, "ble_close_timeout", 5.0)))
         if close_thread.is_alive():
-            LOG.warning("Meshtastic BLE close timed out; process exit will release the transport")
+            LOG.warning("Meshtastic radio close timed out; process exit will release the transport")
 
     def _disconnect_stale_ble(self) -> None:
         """Release a BlueZ link left behind by a failed BLEInterface startup."""
@@ -353,13 +353,14 @@ class Gateway:
         except Exception as exc:
             reason = classify_error(exc)["reason"]
             self._disconnect_stale_ble()
-            LOG.warning("Meshtastic BLE connection failed (%s)", reason)
+            LOG.warning("Meshtastic radio connection failed (%s)", reason)
             return reason
 
         self.interface = interface
         self.ble_connected = True
         self.last_error = None
-        LOG.info("Meshtastic BLE session established")
+        transport = "USB serial" if getattr(self.args, "port", "") else "Bluetooth LE"
+        LOG.info("Meshtastic %s session established", transport)
         return "connected"
 
     def run(self) -> int:
@@ -383,7 +384,7 @@ class Gateway:
                     self.last_error = "ble-disconnected"
                     self.counts["ble_reconnects"] += 1
                     next_ble_attempt = now
-                    LOG.warning("Meshtastic BLE disconnected; reconnecting")
+                    LOG.warning("Meshtastic radio transport disconnected; reconnecting")
 
                 if (
                     not self.ble_connected
@@ -397,7 +398,7 @@ class Gateway:
                         if connect_result != "device-not-found":
                             # A fresh process ensures that a failed Bleak event
                             # loop cannot poison the next BlueZ attempt.
-                            LOG.warning("Restarting gateway process after BLE handshake failure")
+                            LOG.warning("Restarting gateway process after radio handshake failure")
                             break
                         next_ble_attempt = time.monotonic() + self.args.ble_retry_seconds
 
@@ -411,7 +412,7 @@ class Gateway:
                         self._close_ble()
                         self._disconnect_stale_ble()
                         next_ble_attempt = now + self.args.ble_retry_seconds
-                        LOG.exception("Meshtastic BLE transport failed")
+                        LOG.exception("Meshtastic radio transport failed")
 
                 if now >= next_status:
                     self._write_status()

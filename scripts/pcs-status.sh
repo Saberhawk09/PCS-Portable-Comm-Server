@@ -388,7 +388,7 @@ case "${PCS_SETUP_APRS}" in
 esac
 echo
 
-echo "--- Meshtastic Bluetooth MQTT Gateway ---"
+echo "--- Meshtastic USB/Bluetooth MQTT Gateway ---"
 echo "PCS state: ${PCS_SETUP_MESHTASTIC}"
 case "${PCS_SETUP_MESHTASTIC}" in
     staged|yes)

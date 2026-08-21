@@ -426,7 +426,7 @@ class MeshtasticStatusTests(unittest.TestCase):
     def test_post_gatt_failure_restarts_process_to_release_client_threads(self):
         source = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")
         self.assertIn('if connect_result != "device-not-found":', source)
-        self.assertIn("Restarting gateway process after BLE handshake failure", source)
+        self.assertIn("Restarting gateway process after radio handshake failure", source)
 
     def test_gateway_writes_connecting_status_before_blocking_ble_startup(self):
         source = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")

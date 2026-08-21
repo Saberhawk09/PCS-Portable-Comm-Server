@@ -826,7 +826,7 @@ else
     skip "Six-pixel WS2812 indicators are not selected in the install configuration"
 fi
 
-section "Meshtastic Bluetooth MQTT Gateway"
+section "Meshtastic USB/Bluetooth MQTT Gateway"
 
 case "${PCS_SETUP_MESHTASTIC}" in
     staged|yes)
