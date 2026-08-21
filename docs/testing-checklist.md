@@ -479,6 +479,13 @@ LAN IP is 10.42.0.2
 Gateway/DNS point to 10.42.0.1 if configured
 ```
 
+If the AP is intentionally powered down for a supervised fault test, confirm
+that the web Network card and overall header show `BAD`, the LCD replaces its
+normal pages with `HARD FAULT` / `ROUTER OFFLINE`, the matrix shows `X` followed
+by the Wi-Fi symbol, and WS2812 pixel 4 turns red. `pcs-self-test.sh` must report
+the unavailable AP as a failure. Restore AP power and confirm every indication
+clears.
+
 ## Pi-Star Integration Test
 
 These checks apply when `PCS_SETUP_PISTAR=yes` is selected. With
@@ -543,6 +550,43 @@ enabled
 active
 ```
 
+## Six-Pixel WS2812 Status Indicator Test
+
+These checks apply when `PCS_SETUP_GPIO_LEDS=yes` is selected. The read-only
+check does not write to the LEDs:
+
+```bash
+./scripts/setup-gpio-leds.sh --check
+systemctl is-enabled pcs-gpio-leds.service
+systemctl is-active pcs-gpio-leds.service
+```
+
+Expected when installed:
+
+```text
+Driver: installed
+Python environment: installed
+Python rpi_ws281x: available
+Data output: GPIO21 / physical pin 40 / PCM
+Pixel count: 6
+enabled
+active
+```
+
+For the first supervised hardware check, stop the daemon so it is the only PCM
+owner, run one sample, then restart it:
+
+```bash
+sudo systemctl stop pcs-gpio-leds.service
+sudo /opt/pcs-gpio-leds/bin/python /usr/local/sbin/pcs-gpio led-status --once --hold-seconds 10 --hardware --apply
+sudo systemctl start pcs-gpio-leds.service
+```
+
+Confirm the physical pixel order against the legend in
+[PCS GPIO Allocation](gpio-allocation.md#six-pixel-ws2812-status-indicators).
+Do not mark the LED chain tested until all six positions and GRB colors have
+been observed on the installed hardware.
+
 ## Dire Wolf / APRS Safety Test
 
 These checks apply when Dire Wolf / APRS is selected during setup. They validate
@@ -576,7 +620,15 @@ RX/TX validation reports every unresolved hardware or operator decision as a blo
 ```
 
 Do not weaken or bypass a TX blocker to make this checklist pass. An intentionally
-active APRS installation instead requires the complete [Safe Activation Order](direwolf-aprs.md#safe-activation-order), including bench measurements and an operator-supervised RF test. Meshtastic is not part of the current test baseline because its PCS integration is not implemented.
+active APRS installation instead requires the complete [Safe Activation Order](direwolf-aprs.md#safe-activation-order), including bench measurements and an operator-supervised RF test.
+
+For `PCS_SETUP_MESHTASTIC=staged`, the self-test requires the pinned BLE/MQTT
+client and gateway to be installed while `pcs-meshtastic.service` stays stopped
+and disabled. For `PCS_SETUP_MESHTASTIC=yes`, it additionally requires the
+root-only configuration, enabled/running service, and a valid privacy-safe
+runtime status file. Live RAK4631 pairing, broker relay in both directions, RF
+behavior, and environment-sensor accuracy remain manual hardware checkpoints;
+see [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md).
 
 ## Service Status Test
 

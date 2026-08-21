@@ -35,6 +35,9 @@ PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
 PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-no}"
+PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-no}"
+PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-no}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
@@ -385,6 +388,53 @@ case "${PCS_SETUP_APRS}" in
 esac
 echo
 
+echo "--- Meshtastic Bluetooth MQTT Gateway ---"
+echo "PCS state: ${PCS_SETUP_MESHTASTIC}"
+case "${PCS_SETUP_MESHTASTIC}" in
+    staged|yes)
+        echo "Client:          $([[ -x /opt/pcs-meshtastic/bin/meshtastic ]] && echo installed || echo missing)"
+        echo "Gateway:         $([[ -x /usr/local/sbin/pcs-meshtastic-gateway ]] && echo installed || echo missing)"
+        echo "Service active:  $(systemctl is-active pcs-meshtastic.service 2>/dev/null || true)"
+        echo "Service enabled: $(systemctl is-enabled pcs-meshtastic.service 2>/dev/null || true)"
+        if [[ -r /var/lib/pcs-meshtastic/status.json ]]; then
+            echo "Status:"
+            python3 -m json.tool /var/lib/pcs-meshtastic/status.json || true
+        else
+            echo "Status:          unavailable"
+        fi
+        ;;
+    *)
+        echo "Meshtastic Bluetooth gateway is not selected."
+        ;;
+esac
+echo
+
+echo "--- 16x2 HD44780 LCD ---"
+echo "PCS state: ${PCS_SETUP_GPIO_LCD}"
+if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" ]]; then
+    echo "Driver:          $([[ -x /usr/local/sbin/pcs-gpio ]] && echo installed || echo missing)"
+    echo "GPIO chip:       $([[ -e /dev/gpiochip0 ]] && echo available || echo missing)"
+    echo "Python gpiozero: $(python3 -c 'import gpiozero' 2>/dev/null && echo available || echo missing)"
+    echo "Service active:  $(systemctl is-active pcs-gpio-lcd.service 2>/dev/null || true)"
+    echo "Service enabled: $(systemctl is-enabled pcs-gpio-lcd.service 2>/dev/null || true)"
+else
+    echo "HD44780 LCD status display is not selected."
+fi
+echo
+
+echo "--- Six-Pixel WS2812 Status Indicators ---"
+echo "PCS state: ${PCS_SETUP_GPIO_LEDS}"
+if [[ "${PCS_SETUP_GPIO_LEDS}" == "yes" ]]; then
+    echo "Driver:          $([[ -x /usr/local/sbin/pcs-gpio ]] && echo installed || echo missing)"
+    echo "GPIO / pixels:   GPIO21 PCM / 6"
+    echo "Python library:  $([[ -x /opt/pcs-gpio-leds/bin/python ]] && /opt/pcs-gpio-leds/bin/python -c 'import rpi_ws281x' 2>/dev/null && echo available || echo missing)"
+    echo "Service active:  $(systemctl is-active pcs-gpio-leds.service 2>/dev/null || true)"
+    echo "Service enabled: $(systemctl is-enabled pcs-gpio-leds.service 2>/dev/null || true)"
+else
+    echo "WS2812 status indicators are not selected."
+fi
+echo
+
 echo "--- MAX7219 LED Matrix ---"
 echo "PCS state: ${PCS_SETUP_GPIO_STATS}"
 if [[ "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
@@ -410,6 +460,22 @@ if [[ "${PCS_SETUP_GPIO_FAN}" == "yes" ]]; then
 else
     echo "GPIO18 hardware PWM fan control is not selected."
 fi
+
+case "${PCS_SETUP_MESHTASTIC}" in
+    staged)
+        MESHTASTIC_STATUS="software staged / gateway disabled"
+        ;;
+    yes)
+        if systemctl is-active --quiet pcs-meshtastic.service; then
+            MESHTASTIC_STATUS="persistent gateway active"
+        else
+            MESHTASTIC_STATUS="configured / inactive"
+        fi
+        ;;
+    *)
+        MESHTASTIC_STATUS="not configured"
+        ;;
+esac
 echo
 
 echo "--- Key Services ---"
@@ -572,6 +638,16 @@ case "${PCS_SETUP_APRS}" in
         ;;
 esac
 
+if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" ]]; then
+    if systemctl is-active --quiet pcs-gpio-lcd.service; then
+        GPIO_LCD_STATUS="active"
+    else
+        GPIO_LCD_STATUS="configured / inactive"
+    fi
+else
+    GPIO_LCD_STATUS="not configured"
+fi
+
 if [[ "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
     if systemctl is-active --quiet pcs-gpio-stats.service; then
         GPIO_STATS_STATUS="active"
@@ -580,6 +656,16 @@ if [[ "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
     fi
 else
     GPIO_STATS_STATUS="not configured"
+fi
+
+if [[ "${PCS_SETUP_GPIO_LEDS}" == "yes" ]]; then
+    if systemctl is-active --quiet pcs-gpio-leds.service; then
+        GPIO_LEDS_STATUS="active"
+    else
+        GPIO_LEDS_STATUS="configured / inactive"
+    fi
+else
+    GPIO_LEDS_STATUS="not configured"
 fi
 
 if [[ "${PCS_SETUP_GPIO_FAN}" == "yes" ]]; then
@@ -627,6 +713,9 @@ echo "Cockpit:                  ${COCKPIT_STATUS}"
 echo "PCS Homepage/Admin:       ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
 echo "Legacy Admin Redirect:    ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
 echo "Dire Wolf / APRS:         ${APRS_STATUS}"
+echo "Meshtastic BLE/MQTT:      ${MESHTASTIC_STATUS}"
+echo "HD44780 LCD:              ${GPIO_LCD_STATUS}"
+echo "WS2812 Indicators:        ${GPIO_LEDS_STATUS}"
 echo "MAX7219 LED Matrix:       ${GPIO_STATS_STATUS}"
 echo "GPIO18 PWM Fan:           ${GPIO_FAN_STATUS}"
 printf "%-27s %s

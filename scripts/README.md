@@ -29,6 +29,7 @@ This installs/configures:
 - Optional WWAN GNSS and LAN-only GPSD sharing
 - Optional Pi-Star monitoring and local-access links
 - Optional Dire Wolf / APRS software staging with the service and RF path disabled
+- Optional Meshtastic Bluetooth/MQTT gateway software staging with the service disabled
 - PCS restart service
 - PCS public homepage and authenticated control panel
 - Legacy port 8080 admin compatibility redirect
@@ -41,6 +42,26 @@ remaining setup steps. The earlier answer suppresses the redundant pairing
 confirmation; SSH still requests the Pi-Star password directly and never
 stores it. If Pi-Star is unavailable, pairing remains an optional failure and
 the rest of the PCS installation continues.
+
+## Meshtastic Bluetooth / MQTT
+
+### setup-meshtastic-bluetooth.sh
+
+Stages or configures a persistent BLE connection to a dedicated Meshtastic node
+and transparently relays the node's MQTT client-proxy traffic:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --prepare
+./scripts/setup-meshtastic-bluetooth.sh --scan
+./scripts/setup-meshtastic-bluetooth.sh --configure DEVICE MQTT_HOST MQTT_PORT
+./scripts/setup-meshtastic-bluetooth.sh --check
+```
+
+Staging never contacts or configures the radio. Configured operation keeps BLE
+connected continuously. MQTT downlink starts with no subscriptions and must be
+given exact topic filters deliberately. The privacy-safe status snapshot also
+exposes temperature/humidity from the local node's environment sensor for a
+future PCS case-telemetry display. See [Meshtastic Bluetooth MQTT Gateway](../docs/meshtastic-bluetooth-gateway.md).
 
 ## Dependencies
 
@@ -69,6 +90,7 @@ python3 scripts/pcs_gpio.py demo all --duration 0
 python3 scripts/pcs_gpio.py stats
 python3 scripts/pcs_gpio.py lcd --line1 "PCS ONLINE" --line2 "LCD DRIVER READY"
 python3 scripts/pcs_gpio.py lcd-status
+python3 scripts/pcs_gpio.py led-status
 python3 scripts/pcs_gpio.py fan-control
 ```
 
@@ -121,14 +143,34 @@ The base installer exposes this as the optional
 when necessary, installs `python3-spidev` if missing, and reports when a reboot
 is needed before `/dev/spidev0.0` becomes available.
 
-The service uses a heartbeat/checkmark animation when PCS is healthy. Every
-warning shows an `!` followed by its subsystem icon; every critical fault shows
-an `X` followed by its subsystem icon. It watches CPU temperature, root-disk capacity,
-primary USB mounting, failed systemd units, active uplink, and GPS fix without
-duplicating the LCD's normal telemetry. It does not retain GPS coordinates or
-control APRS PTT or radio UART lines.
-Healthy frames use low intensity levels 1-2; warnings use 4 and critical alerts
-use 6, well below the MAX7219 maximum of 15.
+The service shows one dim checkmark when PCS is healthy. Every warning shows an
+`!` followed by its subsystem icon; every critical fault shows an `X` followed
+by its subsystem icon. It watches CPU temperature, root-disk capacity, primary
+USB mounting, failed systemd units, OpenWrt AP reachability, configured Pi-Star
+reachability, active uplink, and GPS fix without duplicating the LCD's normal
+telemetry. The OpenWrt hard fault uses a Wi-Fi icon; the Pi-Star warning uses a
+raspberry icon. It does not retain GPS coordinates or control APRS PTT or radio
+UART lines. The healthy checkmark uses intensity 1; all warning and critical
+frames use intensity 10, below the MAX7219 maximum of 15.
+
+### setup-gpio-leds.sh
+
+Installs or inspects the persistent six-pixel GPIO21 WS2812 health indicators:
+
+```bash
+bash scripts/setup-gpio-leds.sh --install
+bash scripts/setup-gpio-leds.sh --check
+```
+
+Pixels 0-5 represent CPU temperature, root-disk use, primary USB mounting,
+local services/configured Pi-Star, active uplink/OpenWrt AP, and GPS fix. The
+base installer persists the optional `PCS_SETUP_GPIO_LEDS=yes|no` answer. The
+service uses the PCM output path on GPIO21, leaves GPIO18 PWM fan control
+independent, and is compatible with the PCS USB sound adapter; do not combine
+it with an I2S/PCM sound device. Wi-Fi and Cellular are both healthy green
+uplinks; no uplink is amber, while an unreachable OpenWrt AP is red.
+The pinned `rpi-ws281x` package lives in `/opt/pcs-gpio-leds` rather than the
+Raspberry Pi OS system Python environment.
 
 ### setup-gpio-fan.sh
 

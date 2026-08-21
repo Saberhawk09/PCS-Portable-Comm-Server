@@ -38,4 +38,4 @@ Use this checklist for every public PCS release.
 
 ## Manual Field Checkpoints
 
-Credentials, firmware flashing, radio identity, RF behavior, and on-air testing remain operator-supervised. Do not place passwords, APRS-IS passcodes, callsign credentials, SIM details, router backups, or private deployment data in Git. Meshtastic remains outside the release test baseline until its PCS integration is implemented and documented.
+Credentials, firmware flashing, radio identity, RF behavior, and on-air testing remain operator-supervised. Do not place passwords, APRS-IS passcodes, callsign credentials, MQTT credentials, SIM details, router backups, or private deployment data in Git. Meshtastic software staging and service/status checks are part of the Pi-side test baseline; live RAK4631 pairing, broker relay, RF behavior, and sensor accuracy remain operator-supervised checkpoints.

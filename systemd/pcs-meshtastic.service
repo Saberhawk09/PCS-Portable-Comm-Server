@@ -1,0 +1,34 @@
+[Unit]
+Description=PCS persistent Meshtastic Bluetooth MQTT gateway
+After=pcs-bluetooth-ready.service dbus.service network-online.target
+Wants=network-online.target
+Requires=pcs-bluetooth-ready.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+EnvironmentFile=/etc/pcs/meshtastic.env
+EnvironmentFile=-/etc/pcs/meshtastic-mqtt.env
+Environment=PCS_MESHTASTIC_STATUS_FILE=/var/lib/pcs-meshtastic/status.json
+Environment=PYTHONDONTWRITEBYTECODE=1
+StateDirectory=pcs-meshtastic
+StateDirectoryMode=0755
+ExecStart=/opt/pcs-meshtastic/bin/python /usr/local/sbin/pcs-meshtastic-gateway
+Restart=always
+RestartSec=10
+TimeoutStopSec=20
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_BLUETOOTH AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

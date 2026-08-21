@@ -50,7 +50,9 @@ PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-no}"
 PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-no}"
+PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-no}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
@@ -792,6 +794,96 @@ if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" ]]; then
 else
     skip "16x2 HD44780 LCD is not selected in the install configuration"
 fi
+
+section "Six-Pixel WS2812 Status Indicators"
+
+if [[ "${PCS_SETUP_GPIO_LEDS}" == "yes" ]]; then
+    if [[ -x /usr/local/sbin/pcs-gpio ]]; then
+        pass "PCS GPIO driver is installed"
+    else
+        fail "WS2812 indicators selected but /usr/local/sbin/pcs-gpio is missing"
+    fi
+
+    if [[ -x /opt/pcs-gpio-leds/bin/python ]] \
+        && /opt/pcs-gpio-leds/bin/python -c 'import rpi_ws281x' 2>/dev/null; then
+        pass "Pinned WS2812 Python environment is available"
+    else
+        fail "WS2812 indicators selected but their Python environment is unavailable"
+    fi
+
+    if service_enabled pcs-gpio-leds.service; then
+        pass "pcs-gpio-leds.service is enabled"
+    else
+        fail "WS2812 indicators selected but pcs-gpio-leds.service is disabled"
+    fi
+
+    if service_active pcs-gpio-leds.service; then
+        pass "pcs-gpio-leds.service is active"
+    else
+        fail "WS2812 indicators selected but pcs-gpio-leds.service is inactive"
+    fi
+else
+    skip "Six-pixel WS2812 indicators are not selected in the install configuration"
+fi
+
+section "Meshtastic Bluetooth MQTT Gateway"
+
+case "${PCS_SETUP_MESHTASTIC}" in
+    staged|yes)
+        if [[ -x /opt/pcs-meshtastic/bin/meshtastic ]] \
+            && [[ -x /opt/pcs-meshtastic/bin/python ]] \
+            && [[ -r /usr/local/sbin/pcs_meshtastic_status.py ]] \
+            && [[ -x /usr/local/sbin/pcs-meshtastic-gateway ]]; then
+            pass "Meshtastic Bluetooth/MQTT gateway software is installed"
+        else
+            fail "Meshtastic selected but its pinned client or gateway is missing"
+        fi
+
+        if [[ "${PCS_SETUP_MESHTASTIC}" == "staged" ]]; then
+            if ! service_active pcs-meshtastic.service \
+                && ! service_enabled pcs-meshtastic.service; then
+                pass "Staged Meshtastic gateway is safely disabled"
+            else
+                fail "Staged Meshtastic gateway must remain stopped and disabled"
+            fi
+        else
+            if [[ "$(stat -c '%U:%G %a' /etc/pcs/meshtastic.env 2>/dev/null || true)" == "root:root 600" ]]; then
+                pass "Meshtastic gateway configuration has restricted permissions"
+            else
+                fail "Meshtastic gateway configuration is missing or not root:root 600"
+            fi
+
+            if service_enabled pcs-meshtastic.service; then
+                pass "pcs-meshtastic.service is enabled"
+            else
+                fail "Meshtastic gateway is configured but its service is disabled"
+            fi
+
+            if service_active pcs-meshtastic.service; then
+                pass "pcs-meshtastic.service is active"
+            else
+                fail "Meshtastic gateway is configured but its service is inactive"
+            fi
+
+            if python3 -c '
+import json
+with open("/var/lib/pcs-meshtastic/status.json", encoding="utf-8") as handle:
+    status = json.load(handle)
+assert status["schema_version"] == 1
+assert isinstance(status["gateway"]["ble_connected"], bool)
+assert isinstance(status["gateway"]["mqtt_connected"], bool)
+assert status["privacy"]["messages_stored"] is False
+' 2>/dev/null; then
+                pass "Meshtastic gateway exposes valid privacy-safe runtime status"
+            else
+                fail "Meshtastic gateway runtime status is missing or invalid"
+            fi
+        fi
+        ;;
+    *)
+        skip "Meshtastic Bluetooth gateway is not selected in the install configuration"
+        ;;
+esac
 
 section "MAX7219 LED Matrix"
 

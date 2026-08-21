@@ -1,0 +1,10 @@
+[Unit]
+Description=Unblock and power the PCS Bluetooth controller
+After=bluetooth.service
+Requires=bluetooth.service
+Before=pcs-meshtastic.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-bluetooth-ready
+RemainAfterExit=yes

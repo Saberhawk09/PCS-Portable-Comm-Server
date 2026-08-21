@@ -305,7 +305,7 @@ PUBLIC_CACHE = TimedCache()
 
 PUBLIC_FIELDS = {
     "system": {"status", "uptime", "local_time", "cpu_temperature", "cpu_load", "memory_used", "root_storage_used"},
-    "network": {"status", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "uplink_type", "connected_client_count"},
+    "network": {"status", "offline", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "uplink_type", "connected_client_count"},
     "cellular": {"status", "modem_present", "connected", "carrier", "access_technology", "signal"},
     "time": {"status", "chrony_active", "synchronized", "source", "reference"},
     "gnss": {"status", "receiver_active", "fix", "satellites", "coordinates", "grid_square", "utc_time"},
@@ -363,6 +363,7 @@ def dashboard_error(message: str, public: bool) -> dict:
         return {
             "generated_at": "unknown",
             "overall": "bad",
+            "offline": False,
             "error": message,
             "system": {"status": "bad"},
             "network": {"status": "warn", "lan_gateway": "10.42.0.1"},
@@ -377,6 +378,7 @@ def dashboard_error(message: str, public: bool) -> dict:
     return {
         "generated_at": "unknown",
         "overall": "bad",
+        "offline": False,
         "cards": [{
             "id": "dashboard",
             "title": "Dashboard",
@@ -392,6 +394,7 @@ def sanitize_public_dashboard(data: dict) -> dict:
     sanitized = {
         "generated_at": data.get("generated_at", "unknown"),
         "overall": status_value(data.get("overall", "warn")),
+        "offline": bool(data.get("offline", False)),
     }
     if data.get("error"):
         sanitized["error"] = str(data["error"])
@@ -470,9 +473,17 @@ def document(title: str, body: str, script: str = "", nonce: str = "") -> bytes:
 <body>{body}{script_html}<footer>PCS local field network interface</footer></body></html>""".encode("utf-8")
 
 
-def badge(status: str) -> str:
+def badge(status: str, label: str | None = None) -> str:
     normalized = status_value(status)
-    return f'<span class="badge {normalized}">{status_label(normalized)}</span>'
+    return f'<span class="badge {normalized}">{esc(label or status_label(normalized))}</span>'
+
+
+def overall_badge(data: dict) -> str:
+    overall = status_value(data.get("overall", "warn"))
+    label = status_label(overall)
+    if data.get("offline") and overall != "bad":
+        label = f"{label} - Offline"
+    return badge(overall, label)
 
 
 def item(label: str, value) -> str:
@@ -563,7 +574,7 @@ def render_public_page(data: dict) -> bytes:
     <header><div class="nav"><div class="brand">PCS Field Network</div><nav class="navlinks"><a class="button secondary" href="/">Refresh</a><a class="button" href="/admin/">Admin Login</a></nav></div></header>
     <main><section class="hero"><div class="hero-main"><p class="eyebrow">Portable Communication Server</p><h1>Field Network Status</h1><p>Local services, communications, position, time, and storage information for devices connected on site.</p></div>
     <aside class="admin-entry"><h2>PCS Administration</h2><p>Authorized operators can manage network, cellular, storage, services, time, and power.</p><a class="button" href="/admin/">Admin Login</a></aside></section>
-    {error_html}<section class="overview"><div><h2>Overall system health</h2><p>Last refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{badge(overall)}</section>
+    {error_html}<section class="overview"><div><h2>Overall system health</h2><p>Last refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
     <section class="grid public-grid">{''.join(cards)}</section>{service_directory}</main>"""
     return document("PCS Field Network Status", body)
 
@@ -611,7 +622,7 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
 
     body = f"""
     <header><div class="nav"><div class="brand">PCS Administration</div><nav class="navlinks"><a class="button secondary" href="/">Public Homepage</a><a class="button secondary" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
-    <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{badge(data.get('overall', 'warn'))}</section>
+    <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
     <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}</section>
     <h2 class="section-title">Detailed field access</h2><section class="card">{''.join(access_rows)}</section>
     <h2 class="section-title">Administrator access</h2><section class="card password-card"><div><h2>Admin panel password</h2><p>Change it here while the current password is known. A forgotten password cannot be recovered in the browser; rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from the Pi terminal.</p></div><a class="button" href="/admin/password">Change Admin Password</a></section>
