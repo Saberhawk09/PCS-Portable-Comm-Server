@@ -9,6 +9,7 @@ import logging
 import os
 import queue
 import signal
+import socket
 import ssl
 import subprocess
 import threading
@@ -23,6 +24,43 @@ from pcs_meshtastic_status import build_status, classify_error, write_status
 LOG = logging.getLogger("pcs-meshtastic-gateway")
 PROXY_TOPIC = "meshtastic.mqttclientproxymessage"
 DEFAULT_STATUS_FILE = "/var/lib/pcs-meshtastic/status.json"
+
+
+def read_gpsd_position(
+    host: str = "127.0.0.1", port: int = 2947, timeout: float = 3.0
+) -> tuple[float, float, int]:
+    """Return one valid GPSD TPV fix without retaining or logging coordinates."""
+
+    import json
+
+    deadline = time.monotonic() + timeout
+    with socket.create_connection((host, port), timeout=timeout) as connection:
+        connection.settimeout(max(0.1, timeout))
+        connection.sendall(b'?WATCH={"enable":true,"json":true};\n')
+        buffer = b""
+        while time.monotonic() < deadline:
+            chunk = connection.recv(4096)
+            if not chunk:
+                break
+            buffer += chunk
+            while b"\n" in buffer:
+                raw_line, buffer = buffer.split(b"\n", 1)
+                try:
+                    report = json.loads(raw_line)
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                if report.get("class") != "TPV" or int(report.get("mode", 0)) < 2:
+                    continue
+                latitude = report.get("lat")
+                longitude = report.get("lon")
+                if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+                    continue
+                if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+                    continue
+                altitude_value = report.get("altHAE", report.get("alt", 0))
+                altitude = round(altitude_value) if isinstance(altitude_value, (int, float)) else 0
+                return float(latitude), float(longitude), altitude
+    raise RuntimeError("gpsd has no valid position fix")
 
 
 def _bool(value: str | None, default: bool = False) -> bool:
@@ -133,7 +171,10 @@ class Gateway:
             "queue_drops": 0,
             "ble_reconnects": 0,
             "mqtt_reconnects": 0,
+            "position_updates": 0,
+            "gpsd_failures": 0,
         }
+        self.last_position_update: float | None = None
         self.last_error: str | None = None
         self.started = time.time()
         self.client = self._new_mqtt_client()
@@ -245,6 +286,10 @@ class Gateway:
             "radio_mqtt_enabled": getattr(radio_mqtt, "enabled", None),
             "radio_proxy_enabled": getattr(radio_mqtt, "proxy_to_client_enabled", None),
             "started_at_epoch": int(self.started),
+            "position_source": "gpsd" if getattr(self.args, "gpsd_position", False) else "radio",
+            "last_position_update_at_epoch": (
+                int(self.last_position_update) if self.last_position_update is not None else None
+            ),
             "counters": dict(self.counts),
             "queued": {
                 "to_mqtt": self.radio_to_mqtt.qsize(),
@@ -252,6 +297,28 @@ class Gateway:
             },
         }
         return status
+
+    def _send_gpsd_position(self) -> None:
+        """Give the radio a live PCS fix; never put coordinates in status or logs."""
+
+        try:
+            latitude, longitude, altitude = read_gpsd_position(
+                host=getattr(self.args, "gpsd_host", "127.0.0.1"),
+                port=getattr(self.args, "gpsd_port", 2947),
+                timeout=getattr(self.args, "gpsd_timeout", 3.0),
+            )
+            self.interface.sendPosition(
+                latitude=latitude,
+                longitude=longitude,
+                altitude=altitude,
+                channelIndex=getattr(self.args, "position_channel", 0),
+            )
+            self.counts["position_updates"] += 1
+            self.last_position_update = time.time()
+            LOG.info("Sent fresh PCS GPSD position to the Meshtastic node")
+        except Exception as exc:
+            self.counts["gpsd_failures"] += 1
+            LOG.warning("PCS GPSD position update skipped: %s", exc)
 
     def _write_status(self) -> None:
         try:
@@ -373,6 +440,7 @@ class Gateway:
         self.client.loop_start()
         next_ble_attempt = 0.0
         next_status = 0.0
+        next_position = 0.0
         self.last_error = "ble-connecting"
         self._write_status()
         try:
@@ -405,6 +473,9 @@ class Gateway:
                 if self.ble_connected:
                     try:
                         self._drain()
+                        if getattr(self.args, "gpsd_position", False) and now >= next_position:
+                            self._send_gpsd_position()
+                            next_position = time.monotonic() + self.args.position_interval
                     except Exception:
                         self.ble_connected = False
                         self.last_error = "ble-transport-failed"
@@ -449,6 +520,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--ble-timeout", type=int, default=60)
     parser.add_argument("--ble-retry-seconds", type=int, default=15)
     parser.add_argument("--status-interval", type=int, default=10)
+    parser.add_argument(
+        "--gpsd-position",
+        action="store_true",
+        default=_bool(os.environ.get("PCS_MESHTASTIC_GPSD_POSITION")),
+        help="send fresh PCS GPSD fixes through the Meshtastic node",
+    )
+    parser.add_argument("--gpsd-host", default=os.environ.get("PCS_MESHTASTIC_GPSD_HOST", "127.0.0.1"))
+    parser.add_argument("--gpsd-port", type=int, default=int(os.environ.get("PCS_MESHTASTIC_GPSD_PORT", "2947")))
+    parser.add_argument("--gpsd-timeout", type=float, default=3.0)
+    parser.add_argument("--position-interval", type=int, default=int(os.environ.get("PCS_MESHTASTIC_POSITION_INTERVAL", "300")))
+    parser.add_argument("--position-channel", type=int, default=int(os.environ.get("PCS_MESHTASTIC_POSITION_CHANNEL", "0")))
     args = parser.parse_args(argv)
     if not args.device.strip() and not args.port.strip():
         parser.error("PCS_MESHTASTIC_DEVICE or PCS_MESHTASTIC_PORT is required")
@@ -456,6 +538,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("PCS_MESHTASTIC_MQTT_HOST is required")
     if not 1 <= args.mqtt_port <= 65535:
         parser.error("MQTT port must be between 1 and 65535")
+    if not 1 <= args.gpsd_port <= 65535:
+        parser.error("GPSD port must be between 1 and 65535")
+    if args.position_interval < 60:
+        parser.error("position interval must be at least 60 seconds")
+    if not 0 <= args.position_channel <= 7:
+        parser.error("position channel must be between 0 and 7")
     return args
 
 

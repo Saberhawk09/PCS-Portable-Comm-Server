@@ -28,7 +28,7 @@ BLUETOOTH_READY_SERVICE_SOURCE="${REPO_DIR}/systemd/pcs-bluetooth-ready.service"
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--scan|--import-radio-mqtt DEVICE|--configure DEVICE MQTT_HOST [MQTT_PORT]|--configure-usb /dev/ttyACM0 MQTT_HOST [MQTT_PORT]|--check|--disable
+Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--scan|--import-radio-mqtt DEVICE|--configure DEVICE MQTT_HOST [MQTT_PORT]|--configure-usb /dev/ttyACM0 MQTT_HOST [MQTT_PORT]|--enable-gpsd-position|--disable-gpsd-position|--check|--disable
 
   --prepare           Install pinned Bluetooth/MQTT support; leave gateway disabled.
   --scan              List discoverable Meshtastic BLE devices (10-second scan).
@@ -36,6 +36,10 @@ Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--scan|--import-radio-m
                       Copy the radio's broker credentials into PCS without displaying them.
   --configure ...     Record a paired BLE target and broker, then enable the gateway.
   --configure-usb ... Disable radio Bluetooth, use /dev/ttyACM0, and enable the gateway.
+  --enable-gpsd-position
+                      Send a fresh PCS GPSD fix through the node every five minutes.
+  --disable-gpsd-position
+                      Stop supplying PCS GPSD fixes to the node.
   --check             Inspect installed, paired, gateway service, and status state.
   --disable           Stop and disable the PCS gateway without changing the radio.
 
@@ -137,6 +141,9 @@ prepare() {
             printf 'PCS_MESHTASTIC_MQTT_PORT=1883\n'
             printf 'PCS_MESHTASTIC_MQTT_TLS=no\n'
             printf 'PCS_MESHTASTIC_MQTT_SUBSCRIPTIONS=\n'
+            printf 'PCS_MESHTASTIC_GPSD_POSITION=no\n'
+            printf 'PCS_MESHTASTIC_POSITION_INTERVAL=300\n'
+            printf 'PCS_MESHTASTIC_POSITION_CHANNEL=0\n'
         } > "${env_temp}"
         sudo install -o root -g root -m 0600 "${env_temp}" "${ENV_FILE}"
         rm -f "${env_temp}"
@@ -284,6 +291,30 @@ configure_usb() {
     echo "PCS will keep the serial session open continuously."
 }
 
+set_gpsd_position() {
+    require_normal_user
+    require_prepared
+    local value="$1"
+    local env_temp
+    env_temp="$(mktemp)"
+    sudo awk -v value="${value}" '
+        BEGIN { replaced=0 }
+        /^PCS_MESHTASTIC_GPSD_POSITION=/ {
+            print "PCS_MESHTASTIC_GPSD_POSITION=" value
+            replaced=1
+            next
+        }
+        { print }
+        END {
+            if (!replaced) print "PCS_MESHTASTIC_GPSD_POSITION=" value
+        }
+    ' "${ENV_FILE}" > "${env_temp}"
+    sudo install -o root -g root -m 0600 "${env_temp}" "${ENV_FILE}"
+    rm -f "${env_temp}"
+    sudo systemctl restart pcs-meshtastic.service
+    echo "PCS GPSD position feed: ${value}"
+}
+
 check() {
     echo "=== PCS Meshtastic Bluetooth ==="
     echo "Pinned client: Meshtastic Python ${MESHTASTIC_VERSION}; Paho MQTT ${PAHO_MQTT_VERSION}"
@@ -300,6 +331,7 @@ check() {
     echo "BLE target:    $(has_config_value PCS_MESHTASTIC_DEVICE && echo configured || echo not-configured)"
     echo "USB target:    $(has_config_value PCS_MESHTASTIC_PORT && echo configured || echo not-configured)"
     echo "MQTT broker:   $(has_config_value PCS_MESHTASTIC_MQTT_HOST && echo configured || echo not-configured)"
+    echo "GPSD position:  $(sudo awk -F= '$1 == "PCS_MESHTASTIC_GPSD_POSITION" { print $2; exit }' "${ENV_FILE}" 2>/dev/null || true)"
     if [[ -r "${STATUS_FILE}" ]]; then
         echo "Status:"
         python3 -m json.tool "${STATUS_FILE}" || true
@@ -333,6 +365,12 @@ case "${1:-}" in
         ;;
     --check)
         check
+        ;;
+    --enable-gpsd-position)
+        set_gpsd_position yes
+        ;;
+    --disable-gpsd-position)
+        set_gpsd_position no
         ;;
     --disable)
         disable

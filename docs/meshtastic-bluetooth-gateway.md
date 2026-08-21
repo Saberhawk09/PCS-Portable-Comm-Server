@@ -33,8 +33,30 @@ topic, binary/text payload, and retained flag for uplink. PCS publishes that
 envelope unchanged. Messages received on explicitly allowed broker topics are
 returned through Meshtastic's dedicated MQTT proxy API.
 
-PCS does not call general message, position, owner, channel, or configuration
-write methods. Radio and channel configuration remains on the RAK4631.
+PCS does not call general message, owner, channel, or configuration write
+methods. Radio and channel configuration remains on the RAK4631. An optional
+GPSD feed can send the PCS receiver's current fix as the node's normal
+Meshtastic position packet.
+
+## PCS GPS Position Feed
+
+Enable the position feed after the persistent gateway is configured:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --enable-gpsd-position
+```
+
+The gateway requires a valid 2D or 3D fix from `gpsd` and sends at most one
+position update every five minutes on primary channel index 0. A missing fix is
+skipped rather than replaced with zero or stale coordinates. The normal
+Meshtastic channel and position-precision rules determine who can receive the
+packet. PCS status records only update counts and timestamps, never coordinates.
+
+Disable it with:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --disable-gpsd-position
+```
 
 The RAK4631 is dedicated to PCS while this service is active. Stop the gateway
 before using another serial client. In BLE mode, disconnect the Meshtastic
