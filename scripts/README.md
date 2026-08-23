@@ -357,15 +357,20 @@ or present in `config/pcs-install.conf`.
 Configures the tested Pi-Star 4.2.3 hotspot as a fixed PCS node:
 
 ```bash
+PCS_PISTAR_DISABLE_WIFI=no ./setup-pistar-pcs.sh --apply
+sudo reboot
+PCS_PISTAR_DISABLE_WIFI=no ./setup-pistar-pcs.sh --check
 ./setup-pistar-pcs.sh --apply
 sudo reboot
 ./setup-pistar-pcs.sh --check
 ```
 
 Copy this script to Pi-Star and run it there as the normal Pi-Star user. It
-manages hostname, the marked `dhcpcd` static-address block, PCS NTP,
-YSFGateway's GPSD client, and the unused local MobileGPS path. It does not
-contain or modify Wi-Fi passwords, callsigns, or digital-network credentials.
+validates the RTL8152 USB Ethernet carrier before mutation and manages hostname,
+the marked `dhcpcd` static-address block on `eth0`, the final recoverable
+`disable-wifi` boot overlay, PCS NTP, YSFGateway's GPSD client, and the unused
+local MobileGPS path. It does not contain, erase, or modify Wi-Fi passwords,
+callsigns, or digital-network credentials.
 
 See [Full-Stack Reinstall Runbook](../docs/full-stack-reinstall.md).
 

@@ -194,8 +194,9 @@ Flash the supported Pi-Star image. Restore the native Pi-Star backup, or
 configure the hotspot's callsign, radio modes, Wi-Fi SSID, and service
 credentials through the Pi-Star dashboard.
 
-First connect Pi-Star to the PCS Wi-Fi network. Before the PCS script is
-applied, it may receive an address in the dynamic range. Find that temporary
+Connect the Pi-Star RTL8152 USB Ethernet adapter to the PCS LAN. Before the PCS
+script is applied, `eth0` receives an address in the dynamic range. Wi-Fi can
+remain connected during this recovery-safe first stage. Find either temporary
 address from the PCS dashboard or on the PCS Pi:
 
 ```bash
@@ -213,21 +214,31 @@ On Pi-Star:
 
 ```bash
 chmod +x ~/setup-pistar-pcs.sh
+PCS_PISTAR_DISABLE_WIFI=no ~/setup-pistar-pcs.sh --apply
+sudo reboot
+PCS_PISTAR_DISABLE_WIFI=no ~/setup-pistar-pcs.sh --check
 ~/setup-pistar-pcs.sh --apply
 sudo reboot
+~/setup-pistar-pcs.sh --check
 ```
+
+The first reboot moves `10.42.0.3` to USB Ethernet while retaining Wi-Fi for
+recovery. Do not apply the final Wi-Fi-disabled profile until the intermediate
+check passes over wired `eth0`.
 
 The script is idempotent and manages only:
 
 - hostname `pcs-hotspot`
-- the marked `dhcpcd` block for `10.42.0.3/24`
+- the marked `dhcpcd` block for `10.42.0.3/24` on RTL8152 USB `eth0`
+- a managed `/boot/config.txt` overlay that disables onboard Wi-Fi only after
+  the wired handoff is verified
 - gateway, DNS, and preferred NTP server `10.42.0.1`
 - YSFGateway's native GPSD client at `10.42.0.1:2947`
 - disabling the unused local-serial MobileGPS path
 
 It backs up every file it changes under `/root/pcs-pistar-backups/`, restores
-Pi-Star's root filesystem to read-only when it found it read-only, and leaves
-Wi-Fi credentials and radio settings untouched.
+Pi-Star's root and boot filesystems to read-only when it found them read-only,
+and leaves Wi-Fi credentials and radio settings untouched.
 
 After Pi-Star has rebooted at `10.42.0.3`, return to PCS and pair coordinated
 shutdown:

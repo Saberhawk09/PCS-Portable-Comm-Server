@@ -13,6 +13,8 @@ All notable user-facing PCS changes are recorded here.
 - atomic commissioned-profile import with stale APRS-key removal and hardware
   evidence reset
 - idempotent Raspberry Pi UART/serial-console preparation for APRS rebuilds
+- guarded two-stage Pi-Star handoff to its RTL8152 USB Ethernet adapter with a
+  recoverable onboard Wi-Fi disable policy
 
 ### Changed
 
