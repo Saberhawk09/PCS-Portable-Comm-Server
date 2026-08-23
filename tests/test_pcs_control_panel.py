@@ -164,15 +164,15 @@ class PublicDataTests(unittest.TestCase):
             "status": "ok",
             "service": "active",
             "radio": "USB audio / receive-only",
-            "callsign": "W8IJC-2",
+            "callsign": "W8IJC-10",
             "role": "digi-IGate / GPS tracker",
-            "frequency": "144.555 MHz",
+            "frequency": "144.550 MHz",
             "modem": "1200 baud AFSK",
             "aprs_is_profile": "two-way via noam.aprs2.net; all eligible RF to APRS-IS",
             "digipeater": "WIDE1-1 only (fill-in)",
             "beacon": "GPS every 10 minutes",
-            "kiss": "10.42.0.1:8001",
-            "fx25": "enabled",
+            "kiss": "AGW 10.42.0.1:8000 / KISS 10.42.0.1:8001",
+            "fx25": "disabled",
             "packets": "3 last hour / 12 last 24h",
             "last_heard": "2026-08-17T20:15:00Z",
             "tx_state": "enabled",
@@ -187,11 +187,11 @@ class PublicDataTests(unittest.TestCase):
         self.assertNotIn("ptt_gpio", sanitized["aprs"])
         self.assertNotIn("audio_device", sanitized["aprs"])
         self.assertIn("APRS / Packet", page)
-        self.assertIn("W8IJC-2", page)
-        self.assertIn("144.555 MHz", page)
+        self.assertIn("W8IJC-10", page)
+        self.assertIn("144.550 MHz", page)
         self.assertIn("two-way via noam.aprs2.net; all eligible RF to APRS-IS", page)
         self.assertIn("WIDE1-1 only (fill-in)", page)
-        self.assertIn("10.42.0.1:8001", page)
+        self.assertIn("AGW 10.42.0.1:8000 / KISS 10.42.0.1:8001", page)
         self.assertIn("3 last hour / 12 last 24h", page)
         self.assertIn("2026-08-17T20:15:00Z", page)
         self.assertNotIn("USB audio", page)

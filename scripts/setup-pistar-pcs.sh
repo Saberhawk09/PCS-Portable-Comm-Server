@@ -19,7 +19,11 @@ if [[ "${EUID}" -eq 0 ]]; then
 fi
 
 PCS_PISTAR_HOSTNAME="${PCS_PISTAR_HOSTNAME:-pcs-hotspot}"
-PCS_PISTAR_INTERFACE="${PCS_PISTAR_INTERFACE:-wlan0}"
+PCS_PISTAR_INTERFACE="${PCS_PISTAR_INTERFACE:-eth0}"
+PCS_PISTAR_ETHERNET_DRIVER="${PCS_PISTAR_ETHERNET_DRIVER:-r8152}"
+PCS_PISTAR_DISABLE_WIFI="${PCS_PISTAR_DISABLE_WIFI:-yes}"
+PCS_PISTAR_WIFI_INTERFACE="${PCS_PISTAR_WIFI_INTERFACE:-wlan0}"
+PCS_PISTAR_LINK_STABILITY_SECONDS="${PCS_PISTAR_LINK_STABILITY_SECONDS:-30}"
 PCS_PISTAR_ADDRESS="${PCS_PISTAR_ADDRESS:-10.42.0.3/24}"
 PCS_PISTAR_GATEWAY="${PCS_PISTAR_GATEWAY:-10.42.0.1}"
 PCS_PISTAR_DNS="${PCS_PISTAR_DNS:-10.42.0.1}"
@@ -36,14 +40,39 @@ TIMESYNCD_CONF="${TIMESYNCD_DIR}/50-pcs.conf"
 YSFGATEWAY_CONF="/etc/ysfgateway"
 MMDVMHOST_CONF="/etc/mmdvmhost"
 MOBILEGPS_CONF="/etc/mobilegps"
+BOOT_CONFIG="/boot/config.txt"
+RC_LOCAL="/etc/rc.local"
+PISTAR_AP_DROPIN_DIR="/etc/systemd/system/pistar-ap.service.d"
+PISTAR_AP_DROPIN="${PISTAR_AP_DROPIN_DIR}/50-pcs-wired-only.conf"
 PCS_BLOCK_BEGIN="# BEGIN PCS HOTSPOT"
 PCS_BLOCK_END="# END PCS HOTSPOT"
+WIFI_BLOCK_BEGIN="# BEGIN PCS HOTSPOT WIFI"
+WIFI_BLOCK_END="# END PCS HOTSPOT WIFI"
+RC_WIFI_GUARD_BEGIN="# BEGIN PCS HOTSPOT WIFI BOOT GUARD"
+RC_WIFI_GUARD_END="# END PCS HOTSPOT WIFI BOOT GUARD"
 
 PASS_COUNT=0
 FAIL_COUNT=0
 WARN_COUNT=0
 TEMP_FILES=()
 RESTORE_ROOT_RO=0
+RESTORE_BOOT_RO=0
+
+case "${PCS_PISTAR_DISABLE_WIFI}" in
+    yes|no)
+        ;;
+    *)
+        echo "ERROR: PCS_PISTAR_DISABLE_WIFI must be yes or no."
+        exit 2
+        ;;
+esac
+
+if [[ ! "${PCS_PISTAR_LINK_STABILITY_SECONDS}" =~ ^[0-9]+$ ]] || \
+   [[ "${PCS_PISTAR_LINK_STABILITY_SECONDS}" -lt 5 ]] || \
+   [[ "${PCS_PISTAR_LINK_STABILITY_SECONDS}" -gt 300 ]]; then
+    echo "ERROR: PCS_PISTAR_LINK_STABILITY_SECONDS must be an integer from 5 through 300."
+    exit 2
+fi
 
 pass() {
     echo "[PASS] $1"
@@ -87,9 +116,34 @@ remount_root_read_only() {
     return 1
 }
 
+remount_boot_read_only() {
+    local attempt
+
+    for attempt in $(seq 1 30); do
+        sync
+        if sudo mount -o remount,ro /boot 2>/dev/null; then
+            return 0
+        fi
+
+        if [[ "${attempt}" -lt 30 ]]; then
+            sleep 2
+        fi
+    done
+
+    echo "ERROR: Pi-Star boot filesystem could not be restored to read-only."
+    echo "After any package-maintenance job finishes, run:"
+    echo "  sync && sudo mount -o remount,ro /boot"
+    return 1
+}
+
 restore_root_mount() {
-    if [[ "${MODE}" == "apply" && "${RESTORE_ROOT_RO}" -eq 1 ]]; then
-        remount_root_read_only || true
+    if [[ "${MODE}" == "apply" ]]; then
+        if [[ "${RESTORE_BOOT_RO}" -eq 1 ]]; then
+            remount_boot_read_only || true
+        fi
+        if [[ "${RESTORE_ROOT_RO}" -eq 1 ]]; then
+            remount_root_read_only || true
+        fi
     fi
 }
 
@@ -200,8 +254,21 @@ PY
 
 check_configuration() {
     local current_hostname
+    local device_path
+    local default_routes
+    local interface_driver
+    local interface_addresses
     local managed_block
+    local managed_wifi_block
     local expected_block
+    local expected_wifi_block
+    local expected_rc_wifi_guard
+    local expected_ap_dropin
+    local actual_ap_dropin
+    local managed_rc_wifi_guard
+    local root_options
+    local boot_options
+    local wifi_addresses
 
     echo
     echo "=== PCS Pi-Star Integration Check ==="
@@ -231,15 +298,15 @@ check_configuration() {
         managed { print }
         $0 == end { managed=0 }
     ' "${DHCPCD_CONF}")"
-    expected_block="$(
+    expected_block="$({
+        printf '%s\n' "${PCS_BLOCK_BEGIN}"
         printf '%s\n' \
-            "${PCS_BLOCK_BEGIN}" \
             "interface ${PCS_PISTAR_INTERFACE}" \
             "static ip_address=${PCS_PISTAR_ADDRESS}" \
             "static routers=${PCS_PISTAR_GATEWAY}" \
             "static domain_name_servers=${PCS_PISTAR_DNS}" \
             "${PCS_BLOCK_END}"
-    )"
+    })"
 
     if [[ "${managed_block}" == "${expected_block}" ]]; then
         pass "${DHCPCD_CONF} contains the managed PCS static-address block"
@@ -247,16 +314,115 @@ check_configuration() {
         fail "${DHCPCD_CONF} does not contain the expected PCS static-address block"
     fi
 
-    if ip -4 address show dev "${PCS_PISTAR_INTERFACE}" 2>/dev/null | grep -Fq "inet ${PCS_PISTAR_ADDRESS}"; then
+    managed_wifi_block="$(awk -v begin="${WIFI_BLOCK_BEGIN}" -v end="${WIFI_BLOCK_END}" '
+        $0 == begin { managed=1 }
+        managed { print }
+        $0 == end { managed=0 }
+    ' "${BOOT_CONFIG}")"
+    if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "yes" ]]; then
+        expected_wifi_block="$(printf '%s\n' "${WIFI_BLOCK_BEGIN}" 'dtoverlay=disable-wifi' "${WIFI_BLOCK_END}")"
+    else
+        expected_wifi_block=""
+    fi
+    if [[ "${managed_wifi_block}" == "${expected_wifi_block}" ]]; then
+        pass "${BOOT_CONFIG} has the expected PCS Wi-Fi policy"
+    else
+        fail "${BOOT_CONFIG} does not have the expected PCS Wi-Fi policy"
+    fi
+
+    managed_rc_wifi_guard="$(awk -v begin="${RC_WIFI_GUARD_BEGIN}" -v end="${RC_WIFI_GUARD_END}" '
+        $0 == begin { managed=1 }
+        managed { print }
+        $0 == end { managed=0 }
+    ' "${RC_LOCAL}")"
+    expected_rc_wifi_guard=""
+    expected_ap_dropin=""
+    if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "yes" ]]; then
+        expected_rc_wifi_guard="$(printf '%s\n' \
+            "${RC_WIFI_GUARD_BEGIN}" \
+            "if [ -d \"/sys/class/net/${PCS_PISTAR_WIFI_INTERFACE}\" ]; then" \
+            "    /sbin/iwconfig ${PCS_PISTAR_WIFI_INTERFACE} power off" \
+            'fi' \
+            "${RC_WIFI_GUARD_END}")"
+        expected_ap_dropin="$(printf '%s\n' '[Unit]' "ConditionPathExists=/sys/class/net/${PCS_PISTAR_WIFI_INTERFACE}")"
+    fi
+    if [[ "${managed_rc_wifi_guard}" == "${expected_rc_wifi_guard}" ]]; then
+        pass "${RC_LOCAL} has the expected Wi-Fi boot guard"
+    else
+        fail "${RC_LOCAL} does not have the expected Wi-Fi boot guard"
+    fi
+    if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "no" ]] && \
+       ! grep -Fqx "/sbin/iwconfig ${PCS_PISTAR_WIFI_INTERFACE} power off" "${RC_LOCAL}"; then
+        fail "${RC_LOCAL} does not contain the native Wi-Fi power-management command"
+    fi
+    if [[ -f "${PISTAR_AP_DROPIN}" ]]; then
+        actual_ap_dropin="$(cat "${PISTAR_AP_DROPIN}")"
+    else
+        actual_ap_dropin=""
+    fi
+    if [[ "${actual_ap_dropin}" == "${expected_ap_dropin}" ]]; then
+        pass "Pi-Star AP service has the expected wired-only condition"
+    else
+        fail "Pi-Star AP service does not have the expected wired-only condition"
+    fi
+
+    device_path="$(readlink -f "/sys/class/net/${PCS_PISTAR_INTERFACE}/device" 2>/dev/null || true)"
+    interface_driver="$(basename "$(readlink -f "/sys/class/net/${PCS_PISTAR_INTERFACE}/device/driver" 2>/dev/null || true)")"
+    if [[ "${device_path}" == *"/usb"* || "${device_path}" == *"/usb/"* ]]; then
+        pass "${PCS_PISTAR_INTERFACE} is backed by a USB Ethernet device"
+    else
+        fail "${PCS_PISTAR_INTERFACE} is not confirmed as a USB Ethernet device"
+    fi
+    if [[ "${interface_driver}" == "${PCS_PISTAR_ETHERNET_DRIVER}" ]]; then
+        pass "${PCS_PISTAR_INTERFACE} uses ${PCS_PISTAR_ETHERNET_DRIVER}"
+    else
+        fail "${PCS_PISTAR_INTERFACE} uses '${interface_driver:-unknown}', expected '${PCS_PISTAR_ETHERNET_DRIVER}'"
+    fi
+    if [[ "$(cat "/sys/class/net/${PCS_PISTAR_INTERFACE}/carrier" 2>/dev/null || true)" == "1" ]]; then
+        pass "${PCS_PISTAR_INTERFACE} has Ethernet carrier"
+    else
+        fail "${PCS_PISTAR_INTERFACE} does not have Ethernet carrier"
+    fi
+
+    interface_addresses="$(ip -4 address show dev "${PCS_PISTAR_INTERFACE}" 2>/dev/null || true)"
+    if grep -Fq "inet ${PCS_PISTAR_ADDRESS}" <<<"${interface_addresses}"; then
         pass "${PCS_PISTAR_INTERFACE} has ${PCS_PISTAR_ADDRESS}"
     else
         warn "${PCS_PISTAR_INTERFACE} does not yet have ${PCS_PISTAR_ADDRESS}; reboot after applying"
     fi
 
-    if ip route show default 2>/dev/null | grep -Eq "^default via ${PCS_PISTAR_GATEWAY//./\\.} dev ${PCS_PISTAR_INTERFACE}([[:space:]]|$)"; then
+    default_routes="$(ip route show default 2>/dev/null || true)"
+    if grep -Eq "^default via ${PCS_PISTAR_GATEWAY//./\\.} dev ${PCS_PISTAR_INTERFACE}([[:space:]]|$)" <<<"${default_routes}"; then
         pass "Default route uses ${PCS_PISTAR_GATEWAY} on ${PCS_PISTAR_INTERFACE}"
     else
         warn "Default route does not yet use ${PCS_PISTAR_GATEWAY} on ${PCS_PISTAR_INTERFACE}"
+    fi
+
+    if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "yes" ]]; then
+        if ip link show dev "${PCS_PISTAR_WIFI_INTERFACE}" >/dev/null 2>&1; then
+            fail "${PCS_PISTAR_WIFI_INTERFACE} still exists; reboot is required or Wi-Fi disablement failed"
+        else
+            pass "Onboard Wi-Fi hardware is disabled"
+        fi
+        wifi_addresses="$(ip -4 address show dev "${PCS_PISTAR_WIFI_INTERFACE}" 2>/dev/null || true)"
+        if grep -q 'inet ' <<<"${wifi_addresses}"; then
+            fail "${PCS_PISTAR_WIFI_INTERFACE} still has an IPv4 address"
+        else
+            pass "No IPv4 address is assigned to ${PCS_PISTAR_WIFI_INTERFACE}"
+        fi
+    fi
+
+    root_options="$(findmnt -no OPTIONS / 2>/dev/null || true)"
+    boot_options="$(findmnt -no OPTIONS /boot 2>/dev/null || true)"
+    if [[ ",${root_options}," == *,ro,* ]]; then
+        pass "Pi-Star root filesystem is read-only"
+    else
+        fail "Pi-Star root filesystem is not read-only"
+    fi
+    if [[ ",${boot_options}," == *,ro,* ]]; then
+        pass "Pi-Star boot filesystem is read-only"
+    else
+        fail "Pi-Star boot filesystem is not read-only"
     fi
 
     if grep -Fqx "NTP=${PCS_PISTAR_NTP}" "${TIMESYNCD_CONF}" 2>/dev/null; then
@@ -283,7 +449,7 @@ check_configuration() {
         pass "mobilegps.service is disabled"
     fi
 
-    if timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qx yes; then
+    if [[ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)" == "yes" ]]; then
         pass "Pi-Star system time is synchronized"
     else
         warn "Pi-Star system time is not synchronized yet"
@@ -324,12 +490,61 @@ PY
     return 1
 }
 
+validate_wired_preflight() {
+    local device_path=""
+    local interface_driver=""
+    local carrier_changes_before=""
+    local carrier_changes_after=""
+    local second
+
+    if [[ "${PCS_PISTAR_INTERFACE}" == "${PCS_PISTAR_WIFI_INTERFACE}" ]]; then
+        echo "ERROR: PCS_PISTAR_INTERFACE must name the USB Ethernet interface, not ${PCS_PISTAR_WIFI_INTERFACE}."
+        return 1
+    fi
+    if ! ip link show dev "${PCS_PISTAR_INTERFACE}" >/dev/null 2>&1; then
+        echo "ERROR: wired interface ${PCS_PISTAR_INTERFACE} does not exist."
+        return 1
+    fi
+    device_path="$(readlink -f "/sys/class/net/${PCS_PISTAR_INTERFACE}/device" 2>/dev/null || true)"
+    interface_driver="$(basename "$(readlink -f "/sys/class/net/${PCS_PISTAR_INTERFACE}/device/driver" 2>/dev/null || true)")"
+    if [[ "${device_path}" != *"/usb"* ]]; then
+        echo "ERROR: ${PCS_PISTAR_INTERFACE} is not backed by a USB device (${device_path:-unknown})."
+        return 1
+    fi
+    if [[ "${interface_driver}" != "${PCS_PISTAR_ETHERNET_DRIVER}" ]]; then
+        echo "ERROR: ${PCS_PISTAR_INTERFACE} uses ${interface_driver:-unknown}; expected ${PCS_PISTAR_ETHERNET_DRIVER}."
+        return 1
+    fi
+    carrier_changes_before="$(cat "/sys/class/net/${PCS_PISTAR_INTERFACE}/carrier_changes" 2>/dev/null || true)"
+    echo "Verifying continuous wired carrier and PCS reachability for ${PCS_PISTAR_LINK_STABILITY_SECONDS} seconds..."
+    for ((second = 1; second <= PCS_PISTAR_LINK_STABILITY_SECONDS; second++)); do
+        if [[ "$(cat "/sys/class/net/${PCS_PISTAR_INTERFACE}/carrier" 2>/dev/null || true)" != "1" ]]; then
+            echo "ERROR: ${PCS_PISTAR_INTERFACE} lost Ethernet carrier during the stability window."
+            return 1
+        fi
+        if ! ping -I "${PCS_PISTAR_INTERFACE}" -c 1 -W 1 "${PCS_PISTAR_GATEWAY}" >/dev/null 2>&1; then
+            echo "ERROR: ${PCS_PISTAR_INTERFACE} lost PCS reachability during the stability window."
+            return 1
+        fi
+        if [[ "${second}" -lt "${PCS_PISTAR_LINK_STABILITY_SECONDS}" ]]; then
+            sleep 1
+        fi
+    done
+    carrier_changes_after="$(cat "/sys/class/net/${PCS_PISTAR_INTERFACE}/carrier_changes" 2>/dev/null || true)"
+    if [[ -n "${carrier_changes_before}" && "${carrier_changes_after}" != "${carrier_changes_before}" ]]; then
+        echo "ERROR: ${PCS_PISTAR_INTERFACE} carrier changed during the stability window."
+        return 1
+    fi
+
+    echo "Verified ${PCS_PISTAR_INTERFACE}: USB ${PCS_PISTAR_ETHERNET_DRIVER}, stable carrier, PCS reachable."
+}
+
 if [[ ! -f /etc/pistar-release ]]; then
     echo "ERROR: /etc/pistar-release was not found; this does not appear to be Pi-Star."
     exit 1
 fi
 
-for required in python3 systemctl findmnt ip; do
+for required in python3 systemctl findmnt ip ping readlink basename; do
     if ! command -v "${required}" >/dev/null 2>&1; then
         echo "ERROR: Required command not found: ${required}"
         exit 1
@@ -340,6 +555,8 @@ for required_file in \
     "${DHCPCD_CONF}" \
     "${HOSTNAME_FILE}" \
     "${HOSTS_FILE}" \
+    "${BOOT_CONFIG}" \
+    "${RC_LOCAL}" \
     "${YSFGATEWAY_CONF}" \
     "${MMDVMHOST_CONF}" \
     "${MOBILEGPS_CONF}"; do
@@ -356,14 +573,19 @@ if [[ "${MODE}" == "check" ]]; then
     exit $?
 fi
 
+validate_wired_preflight
+
 echo
 echo "=== PCS Pi-Star Integration Setup ==="
 echo
 echo "This manages only the PCS hostname, network, time, and GPS integration."
-echo "It does not modify Wi-Fi credentials, callsigns, radio modes, or network accounts."
+echo "It preserves Wi-Fi credentials, callsigns, radio modes, and network accounts."
 echo
 echo "  Hostname:    ${PCS_PISTAR_HOSTNAME}"
 echo "  Interface:   ${PCS_PISTAR_INTERFACE}"
+echo "  USB driver:  ${PCS_PISTAR_ETHERNET_DRIVER}"
+echo "  Link check:  ${PCS_PISTAR_LINK_STABILITY_SECONDS} continuous seconds"
+echo "  Disable Wi-Fi: ${PCS_PISTAR_DISABLE_WIFI}"
 echo "  Address:     ${PCS_PISTAR_ADDRESS}"
 echo "  Gateway/DNS: ${PCS_PISTAR_GATEWAY}"
 echo "  NTP:         ${PCS_PISTAR_NTP}"
@@ -391,6 +613,11 @@ if [[ ",${root_options}," == *,ro,* ]]; then
     sudo mount -o remount,rw /
     RESTORE_ROOT_RO=1
 fi
+boot_options="$(findmnt -no OPTIONS /boot)"
+if [[ ",${boot_options}," == *,ro,* ]]; then
+    sudo mount -o remount,rw /boot
+    RESTORE_BOOT_RO=1
+fi
 
 backup_dir="/root/pcs-pistar-backups/$(date +%Y%m%d-%H%M%S)"
 sudo mkdir -p "${backup_dir}"
@@ -398,6 +625,8 @@ for path in \
     "${DHCPCD_CONF}" \
     "${HOSTNAME_FILE}" \
     "${HOSTS_FILE}" \
+    "${BOOT_CONFIG}" \
+    "${RC_LOCAL}" \
     "${YSFGATEWAY_CONF}" \
     "${MMDVMHOST_CONF}" \
     "${MOBILEGPS_CONF}"; do
@@ -405,6 +634,9 @@ for path in \
 done
 if [[ -f "${TIMESYNCD_CONF}" ]]; then
     sudo cp -a "${TIMESYNCD_CONF}" "${backup_dir}/50-pcs.conf"
+fi
+if [[ -f "${PISTAR_AP_DROPIN}" ]]; then
+    sudo cp -a "${PISTAR_AP_DROPIN}" "${backup_dir}/50-pcs-wired-only.conf"
 fi
 
 hostname_temp="$(make_temp_file)"
@@ -453,6 +685,96 @@ PY
 } >> "${dhcpcd_temp}"
 sudo install -o root -g root -m 0664 "${dhcpcd_temp}" "${DHCPCD_CONF}"
 
+boot_temp="$(make_temp_file)"
+awk -v begin="${WIFI_BLOCK_BEGIN}" -v end="${WIFI_BLOCK_END}" '
+    $0 == begin { managed=1; next }
+    $0 == end { managed=0; next }
+    !managed { print }
+' "${BOOT_CONFIG}" > "${boot_temp}"
+python3 - "${boot_temp}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+path.write_text(path.read_text().rstrip() + "\n")
+PY
+if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "yes" ]]; then
+    {
+        printf '\n%s\n' "${WIFI_BLOCK_BEGIN}"
+        echo 'dtoverlay=disable-wifi'
+        printf '%s\n' "${WIFI_BLOCK_END}"
+    } >> "${boot_temp}"
+fi
+sudo install -o root -g root -m 0644 "${boot_temp}" "${BOOT_CONFIG}"
+
+rc_local_temp="$(make_temp_file)"
+python3 - \
+    "${RC_LOCAL}" \
+    "${rc_local_temp}" \
+    "${PCS_PISTAR_DISABLE_WIFI}" \
+    "${PCS_PISTAR_WIFI_INTERFACE}" \
+    "${RC_WIFI_GUARD_BEGIN}" \
+    "${RC_WIFI_GUARD_END}" <<'PY'
+from pathlib import Path
+import sys
+
+source, destination, disable_wifi, wifi_interface, begin, end = sys.argv[1:]
+original = Path(source).read_text().splitlines()
+native = f"/sbin/iwconfig {wifi_interface} power off"
+guard = [
+    begin,
+    f'if [ -d "/sys/class/net/{wifi_interface}" ]; then',
+    f"    {native}",
+    "fi",
+    end,
+]
+replacement = guard if disable_wifi == "yes" else [native]
+rendered = []
+managed = False
+replaced = False
+
+for line in original:
+    if line == begin:
+        if managed or replaced:
+            raise SystemExit("invalid or duplicate PCS Wi-Fi boot guard")
+        managed = True
+        replaced = True
+        rendered.extend(replacement)
+        continue
+    if line == end:
+        if not managed:
+            raise SystemExit("unmatched PCS Wi-Fi boot guard end")
+        managed = False
+        continue
+    if managed:
+        continue
+    if line.strip() == native:
+        if replaced:
+            raise SystemExit("duplicate native Wi-Fi power-management command")
+        replaced = True
+        rendered.extend(replacement)
+        continue
+    rendered.append(line)
+
+if managed:
+    raise SystemExit("unterminated PCS Wi-Fi boot guard")
+if not replaced:
+    raise SystemExit("native Wi-Fi power-management command was not found")
+Path(destination).write_text("\n".join(rendered).rstrip() + "\n")
+PY
+sudo install -o root -g root -m 0755 "${rc_local_temp}" "${RC_LOCAL}"
+
+if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "yes" ]]; then
+    pistar_ap_temp="$(make_temp_file)"
+    printf '%s\n' '[Unit]' "ConditionPathExists=/sys/class/net/${PCS_PISTAR_WIFI_INTERFACE}" > "${pistar_ap_temp}"
+    sudo mkdir -p "${PISTAR_AP_DROPIN_DIR}"
+    sudo install -o root -g root -m 0644 "${pistar_ap_temp}" "${PISTAR_AP_DROPIN}"
+else
+    sudo rm -f "${PISTAR_AP_DROPIN}"
+    sudo rmdir "${PISTAR_AP_DROPIN_DIR}" 2>/dev/null || true
+fi
+sudo systemctl daemon-reload
+
 timesync_temp="$(make_temp_file)"
 {
     echo "[Time]"
@@ -481,6 +803,15 @@ sudo systemctl disable --now mobilegps.service >/dev/null 2>&1 || true
 sudo hostname "${PCS_PISTAR_HOSTNAME}"
 sync
 
+if [[ "${RESTORE_BOOT_RO}" -eq 1 ]]; then
+    if remount_boot_read_only; then
+        RESTORE_BOOT_RO=0
+    else
+        RESTORE_BOOT_RO=0
+        exit 1
+    fi
+fi
+
 if [[ "${RESTORE_ROOT_RO}" -eq 1 ]]; then
     if remount_root_read_only; then
         RESTORE_ROOT_RO=0
@@ -497,7 +828,7 @@ echo
 echo "PCS Pi-Star integration applied."
 echo "Backup created on Pi-Star at: ${backup_dir}"
 echo
-echo "Reboot Pi-Star so the static address is applied cleanly:"
+echo "Reboot Pi-Star so the wired address and Wi-Fi policy are applied cleanly:"
 echo "  sudo reboot"
 echo
 echo "After reboot, verify from this script's directory:"

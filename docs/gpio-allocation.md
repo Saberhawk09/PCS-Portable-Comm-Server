@@ -12,12 +12,12 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | RTC SDA | GPIO2 | 3 | Existing subsystem | I2C SDA; kernel-managed. |
 | RTC SCL | GPIO3 | 5 | Existing subsystem | I2C SCL; kernel-managed. |
 | LCD RS | GPIO4 | 7 | Installed and bench-tested | HD44780-compatible 16x2 LCD in 4-bit mode. |
-| EasyDigi APRS PTT | GPIO6 | 31 | Selected; not bench-tested | Active high on the Pi side. EasyDigi optoisolation produces an active-low radio PTT closure to ground. Dire Wolf directive: `PTT GPIO 6`. |
+| EasyDigi APRS PTT | GPIO6 | 31 | Installed / tested | Active high on the Pi side. EasyDigi optoisolation produces an active-low SA818S PTT closure to ground. Dire Wolf 1.8.1 directive: `PTT GPIOD gpiochip0 6`. |
 | MAX7219 CS/LOAD | GPIO8 | 24 | Installed and bench-tested | SPI0 CE0 through one channel of the 74AHCT125. |
 | MAX7219 DIN | GPIO10 | 19 | Installed and bench-tested | SPI0 MOSI through one channel of the 74AHCT125. |
 | MAX7219 CLK | GPIO11 | 23 | Installed and bench-tested | SPI0 SCLK through one channel of the 74AHCT125. |
-| SA818S UART TX | GPIO14 | 8 | Reserved; logic level unverified | Pi TX to radio RXD. Do not connect until the radio UART level is measured. |
-| SA818S UART RX | GPIO15 | 10 | Reserved; logic level unverified | Pi RX from radio TXD. Do not connect until the radio UART level is measured. |
+| SA818S UART TX | GPIO14 | 8 | Installed / tested | `/dev/serial0` Pi TX to SA818S RXD at 9600 8N1; managed by `pcs-sa818.service`. |
+| SA818S UART RX | GPIO15 | 10 | Installed / tested | `/dev/serial0` Pi RX from SA818S TXD at 9600 8N1; managed by `pcs-sa818.service`. |
 | LCD E | GPIO17 | 11 | Installed and bench-tested | HD44780 enable. |
 | Fan PWM | GPIO18 | 12 | Hardware PWM control implemented; RPM unmeasured | PWM0/ALT5, 100 Hz, fail-safe full duty. |
 | WS2812 data | GPIO21 | 40 | Installed and live-tested | PCM output through the 74AHCT125 to six WS2812-compatible status pixels. |
@@ -37,9 +37,10 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
   Guarded TX validation rejects a stale local GPIO17 setting left by an older
   `config/pcs-install.conf`; update it to GPIO6 and repeat the disconnected-radio
   polarity test before activation.
-- The SA818 UART is separate from EasyDigi audio/PTT isolation. Keep it disabled
-  until the module logic voltage has been measured and an appropriate level
-  interface has been confirmed.
+- The SA818S UART is separate from EasyDigi audio/PTT isolation. The serial
+  console is disabled, `enable_uart=1` is active, and Bluetooth remains enabled.
+  `pcs-sa818.service` owns `/dev/serial0` only long enough to apply and verify
+  the commissioned radio profile before Dire Wolf starts.
 - GPIO21 uses the WS2812 driver's PCM path so GPIO18 remains available for
   hardware PWM fan control. PCM cannot simultaneously serve an I2S audio
   device; the separate USB Dire Wolf sound adapter does not use PCM.
@@ -186,6 +187,6 @@ GPIO6 LOW  -> EasyDigi optocoupler off -> radio PTT open -> receive
 GPIO6 HIGH -> EasyDigi optocoupler on  -> radio PTT grounded -> transmit
 ```
 
-The output must initialize inactive and remain inactive during boot, service
-startup, shutdown, and software failure testing. Verify this with the radio
-disconnected before permitting RF transmit.
+This polarity, release-to-RX behavior, and the EasyDigi optocoupler path have
+been bench- and RF-tested. Dire Wolf is the only service permitted to request
+GPIO6; the radio initializer never touches PTT.

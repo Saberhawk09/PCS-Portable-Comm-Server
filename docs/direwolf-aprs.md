@@ -4,24 +4,30 @@ PCS treats APRS as an optional subsystem with a deliberate two-stage rollout:
 
 1. **Software staging** installs Dire Wolf and PCS monitoring support while the
    service remains stopped and disabled.
-2. **Hardware activation** selects the real USB audio interface, station
-   identity, radio/PTT method, levels, frequency, and optional APRS-IS settings.
+2. **Managed activation** installs the commissioned SA818S, ALSA, firewall, and
+   Dire Wolf profile after an operator reviews the explicit RF confirmation.
 
-The repository implements software staging plus a guarded activation workflow.
-Before hardware arrives, operators can record the desired profile, render and
-lint both receive and transmit configurations, inspect capabilities, and run
-synthetic packet tests. Activation remains blocked by explicit hardware evidence
-gates, so placeholders cannot accidentally reach RF or APRS-IS.
+The hardware was commissioned on August 23, 2026. RF TX/RX, UART control,
+Easy Digi audio/PTT, GNSS, two-way APRS-IS messaging, message acknowledgements,
+WIDE1-1 fill-in digipeating, AGW, and KISS were demonstrated. The repository
+still retains its evidence gates and typed RF confirmation so a clean rebuild
+cannot infer physical validation from mere device presence.
 
 ## What Software Staging Does
 
 Run from the repository root on the PCS Pi:
 
 ```bash
+./scripts/setup-direwolf-aprs.sh --prepare-uart
 ./scripts/setup-direwolf-aprs.sh --prepare
-./scripts/setup-direwolf-aprs.sh --configure-options
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
 ./scripts/setup-direwolf-aprs.sh --check
 ```
+
+The base installer runs `--prepare-uart` automatically when APRS staging is
+selected. It enables the hardware UART, removes only serial-console kernel
+arguments, disables serial getty units, and leaves Bluetooth unchanged. If a
+boot file changes, reboot before attempting activation.
 
 The staging command:
 
@@ -44,8 +50,9 @@ hidden while the subsystem is only staged.
 The packaged Dire Wolf service runs as the unprivileged `direwolf` user. PCS
 ensures membership in the available `audio`, `dialout`, and Raspberry Pi `gpio`
 groups, verifies that the packaged unit loads `/etc/direwolf.conf`, and uses a
-small restart/firewall ordering override that selects the validated executable
-path rather than inventing a parallel daemon. The Debian package remains
+managed ordering override that selects the validated executable path and starts
+only after radio programming, ALSA restoration, GPSD, networking, and LAN
+firewalling. The Debian package remains
 installed because it supplies the service account and unit; a newer pinned
 source build is installed under `/usr/local` only when the packaged version is
 too old. Re-running `--prepare` skips the build when an installed 1.8+ version
@@ -61,6 +68,8 @@ specific install or service operation.
 | --- | --- | --- |
 | `--prepare` | Yes | Install Dire Wolf, nftables, libgpiod tools, and build dependencies; build pinned stable 1.8.1 if the packaged version is older than 1.8; copy the safe template; keep Dire Wolf stopped and disabled. |
 | `--configure-options` | Local config only | Interactively record non-secret desired-profile values. It never collects the APRS-IS passcode. |
+| `--import-commissioned-profile` | Local config only | Replace the complete managed APRS block with the versioned PCS profile, preserve non-APRS and active-mode state, back up the prior local config, and reset every hardware-evidence gate. |
+| `--prepare-uart` | Boot files and services | Idempotently set `enable_uart=1`, remove the Pi serial login console, and disable serial getty units without changing Bluetooth. Existing boot files receive one-time `.pcs-pre-uart.bak` backups. |
 | `--record-validation` | Local config only | Record receive audio, radio channel, PTT, transmit audio/deviation, and timing checks after they have actually passed. |
 | `--check` | No | Show desired profile, installed package, service, GPSD, audio, and activation state. |
 | `--capabilities` | No | Report Dire Wolf version, gpsd, GPIO, nftables, `gen_packets`, `atest`, FX.25, and variable-speed fixture support. |
@@ -71,8 +80,8 @@ specific install or service operation.
 | `--render-config tx` | No | Print the proposed complete transmit configuration with unresolved choices marked `BLOCKED`. |
 | `--validate-config rx` | No | Lint the receive configuration and report every receive-activation blocker. |
 | `--validate-config tx` | No | Lint the transmit configuration and report every hardware, policy, and capability blocker. |
-| `--activate-rx` | Yes | Transactionally install receive audio, RF-to-IS IGating, GPSD, logging, and LAN-only KISS. Output is `null` and all RF transmit directives are absent. |
-| `--activate-tx` | Yes, RF-capable | Transactionally install the complete operator-approved profile. Requires every evidence gate plus the typed `ENABLE-RF-W8IJC-2` confirmation. |
+| `--activate-rx` | Yes | Transactionally install receive audio, SA818S/ALSA preparation, RF-to-IS IGating, GPSD, logging, and LAN-only AGW/KISS. Output is `null` and all RF transmit directives are absent. |
+| `--activate-tx` | Yes, RF-capable | Transactionally install the complete commissioned profile. Requires every evidence gate plus the typed `ENABLE-RF-W8IJC-10` confirmation. |
 | `--rollback` | Yes | Restore the newest root-owned PCS Dire Wolf configuration backup and its recorded active mode. |
 | `--help` / `-h` | No | Print the same concise command summary in the terminal. |
 
@@ -81,6 +90,8 @@ Examples:
 ```bash
 ./scripts/setup-direwolf-aprs.sh --capabilities
 ./scripts/setup-direwolf-aprs.sh --software-test
+./scripts/setup-direwolf-aprs.sh --prepare-uart
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
 ./scripts/setup-direwolf-aprs.sh --detect-audio
 ./scripts/setup-direwolf-aprs.sh --render-config rx
 ./scripts/setup-direwolf-aprs.sh --validate-config tx
@@ -96,31 +107,30 @@ live configuration.
 relevant Dire Wolf settings for PCS. Its active defaults are receive-only: the
 output device is `null`, AGW/KISS listeners are disabled with port `0`, and
 APRS-IS, PTT, beaconing, digipeating, and FEC transmit remain commented out.
-`W8IJC-2` is the selected station identity. `PCS_AUDIO` remains a placeholder;
-do not enable the service until it is replaced with the detected stable ALSA
-identifier and the remaining activation blockers are resolved.
+`W8IJC-10` is the selected station identity and `Device` is the stable ALSA
+card ID. The template still uses a null output and no PTT, so it cannot transmit.
 
 ## Selected PCS Deployment Profile
 
-The intended profile supplied by the operator is recorded in the repository:
+The commissioned profile supplied and physically validated by the operator is:
 
 | Setting | Selected value | Activation state |
 | --- | --- | --- |
 | Role | GPS-backed two-way digi-IGate | Selected |
-| Callsign / SSID | `W8IJC-2` | Selected |
-| RF channel | `144.555 MHz` local tactical APRS channel | Selected; radio programming and on-air confirmation pending |
-| USB audio | Unitek Y-247A / C-Media `0d8c:0014`; ALSA card ID `Device` | Installed and detected for capture/playback; stable physical-port naming, levels, and radio path pending |
-| APRS-IS | Conventional two-way IGate through `noam.aprs2.net` | All eligible RF to APRS-IS; normal APRS message gating back to RF; passcode pending |
-| GPS | EM7565 NMEA through local gpsd at `localhost:2947` | Selected and configured in the template |
-| Network TNC | KISS on 8001/tcp | Persistent nftables PCS-LAN-only rule implemented; deployment validation pending |
-| RF transmit | Intended | Hardware validation pending |
-| PTT | Active-high BCM GPIO6 / physical pin 31 through EasyDigi; radio side closes PTT to ground | Selected; wiring and bench validation pending |
-| Beacon | GPS tracker every 10 minutes | RF path, symbol, and final comment pending |
-| Digipeater | WIDE1-1 fill-in on the local tactical channel | Rule selected; hardware/on-air validation pending |
-| FX.25 transmit | Enabled in intended profile | On-air compatibility validation pending |
+| Callsign / SSID | `W8IJC-10` | RF and APRS-IS tested |
+| RF channel | `144.5500 MHz` simplex, 25 kHz, no tones | SA818S readback and RF TX/RX tested |
+| USB audio | Sabrent/C-Media; ALSA card ID `Device` | -18 dB playback, 100% capture, AGC off; bidirectional AFSK tested |
+| APRS-IS | Conventional two-way IGate through `noam.aprs2.net` | RF-to-IS and eligible APRS-IS message return tested |
+| GPS | EM7565 NMEA through local gpsd at `localhost:2947` | 3D fix and APRS.fi position/altitude/course demonstrated |
+| Network TNC | AGW 8000/tcp and KISS 8001/tcp | EasyTerm and `kissutil` tested; both restricted to the PCS LAN |
+| RF transmit | Enabled only by guarded TX profile | 3/3 PCS-to-FT3D and 10/10 acknowledged long messages demonstrated |
+| PTT | Active-high BCM GPIO6 / pin 31 through Easy Digi | Bench and RF tested; Dire Wolf uses `PTT GPIOD gpiochip0 6` |
+| Beacon | GPS tracker to APRS-IS every 10 minutes | `SENDTO=IG`, `igate` symbol, `T` overlay, altitude enabled |
+| Digipeater | WIDE1-1 one-hop fill-in only | 4/4 FT3D-to-PCS packets and `[0H]` repeat behavior demonstrated |
+| FX.25 transmit | Disabled | Not part of the commissioned on-air profile; receive support remains available |
 | Packet logging | Enabled | Managed directory, retention, telemetry parser, and dashboard fields implemented |
 
-The 144.555 MHz tactical channel is an alternate APRS RF carrier chosen to reduce
+The 144.550 MHz local channel is an alternate APRS RF carrier chosen to reduce
 interference and packet collisions on 144.390 MHz; it is not intended to be
 private. The selected policy gates every received packet that is eligible under
 Dire Wolf's normal IGate rules. In the generated Dire Wolf configuration this
@@ -138,10 +148,46 @@ KISS: 8001/tcp
 ```
 
 They are disabled in the safe template and closed while Dire Wolf is staged.
-Activation installs `pcs-aprs-kiss-firewall.service`, which permits the selected
-KISS port only from loopback and `10.42.0.0/24` on `eth0`, then drops that port
+Activation installs `pcs-aprs-kiss-firewall.service`, which permits both ports
+only from loopback and `10.42.0.0/24` on `eth0`, then drops those ports
 on every other interface. The Pi-side self-test verifies the persistent rule;
 the hardware activation checklist still requires a client-side reachability test.
+
+## Managed Startup and Recovery
+
+Activation installs three prerequisite services and a Dire Wolf override:
+
+1. `pcs-sa818.service` opens `/dev/serial0` at 9600 8N1, sends the commissioned
+   SA818S commands, and requires an exact group readback:
+
+   ```text
+   AT+DMOSETGROUP=1,144.5500,144.5500,0000,1,0000
+   AT+DMOSETVOLUME=8
+   AT+SETFILTER=1,1,1
+   AT+SETTAIL=0
+   AT+DMOREADGROUP
+   ```
+
+   The SA818S convention is inverted for filters: `1` means off. The expected
+   readback is `+DMOREADGROUP:1,144.5500,144.5500,0000,1,0000`.
+2. `pcs-aprs-audio.service` waits for ALSA card `Device`, applies Speaker
+   `-18dB`, Mic `100%`, and Auto Gain Control `off`, then verifies the controls.
+3. `pcs-aprs-kiss-firewall.service` admits AGW 8000/tcp and KISS 8001/tcp only
+   on loopback or `eth0` from `10.42.0.0/24` and drops both ports elsewhere.
+4. `direwolf.service` starts after those services, gpsd, sound, and
+   `network-online.target`. Its pre-start hooks reapply both the radio and audio
+   profiles on every restart. `Restart=always` with a five-second delay lets it
+   recover when the UART or USB sound card disappears and later re-enumerates.
+
+Dire Wolf alone owns GPIO6 PTT. The UART initializer never keys the radio. The
+bench FTDI adapter must be unplugged during normal RF operation: it previously
+caused stuck-TX behavior and defeats the intended USB/radio-side isolation.
+
+Commissioning also established two physical test cautions. The Pi GPIO extender
+ribbon must be installed for both UART/PTT continuity, and a handheld receiver
+at extremely close range can overload and mimic bad modulation. The FT3D test
+decoded normally at close range after its antenna was removed; do not tune the
+audio path around a receiver-overload artifact.
 
 ## Relevant Configuration Options
 
@@ -156,6 +202,8 @@ APRS-IS passcode.
 | `PCS_APRS_ROLE` | `monitor`, `rx-igate`, `digipeater`, `tracker`, `digi-igate` | Selects which configuration blocks are generated. |
 | `PCS_APRS_CALLSIGN` | Licensed callsign with optional SSID | Becomes `MYCALL` and normally the APRS-IS login identity. |
 | `PCS_APRS_FREQUENCY` | Operator label such as a frequency and band | Dashboard/documentation metadata only; Dire Wolf does not tune the radio. |
+| `PCS_APRS_RADIO` | Hardware label | Dashboard-only description of the commissioned SA818S/Easy Digi/audio path. |
+| `PCS_APRS_CONFIG_VERSION` | Managed integer | Selects the versioned APRS defaults and triggers safe legacy-profile migration when outdated. |
 | `PCS_APRS_ACTIVE_MODE` | `staged`, `rx`, `tx` | Written by activation/rollback so status reflects what is actually live rather than desired TX intent. |
 
 `monitor` is a local receive-only software TNC. `rx-igate` forwards received RF
@@ -167,8 +215,12 @@ on-air validation.
 
 | PCS option | Safe default | Dire Wolf directive |
 | --- | --- | --- |
-| `PCS_APRS_AUDIO_INPUT` | `auto` until detection | First `ADEVICE` parameter |
-| `PCS_APRS_AUDIO_OUTPUT` | `null` | Optional second `ADEVICE` parameter |
+| `PCS_APRS_AUDIO_INPUT` | `plughw:CARD=Device,DEV=0` | First `ADEVICE` parameter |
+| `PCS_APRS_AUDIO_OUTPUT` | `plughw:CARD=Device,DEV=0` | Second `ADEVICE` parameter in TX mode; RX forces `null` |
+| `PCS_APRS_AUDIO_CARD` | `Device` | Stable ALSA card ID used by the mixer service |
+| `PCS_APRS_PLAYBACK_CONTROL` / `PCS_APRS_PLAYBACK_LEVEL` | `Speaker` / `-18dB` | Commissioned transmit playback control and level |
+| `PCS_APRS_CAPTURE_CONTROL` / `PCS_APRS_CAPTURE_LEVEL` | `Mic` / `100%` | Commissioned receive capture control and level |
+| `PCS_APRS_AGC_CONTROL` / `PCS_APRS_AGC_STATE` | `Auto Gain Control` / `off` | Keeps AGC disabled before every Dire Wolf start |
 | `PCS_APRS_SAMPLE_RATE` | `48000` | `ARATE` |
 | `PCS_APRS_AUDIO_CHANNELS` | `1` | `ACHANNELS` |
 | `PCS_APRS_MODEM` | `1200` | `MODEM` |
@@ -179,6 +231,21 @@ radio data/discriminator path; a normal speaker/microphone interface is not
 enough. Advanced 2400/4800 PSK variants remain manual because their exact modem
 syntax and compatibility must match the deployed Dire Wolf version and peer
 network.
+
+### SA818S radio programming
+
+| PCS option | Commissioned value | Effect |
+| --- | --- | --- |
+| `PCS_APRS_RADIO_INIT` | `yes` | Requires boot-time programming/readback before Dire Wolf. |
+| `PCS_APRS_RADIO_DEVICE` / `PCS_APRS_RADIO_BAUD` | `/dev/serial0` / `9600` | Pi UART control path, 8N1. |
+| `PCS_APRS_RADIO_BANDWIDTH_KHZ` | `25` | SA818S group bandwidth code `1`. |
+| `PCS_APRS_RADIO_TX_FREQUENCY_MHZ` / `PCS_APRS_RADIO_RX_FREQUENCY_MHZ` | `144.5500` / `144.5500` | Simplex TX/RX frequency. |
+| `PCS_APRS_RADIO_TX_TONE` / `PCS_APRS_RADIO_RX_TONE` | `0000` / `0000` | No CTCSS/CDCSS. |
+| `PCS_APRS_RADIO_SQUELCH` / `PCS_APRS_RADIO_VOLUME` | `1` / `8` | Validated receiver settings. |
+| `PCS_APRS_RADIO_PRE_DE_EMPHASIS` | `off` | Produces SA818S filter code `1`. |
+| `PCS_APRS_RADIO_HIGH_PASS` | `off` | Produces SA818S filter code `1`. |
+| `PCS_APRS_RADIO_LOW_PASS` | `off` | Produces SA818S filter code `1`. |
+| `PCS_APRS_RADIO_TX_TAIL` | `off` | Disables the radio's transmit tail tone. |
 
 ### Transmit and PTT
 
@@ -192,39 +259,41 @@ network.
 | `PCS_APRS_BEACON` | `yes` / `no` | Enables `TBEACON` in the guarded TX profile after interval/path/symbol review. |
 | `PCS_APRS_BEACON_TYPE` | `gps-tracker` / `fixed` | Selected as `gps-tracker`. |
 | `PCS_APRS_BEACON_INTERVAL` | Dire Wolf interval | Selected as `10:00` (every 10 minutes). |
-| `PCS_APRS_BEACON_PATH` | RF path or empty/direct | Pending tactical-channel plan. |
-| `PCS_APRS_BEACON_SYMBOL` | APRS symbol description | Pending operator selection. |
-| `PCS_APRS_BEACON_COMMENT` | Short public comment | Initially `PCS`; review before activation. |
+| `PCS_APRS_BEACON_PATH` | RF path or empty/direct | Commissioned as direct; `SENDTO=IG` keeps this beacon off RF. |
+| `PCS_APRS_BEACON_SENDTO` | `IG` or channel | `IG` sends the GNSS tracker beacon to APRS-IS rather than RF. |
+| `PCS_APRS_BEACON_SYMBOL` | APRS symbol description | Commissioned as `igate`. |
+| `PCS_APRS_BEACON_OVERLAY` | Single overlay character | Commissioned as `T`. |
+| `PCS_APRS_BEACON_ALTITUDE` | `yes` / `no` | Adds `ALT=1` when enabled. |
+| `PCS_APRS_BEACON_COMMENT` | Short public comment | `PCS Portable Communication Server - W8IJC`. |
 | `PCS_APRS_DIGIPEAT` | `yes` / `no` | Enables the operator-approved `DIGIPEAT` rule only in the TX profile. |
 | `PCS_APRS_DIGIPEAT_MODE` | `fill-in` / `wide-area` / `custom` | Selected as `fill-in`. |
 | `PCS_APRS_DIGIPEAT_ALIAS` | Human-readable repeated alias | Selected as `WIDE1-1`. |
-| `PCS_APRS_DIGIPEAT_ALIAS_PATTERN` | One-hop alias regex | `^W8IJC-2$`; `MYCALL` is also implied by Dire Wolf. |
+| `PCS_APRS_DIGIPEAT_ALIAS_PATTERN` | One-hop alias regex | `^WIDE1-1$`; `MYCALL` is also implied by Dire Wolf. |
 | `PCS_APRS_DIGIPEAT_WIDE_PATTERN` | WIDEn-N regex | `^WIDE1-1$`; deliberately excludes WIDE2-N and larger paths. |
 | `PCS_APRS_DIGIPEAT_PREEMPTIVE` | `OFF`, `DROP`, `MARK`, or `TRACE` | Selected as `OFF`. |
 | `PCS_APRS_DIGIPEAT_FILTER` | `all-eligible` or Dire Wolf filter | Selected as `all-eligible`; no additional `FILTER 0 0` restriction. |
 | `PCS_APRS_DIGIPEAT_DEDUPE_SECONDS` | Seconds | Selected as `30`. |
-| `PCS_APRS_FX25_TX` | `yes` / `no` | Enables `FX25TX` only in the TX profile; normal receive support does not require this. |
+| `PCS_APRS_FX25_TX` | `yes` / `no` | Commissioned as `no`; normal FX.25 receive support does not require this. |
 
-Dire Wolf timing directives `DWAIT`, `SLOTTIME`, `PERSIST`, `TXDELAY`,
-`TXTAIL`, and `FULLDUP` are shown in the template. Their example values are not
-measured PCS defaults and must be calibrated with the actual radio.
+Dire Wolf timing directives use 10 ms units. PCS testing found 700 ms or less
+unusable, 800 ms marginal, and 900 ms reliable for the SA818S PTT-to-audio delay.
 
 | PCS option | Selected starting value | Activation treatment |
 | --- | --- | --- |
 | `PCS_APRS_DWAIT` | `0` | Rendered only in the TX profile. |
-| `PCS_APRS_SLOTTIME` | `10` | Units are 10 ms; hardware validation required. |
-| `PCS_APRS_PERSIST` | `63` | Hardware/channel validation required. |
-| `PCS_APRS_TXDELAY` | `30` | Starting value only; PTT/audio measurement required. |
-| `PCS_APRS_TXTAIL` | `10` | Starting value only; PTT/audio measurement required. |
+| `PCS_APRS_SLOTTIME` | `10` | 100 ms channel-access slot. |
+| `PCS_APRS_PERSIST` | `63` | Conventional half-duplex persistence. |
+| `PCS_APRS_TXDELAY` | `90` | Commissioned 900 ms SA818S pre-key delay. |
+| `PCS_APRS_TXTAIL` | `20` | Commissioned 200 ms tail. |
 | `PCS_APRS_FULLDUP` | `OFF` | Selected for the simplex tactical channel. |
 
 ### TNC clients, APRS-IS, GPS, and logging
 
 | PCS option | Safe default | Effect |
 | --- | --- | --- |
-| `PCS_APRS_AGW_PORT` | `0` | `AGWPORT`; `0` disables, conventional enabled port is 8000/tcp. |
-| `PCS_APRS_KISS_PORT` | `0` | `KISSPORT`; `0` disables, conventional enabled port is 8001/tcp. |
-| `PCS_APRS_KISS_LAN_INTERFACE` | `eth0` | Only this PCS client interface may accept KISS traffic. |
+| `PCS_APRS_AGW_PORT` | `8000` | `AGWPORT`; EasyTerm and connected-mode-capable clients. |
+| `PCS_APRS_KISS_PORT` | `8001` | `KISSPORT`; `kissutil` and KISS clients. |
+| `PCS_APRS_KISS_LAN_INTERFACE` | `eth0` | Only this PCS client interface may accept AGW/KISS traffic. |
 | `PCS_APRS_KISS_LAN_NETWORK` | `10.42.0.0/24` | Source network admitted by the dedicated nftables rule. |
 | `PCS_APRS_IGATE` | `no` | Adds the `IGSERVER` and `IGLOGIN` APRS-IS connection; mode controls the return RF path. |
 | `PCS_APRS_IGATE_SERVER` | `noam.aprs2.net` | Regional APRS-IS rotate address; change when appropriate. |
@@ -271,6 +340,19 @@ eligible messages directly without a digipeater path, plus `IGTXLIMIT 6 10`.
 
 ## Configure the Desired Profile
 
+For this PCS, import the complete version-controlled profile instead of
+copying individual settings:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
+```
+
+This removes obsolete `PCS_APRS_*` keys, replaces every desired APRS value as
+one managed block, preserves unrelated installer choices and the current live
+mode, and resets all validation evidence to `no`. The prior local config is
+saved as `config/pcs-install.conf.bak`. This prevents an old hidden alias or RF
+setting from surviving an upgrade.
+
 Run this at an interactive Pi terminal:
 
 ```bash
@@ -283,6 +365,11 @@ GPSD, transmit intent, PTT family, beaconing, digipeating, FX.25 transmit, and
 logging. It does not ask for an APRS-IS passcode and does not create
 `/etc/direwolf.conf`.
 
+When the local APRS schema is old or missing, `--configure-options` first loads
+the current commissioned defaults and resets evidence before presenting the
+prompts. Unsupported legacy APRS keys are removed when the reviewed settings
+are saved.
+
 This separation lets the intended operating profile be reviewed in GitHub
 issues or documentation without committing the APRS-IS passcode or generating
 a hardware-specific live configuration.
@@ -293,16 +380,18 @@ The implemented generator refuses activation until the required values and
 evidence gates are complete. `--validate-config rx` and `--validate-config tx`
 print the complete current blocker list without changing the system.
 
-- confirmation that the radio is programmed for the selected 144.555 MHz
-  tactical channel
+- confirmation that the radio is programmed for the selected 144.550 MHz
+  local channel and `/dev/serial0` is present
+- `enable_uart=1`, no `serial0`/`ttyAMA*`/`ttyS*` kernel console, and a reboot
+  after any boot-file change made by `--prepare-uart`
 - a Dire Wolf build that reports compiled-in gpsd support, plus a successful
   local `localhost:2947` protocol/fix check
 - detected ALSA capture/playback identifier
 - GPIO6 / physical pin 31 wiring to the EasyDigi; active-high polarity is
   selected and must be confirmed with a disconnected-radio bench test
 - APRS-IS passcode entered interactively on the Pi
-- tracker beacon interval, RF path, symbol, and final comment
-- KISS port restricted to the PCS client LAN
+- tracker beacon destination, interval, symbol, overlay, altitude, and comment
+- AGW and KISS ports restricted to the PCS client LAN
 - receive level, transmit audio/deviation, PTT timing, and supervised RF test
 
 The evidence options default to `no` and are never inferred from device
@@ -319,10 +408,10 @@ presence:
 Use `--record-validation` only after completing the matching bench step. Merely
 detecting a USB sound card does not satisfy any evidence gate.
 
-## Hardware Arrival Checklist
+## Recorded Hardware Commissioning
 
-With the detected USB sound card attached, collect evidence before editing a live
-configuration:
+The operator completed these discovery steps before the current profile was
+recorded:
 
 ```bash
 lsusb
@@ -348,19 +437,14 @@ tool is available. `--detect-audio` selects only when exactly one USB ALSA card
 has both capture and playback nodes. Zero or multiple candidates are refused;
 ambiguous devices are never guessed.
 
-Record and validate these operator choices:
+The resulting as-built choices are:
 
-- licensed station callsign and APRS SSID
-- local APRS frequency/band plan
-- radio and interface models
-- receive and transmit audio device names
-- PTT mechanism supported by the actual interface (for example CM108/CM119
-  GPIO, serial RTS, radio CAT, GPIO, or VOX)
-- receive level and decode quality
-- transmit deviation/level, only if RF TX will be enabled
-- whether the node is receive-only, an RX/two-way IGate, a digipeater, a
-  tracker, or a combined digi-IGate
-- APRS-IS server/login/passcode if an IGate is intentionally enabled
+- `W8IJC-10` on 144.5500 MHz simplex, 25 kHz, no tones
+- SA818S V1.2, stock Easy Digi, and ALSA card `Device`
+- active-high GPIO6 through the Easy Digi optocoupler
+- -18 dB playback, 100% capture, AGC off, receive level about 39
+- 900 ms `TXDELAY`, 200 ms `TXTAIL`
+- two-way IGate, GNSS-to-APRS-IS beacon, and WIDE1-1 fill-in service
 
 Do not store an APRS-IS passcode or other credentials in Git. Supply secrets
 interactively on the Pi and keep the resulting live configuration root-owned.
@@ -368,17 +452,17 @@ interactively on the Pi and keep the resulting live configuration root-owned.
 ## Safe Activation Order
 
 1. Keep the transmitter disconnected or use a suitable dummy load.
-2. Run `--list-audio`, then `--detect-audio` when exactly one USB sound card is
-   attached. Save explicit endpoints manually if discovery is ambiguous, and run
-   `--record-validation` after receive decoding succeeds.
-3. Run `--render-config rx` and `--validate-config rx`.
-4. Run `--activate-rx`. This installs no playback, PTT, beacon, digipeater,
+2. Run `--prepare-uart`; reboot if it reports a boot-file change.
+3. Run `--import-commissioned-profile`, then confirm the FTDI bench adapter is
+   unplugged and run `--list-audio`.
+4. Record only the hardware evidence actually reconfirmed on this installation.
+5. Run `--render-config rx` and `--validate-config rx`.
+6. Run `--activate-rx`. This installs no playback, PTT, beacon, digipeater,
    FX.25 TX, or Internet-to-RF directives.
-5. Verify KISS from a PCS LAN client and verify rejection from uplink interfaces.
-6. Bench-test PTT, calibrate transmit audio/deviation and timing, finalize the
-   beacon symbol/path/comment, then record only the completed validation gates.
-7. Run `--render-config tx` and `--validate-config tx` and review the diff.
-8. Perform the operator-supervised RF test, then run `--activate-tx` only when
+7. Verify AGW and KISS from a PCS LAN client and verify rejection from uplink interfaces.
+8. Confirm the recorded hardware evidence still matches the installed wiring.
+9. Run `--render-config tx` and `--validate-config tx` and review the diff.
+10. Perform the operator-supervised RF test, then run `--activate-tx` only when
    the complete activation is intended.
 
 Each successful activation saves the previous `/etc/direwolf.conf` under
@@ -386,9 +470,13 @@ Each successful activation saves the previous `/etc/direwolf.conf` under
 automatically restores the previous configuration; `--rollback` provides the
 same recovery path later.
 
+After successful activation, the installer refreshes an already-commissioned
+PCS control panel and preserves its credentials. A full base installation also
+installs the current panel at its normal later step.
+
 ## Software-Only Validation Boundary
 
-Before hardware arrives, PCS can validate supported Dire Wolf installation, service
+Without hardware, PCS can validate supported Dire Wolf installation, service
 ownership, disabled staging state, configuration-file permissions, dashboard
 integration, rendered RX/TX policy, capability availability, and Dire Wolf's
 synthetic AX.25/FX.25 encode/decode tooling. `--software-test` uses temporary
@@ -397,10 +485,12 @@ USB enumeration, ALSA routing, audio levels, PTT polarity/timing, radio
 deviation, receiver performance, RF coverage, digipeating behavior, or on-air
 regulatory correctness.
 
-Those hardware/RF results must remain marked pending until measured.
+The current hardware/RF results are operator-supplied commissioning evidence;
+repository tests do not reproduce RF measurements. A rebuild or hardware change
+must not silently reuse those evidence flags without reconfirmation.
 
-The system-wide header reservation, including RTC, fan, PTT, and future SA818S
-UART assignments, is maintained in [PCS GPIO Allocation](gpio-allocation.md).
+The system-wide header allocation, including RTC, fan, PTT, and the installed
+SA818S UART, is maintained in [PCS GPIO Allocation](gpio-allocation.md).
 
 ## Upstream References
 

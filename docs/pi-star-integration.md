@@ -10,6 +10,8 @@ DHCP clients:    10.42.0.100-10.42.0.200
 ```
 
 The tested hotspot is Pi-Star 4.2.3 on Raspbian 11 with hostname `pcs-hotspot`.
+Its installed Realtek RTL8152 USB Ethernet adapter is `eth0`; onboard Wi-Fi is
+disabled after a guarded wired handoff.
 For a complete rebuild sequence, start with
 [Full-Stack Reinstall Runbook](full-stack-reinstall.md).
 
@@ -30,11 +32,38 @@ as the normal Pi-Star user:
 
 ```bash
 chmod +x ./setup-pistar-pcs.sh
+PCS_PISTAR_DISABLE_WIFI=no ./setup-pistar-pcs.sh --apply
+sudo reboot
+```
+
+This first stage moves `10.42.0.3/24` to the USB Ethernet adapter while leaving
+Wi-Fi available as a recovery path. The installer refuses to write anything
+unless `eth0` is USB-backed, uses the expected `r8152` driver, and maintains
+uninterrupted carrier plus PCS ping responses for 30 seconds. The kernel's
+carrier-change counter is also checked when available, so a brief link flap
+cannot pass the safety gate.
+
+After the first reboot, confirm that `.3` is on wired `eth0`:
+
+```bash
+PCS_PISTAR_DISABLE_WIFI=no ./setup-pistar-pcs.sh --check
+```
+
+If the wired checks fail after the first reboot, do not continue to stage 2.
+Wi-Fi credentials are still present and the boot overlay has not been enabled,
+so use the recovered Wi-Fi address to troubleshoot the adapter, cable, and
+OpenWrt switch port. Re-seat the adapter and cable or try a different known-good
+cable and EA4500 LAN port, then repeat stage 1. Do not shorten the stability
+window to work around a carrier flap.
+
+Only after that check passes, apply the final as-built profile and reboot again:
+
+```bash
 ./setup-pistar-pcs.sh --apply
 sudo reboot
 ```
 
-After reboot:
+Final verification:
 
 ```bash
 ./setup-pistar-pcs.sh --check
@@ -42,13 +71,20 @@ After reboot:
 
 The script supports the tested `dhcpcd`-based Pi-Star image, owns a clearly
 marked block in `/etc/dhcpcd.conf`, and preserves Pi-Star's normally read-only
-root filesystem state. Environment variables can override the documented
-defaults; run the script without `sudo` so its scoped sudo operations and
-backup behavior remain intact.
+root and boot filesystem states. The final profile adds a managed
+`dtoverlay=disable-wifi` block to `/boot/config.txt`, guards Pi-Star's native
+`rc.local` Wi-Fi command so the read-only remount still runs without `wlan0`,
+and makes the native AP service conditional on Wi-Fi hardware being present.
+It does not erase stored Wi-Fi credentials. Environment variables can override
+the documented defaults; run the script without `sudo` so its scoped sudo
+operations and backup behavior remain intact.
 
-The script does not configure the PCS Wi-Fi password, callsign, radio modes, or
-digital-network credentials. Restore those with Pi-Star's native backup or
-enter them through its dashboard.
+The script does not configure or erase the PCS Wi-Fi password, callsign, radio
+modes, or digital-network credentials. Restore those with Pi-Star's native
+backup or enter them through its dashboard. For physical recovery if wired
+Ethernet is unavailable, remove only the managed `PCS HOTSPOT WIFI` block from
+the SD card's `/boot/config.txt`; the preserved credentials can then bring
+Wi-Fi back through normal Pi-Star behavior.
 
 ## Coordinated Shutdown
 

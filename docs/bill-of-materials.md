@@ -33,8 +33,8 @@ Status reflects the latest known acquisition state. **Purchased / awaiting deliv
 | Item                               | Qty | Status                         | Price | Notes                                      |
 | ---------------------------------- | --: | ------------------------------ | ----: | ------------------------------------------ |
 | Pi-Star hotspot                    |   1 | Installed / tested             |     - | Fixed PCS-LAN node at `10.42.0.3`          |
-| APRS USB sound adapter             | Unitek Y-247A / C-Media 0d8c:0014 | Installed / detected | 1 | ALSA capture/playback detected as card ID `Device`; levels and radio path unvalidated |
-| APRS radio/PTT hardware            | TBD | Purchased / awaiting delivery or installation | - | Exact radio/PTT as-built components and validation pending |
+| APRS USB sound adapter             | Sabrent USB audio / C-Media card ID `Device` | Installed / tested | 1 | RX 100%, AGC off, TX -18 dB; bidirectional AFSK tested through stock Easy Digi transformers |
+| APRS radio/PTT hardware            | SA818S V1.2 + stock Easy Digi | Installed / tested | 1 set | GPIO6 optoisolated PTT, 144.5500 MHz RF TX/RX, UART programming, messaging, IGate, and WIDE1-1 fill-in operation validated |
 | RAK4631 Meshtastic expansion       | TBD | Purchased / as-built record pending | - | Gateway software deployed; persistent BLE/MQTT operation, sensor model, mounting, and validation pending |
 
 ## Local Status Hardware

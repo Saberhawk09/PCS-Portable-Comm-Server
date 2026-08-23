@@ -1,0 +1,23 @@
+[Unit]
+Description=Program and verify the PCS SA818S APRS radio
+After=dev-serial0.device
+Before=direwolf.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=direwolf
+Group=direwolf
+SupplementaryGroups=dialout
+ExecStart=/usr/local/sbin/pcs-sa818 --config /etc/pcs/aprs/sa818.ini --apply
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=20s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

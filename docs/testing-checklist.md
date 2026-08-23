@@ -589,9 +589,10 @@ been observed on the installed hardware.
 
 ## Dire Wolf / APRS Safety Test
 
-These checks apply when Dire Wolf / APRS is selected during setup. They validate
-software and policy without claiming that audio, PTT, deviation, receiver
-performance, RF coverage, digipeating, or on-air behavior has been tested.
+These checks apply when Dire Wolf / APRS is selected during setup. Repository
+tests validate software and policy; only the operator's recorded commissioning
+evidence establishes audio, PTT, deviation, receiver, digipeating, and on-air
+behavior for the installed hardware.
 
 From PCS:
 
@@ -621,6 +622,26 @@ RX/TX validation reports every unresolved hardware or operator decision as a blo
 
 Do not weaken or bypass a TX blocker to make this checklist pass. An intentionally
 active APRS installation instead requires the complete [Safe Activation Order](direwolf-aprs.md#safe-activation-order), including bench measurements and an operator-supervised RF test.
+
+For the commissioned active installation, also run:
+
+```bash
+systemctl --no-pager --full status pcs-sa818.service
+systemctl --no-pager --full status pcs-aprs-audio.service
+systemctl --no-pager --full status pcs-aprs-kiss-firewall.service
+systemctl --no-pager --full status direwolf.service
+sudo /usr/local/sbin/pcs-sa818 --config /etc/pcs/aprs/sa818.ini --check
+sudo -u direwolf /usr/local/sbin/pcs-aprs-audio --check
+sudo /usr/local/sbin/pcs-aprs-kiss-firewall --check
+sudo grep -E '^(MYCALL|PTT|TXDELAY|TXTAIL|AGWPORT|KISSPORT|IGTXVIA|IGTXLIMIT|TBEACON|DIGIPEAT)' /etc/direwolf.conf
+```
+
+Expected commissioned core values are `W8IJC-10`, `PTT GPIOD gpiochip0 6`,
+`TXDELAY 90`, `TXTAIL 20`, AGW 8000, KISS 8001, direct `IGTXVIA 0`, limits
+`6 10`, an Internet-only GPS tracker beacon, and the one-hop WIDE1-1 fill-in
+rule. From a PCS-LAN client, verify both ports are reachable; from every uplink
+interface, verify both are rejected. Reconfirm RF behavior after any radio,
+sound-card, cable, GPIO, antenna, or Dire Wolf change.
 
 For `PCS_SETUP_MESHTASTIC=staged`, the self-test requires the pinned BLE/MQTT
 client and gateway to be installed while `pcs-meshtastic.service` stays stopped

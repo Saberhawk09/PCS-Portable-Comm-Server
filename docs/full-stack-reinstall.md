@@ -122,7 +122,18 @@ coordinated-shutdown pairing before continuing with the remaining setup. SSH
 asks for the Pi-Star password at that point; the password is not stored.
 
 `PCS_SETUP_APRS=staged` means Dire Wolf is installed but stopped and disabled,
-with no station identity, audio device, APRS-IS credential, PTT, or RF path.
+with no live APRS-IS credential or enabled RF path. Selecting APRS staging also
+runs the idempotent Pi UART preparation; reboot when it reports a boot-file
+change. The versioned desired profile can then be installed as one complete,
+evidence-reset block:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
+./scripts/setup-direwolf-aprs.sh --record-validation
+./scripts/setup-direwolf-aprs.sh --validate-config tx
+```
+
+Record validation only after reconfirming the corresponding physical check.
 After commissioning, preserve `/etc/direwolf.conf`,
 `/etc/pcs/aprs/backups/`, and the active-mode values from the ignored install
 configuration as credential-bearing/manual recovery material. The APRS-IS
@@ -183,8 +194,9 @@ Flash the supported Pi-Star image. Restore the native Pi-Star backup, or
 configure the hotspot's callsign, radio modes, Wi-Fi SSID, and service
 credentials through the Pi-Star dashboard.
 
-First connect Pi-Star to the PCS Wi-Fi network. Before the PCS script is
-applied, it may receive an address in the dynamic range. Find that temporary
+Connect the Pi-Star RTL8152 USB Ethernet adapter to the PCS LAN. Before the PCS
+script is applied, `eth0` receives an address in the dynamic range. Wi-Fi can
+remain connected during this recovery-safe first stage. Find either temporary
 address from the PCS dashboard or on the PCS Pi:
 
 ```bash
@@ -202,21 +214,36 @@ On Pi-Star:
 
 ```bash
 chmod +x ~/setup-pistar-pcs.sh
+PCS_PISTAR_DISABLE_WIFI=no ~/setup-pistar-pcs.sh --apply
+sudo reboot
+PCS_PISTAR_DISABLE_WIFI=no ~/setup-pistar-pcs.sh --check
 ~/setup-pistar-pcs.sh --apply
 sudo reboot
+~/setup-pistar-pcs.sh --check
 ```
+
+The first reboot moves `10.42.0.3` to USB Ethernet while retaining Wi-Fi for
+recovery. Do not apply the final Wi-Fi-disabled profile until the intermediate
+check passes over wired `eth0`. Every apply also requires 30 uninterrupted
+seconds of carrier and PCS ping responses; a carrier flap stops the installer
+before it remounts or edits anything. If that happens, retain Wi-Fi and check
+the adapter, cable, and EA4500 LAN port before retrying stage 1.
 
 The script is idempotent and manages only:
 
 - hostname `pcs-hotspot`
-- the marked `dhcpcd` block for `10.42.0.3/24`
+- the marked `dhcpcd` block for `10.42.0.3/24` on RTL8152 USB `eth0`
+- a managed `/boot/config.txt` overlay that disables onboard Wi-Fi only after
+  the wired handoff is verified
+- a managed `rc.local` guard and Pi-Star AP-service condition that keep native
+  boot behavior clean when `wlan0` is absent
 - gateway, DNS, and preferred NTP server `10.42.0.1`
 - YSFGateway's native GPSD client at `10.42.0.1:2947`
 - disabling the unused local-serial MobileGPS path
 
 It backs up every file it changes under `/root/pcs-pistar-backups/`, restores
-Pi-Star's root filesystem to read-only when it found it read-only, and leaves
-Wi-Fi credentials and radio settings untouched.
+Pi-Star's root and boot filesystems to read-only when it found them read-only,
+and leaves Wi-Fi credentials and radio settings untouched.
 
 After Pi-Star has rebooted at `10.42.0.3`, return to PCS and pair coordinated
 shutdown:
@@ -244,6 +271,7 @@ cd /home/pi/Projects/PCS-Portable-Comm-Server
 ./scripts/pcs-status.sh
 ./scripts/setup-pistar-shutdown.sh --check
 ./scripts/setup-direwolf-aprs.sh --check
+./scripts/setup-direwolf-aprs.sh --validate-config tx
 ./scripts/setup-direwolf-aprs.sh --software-test
 ```
 

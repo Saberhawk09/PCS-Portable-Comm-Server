@@ -57,3 +57,22 @@ Reasoning: purchased or staged hardware must not be described as installed, RF-r
 The AC/DC power system and prototype enclosure are operational, but exact fuse values, wiring, grounding, rail measurements, thermal results, dimensions, mounting details, photographs, and CAD references remain pending.
 
 Reasoning: an operational prototype does not by itself provide a safe, reproducible as-built electrical or mechanical record.
+
+## 2026-08-23
+
+### APRS subsystem commissioned and managed
+
+The prior software-staged APRS boundary is superseded for the installed PCS.
+The operator validated the SA818S UART and RF channel, Easy Digi audio/PTT,
+Sabrent USB audio levels, Dire Wolf timing, GNSS beacons, two-way APRS-IS
+messages and acknowledgements, WIDE1-1 fill-in behavior, AGW, and KISS.
+
+The repository now records the commissioned `W8IJC-10` profile on 144.5500 MHz
+and manages SA818S programming/readback, ALSA restoration, LAN-only AGW/KISS,
+Dire Wolf ordering/restarts, self-test, status, and dashboard health. Fresh
+installs remain staged until the explicit evidence gates and RF confirmation are
+satisfied; repository tests do not reproduce the operator's RF measurements.
+
+Reasoning: physical commissioning can now support a reproducible service profile
+without weakening the safeguards that prevent an unverified rebuild from
+transmitting or exposing network TNC listeners.
