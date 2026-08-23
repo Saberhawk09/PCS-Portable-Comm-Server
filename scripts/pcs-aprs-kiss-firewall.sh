@@ -2,6 +2,12 @@
 
 set -Eeuo pipefail
 
+CONFIG_FILE="${PCS_APRS_FIREWALL_CONFIG:-/etc/pcs/aprs/kiss-firewall.conf}"
+if [[ -r "${CONFIG_FILE}" ]]; then
+    # shellcheck source=/dev/null
+    source "${CONFIG_FILE}"
+fi
+
 AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
 LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"

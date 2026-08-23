@@ -154,6 +154,7 @@ class DireWolfAprsTests(unittest.TestCase):
 
         self.assertIn('ip saddr ${LAN_NETWORK} accept', script)
         self.assertIn('AGW_PORT="${PCS_APRS_AGW_PORT:-0}"', script)
+        self.assertIn('PCS_APRS_FIREWALL_CONFIG:-/etc/pcs/aprs/kiss-firewall.conf', script)
         self.assertIn('port_expression="{ ${AGW_PORT}, ${KISS_PORT} }"', script)
         self.assertIn('tcp dport ${port_expression} drop', script)
         self.assertIn("Before=direwolf.service", service)
