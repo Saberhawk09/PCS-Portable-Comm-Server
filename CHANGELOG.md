@@ -24,6 +24,8 @@ All notable user-facing PCS changes are recorded here.
   GNSS beacon, and WIDE1-1 fill-in hardware state
 - made the base installer preserve APRS active-mode and AGW/KISS LAN firewall
   fields, and refresh an existing control panel after guarded activation
+- made every Pi-Star network apply require a 30-second carrier and PCS
+  reachability stability window before any filesystem or Wi-Fi mutation
 
 ## [1.2] - 2026-08-21
 

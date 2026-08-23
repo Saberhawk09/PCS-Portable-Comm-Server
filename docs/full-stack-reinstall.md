@@ -224,7 +224,10 @@ sudo reboot
 
 The first reboot moves `10.42.0.3` to USB Ethernet while retaining Wi-Fi for
 recovery. Do not apply the final Wi-Fi-disabled profile until the intermediate
-check passes over wired `eth0`.
+check passes over wired `eth0`. Every apply also requires 30 uninterrupted
+seconds of carrier and PCS ping responses; a carrier flap stops the installer
+before it remounts or edits anything. If that happens, retain Wi-Fi and check
+the adapter, cable, and EA4500 LAN port before retrying stage 1.
 
 The script is idempotent and manages only:
 

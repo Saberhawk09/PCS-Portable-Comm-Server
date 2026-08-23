@@ -23,6 +23,7 @@ PCS_PISTAR_INTERFACE="${PCS_PISTAR_INTERFACE:-eth0}"
 PCS_PISTAR_ETHERNET_DRIVER="${PCS_PISTAR_ETHERNET_DRIVER:-r8152}"
 PCS_PISTAR_DISABLE_WIFI="${PCS_PISTAR_DISABLE_WIFI:-yes}"
 PCS_PISTAR_WIFI_INTERFACE="${PCS_PISTAR_WIFI_INTERFACE:-wlan0}"
+PCS_PISTAR_LINK_STABILITY_SECONDS="${PCS_PISTAR_LINK_STABILITY_SECONDS:-30}"
 PCS_PISTAR_ADDRESS="${PCS_PISTAR_ADDRESS:-10.42.0.3/24}"
 PCS_PISTAR_GATEWAY="${PCS_PISTAR_GATEWAY:-10.42.0.1}"
 PCS_PISTAR_DNS="${PCS_PISTAR_DNS:-10.42.0.1}"
@@ -60,6 +61,13 @@ case "${PCS_PISTAR_DISABLE_WIFI}" in
         exit 2
         ;;
 esac
+
+if [[ ! "${PCS_PISTAR_LINK_STABILITY_SECONDS}" =~ ^[0-9]+$ ]] || \
+   [[ "${PCS_PISTAR_LINK_STABILITY_SECONDS}" -lt 5 ]] || \
+   [[ "${PCS_PISTAR_LINK_STABILITY_SECONDS}" -gt 300 ]]; then
+    echo "ERROR: PCS_PISTAR_LINK_STABILITY_SECONDS must be an integer from 5 through 300."
+    exit 2
+fi
 
 pass() {
     echo "[PASS] $1"
@@ -425,6 +433,9 @@ PY
 validate_wired_preflight() {
     local device_path=""
     local interface_driver=""
+    local carrier_changes_before=""
+    local carrier_changes_after=""
+    local second
 
     if [[ "${PCS_PISTAR_INTERFACE}" == "${PCS_PISTAR_WIFI_INTERFACE}" ]]; then
         echo "ERROR: PCS_PISTAR_INTERFACE must name the USB Ethernet interface, not ${PCS_PISTAR_WIFI_INTERFACE}."
@@ -444,16 +455,28 @@ validate_wired_preflight() {
         echo "ERROR: ${PCS_PISTAR_INTERFACE} uses ${interface_driver:-unknown}; expected ${PCS_PISTAR_ETHERNET_DRIVER}."
         return 1
     fi
-    if [[ "$(cat "/sys/class/net/${PCS_PISTAR_INTERFACE}/carrier" 2>/dev/null || true)" != "1" ]]; then
-        echo "ERROR: ${PCS_PISTAR_INTERFACE} has no Ethernet carrier."
-        return 1
-    fi
-    if ! ping -I "${PCS_PISTAR_INTERFACE}" -c 2 -W 2 "${PCS_PISTAR_GATEWAY}" >/dev/null 2>&1; then
-        echo "ERROR: ${PCS_PISTAR_INTERFACE} cannot reach PCS at ${PCS_PISTAR_GATEWAY}."
+    carrier_changes_before="$(cat "/sys/class/net/${PCS_PISTAR_INTERFACE}/carrier_changes" 2>/dev/null || true)"
+    echo "Verifying continuous wired carrier and PCS reachability for ${PCS_PISTAR_LINK_STABILITY_SECONDS} seconds..."
+    for ((second = 1; second <= PCS_PISTAR_LINK_STABILITY_SECONDS; second++)); do
+        if [[ "$(cat "/sys/class/net/${PCS_PISTAR_INTERFACE}/carrier" 2>/dev/null || true)" != "1" ]]; then
+            echo "ERROR: ${PCS_PISTAR_INTERFACE} lost Ethernet carrier during the stability window."
+            return 1
+        fi
+        if ! ping -I "${PCS_PISTAR_INTERFACE}" -c 1 -W 1 "${PCS_PISTAR_GATEWAY}" >/dev/null 2>&1; then
+            echo "ERROR: ${PCS_PISTAR_INTERFACE} lost PCS reachability during the stability window."
+            return 1
+        fi
+        if [[ "${second}" -lt "${PCS_PISTAR_LINK_STABILITY_SECONDS}" ]]; then
+            sleep 1
+        fi
+    done
+    carrier_changes_after="$(cat "/sys/class/net/${PCS_PISTAR_INTERFACE}/carrier_changes" 2>/dev/null || true)"
+    if [[ -n "${carrier_changes_before}" && "${carrier_changes_after}" != "${carrier_changes_before}" ]]; then
+        echo "ERROR: ${PCS_PISTAR_INTERFACE} carrier changed during the stability window."
         return 1
     fi
 
-    echo "Verified ${PCS_PISTAR_INTERFACE}: USB ${PCS_PISTAR_ETHERNET_DRIVER}, carrier present, PCS reachable."
+    echo "Verified ${PCS_PISTAR_INTERFACE}: USB ${PCS_PISTAR_ETHERNET_DRIVER}, stable carrier, PCS reachable."
 }
 
 if [[ ! -f /etc/pistar-release ]]; then
@@ -500,6 +523,7 @@ echo
 echo "  Hostname:    ${PCS_PISTAR_HOSTNAME}"
 echo "  Interface:   ${PCS_PISTAR_INTERFACE}"
 echo "  USB driver:  ${PCS_PISTAR_ETHERNET_DRIVER}"
+echo "  Link check:  ${PCS_PISTAR_LINK_STABILITY_SECONDS} continuous seconds"
 echo "  Disable Wi-Fi: ${PCS_PISTAR_DISABLE_WIFI}"
 echo "  Address:     ${PCS_PISTAR_ADDRESS}"
 echo "  Gateway/DNS: ${PCS_PISTAR_GATEWAY}"

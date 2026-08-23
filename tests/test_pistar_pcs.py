@@ -20,6 +20,10 @@ class PiStarPcsTests(unittest.TestCase):
         )
         self.assertIn('PCS_PISTAR_DISABLE_WIFI="${PCS_PISTAR_DISABLE_WIFI:-yes}"', self.source)
         self.assertIn('PCS_PISTAR_WIFI_INTERFACE="${PCS_PISTAR_WIFI_INTERFACE:-wlan0}"', self.source)
+        self.assertIn(
+            'PCS_PISTAR_LINK_STABILITY_SECONDS="${PCS_PISTAR_LINK_STABILITY_SECONDS:-30}"',
+            self.source,
+        )
 
     def test_wired_preflight_precedes_every_apply_mutation(self):
         preflight_call = self.source.index("\nvalidate_wired_preflight\n")
@@ -31,6 +35,17 @@ class PiStarPcsTests(unittest.TestCase):
             'PCS_PISTAR_ETHERNET_DRIVER',
             '/carrier',
             'ping -I "${PCS_PISTAR_INTERFACE}"',
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertIn(evidence, self.source)
+
+    def test_apply_requires_a_continuously_stable_wired_path(self):
+        for evidence in (
+            'for ((second = 1; second <= PCS_PISTAR_LINK_STABILITY_SECONDS; second++))',
+            'lost Ethernet carrier during the stability window',
+            'lost PCS reachability during the stability window',
+            '/carrier_changes',
+            'carrier changed during the stability window',
         ):
             with self.subTest(evidence=evidence):
                 self.assertIn(evidence, self.source)

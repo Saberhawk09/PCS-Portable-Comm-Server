@@ -38,14 +38,23 @@ sudo reboot
 
 This first stage moves `10.42.0.3/24` to the USB Ethernet adapter while leaving
 Wi-Fi available as a recovery path. The installer refuses to write anything
-unless `eth0` is USB-backed, uses the expected `r8152` driver, has carrier, and
-can already reach PCS at `10.42.0.1`.
+unless `eth0` is USB-backed, uses the expected `r8152` driver, and maintains
+uninterrupted carrier plus PCS ping responses for 30 seconds. The kernel's
+carrier-change counter is also checked when available, so a brief link flap
+cannot pass the safety gate.
 
 After the first reboot, confirm that `.3` is on wired `eth0`:
 
 ```bash
 PCS_PISTAR_DISABLE_WIFI=no ./setup-pistar-pcs.sh --check
 ```
+
+If the wired checks fail after the first reboot, do not continue to stage 2.
+Wi-Fi credentials are still present and the boot overlay has not been enabled,
+so use the recovered Wi-Fi address to troubleshoot the adapter, cable, and
+OpenWrt switch port. Re-seat the adapter and cable or try a different known-good
+cable and EA4500 LAN port, then repeat stage 1. Do not shorten the stability
+window to work around a carrier flap.
 
 Only after that check passes, apply the final as-built profile and reboot again:
 
