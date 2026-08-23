@@ -234,6 +234,7 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("enable_uart=1", setup)
         self.assertIn("console=(serial0|ttyAMA[0-9]*|ttyS[0-9]*)", setup)
         self.assertIn(".pcs-pre-uart.bak", setup)
+        self.assertIn("if serial_console_disabled; then", setup)
         self.assertIn("Bluetooth was not changed", setup)
         self.assertNotIn("disable-bt", setup)
 

@@ -1293,17 +1293,21 @@ prepare_uart() {
     if ! uart_boot_enabled; then
         printf '\n# PCS APRS SA818S UART\n[all]\nenable_uart=1\n' >>"${temp_dir}/config.txt"
     fi
-    awk '
-        {
-            output=""
-            for (i=1; i<=NF; i++) {
-                if ($i ~ /^console=(serial0|ttyAMA[0-9]*|ttyS[0-9]*),/) continue
-                output = output (output == "" ? "" : " ") $i
+    if serial_console_disabled; then
+        cp -- "${cmdline_file}" "${temp_dir}/cmdline.txt"
+    else
+        awk '
+            {
+                output=""
+                for (i=1; i<=NF; i++) {
+                    if ($i ~ /^console=(serial0|ttyAMA[0-9]*|ttyS[0-9]*),/) continue
+                    output = output (output == "" ? "" : " ") $i
+                }
+                print output
             }
-            print output
-        }
-    ' "${cmdline_file}" >"${temp_dir}/cmdline.filtered"
-    mv -f -- "${temp_dir}/cmdline.filtered" "${temp_dir}/cmdline.txt"
+        ' "${cmdline_file}" >"${temp_dir}/cmdline.filtered"
+        mv -f -- "${temp_dir}/cmdline.filtered" "${temp_dir}/cmdline.txt"
+    fi
 
     if ! cmp -s "${config_file}" "${temp_dir}/config.txt"; then
         if ! sudo test -e "${config_file}.pcs-pre-uart.bak"; then
