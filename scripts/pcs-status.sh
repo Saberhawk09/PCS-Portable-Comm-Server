@@ -47,6 +47,7 @@ PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-not selected}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
 PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
 
 pcs_cellular_profile_name() {
@@ -369,8 +370,11 @@ case "${PCS_SETUP_APRS}" in
         echo "Audio playback:  ${PCS_APRS_AUDIO_OUTPUT}"
         echo "Frequency:       ${PCS_APRS_FREQUENCY}"
         echo "GPS tracker:     ${PCS_APRS_GPSD} (${PCS_APRS_GPSD_HOST}:${PCS_APRS_GPSD_PORT})"
+        echo "AGW endpoint:    10.42.0.1:${PCS_APRS_AGW_PORT}"
         echo "KISS endpoint:   10.42.0.1:${PCS_APRS_KISS_PORT}"
-        echo "KISS firewall:   $(systemctl is-active pcs-aprs-kiss-firewall.service 2>/dev/null || true)"
+        echo "Radio init:      $(systemctl is-active pcs-sa818.service 2>/dev/null || true)"
+        echo "Audio profile:   $(systemctl is-active pcs-aprs-audio.service 2>/dev/null || true)"
+        echo "Client firewall: $(systemctl is-active pcs-aprs-kiss-firewall.service 2>/dev/null || true)"
         if [[ -x /usr/local/sbin/pcs-aprs-telemetry ]]; then
             /usr/local/sbin/pcs-aprs-telemetry || true
         else

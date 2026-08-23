@@ -29,14 +29,14 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
 
-PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, optional Pi-Star support, and hardware-safe APRS staging. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF commissioning remain deliberate operator-supervised steps.
+PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, optional Pi-Star support, and guarded APRS deployment. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF activation remain deliberate operator-supervised steps.
 
 The PCS hardware is an operational v1 prototype. The AC/DC source selector,
 cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas,
-HD44780 LCD, MAX7219 matrix, WS2812 indicators, and APRS USB sound adapter are
-installed. The sound adapter is detected for capture/playback but its audio
-levels and radio path are not validated; APRS PTT/radio hardware remains
-unfinished. The RAK4631 gateway software is deployed but its persistent
+HD44780 LCD, MAX7219 matrix, WS2812 indicators, and APRS subsystem are installed.
+The SA818S, stock Easy Digi, GPIO6 PTT, USB audio, 144.5500 MHz RF path, GNSS
+beaconing, two-way APRS-IS, messaging, and WIDE1-1 fill-in operation have been
+validated. The RAK4631 gateway software is deployed but its persistent
 BLE/MQTT connection, RF behavior, and case-sensor baseline remain unvalidated.
 The exact as-built electrical and mechanical record is also unfinished.
 
@@ -52,7 +52,7 @@ The exact as-built electrical and mechanical record is also unfinished.
 - Operational AC/DC power system with source selector switch; as-built electrical measurements and wiring records remain pending
 - HD44780 16x2 LCD, MAX7219 8x8 annunciator, and six-pixel WS2812 status chain
 - GPIO18 hardware-PWM Armor Lite fan control; commanded duty is validated but RPM is not measured
-- C-Media/Unitek Y-247A APRS USB sound adapter detected for capture/playback; Dire Wolf remains staged and radio/PTT/audio-level validation remains pending
+- SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation on 144.5500 MHz
 - RAK4631 Meshtastic expansion connected to PCS with its gateway software deployed; persistent BLE/MQTT operation and sensor validation pending
 
 ### Software
@@ -64,7 +64,7 @@ The exact as-built electrical and mechanical record is also unfinished.
 - GPS NMEA from `/dev/ttyUSB1` through gpsd and Chrony to LAN clients
 - Manual cellular data control with Wi-Fi fallback during development and testing
 - LAN GPSD, NTP, and installer-assisted coordinated Pi-Star shutdown integration
-- Hardware-safe Dire Wolf staging with APRS activation intentionally deferred
+- Managed Dire Wolf 1.8.1 startup with SA818S programming, ALSA level restoration, LAN-only AGW/KISS access, and guarded activation/rollback
 - Repeatable Meshtastic BLE/MQTT gateway staging; persistent pairing, broker relay, and RAK4631 environmental telemetry validation pending
 - PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; credentials, external-device recovery, and RF checks remain manual
 
@@ -73,7 +73,7 @@ The exact as-built electrical and mechanical record is also unfinished.
 - Capture final enclosure dimensions, mounting details, photos, and CAD references
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
-- Install and commission the remaining APRS radio/PTT hardware
+- Deploy and reboot-test the managed APRS service integration on the PCS Pi
 - Complete and validate the RAK4631 BLE/MQTT connection and establish a case temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
 
@@ -115,9 +115,9 @@ The setup script installs the PCS software baseline, configures the Pi client ne
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 
 Dire Wolf can be installed, rendered, policy-validated, and synthetically tested
-before the APRS hardware arrives without enabling its service or any RF path.
-The documented workflow provides separate guarded RX/TX activation, LAN-only
-KISS, managed logs/dashboard telemetry, and transactional rollback. See
+without attached APRS hardware or an enabled RF path. The documented workflow
+provides separate guarded RX/TX activation, managed SA818S and ALSA startup,
+LAN-only AGW/KISS, logs/dashboard telemetry, and transactional rollback. See
 [Dire Wolf / APRS Integration](docs/direwolf-aprs.md).
 
 ## After Setup

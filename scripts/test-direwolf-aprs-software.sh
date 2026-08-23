@@ -18,7 +18,7 @@ decode_fixture() {
     local output_file="$3"
 
     atest "${wav_file}" >"${output_file}" 2>&1
-    if ! grep -Fq "W8IJC-2>APPCS" "${output_file}"; then
+    if ! grep -Fq "W8IJC-10>APPCS" "${output_file}"; then
         echo "ERROR: ${label} fixture did not decode the expected frame." >&2
         sed -n '1,120p' "${output_file}" >&2
         exit 1
@@ -35,7 +35,7 @@ require_tool atest
 
 GEN_PACKETS_HELP="$(gen_packets -h 2>&1 || true)"
 
-PACKET='W8IJC-2>APPCS:>PCS synthetic pre-hardware validation'
+PACKET='W8IJC-10>APPCS:>PCS synthetic software validation'
 
 printf '%s\n' "${PACKET}" \
     | gen_packets -a 25 -o "${TEMP_DIR}/ax25.wav" - >/dev/null

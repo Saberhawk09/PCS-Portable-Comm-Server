@@ -19,10 +19,12 @@ PCS is intended to feature/provide:
 
 PCS is an operational v1 hardware and software prototype. The core Pi-side software baseline is rebuild-tested, and the assembled hardware provides the intended LAN, storage, time, GNSS, monitoring, optional cellular, and Pi-Star services.
 
-Dire Wolf / APRS is software-staged with the service and RF path disabled. Its
-C-Media/Unitek Y-247A USB sound adapter is installed and detected for
-capture/playback, but radio/PTT hardware, audio levels, and RF behavior remain
-unvalidated. The RAK4631 gateway software is deployed to PCS, but its persistent
+The Dire Wolf / APRS hardware path is commissioned: SA818S UART control,
+stock Easy Digi isolation, GPIO6 PTT, Sabrent/C-Media USB audio, 144.5500 MHz
+RF TX/RX, GNSS beaconing, two-way APRS-IS messaging, and WIDE1-1 fill-in
+digipeating have been demonstrated. Repository integration manages radio/audio
+preparation, service recovery, LAN-only clients, monitoring, and rollback. The
+RAK4631 gateway software is deployed to PCS, but its persistent
 BLE/MQTT connection, RF behavior, and local environment telemetry remain
 hardware-unvalidated. The exact as-built power, wiring, grounding, thermal,
 enclosure, and mounting records are also still pending.
@@ -31,7 +33,7 @@ Current focus:
 
 - Polish the software
 - Improve reliability and error handling with setup and operation
-- Install and commission the purchased APRS radio/PTT hardware
+- Deploy and reboot-test the managed APRS integration on the PCS Pi
 - Complete and validate the RAK4631 BLE/MQTT connection and case sensor
 - Keep documentation and releases aligned with the fielded system
 
@@ -52,10 +54,10 @@ Current tested hardware includes:
 - MAX7219 8x8 health-annunciator matrix
 - Six-pixel WS2812 status-indicator chain
 - Armor Lite cooler with GPIO18 hardware-PWM fan control
+- SA818S, stock Easy Digi, Sabrent/C-Media USB audio, and GPIO6 APRS PTT path
 
 Purchased and awaiting installation or validation:
 
-- remaining APRS radio/PTT hardware
 - RAK4631 persistent BLE/MQTT connection and attached environment sensor validation
 
 Purchased hardware is not treated as installed or validated until it has been commissioned and tested.
@@ -90,7 +92,7 @@ PCS server / gateway
         +-- PCS public homepage
         +-- authenticated admin control panel
         +-- optional Pi-Star integration at 10.42.0.3
-        +-- hardware-safe Dire Wolf / APRS staging
+        +-- managed Dire Wolf / SA818S APRS subsystem
         +-- optional cellular internet
                 |
                 v
@@ -120,7 +122,7 @@ The current software baseline includes:
 - Chrony GPS source support
 - LAN-only GPSD sharing for trusted PCS clients
 - Optional Pi-Star monitoring, GPS/time integration, and installer-assisted coordinated-shutdown pairing
-- Hardware-safe Dire Wolf installation, profile rendering, synthetic testing, and guarded RX/TX activation workflow
+- Managed Dire Wolf 1.8.1 with SA818S boot programming, ALSA restoration, LAN-only AGW/KISS, telemetry, and guarded activation/rollback
 - Cockpit access
 - systemd service integration
 
@@ -214,7 +216,7 @@ The working build is operational. Remaining work is primarily documentation, mea
 - reconcile the documented power architecture with the physical as-built wiring
 - record actual fuse values, wire gauge, rail voltage, current draw, and thermal results
 - finish permanent external LTE and GNSS antenna labeling and mounting documentation
-- install and bench-validate the APRS hardware before any supervised RF activation
+- preserve operator-supervised RF activation and verify managed APRS startup after reboot
 - complete and validate the Meshtastic BLE/MQTT connection and sensor baseline
 - consider battery voltage monitoring and low-voltage safe shutdown hardware
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially

@@ -31,7 +31,7 @@ class AprsTelemetryTests(unittest.TestCase):
                 writer.writeheader()
                 writer.writerow({"chan": "0", "utime": now - 60, "source": "W8AAA-1"})
                 writer.writerow({"chan": "0", "utime": now - 7200, "source": "W8BBB-2"})
-                writer.writerow({"chan": "999", "utime": now - 30, "source": "W8IJC-2"})
+                writer.writerow({"chan": "999", "utime": now - 30, "source": "W8IJC-10"})
                 writer.writerow({"chan": "0", "utime": now - 90000, "source": "OLD-1"})
 
             result = telemetry.collect(Path(temp_dir), now=now)

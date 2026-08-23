@@ -59,7 +59,10 @@ PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
 PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
+PCS_APRS_RADIO_INIT="${PCS_APRS_RADIO_INIT:-no}"
+PCS_APRS_FX25_TX="${PCS_APRS_FX25_TX:-no}"
 
 TMP_FILES=()
 
@@ -716,12 +719,28 @@ case "${PCS_SETUP_APRS}" in
             fail "Live Dire Wolf configuration permissions are not root:direwolf 640"
         fi
 
-        if [[ "${PCS_APRS_KISS_PORT}" != "0" ]]; then
+        if [[ "${PCS_APRS_RADIO_INIT}" == "yes" ]]; then
+            if service_active pcs-sa818.service \
+                && sudo -n /usr/local/sbin/pcs-sa818 --config /etc/pcs/aprs/sa818.ini --check >/dev/null 2>&1; then
+                pass "SA818S boot profile is active and its group readback matches"
+            else
+                fail "Active APRS requires a verified pcs-sa818.service radio profile"
+            fi
+
+            if service_active pcs-aprs-audio.service \
+                && sudo -n /usr/local/sbin/pcs-aprs-audio --check >/dev/null 2>&1; then
+                pass "APRS USB audio service reports the commissioned levels"
+            else
+                fail "Active APRS requires the commissioned USB audio levels"
+            fi
+        fi
+
+        if [[ "${PCS_APRS_AGW_PORT}" != "0" || "${PCS_APRS_KISS_PORT}" != "0" ]]; then
             if service_active pcs-aprs-kiss-firewall.service \
                 && sudo -n /usr/local/sbin/pcs-aprs-kiss-firewall --check >/dev/null 2>&1; then
-                pass "KISS tcp/${PCS_APRS_KISS_PORT} has persistent PCS-LAN-only firewall enforcement"
+                pass "AGW tcp/${PCS_APRS_AGW_PORT} and KISS tcp/${PCS_APRS_KISS_PORT} have PCS-LAN-only firewall enforcement"
             else
-                fail "Active KISS requires the PCS APRS firewall service and drop rule"
+                fail "Active APRS client ports require the PCS LAN-only firewall service"
             fi
         fi
 
@@ -741,12 +760,12 @@ case "${PCS_SETUP_APRS}" in
                 fi
                 ;;
             tx)
-                if sudo -n grep -Eq '^PTT GPIO ' /etc/direwolf.conf \
-                    && sudo -n grep -Eq '^DIGIPEAT ' /etc/direwolf.conf \
-                    && sudo -n grep -Eq '^FX25TX ' /etc/direwolf.conf; then
+                if sudo -n grep -Eq '^PTT GPIOD gpiochip0 6$' /etc/direwolf.conf \
+                    && sudo -n grep -Eq '^DIGIPEAT 0 0 \^WIDE1-1\$ \^WIDE1-1\$$' /etc/direwolf.conf \
+                    && { [[ "${PCS_APRS_FX25_TX}" != "yes" ]] || sudo -n grep -Eq '^FX25TX ' /etc/direwolf.conf; }; then
                     pass "Active APRS transmit profile contains the selected guarded directives"
                 else
-                    fail "Active APRS transmit profile is missing PTT, digipeater, or FX.25 directives"
+                    fail "Active APRS transmit profile is missing its commissioned PTT/digipeater directives"
                 fi
                 ;;
             *)

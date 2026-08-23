@@ -16,6 +16,10 @@ FIREWALL_SCRIPT = ROOT / "scripts" / "pcs-aprs-kiss-firewall.sh"
 FIREWALL_SERVICE = ROOT / "systemd" / "pcs-aprs-kiss-firewall.service"
 DIREWOLF_OVERRIDE = ROOT / "systemd" / "pcs-direwolf-override.conf"
 SOFTWARE_TEST = ROOT / "scripts" / "test-direwolf-aprs-software.sh"
+SA818_UTILITY = ROOT / "scripts" / "pcs_sa818.py"
+SA818_SERVICE = ROOT / "systemd" / "pcs-sa818.service"
+APRS_AUDIO = ROOT / "scripts" / "pcs-aprs-audio.sh"
+APRS_AUDIO_SERVICE = ROOT / "systemd" / "pcs-aprs-audio.service"
 
 
 class DireWolfAprsTests(unittest.TestCase):
@@ -27,8 +31,8 @@ class DireWolfAprsTests(unittest.TestCase):
             if line.strip() and not line.lstrip().startswith("#")
         ]
 
-        self.assertIn("ADEVICE plughw:CARD=PCS_AUDIO,DEV=0 null", active_lines)
-        self.assertIn("MYCALL W8IJC-2", active_lines)
+        self.assertIn("ADEVICE plughw:CARD=Device,DEV=0 null", active_lines)
+        self.assertIn("MYCALL W8IJC-10", active_lines)
         self.assertIn("GPSD localhost 2947", active_lines)
         self.assertIn("AGWPORT 0", active_lines)
         self.assertIn("KISSPORT 0", active_lines)
@@ -96,8 +100,8 @@ class DireWolfAprsTests(unittest.TestCase):
         example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
         documentation = DOC.read_text(encoding="utf-8")
 
-        self.assertIn('PCS_APRS_FREQUENCY="144.555 MHz"', example)
-        self.assertIn("144.555 MHz", documentation)
+        self.assertIn('PCS_APRS_FREQUENCY="144.550 MHz"', example)
+        self.assertIn("144.550 MHz", documentation)
 
     def test_selected_beacon_interval_and_fill_in_policy(self):
         example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
@@ -106,7 +110,7 @@ class DireWolfAprsTests(unittest.TestCase):
         for setting in (
             'PCS_APRS_BEACON_INTERVAL="10:00"',
             'PCS_APRS_DIGIPEAT_ALIAS="WIDE1-1"',
-            'PCS_APRS_DIGIPEAT_ALIAS_PATTERN="^W8IJC-2$"',
+            'PCS_APRS_DIGIPEAT_ALIAS_PATTERN="^WIDE1-1$"',
             'PCS_APRS_DIGIPEAT_WIDE_PATTERN="^WIDE1-1$"',
             'PCS_APRS_DIGIPEAT_PREEMPTIVE="OFF"',
             'PCS_APRS_DIGIPEAT_FILTER="all-eligible"',
@@ -115,7 +119,7 @@ class DireWolfAprsTests(unittest.TestCase):
             with self.subTest(setting=setting):
                 self.assertIn(setting, example)
 
-        self.assertIn("#DIGIPEAT 0 0 ^W8IJC-2$ ^WIDE1-1$ OFF", template)
+        self.assertIn("#DIGIPEAT 0 0 ^WIDE1-1$ ^WIDE1-1$", template)
 
     def test_tracker_uses_documented_local_pcs_gpsd_path(self):
         example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
@@ -144,12 +148,14 @@ class DireWolfAprsTests(unittest.TestCase):
                 self.assertIn(flag, documentation)
                 self.assertIn(flag, script_documentation)
 
-    def test_kiss_firewall_has_lan_allow_and_catch_all_drop(self):
+    def test_agw_and_kiss_firewall_has_lan_allow_and_catch_all_drop(self):
         script = FIREWALL_SCRIPT.read_text(encoding="utf-8")
         service = FIREWALL_SERVICE.read_text(encoding="utf-8")
 
         self.assertIn('ip saddr ${LAN_NETWORK} accept', script)
-        self.assertIn('tcp dport ${KISS_PORT} drop', script)
+        self.assertIn('AGW_PORT="${PCS_APRS_AGW_PORT:-0}"', script)
+        self.assertIn('port_expression="{ ${AGW_PORT}, ${KISS_PORT} }"', script)
+        self.assertIn('tcp dport ${port_expression} drop', script)
         self.assertIn("Before=direwolf.service", service)
         self.assertIn("ExecStart=/usr/local/sbin/pcs-aprs-kiss-firewall --apply", service)
 
@@ -175,6 +181,31 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("@DIREWOLF_BIN@", override)
         self.assertIn('sed "s|@DIREWOLF_BIN@|${direwolf_bin}|g"', setup)
 
+    def test_production_services_order_radio_and_audio_before_direwolf(self):
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+        override = DIREWOLF_OVERRIDE.read_text(encoding="utf-8")
+        radio_service = SA818_SERVICE.read_text(encoding="utf-8")
+        audio_service = APRS_AUDIO_SERVICE.read_text(encoding="utf-8")
+        audio_script = APRS_AUDIO.read_text(encoding="utf-8")
+
+        self.assertIn("pcs-sa818.service", override)
+        self.assertIn("pcs-aprs-audio.service", override)
+        self.assertIn("ExecStartPre=/usr/local/sbin/pcs-sa818 --config /etc/pcs/aprs/sa818.ini --apply", override)
+        self.assertIn("ExecStartPre=/usr/local/sbin/pcs-aprs-audio --apply --wait-seconds 60", override)
+        self.assertIn("Restart=always", override)
+        self.assertIn("Before=direwolf.service", radio_service)
+        self.assertIn("Before=direwolf.service", audio_service)
+        self.assertIn("User=direwolf", radio_service)
+        self.assertIn("SupplementaryGroups=dialout", radio_service)
+        self.assertIn("User=direwolf", audio_service)
+        self.assertIn("SupplementaryGroups=audio", audio_service)
+        self.assertIn("AT+DMOSETGROUP", SA818_UTILITY.read_text(encoding="utf-8"))
+        self.assertIn('PCS_APRS_PLAYBACK_LEVEL="${PCS_APRS_PLAYBACK_LEVEL:--18dB}"', audio_script)
+        self.assertIn('sset "${PCS_APRS_PLAYBACK_CONTROL}" --', audio_script)
+        self.assertIn('sset "${PCS_APRS_CAPTURE_CONTROL}"', audio_script)
+        self.assertIn('sset "${PCS_APRS_AGC_CONTROL}"', audio_script)
+        self.assertIn('sudo systemctl restart pcs-sa818.service', setup)
+
     @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")
     def test_generated_rx_profile_has_no_transmit_directives(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -196,10 +227,10 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertTrue(any(re.match(r"^ADEVICE \S+ null$", line) for line in active_lines))
         for unsafe_prefix in ("PTT ", "IGTXVIA ", "IGTXLIMIT ", "TBEACON ", "PBEACON ", "DIGIPEAT ", "FX25TX "):
             self.assertFalse(any(line.startswith(unsafe_prefix) for line in active_lines))
-        self.assertIn("IGLOGIN W8IJC-2 <APRS-IS-passcode>", active_lines)
+        self.assertIn("IGLOGIN W8IJC-10 <APRS-IS-passcode>", active_lines)
 
     @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")
-    def test_generated_tx_profile_exposes_unresolved_beacon_as_blocked(self):
+    def test_generated_tx_profile_matches_commissioned_core(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             env = os.environ.copy()
             env["PCS_INSTALL_CONFIG"] = str(Path(temp_dir) / "missing.conf")
@@ -212,20 +243,19 @@ class DireWolfAprsTests(unittest.TestCase):
                 check=True,
             )
 
-        self.assertIn("PTT GPIO 6", result.stdout)
+        self.assertIn("PTT GPIOD gpiochip0 6", result.stdout)
         self.assertIn("IGTXVIA 0", result.stdout)
-        self.assertIn("DIGIPEAT 0 0 ^W8IJC-2$ ^WIDE1-1$ OFF", result.stdout)
-        self.assertIn("FX25TX 1", result.stdout)
-        self.assertIn("# BLOCKED: tracker beacon symbol is not selected.", result.stdout)
+        self.assertIn("DIGIPEAT 0 0 ^WIDE1-1$ ^WIDE1-1$", result.stdout)
+        self.assertNotIn("FX25TX", result.stdout)
+        self.assertIn("TXDELAY 90", result.stdout)
+        self.assertIn("TXTAIL 20", result.stdout)
+        self.assertIn("AGWPORT 8000", result.stdout)
+        self.assertIn('TBEACON SENDTO=IG DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
+        self.assertNotIn("BLOCKED", result.stdout)
 
     @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")
     def test_completed_tx_profile_renders_without_blocked_directives(self):
         profile = INSTALL_EXAMPLE.read_text(encoding="utf-8")
-        profile = profile.replace('PCS_APRS_AUDIO_INPUT="auto"', 'PCS_APRS_AUDIO_INPUT="plughw:CARD=PCSUSB,DEV=0"')
-        profile = profile.replace('PCS_APRS_AUDIO_OUTPUT="auto"', 'PCS_APRS_AUDIO_OUTPUT="plughw:CARD=PCSUSB,DEV=0"')
-        profile = profile.replace('PCS_APRS_BEACON_PATH="not selected"', 'PCS_APRS_BEACON_PATH="direct"')
-        profile = profile.replace('PCS_APRS_BEACON_SYMBOL="not selected"', 'PCS_APRS_BEACON_SYMBOL="igate"')
-
         with tempfile.TemporaryDirectory() as temp_dir:
             install_config = Path(temp_dir) / "pcs-install.conf"
             install_config.write_text(profile, encoding="utf-8")
@@ -241,7 +271,7 @@ class DireWolfAprsTests(unittest.TestCase):
             )
 
         self.assertNotIn("BLOCKED", result.stdout)
-        self.assertIn('TBEACON delay=0:30 every=10:00 symbol="igate" comment="PCS"', result.stdout)
+        self.assertIn('TBEACON SENDTO=IG DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
         self.assertIn("GPSD localhost 2947", result.stdout)
 
 

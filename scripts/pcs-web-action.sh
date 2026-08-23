@@ -1894,6 +1894,7 @@ aprs_igate = CONFIG.get("PCS_APRS_IGATE", "no").lower() == "yes"
 aprs_igate_server = CONFIG.get("PCS_APRS_IGATE_SERVER", "not configured")
 aprs_igate_mode = CONFIG.get("PCS_APRS_IGATE_MODE", "rx-only")
 aprs_igate_rf_to_is_filter = CONFIG.get("PCS_APRS_IGATE_RF_TO_IS_FILTER", "all-eligible")
+aprs_agw_port = CONFIG.get("PCS_APRS_AGW_PORT", "0")
 aprs_kiss_port = CONFIG.get("PCS_APRS_KISS_PORT", "0")
 aprs_tx_enabled = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_TX_ENABLED", "no").lower() == "yes"
 aprs_fx25_tx = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_FX25_TX", "no").lower() == "yes"
@@ -1921,7 +1922,12 @@ if aprs_igate:
     aprs_igate_label = f"{aprs_igate_active_mode} via {aprs_igate_server}; {aprs_igate_scope}"
 else:
     aprs_igate_label = "disabled"
-aprs_kiss_label = f"10.42.0.1:{aprs_kiss_port}" if aprs_kiss_port != "0" else "disabled"
+aprs_client_endpoints = []
+if aprs_agw_port != "0":
+    aprs_client_endpoints.append(f"AGW 10.42.0.1:{aprs_agw_port}")
+if aprs_kiss_port != "0":
+    aprs_client_endpoints.append(f"KISS 10.42.0.1:{aprs_kiss_port}")
+aprs_kiss_label = " / ".join(aprs_client_endpoints) if aprs_client_endpoints else "disabled"
 if aprs_beacon:
     aprs_beacon_source = "GPS" if aprs_beacon_type == "gps-tracker" else aprs_beacon_type
     aprs_beacon_interval_label = "10 minutes" if aprs_beacon_interval == "10:00" else aprs_beacon_interval
@@ -1956,12 +1962,22 @@ else:
 
 if APRS_STAGED:
     aprs_status = "ok" if direwolf_installed and direwolf_template and not direwolf_active and not direwolf_enabled else "warn"
-    aprs_summary = "Dire Wolf software staged; waiting for USB audio and radio hardware"
+    aprs_summary = "Dire Wolf software staged; no live radio profile is active"
     aprs_service_label = "staged / disabled" if not direwolf_active else "unexpectedly active"
-    aprs_radio_label = "waiting for USB audio and radio"
+    aprs_radio_label = "not active during staging"
     aprs_tx_label = "disabled during staging"
 elif APRS_CONFIGURED:
-    aprs_status = "ok" if direwolf_installed and direwolf_live_config and direwolf_active else "warn"
+    aprs_radio_service = active("pcs-sa818.service")
+    aprs_audio_service = active("pcs-aprs-audio.service")
+    aprs_firewall_service = active("pcs-aprs-kiss-firewall.service")
+    aprs_status = "ok" if all((
+        direwolf_installed,
+        direwolf_live_config,
+        direwolf_active,
+        aprs_radio_service,
+        aprs_audio_service,
+        aprs_firewall_service,
+    )) else "warn"
     aprs_summary = "Dire Wolf APRS service active" if aprs_status == "ok" else "Configured APRS service needs attention"
     aprs_service_label = "active" if direwolf_active else "inactive"
     aprs_radio_label = CONFIG.get("PCS_APRS_RADIO", f"{aprs_audio_input} -> {aprs_audio_output}")
@@ -2290,6 +2306,10 @@ if APRS_PREPARED:
             {"label": "Service", "value": aprs_service_label},
             {"label": "Boot enablement", "value": "enabled" if direwolf_enabled else "disabled"},
             {"label": "Radio / audio", "value": aprs_radio_label},
+            {"label": "SA818S initialization", "value": "active" if active("pcs-sa818.service") else "inactive"},
+            {"label": "ALSA profile", "value": "active" if active("pcs-aprs-audio.service") else "inactive"},
+            {"label": "AGW / KISS firewall", "value": "active" if active("pcs-aprs-kiss-firewall.service") else "inactive"},
+            {"label": "Client endpoints", "value": aprs_kiss_label},
             {"label": "Frequency", "value": aprs_frequency},
             {"label": "GPS tracker source", "value": f"{aprs_gpsd_host}:{aprs_gpsd_port}" if aprs_gpsd else "disabled"},
             {"label": "APRS-IS", "value": "configured" if aprs_igate else "not configured"},

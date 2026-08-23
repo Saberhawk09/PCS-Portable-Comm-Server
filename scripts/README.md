@@ -28,7 +28,7 @@ This installs/configures:
 - Chrony LAN NTP
 - Optional WWAN GNSS and LAN-only GPSD sharing
 - Optional Pi-Star monitoring and local-access links
-- Optional Dire Wolf / APRS software staging with the service and RF path disabled
+- Optional guarded Dire Wolf / SA818S APRS integration
 - Optional Meshtastic Bluetooth/MQTT gateway software staging with the service disabled
 - PCS restart service
 - PCS public homepage and authenticated control panel
@@ -245,8 +245,9 @@ Flag behavior:
 - `--rollback` restores the newest root-owned live-configuration backup.
 - `--help` and `-h` print the terminal command reference.
 
-Activation also installs persistent LAN-only KISS filtering, managed Dire Wolf
-CSV logging/rotation, and a restart-on-failure systemd override. Full option,
+Activation also installs boot-time SA818S programming, explicit ALSA restoration,
+persistent LAN-only AGW/KISS filtering, managed Dire Wolf CSV logging/rotation,
+and restart-on-device-recovery behavior. Full option,
 security, and rollback details are in
 [Dire Wolf / APRS Integration](../docs/direwolf-aprs.md).
 
@@ -265,6 +266,15 @@ It counts received RF packets for the last hour/day, unique recent stations,
 and the last RF packet while excluding Dire Wolf's synthetic channel 999
 tracker-transmit rows.
 
+### pcs_sa818.py and pcs-aprs-audio.sh
+
+`pcs-sa818.service` applies the commissioned 144.5500 MHz, 25 kHz, no-tone,
+squelch-1, volume-8, filters-off, tail-off profile over `/dev/serial0`, then
+requires an exact `AT+DMOREADGROUP` match. `pcs-aprs-audio.service` applies and
+verifies Sabrent/C-Media card `Device` at -18 dB playback, 100% capture, and AGC
+off. Dire Wolf reruns both helpers before every start so UART or USB
+re-enumeration does not bypass the known-good profiles.
+
 ### pcs-aprs-kiss-firewall.sh
 
 Normally managed by `pcs-aprs-kiss-firewall.service`:
@@ -276,7 +286,7 @@ sudo /usr/local/sbin/pcs-aprs-kiss-firewall --clear
 sudo /usr/local/sbin/pcs-aprs-kiss-firewall --help
 ```
 
-The helper admits KISS only from loopback and the configured PCS LAN, then
+The helper admits AGW and KISS only from loopback and the configured PCS LAN, then
 drops the selected KISS port on all other interfaces.
 
 ## Time / RTC / NTP

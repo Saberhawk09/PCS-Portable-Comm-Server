@@ -21,6 +21,14 @@ KISS_FIREWALL_SERVICE_SRC="${REPO_DIR}/systemd/pcs-aprs-kiss-firewall.service"
 KISS_FIREWALL_SERVICE_DST="/etc/systemd/system/pcs-aprs-kiss-firewall.service"
 DIREWOLF_OVERRIDE_SRC="${REPO_DIR}/systemd/pcs-direwolf-override.conf"
 DIREWOLF_OVERRIDE_DST="/etc/systemd/system/direwolf.service.d/pcs.conf"
+SA818_SRC="${SCRIPT_DIR}/pcs_sa818.py"
+SA818_DST="/usr/local/sbin/pcs-sa818"
+SA818_SERVICE_SRC="${REPO_DIR}/systemd/pcs-sa818.service"
+SA818_SERVICE_DST="/etc/systemd/system/pcs-sa818.service"
+APRS_AUDIO_SRC="${SCRIPT_DIR}/pcs-aprs-audio.sh"
+APRS_AUDIO_DST="/usr/local/sbin/pcs-aprs-audio"
+APRS_AUDIO_SERVICE_SRC="${REPO_DIR}/systemd/pcs-aprs-audio.service"
+APRS_AUDIO_SERVICE_DST="/etc/systemd/system/pcs-aprs-audio.service"
 SOFTWARE_TEST="${SCRIPT_DIR}/test-direwolf-aprs-software.sh"
 DIREWOLF_MIN_VERSION="1.8"
 DIREWOLF_SOURCE_VERSION="1.8.1"
@@ -38,10 +46,18 @@ fi
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
-PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-W8IJC-2}"
-PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-144.555 MHz}"
-PCS_APRS_AUDIO_INPUT="${PCS_APRS_AUDIO_INPUT:-auto}"
-PCS_APRS_AUDIO_OUTPUT="${PCS_APRS_AUDIO_OUTPUT:-auto}"
+PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-W8IJC-10}"
+PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-144.550 MHz}"
+PCS_APRS_RADIO="${PCS_APRS_RADIO:-SA818S / EasyDigi / Sabrent USB audio}"
+PCS_APRS_AUDIO_INPUT="${PCS_APRS_AUDIO_INPUT:-plughw:CARD=Device,DEV=0}"
+PCS_APRS_AUDIO_OUTPUT="${PCS_APRS_AUDIO_OUTPUT:-plughw:CARD=Device,DEV=0}"
+PCS_APRS_AUDIO_CARD="${PCS_APRS_AUDIO_CARD:-Device}"
+PCS_APRS_PLAYBACK_CONTROL="${PCS_APRS_PLAYBACK_CONTROL:-Speaker}"
+PCS_APRS_PLAYBACK_LEVEL="${PCS_APRS_PLAYBACK_LEVEL:--18dB}"
+PCS_APRS_CAPTURE_CONTROL="${PCS_APRS_CAPTURE_CONTROL:-Mic}"
+PCS_APRS_CAPTURE_LEVEL="${PCS_APRS_CAPTURE_LEVEL:-100%}"
+PCS_APRS_AGC_CONTROL="${PCS_APRS_AGC_CONTROL:-Auto Gain Control}"
+PCS_APRS_AGC_STATE="${PCS_APRS_AGC_STATE:-off}"
 PCS_APRS_SAMPLE_RATE="${PCS_APRS_SAMPLE_RATE:-48000}"
 PCS_APRS_AUDIO_CHANNELS="${PCS_APRS_AUDIO_CHANNELS:-1}"
 PCS_APRS_MODEM="${PCS_APRS_MODEM:-1200}"
@@ -49,7 +65,7 @@ PCS_APRS_PTT_METHOD="${PCS_APRS_PTT_METHOD:-gpio}"
 PCS_APRS_PTT_INTERFACE="${PCS_APRS_PTT_INTERFACE:-EasyDigi}"
 PCS_APRS_PTT_GPIO_LINE="${PCS_APRS_PTT_GPIO_LINE:-6}"
 PCS_APRS_PTT_ACTIVE_LEVEL="${PCS_APRS_PTT_ACTIVE_LEVEL:-high}"
-PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
+PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-8000}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-8001}"
 PCS_APRS_KISS_LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"
 PCS_APRS_KISS_LAN_NETWORK="${PCS_APRS_KISS_LAN_NETWORK:-10.42.0.0/24}"
@@ -67,32 +83,49 @@ PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
 PCS_APRS_BEACON="${PCS_APRS_BEACON:-yes}"
 PCS_APRS_BEACON_TYPE="${PCS_APRS_BEACON_TYPE:-gps-tracker}"
 PCS_APRS_BEACON_INTERVAL="${PCS_APRS_BEACON_INTERVAL:-10:00}"
-PCS_APRS_BEACON_PATH="${PCS_APRS_BEACON_PATH:-not selected}"
-PCS_APRS_BEACON_SYMBOL="${PCS_APRS_BEACON_SYMBOL:-not selected}"
-PCS_APRS_BEACON_COMMENT="${PCS_APRS_BEACON_COMMENT:-PCS}"
+PCS_APRS_BEACON_PATH="${PCS_APRS_BEACON_PATH:-direct}"
+PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-IG}"
+PCS_APRS_BEACON_SYMBOL="${PCS_APRS_BEACON_SYMBOL:-igate}"
+PCS_APRS_BEACON_OVERLAY="${PCS_APRS_BEACON_OVERLAY:-T}"
+PCS_APRS_BEACON_ALTITUDE="${PCS_APRS_BEACON_ALTITUDE:-yes}"
+PCS_APRS_BEACON_COMMENT="${PCS_APRS_BEACON_COMMENT:-PCS Portable Communication Server - W8IJC}"
 PCS_APRS_DIGIPEAT="${PCS_APRS_DIGIPEAT:-yes}"
 PCS_APRS_DIGIPEAT_MODE="${PCS_APRS_DIGIPEAT_MODE:-fill-in}"
 PCS_APRS_DIGIPEAT_ALIAS="${PCS_APRS_DIGIPEAT_ALIAS:-WIDE1-1}"
-PCS_APRS_DIGIPEAT_ALIAS_PATTERN="${PCS_APRS_DIGIPEAT_ALIAS_PATTERN:-^W8IJC-2$}"
+PCS_APRS_DIGIPEAT_ALIAS_PATTERN="${PCS_APRS_DIGIPEAT_ALIAS_PATTERN:-^WIDE1-1$}"
 PCS_APRS_DIGIPEAT_WIDE_PATTERN="${PCS_APRS_DIGIPEAT_WIDE_PATTERN:-^WIDE1-1$}"
 PCS_APRS_DIGIPEAT_PREEMPTIVE="${PCS_APRS_DIGIPEAT_PREEMPTIVE:-OFF}"
 PCS_APRS_DIGIPEAT_FILTER="${PCS_APRS_DIGIPEAT_FILTER:-all-eligible}"
 PCS_APRS_DIGIPEAT_DEDUPE_SECONDS="${PCS_APRS_DIGIPEAT_DEDUPE_SECONDS:-30}"
 PCS_APRS_TX_ENABLED="${PCS_APRS_TX_ENABLED:-yes}"
-PCS_APRS_FX25_TX="${PCS_APRS_FX25_TX:-yes}"
+PCS_APRS_FX25_TX="${PCS_APRS_FX25_TX:-no}"
 PCS_APRS_LOGGING="${PCS_APRS_LOGGING:-yes}"
 PCS_APRS_LOG_RETENTION_DAYS="${PCS_APRS_LOG_RETENTION_DAYS:-14}"
 PCS_APRS_DWAIT="${PCS_APRS_DWAIT:-0}"
 PCS_APRS_SLOTTIME="${PCS_APRS_SLOTTIME:-10}"
 PCS_APRS_PERSIST="${PCS_APRS_PERSIST:-63}"
-PCS_APRS_TXDELAY="${PCS_APRS_TXDELAY:-30}"
-PCS_APRS_TXTAIL="${PCS_APRS_TXTAIL:-10}"
+PCS_APRS_TXDELAY="${PCS_APRS_TXDELAY:-90}"
+PCS_APRS_TXTAIL="${PCS_APRS_TXTAIL:-20}"
 PCS_APRS_FULLDUP="${PCS_APRS_FULLDUP:-OFF}"
 PCS_APRS_RX_AUDIO_VALIDATED="${PCS_APRS_RX_AUDIO_VALIDATED:-no}"
 PCS_APRS_RADIO_CHANNEL_VALIDATED="${PCS_APRS_RADIO_CHANNEL_VALIDATED:-no}"
 PCS_APRS_PTT_VALIDATED="${PCS_APRS_PTT_VALIDATED:-no}"
 PCS_APRS_TX_AUDIO_VALIDATED="${PCS_APRS_TX_AUDIO_VALIDATED:-no}"
 PCS_APRS_TX_TIMING_VALIDATED="${PCS_APRS_TX_TIMING_VALIDATED:-no}"
+PCS_APRS_RADIO_INIT="${PCS_APRS_RADIO_INIT:-yes}"
+PCS_APRS_RADIO_DEVICE="${PCS_APRS_RADIO_DEVICE:-/dev/serial0}"
+PCS_APRS_RADIO_BAUD="${PCS_APRS_RADIO_BAUD:-9600}"
+PCS_APRS_RADIO_BANDWIDTH_KHZ="${PCS_APRS_RADIO_BANDWIDTH_KHZ:-25}"
+PCS_APRS_RADIO_TX_FREQUENCY_MHZ="${PCS_APRS_RADIO_TX_FREQUENCY_MHZ:-144.5500}"
+PCS_APRS_RADIO_RX_FREQUENCY_MHZ="${PCS_APRS_RADIO_RX_FREQUENCY_MHZ:-144.5500}"
+PCS_APRS_RADIO_TX_TONE="${PCS_APRS_RADIO_TX_TONE:-0000}"
+PCS_APRS_RADIO_RX_TONE="${PCS_APRS_RADIO_RX_TONE:-0000}"
+PCS_APRS_RADIO_SQUELCH="${PCS_APRS_RADIO_SQUELCH:-1}"
+PCS_APRS_RADIO_VOLUME="${PCS_APRS_RADIO_VOLUME:-8}"
+PCS_APRS_RADIO_PRE_DE_EMPHASIS="${PCS_APRS_RADIO_PRE_DE_EMPHASIS:-off}"
+PCS_APRS_RADIO_HIGH_PASS="${PCS_APRS_RADIO_HIGH_PASS:-off}"
+PCS_APRS_RADIO_LOW_PASS="${PCS_APRS_RADIO_LOW_PASS:-off}"
+PCS_APRS_RADIO_TX_TAIL="${PCS_APRS_RADIO_TX_TAIL:-off}"
 
 usage() {
     cat <<'EOF'
@@ -124,7 +157,7 @@ Usage: ./scripts/setup-direwolf-aprs.sh COMMAND [PROFILE]
 
 PROFILE must be rx or tx. Transmit activation requires explicit validation of
 the radio channel, receive audio, PTT polarity, transmit audio/deviation, and
-Dire Wolf timing. No activation command should be run before hardware arrives.
+Dire Wolf timing. The typed RF confirmation is still required after commissioning.
 EOF
 }
 
@@ -266,8 +299,16 @@ configure_options() {
     set_install_config_value PCS_APRS_ROLE "${PCS_APRS_ROLE}"
     set_install_config_value PCS_APRS_CALLSIGN "${PCS_APRS_CALLSIGN}"
     set_install_config_value PCS_APRS_FREQUENCY "${PCS_APRS_FREQUENCY}"
+    set_install_config_value PCS_APRS_RADIO "${PCS_APRS_RADIO}"
     set_install_config_value PCS_APRS_AUDIO_INPUT "${PCS_APRS_AUDIO_INPUT}"
     set_install_config_value PCS_APRS_AUDIO_OUTPUT "${PCS_APRS_AUDIO_OUTPUT}"
+    set_install_config_value PCS_APRS_AUDIO_CARD "${PCS_APRS_AUDIO_CARD}"
+    set_install_config_value PCS_APRS_PLAYBACK_CONTROL "${PCS_APRS_PLAYBACK_CONTROL}"
+    set_install_config_value PCS_APRS_PLAYBACK_LEVEL "${PCS_APRS_PLAYBACK_LEVEL}"
+    set_install_config_value PCS_APRS_CAPTURE_CONTROL "${PCS_APRS_CAPTURE_CONTROL}"
+    set_install_config_value PCS_APRS_CAPTURE_LEVEL "${PCS_APRS_CAPTURE_LEVEL}"
+    set_install_config_value PCS_APRS_AGC_CONTROL "${PCS_APRS_AGC_CONTROL}"
+    set_install_config_value PCS_APRS_AGC_STATE "${PCS_APRS_AGC_STATE}"
     set_install_config_value PCS_APRS_SAMPLE_RATE "${PCS_APRS_SAMPLE_RATE}"
     set_install_config_value PCS_APRS_AUDIO_CHANNELS "${PCS_APRS_AUDIO_CHANNELS}"
     set_install_config_value PCS_APRS_MODEM "${PCS_APRS_MODEM}"
@@ -294,7 +335,10 @@ configure_options() {
     set_install_config_value PCS_APRS_BEACON_TYPE "${PCS_APRS_BEACON_TYPE}"
     set_install_config_value PCS_APRS_BEACON_INTERVAL "${PCS_APRS_BEACON_INTERVAL}"
     set_install_config_value PCS_APRS_BEACON_PATH "${PCS_APRS_BEACON_PATH}"
+    set_install_config_value PCS_APRS_BEACON_SENDTO "${PCS_APRS_BEACON_SENDTO}"
     set_install_config_value PCS_APRS_BEACON_SYMBOL "${PCS_APRS_BEACON_SYMBOL}"
+    set_install_config_value PCS_APRS_BEACON_OVERLAY "${PCS_APRS_BEACON_OVERLAY}"
+    set_install_config_value PCS_APRS_BEACON_ALTITUDE "${PCS_APRS_BEACON_ALTITUDE}"
     set_install_config_value PCS_APRS_BEACON_COMMENT "${PCS_APRS_BEACON_COMMENT}"
     set_install_config_value PCS_APRS_DIGIPEAT "${PCS_APRS_DIGIPEAT}"
     set_install_config_value PCS_APRS_DIGIPEAT_MODE "${PCS_APRS_DIGIPEAT_MODE}"
@@ -319,6 +363,20 @@ configure_options() {
     set_install_config_value PCS_APRS_PTT_VALIDATED "${PCS_APRS_PTT_VALIDATED}"
     set_install_config_value PCS_APRS_TX_AUDIO_VALIDATED "${PCS_APRS_TX_AUDIO_VALIDATED}"
     set_install_config_value PCS_APRS_TX_TIMING_VALIDATED "${PCS_APRS_TX_TIMING_VALIDATED}"
+    set_install_config_value PCS_APRS_RADIO_INIT "${PCS_APRS_RADIO_INIT}"
+    set_install_config_value PCS_APRS_RADIO_DEVICE "${PCS_APRS_RADIO_DEVICE}"
+    set_install_config_value PCS_APRS_RADIO_BAUD "${PCS_APRS_RADIO_BAUD}"
+    set_install_config_value PCS_APRS_RADIO_BANDWIDTH_KHZ "${PCS_APRS_RADIO_BANDWIDTH_KHZ}"
+    set_install_config_value PCS_APRS_RADIO_TX_FREQUENCY_MHZ "${PCS_APRS_RADIO_TX_FREQUENCY_MHZ}"
+    set_install_config_value PCS_APRS_RADIO_RX_FREQUENCY_MHZ "${PCS_APRS_RADIO_RX_FREQUENCY_MHZ}"
+    set_install_config_value PCS_APRS_RADIO_TX_TONE "${PCS_APRS_RADIO_TX_TONE}"
+    set_install_config_value PCS_APRS_RADIO_RX_TONE "${PCS_APRS_RADIO_RX_TONE}"
+    set_install_config_value PCS_APRS_RADIO_SQUELCH "${PCS_APRS_RADIO_SQUELCH}"
+    set_install_config_value PCS_APRS_RADIO_VOLUME "${PCS_APRS_RADIO_VOLUME}"
+    set_install_config_value PCS_APRS_RADIO_PRE_DE_EMPHASIS "${PCS_APRS_RADIO_PRE_DE_EMPHASIS}"
+    set_install_config_value PCS_APRS_RADIO_HIGH_PASS "${PCS_APRS_RADIO_HIGH_PASS}"
+    set_install_config_value PCS_APRS_RADIO_LOW_PASS "${PCS_APRS_RADIO_LOW_PASS}"
+    set_install_config_value PCS_APRS_RADIO_TX_TAIL "${PCS_APRS_RADIO_TX_TAIL}"
 
     echo
     echo "Desired APRS options saved to ${INSTALL_CONFIG}."
@@ -531,6 +589,13 @@ validate_profile_values() {
     validate_value PCS_APRS_ACTIVE_MODE "${PCS_APRS_ACTIVE_MODE}" '^(staged|rx|tx)$'
     validate_value PCS_APRS_AUDIO_INPUT "${PCS_APRS_AUDIO_INPUT}" '^(auto|[A-Za-z0-9_.,:/=+-]+)$'
     validate_value PCS_APRS_AUDIO_OUTPUT "${PCS_APRS_AUDIO_OUTPUT}" '^(auto|null|[A-Za-z0-9_.,:/=+-]+)$'
+    validate_value PCS_APRS_AUDIO_CARD "${PCS_APRS_AUDIO_CARD}" '^[A-Za-z0-9_.-]{1,64}$'
+    validate_value PCS_APRS_PLAYBACK_CONTROL "${PCS_APRS_PLAYBACK_CONTROL}" '^[A-Za-z0-9 _./+-]{1,80}$'
+    validate_value PCS_APRS_PLAYBACK_LEVEL "${PCS_APRS_PLAYBACK_LEVEL}" '^(-[0-9]{1,3}dB|[0-9]{1,3}%)$'
+    validate_value PCS_APRS_CAPTURE_CONTROL "${PCS_APRS_CAPTURE_CONTROL}" '^[A-Za-z0-9 _./+-]{1,80}$'
+    validate_value PCS_APRS_CAPTURE_LEVEL "${PCS_APRS_CAPTURE_LEVEL}" '^[0-9]{1,3}%$'
+    validate_value PCS_APRS_AGC_CONTROL "${PCS_APRS_AGC_CONTROL}" '^[A-Za-z0-9 _./+-]{1,80}$'
+    validate_value PCS_APRS_AGC_STATE "${PCS_APRS_AGC_STATE}" '^(on|off)$'
     validate_value PCS_APRS_SAMPLE_RATE "${PCS_APRS_SAMPLE_RATE}" '^(44100|48000|96000)$'
     validate_value PCS_APRS_AUDIO_CHANNELS "${PCS_APRS_AUDIO_CHANNELS}" '^[12]$'
     validate_value PCS_APRS_MODEM "${PCS_APRS_MODEM}" '^(300|1200|9600)$'
@@ -550,7 +615,9 @@ validate_profile_values() {
     validate_value PCS_APRS_BEACON_INTERVAL "${PCS_APRS_BEACON_INTERVAL}" '^[0-9]{1,2}:[0-9]{2}$'
     validate_value PCS_APRS_BEACON_TYPE "${PCS_APRS_BEACON_TYPE}" '^(gps-tracker|fixed)$'
     validate_value PCS_APRS_BEACON_PATH "${PCS_APRS_BEACON_PATH}" '^(direct|not selected|[A-Z0-9,-]{1,40})$'
+    validate_value PCS_APRS_BEACON_SENDTO "${PCS_APRS_BEACON_SENDTO}" '^(IG|[0-9])$'
     validate_value PCS_APRS_BEACON_SYMBOL "${PCS_APRS_BEACON_SYMBOL}" '^(not selected|[A-Za-z0-9 _/-]{1,40})$'
+    validate_value PCS_APRS_BEACON_OVERLAY "${PCS_APRS_BEACON_OVERLAY}" '^[A-Za-z0-9]$'
     validate_value PCS_APRS_BEACON_COMMENT "${PCS_APRS_BEACON_COMMENT}" '^[A-Za-z0-9 .,_/+:-]{1,80}$'
     validate_value PCS_APRS_DIGIPEAT_ALIAS_PATTERN "${PCS_APRS_DIGIPEAT_ALIAS_PATTERN}" '^[A-Za-z0-9^$.*+?()|\\-]{1,80}$'
     validate_value PCS_APRS_DIGIPEAT_WIDE_PATTERN "${PCS_APRS_DIGIPEAT_WIDE_PATTERN}" '^[A-Za-z0-9^$.*+?()|\\-]{1,80}$'
@@ -564,8 +631,20 @@ validate_profile_values() {
         validate_value "${timing_value}" "${!timing_value}" '^[0-9]{1,4}$'
     done
     validate_value PCS_APRS_FULLDUP "${PCS_APRS_FULLDUP}" '^(ON|OFF)$'
+    validate_value PCS_APRS_RADIO_DEVICE "${PCS_APRS_RADIO_DEVICE}" '^/dev/[A-Za-z0-9._/-]+$'
+    validate_value PCS_APRS_RADIO_BAUD "${PCS_APRS_RADIO_BAUD}" '^9600$'
+    validate_value PCS_APRS_RADIO_BANDWIDTH_KHZ "${PCS_APRS_RADIO_BANDWIDTH_KHZ}" '^(12|25)$'
+    validate_value PCS_APRS_RADIO_TX_FREQUENCY_MHZ "${PCS_APRS_RADIO_TX_FREQUENCY_MHZ}" '^[0-9]{3}[.][0-9]{4}$'
+    validate_value PCS_APRS_RADIO_RX_FREQUENCY_MHZ "${PCS_APRS_RADIO_RX_FREQUENCY_MHZ}" '^[0-9]{3}[.][0-9]{4}$'
+    validate_value PCS_APRS_RADIO_TX_TONE "${PCS_APRS_RADIO_TX_TONE}" '^([0-9]{4}|[0-9]{3}[A-Z])$'
+    validate_value PCS_APRS_RADIO_RX_TONE "${PCS_APRS_RADIO_RX_TONE}" '^([0-9]{4}|[0-9]{3}[A-Z])$'
+    validate_value PCS_APRS_RADIO_SQUELCH "${PCS_APRS_RADIO_SQUELCH}" '^[0-8]$'
+    validate_value PCS_APRS_RADIO_VOLUME "${PCS_APRS_RADIO_VOLUME}" '^[1-8]$'
+    for radio_switch in PCS_APRS_RADIO_PRE_DE_EMPHASIS PCS_APRS_RADIO_HIGH_PASS PCS_APRS_RADIO_LOW_PASS PCS_APRS_RADIO_TX_TAIL; do
+        validate_value "${radio_switch}" "${!radio_switch}" '^(on|off)$'
+    done
 
-    for boolean_value in PCS_APRS_IGATE PCS_APRS_GPSD PCS_APRS_BEACON PCS_APRS_DIGIPEAT PCS_APRS_TX_ENABLED PCS_APRS_FX25_TX PCS_APRS_LOGGING PCS_APRS_RX_AUDIO_VALIDATED PCS_APRS_RADIO_CHANNEL_VALIDATED PCS_APRS_PTT_VALIDATED PCS_APRS_TX_AUDIO_VALIDATED PCS_APRS_TX_TIMING_VALIDATED; do
+    for boolean_value in PCS_APRS_IGATE PCS_APRS_GPSD PCS_APRS_BEACON PCS_APRS_BEACON_ALTITUDE PCS_APRS_DIGIPEAT PCS_APRS_TX_ENABLED PCS_APRS_FX25_TX PCS_APRS_LOGGING PCS_APRS_RADIO_INIT PCS_APRS_RX_AUDIO_VALIDATED PCS_APRS_RADIO_CHANNEL_VALIDATED PCS_APRS_PTT_VALIDATED PCS_APRS_TX_AUDIO_VALIDATED PCS_APRS_TX_TIMING_VALIDATED; do
         validate_value "${boolean_value}" "${!boolean_value}" '^(yes|no)$'
     done
 
@@ -629,7 +708,7 @@ TXTAIL ${PCS_APRS_TXTAIL}
 FULLDUP ${PCS_APRS_FULLDUP}
 EOF
         if [[ "${PCS_APRS_PTT_METHOD}" == "gpio" ]]; then
-            echo "PTT GPIO ${ptt_gpio}"
+            echo "PTT GPIOD gpiochip0 ${ptt_gpio}"
         else
             echo "# BLOCKED: PCS live generator currently supports only the selected GPIO PTT profile."
         fi
@@ -673,14 +752,20 @@ EOF
         if [[ "${PCS_APRS_BEACON_SYMBOL}" == "not selected" ]]; then
             echo "# BLOCKED: tracker beacon symbol is not selected."
         elif [[ "${PCS_APRS_BEACON_TYPE}" == "gps-tracker" ]]; then
-            echo "TBEACON delay=0:30 every=${PCS_APRS_BEACON_INTERVAL}${beacon_via} symbol=\"${PCS_APRS_BEACON_SYMBOL}\" comment=\"${PCS_APRS_BEACON_COMMENT}\""
+            printf 'TBEACON SENDTO=%s DELAY=0:30 EVERY=%s%s SYMBOL="%s" OVERLAY=%s' \
+                "${PCS_APRS_BEACON_SENDTO}" "${PCS_APRS_BEACON_INTERVAL}" "${beacon_via}" \
+                "${PCS_APRS_BEACON_SYMBOL}" "${PCS_APRS_BEACON_OVERLAY}"
+            [[ "${PCS_APRS_BEACON_ALTITUDE}" == "yes" ]] && printf ' ALT=1'
+            printf ' COMMENT="%s"\n' "${PCS_APRS_BEACON_COMMENT}"
         else
             echo "# BLOCKED: fixed beacon generation requires reviewed coordinates."
         fi
     fi
 
     if [[ "${profile}" == "tx" && "${PCS_APRS_DIGIPEAT}" == "yes" ]]; then
-        echo "DIGIPEAT 0 0 ${PCS_APRS_DIGIPEAT_ALIAS_PATTERN} ${PCS_APRS_DIGIPEAT_WIDE_PATTERN} ${PCS_APRS_DIGIPEAT_PREEMPTIVE}"
+        printf 'DIGIPEAT 0 0 %s %s' "${PCS_APRS_DIGIPEAT_ALIAS_PATTERN}" "${PCS_APRS_DIGIPEAT_WIDE_PATTERN}"
+        [[ "${PCS_APRS_DIGIPEAT_PREEMPTIVE}" == "OFF" ]] || printf ' %s' "${PCS_APRS_DIGIPEAT_PREEMPTIVE}"
+        printf '\n'
         echo "DEDUPE ${PCS_APRS_DIGIPEAT_DEDUPE_SECONDS}"
         if [[ "${PCS_APRS_DIGIPEAT_FILTER}" != "all-eligible" ]]; then
             echo "FILTER 0 0 ${PCS_APRS_DIGIPEAT_FILTER}"
@@ -721,12 +806,16 @@ validate_rendered_config() {
             failed=1
         fi
     else
-        for required in '^PTT GPIO ' '^DIGIPEAT ' '^FX25TX '; do
+        for required in '^PTT GPIOD gpiochip0 ' '^DIGIPEAT '; do
             if ! grep -Eq "${required}" "${config_file}"; then
                 echo "ERROR: transmit profile is missing ${required}." >&2
                 failed=1
             fi
         done
+        if [[ "${PCS_APRS_FX25_TX}" == "yes" ]] && ! grep -Eq '^FX25TX ' "${config_file}"; then
+            echo "ERROR: transmit profile is missing the selected FX.25 directive." >&2
+            failed=1
+        fi
         if [[ "${PCS_APRS_BEACON}" == "yes" ]] && ! grep -Eq '^TBEACON ' "${config_file}"; then
             echo "ERROR: transmit profile is missing the selected tracker beacon." >&2
             failed=1
@@ -812,6 +901,7 @@ show_capabilities() {
     echo "Dire Wolf version:      ${version}"
     echo "OS codename:            ${os_codename}"
     echo "gpsd compiled support:  $(grep -qi gpsd <<<"${help_text}" && echo yes || echo no)"
+    echo "libgpiod compiled support: $(grep -qi libgpiod <<<"${help_text}" && echo yes || echo no)"
     echo "GPIO helper available:  $(command -v gpioinfo >/dev/null 2>&1 && echo yes || echo no)"
     echo "nftables available:     $(command -v nft >/dev/null 2>&1 && echo yes || echo no)"
     echo "gen_packets available:  $(command -v gen_packets >/dev/null 2>&1 && echo yes || echo no)"
@@ -834,7 +924,10 @@ collect_activation_blockers() {
     ACTIVATION_BLOCKERS=()
     validate_profile_values || record_blocker "one or more desired-profile values failed syntax validation"
     command -v direwolf >/dev/null 2>&1 || record_blocker "Dire Wolf is not installed"
-    command -v nft >/dev/null 2>&1 || record_blocker "nftables is not installed for LAN-only KISS enforcement"
+    if command -v direwolf >/dev/null 2>&1; then
+        help_text="$(direwolf -t 0 -h 2>&1 || true)"
+    fi
+    command -v nft >/dev/null 2>&1 || record_blocker "nftables is not installed for LAN-only AGW/KISS enforcement"
     id direwolf >/dev/null 2>&1 || record_blocker "the unprivileged direwolf service account is missing"
     if id direwolf >/dev/null 2>&1; then
         id -nG direwolf | tr ' ' '\n' | grep -Fxq audio || record_blocker "the direwolf service account is not in the audio group"
@@ -847,11 +940,12 @@ collect_activation_blockers() {
         record_blocker "ALSA capture device is still auto"
     fi
     [[ "${PCS_APRS_RX_AUDIO_VALIDATED}" == "yes" ]] || record_blocker "receive audio decoding has not been validated"
-    [[ "${PCS_APRS_RADIO_CHANNEL_VALIDATED}" == "yes" ]] || record_blocker "radio programming for 144.555 MHz has not been validated"
+    [[ "${PCS_APRS_RADIO_CHANNEL_VALIDATED}" == "yes" ]] || record_blocker "radio programming for ${PCS_APRS_FREQUENCY} has not been validated"
+    [[ "${PCS_APRS_RADIO_INIT}" == "yes" ]] || record_blocker "SA818S boot-time initialization is not enabled"
+    [[ -e "${PCS_APRS_RADIO_DEVICE}" ]] || record_blocker "SA818S UART ${PCS_APRS_RADIO_DEVICE} is unavailable"
 
     if [[ "${PCS_APRS_GPSD}" == "yes" ]]; then
         if command -v direwolf >/dev/null 2>&1; then
-            help_text="$(direwolf -t 0 -h 2>&1 || true)"
             grep -qi gpsd <<<"${help_text}" || record_blocker "Dire Wolf does not report compiled-in gpsd support"
         fi
         systemctl is-active --quiet gpsd.service 2>/dev/null || record_blocker "gpsd.service is not active"
@@ -866,6 +960,7 @@ collect_activation_blockers() {
         [[ "${PCS_APRS_TX_AUDIO_VALIDATED}" == "yes" ]] || record_blocker "transmit audio level and deviation have not been validated"
         [[ "${PCS_APRS_TX_TIMING_VALIDATED}" == "yes" ]] || record_blocker "DWAIT/SLOTTIME/PERSIST/TXDELAY/TXTAIL have not been validated"
         command -v gpioinfo >/dev/null 2>&1 || record_blocker "libgpiod gpioinfo is unavailable"
+        grep -qi 'libgpiod' <<<"${help_text}" || record_blocker "Dire Wolf does not report compiled-in libgpiod support"
         getent group gpio >/dev/null 2>&1 || record_blocker "the Raspberry Pi gpio group is unavailable"
         if id direwolf >/dev/null 2>&1; then
             id -nG direwolf | tr ' ' '\n' | grep -Fxq gpio || record_blocker "the direwolf service account is not in the gpio group"
@@ -939,6 +1034,9 @@ show_check() {
     echo "Modem:        ${PCS_APRS_MODEM} baud"
     echo "Audio input:  ${PCS_APRS_AUDIO_INPUT}"
     echo "Audio output: ${PCS_APRS_AUDIO_OUTPUT}"
+    echo "ALSA levels:  ${PCS_APRS_AUDIO_CARD} / TX ${PCS_APRS_PLAYBACK_LEVEL} / RX ${PCS_APRS_CAPTURE_LEVEL} / AGC ${PCS_APRS_AGC_STATE}"
+    echo "Radio UART:   ${PCS_APRS_RADIO_DEVICE} at ${PCS_APRS_RADIO_BAUD}; init=${PCS_APRS_RADIO_INIT}"
+    echo "Radio group:  ${PCS_APRS_RADIO_BANDWIDTH_KHZ} kHz / TX ${PCS_APRS_RADIO_TX_FREQUENCY_MHZ} / RX ${PCS_APRS_RADIO_RX_FREQUENCY_MHZ} / SQ ${PCS_APRS_RADIO_SQUELCH}"
     echo "PTT method:   ${PCS_APRS_PTT_METHOD}"
     echo "PTT hardware: ${PCS_APRS_PTT_INTERFACE} / GPIO ${PCS_APRS_PTT_GPIO_LINE} / ${PCS_APRS_PTT_ACTIVE_LEVEL}"
     echo "AGW / KISS:   ${PCS_APRS_AGW_PORT} / ${PCS_APRS_KISS_PORT}"
@@ -979,6 +1077,9 @@ show_check() {
     fi
 
     echo "Service:      ${service_state} (${service_enabled})"
+    echo "Radio init:   $(systemctl is-active pcs-sa818.service 2>/dev/null || true)"
+    echo "Audio setup:  $(systemctl is-active pcs-aprs-audio.service 2>/dev/null || true)"
+    echo "Client firewall: $(systemctl is-active pcs-aprs-kiss-firewall.service 2>/dev/null || true)"
     echo "PCS template: $(sudo -n test -r "${TEMPLATE_DST}" 2>/dev/null && echo installed || echo 'restricted or missing')"
     echo "Live config:  $(sudo -n test -s "${DIREWOLF_CONFIG}" 2>/dev/null && echo present || echo 'not present')"
     echo "Test tools:   $(command -v gen_packets >/dev/null 2>&1 && command -v atest >/dev/null 2>&1 && echo available || echo missing)"
@@ -1048,11 +1149,16 @@ prompt_aprs_is_passcode() {
 install_runtime_support() {
     local temp_dir="$1"
     local kiss_env="${temp_dir}/kiss-firewall.conf"
+    local audio_env="${temp_dir}/audio.conf"
+    local sa818_ini="${temp_dir}/sa818.ini"
     local logrotate_config="${temp_dir}/pcs-direwolf.logrotate"
     local direwolf_override="${temp_dir}/pcs-direwolf-override.conf"
     local direwolf_bin=""
 
-    if [[ ! -f "${KISS_FIREWALL_SRC}" || ! -f "${KISS_FIREWALL_SERVICE_SRC}" || ! -f "${DIREWOLF_OVERRIDE_SRC}" ]]; then
+    if [[ ! -f "${KISS_FIREWALL_SRC}" || ! -f "${KISS_FIREWALL_SERVICE_SRC}" \
+        || ! -f "${DIREWOLF_OVERRIDE_SRC}" || ! -f "${SA818_SRC}" \
+        || ! -f "${SA818_SERVICE_SRC}" || ! -f "${APRS_AUDIO_SRC}" \
+        || ! -f "${APRS_AUDIO_SERVICE_SRC}" ]]; then
         echo "ERROR: PCS APRS runtime support files are missing from the repository." >&2
         return 1
     fi
@@ -1064,8 +1170,28 @@ install_runtime_support() {
     fi
     sed "s|@DIREWOLF_BIN@|${direwolf_bin}|g" "${DIREWOLF_OVERRIDE_SRC}" >"${direwolf_override}"
 
-    printf 'PCS_APRS_KISS_PORT=%q\nPCS_APRS_KISS_LAN_INTERFACE=%q\nPCS_APRS_KISS_LAN_NETWORK=%q\n' \
-        "${PCS_APRS_KISS_PORT}" "${PCS_APRS_KISS_LAN_INTERFACE}" "${PCS_APRS_KISS_LAN_NETWORK}" >"${kiss_env}"
+    printf 'PCS_APRS_AGW_PORT=%q\nPCS_APRS_KISS_PORT=%q\nPCS_APRS_KISS_LAN_INTERFACE=%q\nPCS_APRS_KISS_LAN_NETWORK=%q\n' \
+        "${PCS_APRS_AGW_PORT}" "${PCS_APRS_KISS_PORT}" "${PCS_APRS_KISS_LAN_INTERFACE}" "${PCS_APRS_KISS_LAN_NETWORK}" >"${kiss_env}"
+    printf 'PCS_APRS_AUDIO_CARD=%q\nPCS_APRS_PLAYBACK_CONTROL=%q\nPCS_APRS_PLAYBACK_LEVEL=%q\nPCS_APRS_CAPTURE_CONTROL=%q\nPCS_APRS_CAPTURE_LEVEL=%q\nPCS_APRS_AGC_CONTROL=%q\nPCS_APRS_AGC_STATE=%q\n' \
+        "${PCS_APRS_AUDIO_CARD}" "${PCS_APRS_PLAYBACK_CONTROL}" "${PCS_APRS_PLAYBACK_LEVEL}" \
+        "${PCS_APRS_CAPTURE_CONTROL}" "${PCS_APRS_CAPTURE_LEVEL}" \
+        "${PCS_APRS_AGC_CONTROL}" "${PCS_APRS_AGC_STATE}" >"${audio_env}"
+    cat >"${sa818_ini}" <<EOF
+[radio]
+device = ${PCS_APRS_RADIO_DEVICE}
+baud = ${PCS_APRS_RADIO_BAUD}
+bandwidth_khz = ${PCS_APRS_RADIO_BANDWIDTH_KHZ}
+tx_frequency_mhz = ${PCS_APRS_RADIO_TX_FREQUENCY_MHZ}
+rx_frequency_mhz = ${PCS_APRS_RADIO_RX_FREQUENCY_MHZ}
+tx_tone = ${PCS_APRS_RADIO_TX_TONE}
+squelch = ${PCS_APRS_RADIO_SQUELCH}
+rx_tone = ${PCS_APRS_RADIO_RX_TONE}
+volume = ${PCS_APRS_RADIO_VOLUME}
+pre_de_emphasis = ${PCS_APRS_RADIO_PRE_DE_EMPHASIS}
+high_pass = ${PCS_APRS_RADIO_HIGH_PASS}
+low_pass = ${PCS_APRS_RADIO_LOW_PASS}
+tx_tail = ${PCS_APRS_RADIO_TX_TAIL}
+EOF
     cat >"${logrotate_config}" <<EOF
 ${LOG_DIR}/*.log {
     daily
@@ -1084,11 +1210,19 @@ EOF
     sudo install -o root -g root -m 0755 "${KISS_FIREWALL_SRC}" "${KISS_FIREWALL_DST}"
     sudo install -o root -g root -m 0644 "${KISS_FIREWALL_SERVICE_SRC}" "${KISS_FIREWALL_SERVICE_DST}"
     sudo install -o root -g root -m 0640 "${kiss_env}" "${APRS_CONFIG_DIR}/kiss-firewall.conf"
+    sudo install -o root -g root -m 0755 "${SA818_SRC}" "${SA818_DST}"
+    sudo install -o root -g root -m 0644 "${SA818_SERVICE_SRC}" "${SA818_SERVICE_DST}"
+    sudo install -o root -g direwolf -m 0640 "${sa818_ini}" "${APRS_CONFIG_DIR}/sa818.ini"
+    sudo install -o root -g root -m 0755 "${APRS_AUDIO_SRC}" "${APRS_AUDIO_DST}"
+    sudo install -o root -g root -m 0644 "${APRS_AUDIO_SERVICE_SRC}" "${APRS_AUDIO_SERVICE_DST}"
+    sudo install -o root -g direwolf -m 0640 "${audio_env}" "${APRS_CONFIG_DIR}/audio.conf"
     sudo install -d -o root -g root -m 0755 "$(dirname "${DIREWOLF_OVERRIDE_DST}")"
     sudo install -o root -g root -m 0644 "${direwolf_override}" "${DIREWOLF_OVERRIDE_DST}"
     sudo install -o root -g root -m 0644 "${logrotate_config}" /etc/logrotate.d/pcs-direwolf
     sudo systemctl daemon-reload
-    sudo systemctl enable pcs-aprs-kiss-firewall.service
+    sudo systemctl enable pcs-sa818.service pcs-aprs-audio.service pcs-aprs-kiss-firewall.service
+    sudo systemctl restart pcs-sa818.service
+    sudo systemctl restart pcs-aprs-audio.service
     sudo systemctl restart pcs-aprs-kiss-firewall.service
 }
 
@@ -1239,7 +1373,7 @@ prepare() {
     echo "Installing the Raspberry Pi OS / Debian Dire Wolf package..."
     sudo apt-get update
     sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        direwolf nftables gpiod git gcc g++ make cmake \
+        direwolf nftables gpiod alsa-utils git gcc g++ make cmake \
         libasound2-dev libudev-dev libavahi-client-dev libgpiod-dev libgps-dev
     ensure_supported_direwolf
     for service_group in audio dialout gpio; do

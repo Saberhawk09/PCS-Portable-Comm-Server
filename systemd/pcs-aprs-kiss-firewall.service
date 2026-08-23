@@ -1,5 +1,5 @@
 [Unit]
-Description=PCS APRS LAN-only KISS firewall
+Description=PCS APRS LAN-only AGW and KISS firewall
 Before=direwolf.service
 After=network-pre.target
 Wants=network-pre.target

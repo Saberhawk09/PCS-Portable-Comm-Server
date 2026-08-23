@@ -4,6 +4,20 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- managed SA818S initialization over `/dev/serial0` with exact group readback
+- explicit APRS ALSA restoration and verification before every Dire Wolf start
+- LAN-only nftables enforcement for both AGW 8000/tcp and KISS 8001/tcp
+- restart-always Dire Wolf recovery for USB sound-card re-enumeration
+
+### Changed
+
+- reconciled the production profile to the commissioned `W8IJC-10` station on
+  144.5500 MHz with GPIO6 GPIOD PTT, 900 ms TX delay, 200 ms tail, and FX.25 TX off
+- recorded the validated SA818S, Easy Digi, UART, audio, RF, APRS-IS messaging,
+  GNSS beacon, and WIDE1-1 fill-in hardware state
+
 ## [1.2] - 2026-08-21
 
 ### Added

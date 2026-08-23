@@ -61,7 +61,7 @@ Pi-Star:         http://10.42.0.3 (when selected during setup)
 
 ## Documentation Status
 
-The software, network, storage, WWAN/GNSS, Pi-Star, and hardware-safe Dire Wolf / APRS staging documents describe the current working system as of August 2026. The Pi-side wipe/rebuild path was most recently verified on August 18, 2026.
+The software, network, storage, WWAN/GNSS, Pi-Star, and managed Dire Wolf / APRS documents describe the current working system as of August 2026. The Pi-side wipe/rebuild path was most recently verified on August 18, 2026.
 
 The current documentation uses these status boundaries:
 
@@ -70,9 +70,9 @@ The current documentation uses these status boundaries:
 - **Purchased / awaiting delivery:** acquired but not installed or validated
 - **As-built record pending:** operational hardware whose exact wiring, measurements, mounting, or part reconciliation is still incomplete
 
-APRS remains software-staged. Its C-Media/Unitek Y-247A USB sound adapter is
-installed and detected, while radio/PTT hardware, audio-level calibration, and
-RF validation remain pending. The persistent RAK4631 Bluetooth/MQTT gateway is
+The SA818S/Easy Digi APRS hardware, UART, GPIO6 PTT, Sabrent/C-Media audio,
+144.5500 MHz RF path, two-way APRS-IS messaging, GNSS beaconing, and WIDE1-1
+fill-in operation are installed and tested. The persistent RAK4631 Bluetooth/MQTT gateway is
 deployed to PCS and repeatably staged, including local temperature/humidity
 telemetry, but the continuous BLE/MQTT link, RF behavior, and sensor accuracy
 remain hardware-unvalidated.
