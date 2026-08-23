@@ -235,6 +235,8 @@ The script is idempotent and manages only:
 - the marked `dhcpcd` block for `10.42.0.3/24` on RTL8152 USB `eth0`
 - a managed `/boot/config.txt` overlay that disables onboard Wi-Fi only after
   the wired handoff is verified
+- a managed `rc.local` guard and Pi-Star AP-service condition that keep native
+  boot behavior clean when `wlan0` is absent
 - gateway, DNS, and preferred NTP server `10.42.0.1`
 - YSFGateway's native GPSD client at `10.42.0.1:2947`
 - disabling the unused local-serial MobileGPS path

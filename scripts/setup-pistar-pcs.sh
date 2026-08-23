@@ -41,10 +41,15 @@ YSFGATEWAY_CONF="/etc/ysfgateway"
 MMDVMHOST_CONF="/etc/mmdvmhost"
 MOBILEGPS_CONF="/etc/mobilegps"
 BOOT_CONFIG="/boot/config.txt"
+RC_LOCAL="/etc/rc.local"
+PISTAR_AP_DROPIN_DIR="/etc/systemd/system/pistar-ap.service.d"
+PISTAR_AP_DROPIN="${PISTAR_AP_DROPIN_DIR}/50-pcs-wired-only.conf"
 PCS_BLOCK_BEGIN="# BEGIN PCS HOTSPOT"
 PCS_BLOCK_END="# END PCS HOTSPOT"
 WIFI_BLOCK_BEGIN="# BEGIN PCS HOTSPOT WIFI"
 WIFI_BLOCK_END="# END PCS HOTSPOT WIFI"
+RC_WIFI_GUARD_BEGIN="# BEGIN PCS HOTSPOT WIFI BOOT GUARD"
+RC_WIFI_GUARD_END="# END PCS HOTSPOT WIFI BOOT GUARD"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -257,6 +262,12 @@ check_configuration() {
     local managed_wifi_block
     local expected_block
     local expected_wifi_block
+    local expected_rc_wifi_guard
+    local expected_ap_dropin
+    local actual_ap_dropin
+    local managed_rc_wifi_guard
+    local root_options
+    local boot_options
     local wifi_addresses
 
     echo
@@ -319,6 +330,42 @@ check_configuration() {
         fail "${BOOT_CONFIG} does not have the expected PCS Wi-Fi policy"
     fi
 
+    managed_rc_wifi_guard="$(awk -v begin="${RC_WIFI_GUARD_BEGIN}" -v end="${RC_WIFI_GUARD_END}" '
+        $0 == begin { managed=1 }
+        managed { print }
+        $0 == end { managed=0 }
+    ' "${RC_LOCAL}")"
+    expected_rc_wifi_guard=""
+    expected_ap_dropin=""
+    if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "yes" ]]; then
+        expected_rc_wifi_guard="$(printf '%s\n' \
+            "${RC_WIFI_GUARD_BEGIN}" \
+            "if [ -d \"/sys/class/net/${PCS_PISTAR_WIFI_INTERFACE}\" ]; then" \
+            "    /sbin/iwconfig ${PCS_PISTAR_WIFI_INTERFACE} power off" \
+            'fi' \
+            "${RC_WIFI_GUARD_END}")"
+        expected_ap_dropin="$(printf '%s\n' '[Unit]' "ConditionPathExists=/sys/class/net/${PCS_PISTAR_WIFI_INTERFACE}")"
+    fi
+    if [[ "${managed_rc_wifi_guard}" == "${expected_rc_wifi_guard}" ]]; then
+        pass "${RC_LOCAL} has the expected Wi-Fi boot guard"
+    else
+        fail "${RC_LOCAL} does not have the expected Wi-Fi boot guard"
+    fi
+    if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "no" ]] && \
+       ! grep -Fqx "/sbin/iwconfig ${PCS_PISTAR_WIFI_INTERFACE} power off" "${RC_LOCAL}"; then
+        fail "${RC_LOCAL} does not contain the native Wi-Fi power-management command"
+    fi
+    if [[ -f "${PISTAR_AP_DROPIN}" ]]; then
+        actual_ap_dropin="$(cat "${PISTAR_AP_DROPIN}")"
+    else
+        actual_ap_dropin=""
+    fi
+    if [[ "${actual_ap_dropin}" == "${expected_ap_dropin}" ]]; then
+        pass "Pi-Star AP service has the expected wired-only condition"
+    else
+        fail "Pi-Star AP service does not have the expected wired-only condition"
+    fi
+
     device_path="$(readlink -f "/sys/class/net/${PCS_PISTAR_INTERFACE}/device" 2>/dev/null || true)"
     interface_driver="$(basename "$(readlink -f "/sys/class/net/${PCS_PISTAR_INTERFACE}/device/driver" 2>/dev/null || true)")"
     if [[ "${device_path}" == *"/usb"* || "${device_path}" == *"/usb/"* ]]; then
@@ -363,6 +410,19 @@ check_configuration() {
         else
             pass "No IPv4 address is assigned to ${PCS_PISTAR_WIFI_INTERFACE}"
         fi
+    fi
+
+    root_options="$(findmnt -no OPTIONS / 2>/dev/null || true)"
+    boot_options="$(findmnt -no OPTIONS /boot 2>/dev/null || true)"
+    if [[ ",${root_options}," == *,ro,* ]]; then
+        pass "Pi-Star root filesystem is read-only"
+    else
+        fail "Pi-Star root filesystem is not read-only"
+    fi
+    if [[ ",${boot_options}," == *,ro,* ]]; then
+        pass "Pi-Star boot filesystem is read-only"
+    else
+        fail "Pi-Star boot filesystem is not read-only"
     fi
 
     if grep -Fqx "NTP=${PCS_PISTAR_NTP}" "${TIMESYNCD_CONF}" 2>/dev/null; then
@@ -496,6 +556,7 @@ for required_file in \
     "${HOSTNAME_FILE}" \
     "${HOSTS_FILE}" \
     "${BOOT_CONFIG}" \
+    "${RC_LOCAL}" \
     "${YSFGATEWAY_CONF}" \
     "${MMDVMHOST_CONF}" \
     "${MOBILEGPS_CONF}"; do
@@ -565,6 +626,7 @@ for path in \
     "${HOSTNAME_FILE}" \
     "${HOSTS_FILE}" \
     "${BOOT_CONFIG}" \
+    "${RC_LOCAL}" \
     "${YSFGATEWAY_CONF}" \
     "${MMDVMHOST_CONF}" \
     "${MOBILEGPS_CONF}"; do
@@ -572,6 +634,9 @@ for path in \
 done
 if [[ -f "${TIMESYNCD_CONF}" ]]; then
     sudo cp -a "${TIMESYNCD_CONF}" "${backup_dir}/50-pcs.conf"
+fi
+if [[ -f "${PISTAR_AP_DROPIN}" ]]; then
+    sudo cp -a "${PISTAR_AP_DROPIN}" "${backup_dir}/50-pcs-wired-only.conf"
 fi
 
 hostname_temp="$(make_temp_file)"
@@ -641,6 +706,74 @@ if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "yes" ]]; then
     } >> "${boot_temp}"
 fi
 sudo install -o root -g root -m 0644 "${boot_temp}" "${BOOT_CONFIG}"
+
+rc_local_temp="$(make_temp_file)"
+python3 - \
+    "${RC_LOCAL}" \
+    "${rc_local_temp}" \
+    "${PCS_PISTAR_DISABLE_WIFI}" \
+    "${PCS_PISTAR_WIFI_INTERFACE}" \
+    "${RC_WIFI_GUARD_BEGIN}" \
+    "${RC_WIFI_GUARD_END}" <<'PY'
+from pathlib import Path
+import sys
+
+source, destination, disable_wifi, wifi_interface, begin, end = sys.argv[1:]
+original = Path(source).read_text().splitlines()
+native = f"/sbin/iwconfig {wifi_interface} power off"
+guard = [
+    begin,
+    f'if [ -d "/sys/class/net/{wifi_interface}" ]; then',
+    f"    {native}",
+    "fi",
+    end,
+]
+replacement = guard if disable_wifi == "yes" else [native]
+rendered = []
+managed = False
+replaced = False
+
+for line in original:
+    if line == begin:
+        if managed or replaced:
+            raise SystemExit("invalid or duplicate PCS Wi-Fi boot guard")
+        managed = True
+        replaced = True
+        rendered.extend(replacement)
+        continue
+    if line == end:
+        if not managed:
+            raise SystemExit("unmatched PCS Wi-Fi boot guard end")
+        managed = False
+        continue
+    if managed:
+        continue
+    if line.strip() == native:
+        if replaced:
+            raise SystemExit("duplicate native Wi-Fi power-management command")
+        replaced = True
+        rendered.extend(replacement)
+        continue
+    rendered.append(line)
+
+if managed:
+    raise SystemExit("unterminated PCS Wi-Fi boot guard")
+if not replaced:
+    raise SystemExit("native Wi-Fi power-management command was not found")
+Path(destination).write_text("\n".join(rendered).rstrip() + "\n")
+PY
+sudo install -o root -g root -m 0755 "${rc_local_temp}" "${RC_LOCAL}"
+
+if [[ "${PCS_PISTAR_DISABLE_WIFI}" == "yes" ]]; then
+    pistar_ap_temp="$(make_temp_file)"
+    printf '%s\n' '[Unit]' "ConditionPathExists=/sys/class/net/${PCS_PISTAR_WIFI_INTERFACE}" > "${pistar_ap_temp}"
+    sudo mkdir -p "${PISTAR_AP_DROPIN_DIR}"
+    sudo install -o root -g root -m 0644 "${pistar_ap_temp}" "${PISTAR_AP_DROPIN}"
+else
+    sudo rm -f "${PISTAR_AP_DROPIN}"
+    sudo rmdir "${PISTAR_AP_DROPIN_DIR}" 2>/dev/null || true
+fi
+sudo systemctl daemon-reload
 
 timesync_temp="$(make_temp_file)"
 {

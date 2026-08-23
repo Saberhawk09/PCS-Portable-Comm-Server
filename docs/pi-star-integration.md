@@ -72,10 +72,12 @@ Final verification:
 The script supports the tested `dhcpcd`-based Pi-Star image, owns a clearly
 marked block in `/etc/dhcpcd.conf`, and preserves Pi-Star's normally read-only
 root and boot filesystem states. The final profile adds a managed
-`dtoverlay=disable-wifi` block to `/boot/config.txt`; it does not erase stored
-Wi-Fi credentials. Environment variables can override the documented defaults;
-run the script without `sudo` so its scoped sudo operations and backup behavior
-remain intact.
+`dtoverlay=disable-wifi` block to `/boot/config.txt`, guards Pi-Star's native
+`rc.local` Wi-Fi command so the read-only remount still runs without `wlan0`,
+and makes the native AP service conditional on Wi-Fi hardware being present.
+It does not erase stored Wi-Fi credentials. Environment variables can override
+the documented defaults; run the script without `sudo` so its scoped sudo
+operations and backup behavior remain intact.
 
 The script does not configure or erase the PCS Wi-Fi password, callsign, radio
 modes, or digital-network credentials. Restore those with Pi-Star's native

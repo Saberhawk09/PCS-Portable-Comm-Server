@@ -57,6 +57,21 @@ class PiStarPcsTests(unittest.TestCase):
         self.assertNotIn("wpa_supplicant.conf", self.source)
         self.assertNotIn("denyinterfaces", self.source)
 
+    def test_wifi_disable_guards_native_boot_and_ap_service(self):
+        for evidence in (
+            'RC_LOCAL="/etc/rc.local"',
+            'RC_WIFI_GUARD_BEGIN="# BEGIN PCS HOTSPOT WIFI BOOT GUARD"',
+            'f\'if [ -d "/sys/class/net/{wifi_interface}" ]; then\'',
+            'ConditionPathExists=/sys/class/net/${PCS_PISTAR_WIFI_INTERFACE}',
+            'sudo systemctl daemon-reload',
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertIn(evidence, self.source)
+
+    def test_final_check_requires_read_only_filesystems(self):
+        self.assertIn('Pi-Star root filesystem is read-only', self.source)
+        self.assertIn('Pi-Star boot filesystem is read-only', self.source)
+
     def test_root_and_boot_mounts_are_backed_up_and_restored_read_only(self):
         self.assertIn('findmnt -no OPTIONS /boot', self.source)
         self.assertIn('sudo mount -o remount,rw /boot', self.source)

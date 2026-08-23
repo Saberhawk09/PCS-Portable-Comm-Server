@@ -26,6 +26,8 @@ All notable user-facing PCS changes are recorded here.
   fields, and refresh an existing control panel after guarded activation
 - made every Pi-Star network apply require a 30-second carrier and PCS
   reachability stability window before any filesystem or Wi-Fi mutation
+- guarded Pi-Star's native Wi-Fi boot and AP-service paths so wired-only boots
+  still complete their read-only remount without false Wi-Fi service failures
 
 ## [1.2] - 2026-08-21
 

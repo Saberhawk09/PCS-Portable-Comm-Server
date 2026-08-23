@@ -369,9 +369,9 @@ Copy this script to Pi-Star and run it there as the normal Pi-Star user. It
 requires 30 continuous seconds of RTL8152 carrier and PCS reachability before
 mutation, then manages hostname, the marked `dhcpcd` static-address block on
 `eth0`, the final recoverable `disable-wifi` boot overlay, PCS NTP,
-YSFGateway's GPSD client, and the unused local MobileGPS path. It does not
-contain, erase, or modify Wi-Fi passwords, callsigns, or digital-network
-credentials.
+Pi-Star's native Wi-Fi boot/AP guards, YSFGateway's GPSD client, and the unused
+local MobileGPS path. It does not contain, erase, or modify Wi-Fi passwords,
+callsigns, or digital-network credentials.
 
 See [Full-Stack Reinstall Runbook](../docs/full-stack-reinstall.md).
 
