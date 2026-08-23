@@ -457,7 +457,7 @@ configure_options() {
 
     echo
     echo "Desired APRS options saved to ${INSTALL_CONFIG}."
-    echo "Dire Wolf remains unconfigured and disabled. Run --list-audio after the"
+    echo "No live Dire Wolf service or RF state was changed. Run --list-audio after the"
     echo "sound card and radio/PTT path are present, then review docs/direwolf-aprs.md before activation."
 }
 
