@@ -159,6 +159,10 @@ Manual sync:
 
 PCS uses Chrony to provide LAN NTP service.
 
+Chrony prefers usable GPS NMEA time, falls back to public Internet NTP, and
+serves the RTC-seeded system clock at stratum 10 only when neither authoritative
+source is selectable. See [PCS Time-Source Hierarchy](time-sources.md).
+
 LAN clients should use:
 
 ```text
@@ -171,7 +175,9 @@ Windows NTP test:
 w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
 ```
 
-The Pi also has RTC support so it can boot with sane time before GPS or internet time is available.
+The Pi also has guarded RTC support so it can boot with sane holdover time before
+GPS or Internet time is available. Once GPS or Internet NTP is authoritative,
+Chrony's `rtcsync` keeps the RTC updated.
 
 ## GPS / GNSS
 

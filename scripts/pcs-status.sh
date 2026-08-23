@@ -109,11 +109,18 @@ echo
 
 echo "--- RTC Devices ---"
 ls -l /dev/rtc* 2>/dev/null || echo "No RTC devices found"
+if [[ -e /dev/rtc0 ]] && command -v hwclock >/dev/null 2>&1; then
+    sudo -n hwclock --rtc=/dev/rtc0 --show --utc 2>/dev/null || echo "RTC value unavailable without elevated access"
+fi
+systemctl is-enabled pcs-rtc-seed.service 2>/dev/null || true
+systemctl is-active pcs-rtc-seed.service 2>/dev/null || true
 echo
 
 echo "--- Chrony Tracking ---"
 if command -v chronyc >/dev/null 2>&1; then
     chronyc tracking 2>/dev/null || echo "chronyc tracking failed"
+    echo
+    chronyc sources -v 2>/dev/null || echo "chronyc sources failed"
 else
     echo "chronyc not available"
 fi

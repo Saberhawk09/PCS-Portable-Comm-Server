@@ -72,13 +72,19 @@ ${PCS_NTP_BLOCK_START}
 # Allow NTP clients on the PCS router-facing Ethernet network.
 allow ${PCS_NTP_NETWORK}
 
+# Always configure a public Internet pool as the secondary source. A usable
+# GPS refclock is marked preferred in pcs-wwan-gps.conf and therefore wins
+# source selection; this pool remains available when GPS is not selectable.
+pool pool.ntp.org iburst maxsources 4
+
 # Keep the hardware RTC updated from the synchronized system clock when possible.
 # This helps the RTC provide a useful boot-time fallback later.
 ${RTC_SYNC_LINE}
 
 # Allow this Pi to serve time even if upstream internet NTP is unavailable.
-# The RTC seeds the system clock at boot; Chrony then serves the system clock.
-# Later, GPS/GNSS will become the preferred offline time source.
+# pcs-rtc-seed.service seeds the system clock from the RTC before Chrony starts.
+# This local stratum is deliberately high so clients can identify degraded
+# RTC/system-clock holdover and prefer any authoritative source they also have.
 local stratum 10
 ${PCS_NTP_BLOCK_END}
 EOF
@@ -90,7 +96,7 @@ ${SUDO} systemctl enable chrony >/dev/null 2>&1 || true
 
 echo
 echo "PCS Chrony config block:"
-grep -n "${PCS_NTP_BLOCK_START}" -A12 "${CHRONY_CONFIG}" || true
+grep -n "${PCS_NTP_BLOCK_START}" -A18 "${CHRONY_CONFIG}" || true
 
 echo
 echo "Chrony tracking:"
@@ -102,6 +108,7 @@ chronyc sources -v || true
 
 echo
 echo "PCS LAN NTP setup complete."
+echo "Time-source order: preferred GPS, Internet NTP, then RTC-seeded local holdover."
 echo
 echo "Clients on the router-side network should use:"
 echo "  10.42.0.1"

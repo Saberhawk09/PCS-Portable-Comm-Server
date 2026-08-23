@@ -203,6 +203,30 @@ else
     fail "/dev/rtc0 missing"
 fi
 
+if [[ -x /usr/local/sbin/pcs-rtc-seed ]]; then
+    pass "RTC boot-time seed helper is installed"
+else
+    fail "RTC boot-time seed helper is missing"
+fi
+
+if service_enabled pcs-rtc-seed.service; then
+    pass "pcs-rtc-seed.service is enabled"
+else
+    fail "pcs-rtc-seed.service is not enabled"
+fi
+
+if service_active pcs-rtc-seed.service; then
+    pass "pcs-rtc-seed.service completed successfully this boot"
+else
+    warn "pcs-rtc-seed.service is not active; check its boot log"
+fi
+
+if [[ -e /dev/rtc0 ]] && sudo -n /usr/local/sbin/pcs-rtc-seed --check >/dev/null 2>&1; then
+    pass "Hardware RTC is readable and has a plausible UTC value"
+elif [[ -e /dev/rtc0 ]]; then
+    fail "Hardware RTC could not provide a plausible UTC fallback"
+fi
+
 if timedatectl | grep -q "RTC in local TZ: no"; then
     pass "RTC is configured for UTC, not local time"
 else
@@ -251,6 +275,13 @@ if grep -q "allow ${PCS_NTP_NET}" /etc/chrony/chrony.conf 2>/dev/null; then
     pass "Chrony allows PCS LAN NTP clients on ${PCS_NTP_NET}"
 else
     fail "Chrony does not allow ${PCS_NTP_NET}"
+fi
+
+if grep -RqsE '^[[:space:]]*(pool|server)[[:space:]]+[^[:space:]#]+' \
+    /etc/chrony/chrony.conf /etc/chrony/conf.d /etc/chrony/sources.d 2>/dev/null; then
+    pass "Chrony has an Internet NTP fallback configured"
+else
+    fail "Chrony has no Internet NTP pool or server configured"
 fi
 
 if grep -qE "^[[:space:]]*rtcsync[[:space:]]*$" /etc/chrony/chrony.conf 2>/dev/null; then
@@ -1178,6 +1209,13 @@ fi
 
 if grep -Rqi "refclock SHM 0 refid GPS" /etc/chrony /etc/chrony/conf.d 2>/dev/null; then
     pass "Chrony GPS SHM refclock is configured"
+
+    if grep -RqiE '^[[:space:]]*refclock[[:space:]]+SHM[[:space:]]+0[[:space:]].*refid[[:space:]]+GPS([[:space:]].*)?[[:space:]]prefer([[:space:]]|$)' \
+        /etc/chrony /etc/chrony/conf.d 2>/dev/null; then
+        pass "Chrony GPS source is configured as preferred"
+    else
+        fail "Chrony GPS source is not configured as preferred"
+    fi
 else
     warn "Chrony GPS SHM refclock is not configured"
 fi
@@ -1191,6 +1229,12 @@ if [[ -n "${CHRONY_GPS_SOURCE}" ]]; then
 
     if [[ "${CHRONY_GPS_REACH}" =~ ^[0-9]+$ ]] && [[ "${CHRONY_GPS_REACH}" -gt 0 ]]; then
         pass "Chrony GPS source has nonzero reach: ${CHRONY_GPS_REACH}"
+
+        if echo "${CHRONY_GPS_SOURCE}" | awk '$1 == "#*" { found=1 } END { exit found ? 0 : 1 }'; then
+            pass "Chrony selected preferred GPS time"
+        else
+            warn "GPS has samples but is not selected; inspect chronyc selectdata -a -v"
+        fi
     else
         warn "Chrony GPS source exists but reach is zero or unknown"
     fi

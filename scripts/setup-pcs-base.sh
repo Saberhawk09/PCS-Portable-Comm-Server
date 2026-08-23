@@ -627,6 +627,8 @@ echo
 echo "Making PCS scripts executable..."
 
 ensure_executable "scripts/install-dependencies.sh"
+ensure_executable "scripts/pcs-rtc-seed.sh"
+ensure_executable "scripts/test-time-source-failover.sh"
 ensure_executable "scripts/setup-rtc.sh"
 ensure_executable "scripts/setup-router-wan-share.sh"
 ensure_executable "scripts/setup-cellular-profile.sh"

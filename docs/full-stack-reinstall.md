@@ -113,6 +113,10 @@ PCS_SETUP_GPIO_FAN=yes
 The GPSD setting installs a socket proxy bound only to
 `10.42.0.1:2947`; GPSD itself remains localhost-only.
 
+The base RTC and Chrony steps plus the selected WWAN GPS step recreate the
+GPS-first, Internet-second, RTC-holdover time hierarchy. See
+[PCS Time-Source Hierarchy](time-sources.md).
+
 `PCS_SETUP_PISTAR=yes` enables the hotspot health checks and local-access
 links. Set it to `no` on builds without Pi-Star; the dashboard and self-test
 then omit those optional checks without degrading overall PCS health.
