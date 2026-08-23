@@ -205,7 +205,9 @@ Stages Dire Wolf software and provides guarded rendering,
 validation, activation, testing, and rollback:
 
 ```bash
+./scripts/setup-direwolf-aprs.sh --prepare-uart
 ./scripts/setup-direwolf-aprs.sh --prepare
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
 ./scripts/setup-direwolf-aprs.sh --configure-options
 ./scripts/setup-direwolf-aprs.sh --record-validation
 ./scripts/setup-direwolf-aprs.sh --list-audio
@@ -230,6 +232,10 @@ the authenticated dashboard. See [Dire Wolf / APRS Integration](../docs/direwolf
 Flag behavior:
 
 - `--prepare` installs dependencies and the safe template while leaving the service disabled.
+- `--prepare-uart` idempotently enables the Pi UART, removes the serial login
+  console, disables serial getty units, and leaves Bluetooth unchanged.
+- `--import-commissioned-profile` atomically replaces the managed APRS config
+  block, removes stale APRS keys, and resets all physical-evidence gates.
 - `--configure-options` records non-secret desired settings only.
 - `--prepare` installs the Debian service/package foundation and automatically
   builds the official pinned Dire Wolf 1.8.1 source when the distribution
@@ -242,6 +248,8 @@ Flag behavior:
 - `--validate-config rx|tx` lints the proposal and reports every activation blocker.
 - `--activate-rx` installs a transactional receive/IGate profile with null output and no RF transmit directives.
 - `--activate-tx` requires all evidence gates and an exact typed RF confirmation before installing the TX profile.
+- successful activation refreshes an already-commissioned PCS control panel
+  without replacing its credentials.
 - `--rollback` restores the newest root-owned live-configuration backup.
 - `--help` and `-h` print the terminal command reference.
 

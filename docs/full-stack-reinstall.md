@@ -122,7 +122,18 @@ coordinated-shutdown pairing before continuing with the remaining setup. SSH
 asks for the Pi-Star password at that point; the password is not stored.
 
 `PCS_SETUP_APRS=staged` means Dire Wolf is installed but stopped and disabled,
-with no station identity, audio device, APRS-IS credential, PTT, or RF path.
+with no live APRS-IS credential or enabled RF path. Selecting APRS staging also
+runs the idempotent Pi UART preparation; reboot when it reports a boot-file
+change. The versioned desired profile can then be installed as one complete,
+evidence-reset block:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
+./scripts/setup-direwolf-aprs.sh --record-validation
+./scripts/setup-direwolf-aprs.sh --validate-config tx
+```
+
+Record validation only after reconfirming the corresponding physical check.
 After commissioning, preserve `/etc/direwolf.conf`,
 `/etc/pcs/aprs/backups/`, and the active-mode values from the ignored install
 configuration as credential-bearing/manual recovery material. The APRS-IS
@@ -244,6 +255,7 @@ cd /home/pi/Projects/PCS-Portable-Comm-Server
 ./scripts/pcs-status.sh
 ./scripts/setup-pistar-shutdown.sh --check
 ./scripts/setup-direwolf-aprs.sh --check
+./scripts/setup-direwolf-aprs.sh --validate-config tx
 ./scripts/setup-direwolf-aprs.sh --software-test
 ```
 

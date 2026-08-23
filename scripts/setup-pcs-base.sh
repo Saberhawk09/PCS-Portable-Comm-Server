@@ -40,6 +40,8 @@ PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-ask}"
 PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-ask}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"
+PCS_APRS_CONFIG_VERSION="${PCS_APRS_CONFIG_VERSION:-1}"
+PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
 PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-W8IJC-10}"
 PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-144.550 MHz}"
@@ -62,6 +64,8 @@ PCS_APRS_PTT_GPIO_LINE="${PCS_APRS_PTT_GPIO_LINE:-6}"
 PCS_APRS_PTT_ACTIVE_LEVEL="${PCS_APRS_PTT_ACTIVE_LEVEL:-high}"
 PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-8000}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-8001}"
+PCS_APRS_KISS_LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"
+PCS_APRS_KISS_LAN_NETWORK="${PCS_APRS_KISS_LAN_NETWORK:-10.42.0.0/24}"
 PCS_APRS_IGATE="${PCS_APRS_IGATE:-yes}"
 PCS_APRS_IGATE_SERVER="${PCS_APRS_IGATE_SERVER:-noam.aprs2.net}"
 PCS_APRS_IGATE_MODE="${PCS_APRS_IGATE_MODE:-two-way}"
@@ -228,6 +232,8 @@ write_install_config() {
         printf "PCS_SETUP_GPIO_LEDS=%q\n" "${PCS_SETUP_GPIO_LEDS}"
         printf "PCS_SETUP_GPIO_STATS=%q\n" "${PCS_SETUP_GPIO_STATS}"
         printf "PCS_SETUP_GPIO_FAN=%q\n" "${PCS_SETUP_GPIO_FAN}"
+        printf "PCS_APRS_CONFIG_VERSION=%q\n" "${PCS_APRS_CONFIG_VERSION}"
+        printf "PCS_APRS_ACTIVE_MODE=%q\n" "${PCS_APRS_ACTIVE_MODE}"
         printf "PCS_APRS_ROLE=%q\n" "${PCS_APRS_ROLE}"
         printf "PCS_APRS_CALLSIGN=%q\n" "${PCS_APRS_CALLSIGN}"
         printf "PCS_APRS_FREQUENCY=%q\n" "${PCS_APRS_FREQUENCY}"
@@ -250,6 +256,8 @@ write_install_config() {
         printf "PCS_APRS_PTT_ACTIVE_LEVEL=%q\n" "${PCS_APRS_PTT_ACTIVE_LEVEL}"
         printf "PCS_APRS_AGW_PORT=%q\n" "${PCS_APRS_AGW_PORT}"
         printf "PCS_APRS_KISS_PORT=%q\n" "${PCS_APRS_KISS_PORT}"
+        printf "PCS_APRS_KISS_LAN_INTERFACE=%q\n" "${PCS_APRS_KISS_LAN_INTERFACE}"
+        printf "PCS_APRS_KISS_LAN_NETWORK=%q\n" "${PCS_APRS_KISS_LAN_NETWORK}"
         printf "PCS_APRS_IGATE=%q\n" "${PCS_APRS_IGATE}"
         printf "PCS_APRS_IGATE_SERVER=%q\n" "${PCS_APRS_IGATE_SERVER}"
         printf "PCS_APRS_IGATE_MODE=%q\n" "${PCS_APRS_IGATE_MODE}"
@@ -1010,6 +1018,14 @@ fi
 
 case "${aprs_answer}" in
     y|Y|yes|YES|Yes)
+        if ./scripts/setup-direwolf-aprs.sh --prepare-uart; then
+            echo "PCS APRS UART preparation completed."
+        else
+            echo
+            echo "WARNING: PCS APRS UART preparation failed."
+            echo "RF activation will remain blocked until this succeeds:"
+            echo "  ./scripts/setup-direwolf-aprs.sh --prepare-uart"
+        fi
         if ./scripts/setup-direwolf-aprs.sh --prepare; then
             echo "Dire Wolf / APRS software staging completed."
         else

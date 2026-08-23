@@ -18,10 +18,16 @@ cannot infer physical validation from mere device presence.
 Run from the repository root on the PCS Pi:
 
 ```bash
+./scripts/setup-direwolf-aprs.sh --prepare-uart
 ./scripts/setup-direwolf-aprs.sh --prepare
-./scripts/setup-direwolf-aprs.sh --configure-options
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
 ./scripts/setup-direwolf-aprs.sh --check
 ```
+
+The base installer runs `--prepare-uart` automatically when APRS staging is
+selected. It enables the hardware UART, removes only serial-console kernel
+arguments, disables serial getty units, and leaves Bluetooth unchanged. If a
+boot file changes, reboot before attempting activation.
 
 The staging command:
 
@@ -62,6 +68,8 @@ specific install or service operation.
 | --- | --- | --- |
 | `--prepare` | Yes | Install Dire Wolf, nftables, libgpiod tools, and build dependencies; build pinned stable 1.8.1 if the packaged version is older than 1.8; copy the safe template; keep Dire Wolf stopped and disabled. |
 | `--configure-options` | Local config only | Interactively record non-secret desired-profile values. It never collects the APRS-IS passcode. |
+| `--import-commissioned-profile` | Local config only | Replace the complete managed APRS block with the versioned PCS profile, preserve non-APRS and active-mode state, back up the prior local config, and reset every hardware-evidence gate. |
+| `--prepare-uart` | Boot files and services | Idempotently set `enable_uart=1`, remove the Pi serial login console, and disable serial getty units without changing Bluetooth. Existing boot files receive one-time `.pcs-pre-uart.bak` backups. |
 | `--record-validation` | Local config only | Record receive audio, radio channel, PTT, transmit audio/deviation, and timing checks after they have actually passed. |
 | `--check` | No | Show desired profile, installed package, service, GPSD, audio, and activation state. |
 | `--capabilities` | No | Report Dire Wolf version, gpsd, GPIO, nftables, `gen_packets`, `atest`, FX.25, and variable-speed fixture support. |
@@ -82,6 +90,8 @@ Examples:
 ```bash
 ./scripts/setup-direwolf-aprs.sh --capabilities
 ./scripts/setup-direwolf-aprs.sh --software-test
+./scripts/setup-direwolf-aprs.sh --prepare-uart
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
 ./scripts/setup-direwolf-aprs.sh --detect-audio
 ./scripts/setup-direwolf-aprs.sh --render-config rx
 ./scripts/setup-direwolf-aprs.sh --validate-config tx
@@ -193,6 +203,7 @@ APRS-IS passcode.
 | `PCS_APRS_CALLSIGN` | Licensed callsign with optional SSID | Becomes `MYCALL` and normally the APRS-IS login identity. |
 | `PCS_APRS_FREQUENCY` | Operator label such as a frequency and band | Dashboard/documentation metadata only; Dire Wolf does not tune the radio. |
 | `PCS_APRS_RADIO` | Hardware label | Dashboard-only description of the commissioned SA818S/Easy Digi/audio path. |
+| `PCS_APRS_CONFIG_VERSION` | Managed integer | Selects the versioned APRS defaults and triggers safe legacy-profile migration when outdated. |
 | `PCS_APRS_ACTIVE_MODE` | `staged`, `rx`, `tx` | Written by activation/rollback so status reflects what is actually live rather than desired TX intent. |
 
 `monitor` is a local receive-only software TNC. `rx-igate` forwards received RF
@@ -329,6 +340,19 @@ eligible messages directly without a digipeater path, plus `IGTXLIMIT 6 10`.
 
 ## Configure the Desired Profile
 
+For this PCS, import the complete version-controlled profile instead of
+copying individual settings:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --import-commissioned-profile
+```
+
+This removes obsolete `PCS_APRS_*` keys, replaces every desired APRS value as
+one managed block, preserves unrelated installer choices and the current live
+mode, and resets all validation evidence to `no`. The prior local config is
+saved as `config/pcs-install.conf.bak`. This prevents an old hidden alias or RF
+setting from surviving an upgrade.
+
 Run this at an interactive Pi terminal:
 
 ```bash
@@ -340,6 +364,11 @@ sample rate, audio-channel count, desired ALSA endpoints, TNC ports, APRS-IS,
 GPSD, transmit intent, PTT family, beaconing, digipeating, FX.25 transmit, and
 logging. It does not ask for an APRS-IS passcode and does not create
 `/etc/direwolf.conf`.
+
+When the local APRS schema is old or missing, `--configure-options` first loads
+the current commissioned defaults and resets evidence before presenting the
+prompts. Unsupported legacy APRS keys are removed when the reviewed settings
+are saved.
 
 This separation lets the intended operating profile be reviewed in GitHub
 issues or documentation without committing the APRS-IS passcode or generating
@@ -353,6 +382,8 @@ print the complete current blocker list without changing the system.
 
 - confirmation that the radio is programmed for the selected 144.550 MHz
   local channel and `/dev/serial0` is present
+- `enable_uart=1`, no `serial0`/`ttyAMA*`/`ttyS*` kernel console, and a reboot
+  after any boot-file change made by `--prepare-uart`
 - a Dire Wolf build that reports compiled-in gpsd support, plus a successful
   local `localhost:2947` protocol/fix check
 - detected ALSA capture/playback identifier
@@ -421,20 +452,27 @@ interactively on the Pi and keep the resulting live configuration root-owned.
 ## Safe Activation Order
 
 1. Keep the transmitter disconnected or use a suitable dummy load.
-2. Confirm the FTDI bench adapter is unplugged and run `--list-audio`.
-3. Run `--render-config rx` and `--validate-config rx`.
-4. Run `--activate-rx`. This installs no playback, PTT, beacon, digipeater,
+2. Run `--prepare-uart`; reboot if it reports a boot-file change.
+3. Run `--import-commissioned-profile`, then confirm the FTDI bench adapter is
+   unplugged and run `--list-audio`.
+4. Record only the hardware evidence actually reconfirmed on this installation.
+5. Run `--render-config rx` and `--validate-config rx`.
+6. Run `--activate-rx`. This installs no playback, PTT, beacon, digipeater,
    FX.25 TX, or Internet-to-RF directives.
-5. Verify AGW and KISS from a PCS LAN client and verify rejection from uplink interfaces.
-6. Confirm the already-recorded hardware evidence still matches the installed wiring.
-7. Run `--render-config tx` and `--validate-config tx` and review the diff.
-8. Perform the operator-supervised RF test, then run `--activate-tx` only when
+7. Verify AGW and KISS from a PCS LAN client and verify rejection from uplink interfaces.
+8. Confirm the recorded hardware evidence still matches the installed wiring.
+9. Run `--render-config tx` and `--validate-config tx` and review the diff.
+10. Perform the operator-supervised RF test, then run `--activate-tx` only when
    the complete activation is intended.
 
 Each successful activation saves the previous `/etc/direwolf.conf` under
 `/etc/pcs/aprs/backups/`. If the new service fails to start, the installer
 automatically restores the previous configuration; `--rollback` provides the
 same recovery path later.
+
+After successful activation, the installer refreshes an already-commissioned
+PCS control panel and preserves its credentials. A full base installation also
+installs the current panel at its normal later step.
 
 ## Software-Only Validation Boundary
 

@@ -10,6 +10,7 @@ ROOT = Path(__file__).parents[1]
 TEMPLATE = ROOT / "config" / "direwolf.example.conf"
 INSTALL_EXAMPLE = ROOT / "config" / "pcs-install.example.conf"
 SETUP_SCRIPT = ROOT / "scripts" / "setup-direwolf-aprs.sh"
+BASE_SETUP_SCRIPT = ROOT / "scripts" / "setup-pcs-base.sh"
 DOC = ROOT / "docs" / "direwolf-aprs.md"
 SCRIPT_DOC = ROOT / "scripts" / "README.md"
 FIREWALL_SCRIPT = ROOT / "scripts" / "pcs-aprs-kiss-firewall.sh"
@@ -136,7 +137,8 @@ class DireWolfAprsTests(unittest.TestCase):
         documentation = DOC.read_text(encoding="utf-8")
         script_documentation = SCRIPT_DOC.read_text(encoding="utf-8")
         flags = {
-            "--prepare", "--configure-options", "--record-validation", "--check",
+            "--prepare", "--prepare-uart", "--import-commissioned-profile",
+            "--configure-options", "--record-validation", "--check",
             "--capabilities", "--list-audio", "--detect-audio", "--software-test", "--render-config",
             "--validate-config", "--activate-rx", "--activate-tx", "--rollback",
             "--help", "-h",
@@ -147,6 +149,100 @@ class DireWolfAprsTests(unittest.TestCase):
                 self.assertIn(flag, setup)
                 self.assertIn(flag, documentation)
                 self.assertIn(flag, script_documentation)
+
+    def test_versioned_profile_stages_software_but_never_reuses_rf_evidence(self):
+        example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
+
+        self.assertIn('PCS_SETUP_APRS="staged"', example)
+        self.assertIn('PCS_APRS_CONFIG_VERSION="1"', example)
+        for evidence_key in (
+            "PCS_APRS_RX_AUDIO_VALIDATED",
+            "PCS_APRS_RADIO_CHANNEL_VALIDATED",
+            "PCS_APRS_PTT_VALIDATED",
+            "PCS_APRS_TX_AUDIO_VALIDATED",
+            "PCS_APRS_TX_TIMING_VALIDATED",
+        ):
+            with self.subTest(evidence_key=evidence_key):
+                self.assertIn(f'{evidence_key}="no"', example)
+                self.assertNotIn(f'{evidence_key}="yes"', example)
+
+    def test_profile_import_replaces_stale_aprs_block_but_preserves_live_mode(self):
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("replace_with_commissioned_profile()", setup)
+        self.assertIn('cp -p -- "${INSTALL_CONFIG}" "${INSTALL_CONFIG}.bak"', setup)
+        self.assertIn("PCS_APRS_ACTIVE_MODE", setup)
+        self.assertIn("grep -Ev '^PCS_APRS_ACTIVE_MODE='", setup)
+        self.assertIn("prune_unknown_aprs_config_keys", setup)
+
+    @unittest.skipIf(os.name == "nt", "Bash config migration is validated in Linux CI and on PCS")
+    def test_profile_import_migrates_a_legacy_config_atomically(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            install_config = Path(temp_dir) / "pcs-install.conf"
+            install_config.write_text(
+                "\n".join(
+                    (
+                        'PCS_SETUP_PISTAR="yes"',
+                        'PCS_SETUP_APRS="yes"',
+                        'PCS_APRS_ACTIVE_MODE="tx"',
+                        'PCS_APRS_CALLSIGN="W8IJC-2"',
+                        'PCS_APRS_DIGIPEAT_ALIAS_PATTERN="^W8IJC-2$"',
+                        'PCS_APRS_OBSOLETE_SETTING="unsafe"',
+                        'PCS_APRS_RX_AUDIO_VALIDATED="yes"',
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["PCS_INSTALL_CONFIG"] = str(install_config)
+            subprocess.run(
+                ["bash", str(SETUP_SCRIPT), "--import-commissioned-profile"],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            migrated = install_config.read_text(encoding="utf-8")
+            backup = Path(f"{install_config}.bak").read_text(encoding="utf-8")
+
+        self.assertIn('PCS_SETUP_PISTAR="yes"', migrated)
+        self.assertIn('PCS_SETUP_APRS="yes"', migrated)
+        self.assertIn('PCS_APRS_ACTIVE_MODE="tx"', migrated)
+        self.assertIn('PCS_APRS_CALLSIGN="W8IJC-10"', migrated)
+        self.assertIn('PCS_APRS_DIGIPEAT_ALIAS_PATTERN="^WIDE1-1$"', migrated)
+        self.assertIn('PCS_APRS_RX_AUDIO_VALIDATED="no"', migrated)
+        self.assertNotIn("PCS_APRS_OBSOLETE_SETTING", migrated)
+        self.assertIn('PCS_APRS_CALLSIGN="W8IJC-2"', backup)
+
+    def test_base_installer_prepares_uart_before_aprs_software(self):
+        base_setup = BASE_SETUP_SCRIPT.read_text(encoding="utf-8")
+        uart_command = "./scripts/setup-direwolf-aprs.sh --prepare-uart"
+        uart_index = base_setup.index(uart_command)
+        prepare_index = base_setup.index(
+            "./scripts/setup-direwolf-aprs.sh --prepare", uart_index + len(uart_command)
+        )
+
+        self.assertLess(uart_index, prepare_index)
+        self.assertIn('PCS_APRS_KISS_LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"', base_setup)
+        self.assertIn('printf "PCS_APRS_ACTIVE_MODE=%q\\n"', base_setup)
+
+    def test_uart_preparation_is_guarded_idempotent_and_leaves_bluetooth_alone(self):
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("enable_uart=1", setup)
+        self.assertIn("console=(serial0|ttyAMA[0-9]*|ttyS[0-9]*)", setup)
+        self.assertIn(".pcs-pre-uart.bak", setup)
+        self.assertIn("Bluetooth was not changed", setup)
+        self.assertNotIn("disable-bt", setup)
+
+    def test_activation_refreshes_only_an_existing_commissioned_control_panel(self):
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn("refresh_control_panel_if_installed()", setup)
+        self.assertIn("/etc/pcs-control-panel/admin.json", setup)
+        self.assertIn("refresh_control_panel_if_installed", setup[setup.index("activate_profile()"):])
 
     def test_agw_and_kiss_firewall_has_lan_allow_and_catch_all_drop(self):
         script = FIREWALL_SCRIPT.read_text(encoding="utf-8")

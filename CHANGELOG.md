@@ -10,6 +10,9 @@ All notable user-facing PCS changes are recorded here.
 - explicit APRS ALSA restoration and verification before every Dire Wolf start
 - LAN-only nftables enforcement for both AGW 8000/tcp and KISS 8001/tcp
 - restart-always Dire Wolf recovery for USB sound-card re-enumeration
+- atomic commissioned-profile import with stale APRS-key removal and hardware
+  evidence reset
+- idempotent Raspberry Pi UART/serial-console preparation for APRS rebuilds
 
 ### Changed
 
@@ -17,6 +20,8 @@ All notable user-facing PCS changes are recorded here.
   144.5500 MHz with GPIO6 GPIOD PTT, 900 ms TX delay, 200 ms tail, and FX.25 TX off
 - recorded the validated SA818S, Easy Digi, UART, audio, RF, APRS-IS messaging,
   GNSS beacon, and WIDE1-1 fill-in hardware state
+- made the base installer preserve APRS active-mode and AGW/KISS LAN firewall
+  fields, and refresh an existing control panel after guarded activation
 
 ## [1.2] - 2026-08-21
 
