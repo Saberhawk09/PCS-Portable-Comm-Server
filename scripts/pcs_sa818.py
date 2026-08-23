@@ -27,6 +27,12 @@ GROUP_RE = re.compile(
     r"(?P<rx_tone>[0-9]{4}|[0-9]{3}[A-Z])"
 )
 
+# The commissioned SA818S V1.2 returns its acknowledgement quickly but is not
+# ready for another command immediately. The validated UART tooling waited
+# 400 ms between transactions; without that settling time the next otherwise
+# valid command can return +DMOERROR.
+COMMAND_SETTLE_SECONDS = 0.4
+
 
 @dataclass(frozen=True)
 class RadioProfile:
@@ -222,6 +228,7 @@ def apply_profile(profile: RadioProfile, retries: int, timeout: float) -> None:
             with SerialSession(profile, timeout=timeout) as session:
                 for command, expected in profile.programming_commands():
                     session.transact(command, expected)
+                    time.sleep(COMMAND_SETTLE_SECONDS)
                 readback = session.transact("AT+DMOREADGROUP", GROUP_RE.pattern)
                 verify_group(readback, profile)
             return
@@ -235,6 +242,7 @@ def apply_profile(profile: RadioProfile, retries: int, timeout: float) -> None:
 def check_profile(profile: RadioProfile, timeout: float) -> None:
     with SerialSession(profile, timeout=timeout) as session:
         session.transact("AT+DMOCONNECT", r"\+DMOCONNECT:0")
+        time.sleep(COMMAND_SETTLE_SECONDS)
         readback = session.transact("AT+DMOREADGROUP", GROUP_RE.pattern)
         verify_group(readback, profile)
 

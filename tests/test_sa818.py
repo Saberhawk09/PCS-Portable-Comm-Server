@@ -15,6 +15,9 @@ SPEC.loader.exec_module(sa818)
 
 
 class Sa818Tests(unittest.TestCase):
+    def test_commissioned_radio_settling_delay_is_preserved(self):
+        self.assertEqual(sa818.COMMAND_SETTLE_SECONDS, 0.4)
+
     def test_commissioned_profile_generates_exact_programming_commands(self):
         profile = sa818.RadioProfile()
 
