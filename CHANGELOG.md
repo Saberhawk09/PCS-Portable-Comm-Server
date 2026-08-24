@@ -17,6 +17,8 @@ All notable user-facing PCS changes are recorded here.
   and authenticated Meshtastic dashboard cards
 - GPSD-backed synchronization of the RAK4631's local map position, with a
   500-meter movement threshold to avoid unnecessary fixed-position flash writes
+- repeatable 15-bit primary-channel position precision enforcement and runtime
+  policy validation whenever the public NeoMesh map mirror is enabled
 - managed SA818S initialization over `/dev/serial0` with exact group readback
 - explicit APRS ALSA restoration and verification before every Dire Wolf start
 - delayed APRS mixer restoration after each commissioned USB sound-card

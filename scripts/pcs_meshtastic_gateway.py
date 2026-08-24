@@ -388,9 +388,11 @@ class Gateway:
         channels = getattr(local_node, "channels", ()) or ()
         primary_channel = channels[0] if channels else None
         primary_settings = getattr(primary_channel, "settings", None)
+        primary_module_settings = getattr(primary_settings, "module_settings", None)
         primary_default_key = bytes(getattr(primary_settings, "psk", b"")) == b"\x01"
         primary_uplink = getattr(primary_settings, "uplink_enabled", None)
         primary_downlink = getattr(primary_settings, "downlink_enabled", None)
+        primary_position_precision = getattr(primary_module_settings, "position_precision", None)
         radio_ok_to_mqtt = getattr(radio_lora, "config_ok_to_mqtt", None)
 
         radio_mqtt_address = str(getattr(radio_mqtt, "address", "") or "").strip().lower().rstrip(".")
@@ -410,6 +412,14 @@ class Gateway:
             "primary_channel_uplink": primary_uplink,
             "primary_channel_downlink": primary_downlink,
             "primary_channel_default_key": primary_default_key,
+            "primary_channel_position_precision": primary_position_precision,
+            "map_position_policy_ready": bool(
+                not self.map_mqtt_enabled
+                or (
+                    primary_position_precision == getattr(map_settings, "position_precision", None)
+                    and primary_position_precision in range(12, 16)
+                )
+            ),
             "rf_igate_ready": bool(
                 radio_ok_to_mqtt
                 and primary_uplink

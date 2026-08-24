@@ -963,6 +963,8 @@ if os.environ.get("PCS_MESHTASTIC_MAP_MQTT_HOST"):
     assert status["gateway"]["radio_ok_to_mqtt"] is True
     assert status["gateway"]["primary_channel_uplink"] is True
     assert status["gateway"]["primary_channel_default_key"] is True
+    assert status["gateway"]["primary_channel_position_precision"] == status["gateway"]["map_position_precision"]
+    assert status["gateway"]["map_position_policy_ready"] is True
     assert status["gateway"]["rf_igate_ready"] is True
 assert 0 <= time.time() - status["collected_at_epoch"] <= 60
 assert status["privacy"]["messages_stored"] is False

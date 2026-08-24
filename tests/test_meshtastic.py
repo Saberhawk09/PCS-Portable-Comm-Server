@@ -192,6 +192,7 @@ class MeshtasticStatusTests(unittest.TestCase):
                     psk=b"\x01",
                     uplink_enabled=True,
                     downlink_enabled=True,
+                    module_settings=SimpleNamespace(position_precision=15),
                 ))],
             ),
         )
@@ -229,6 +230,8 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertTrue(status["gateway"]["radio_ok_to_mqtt"])
         self.assertTrue(status["gateway"]["primary_channel_uplink"])
         self.assertTrue(status["gateway"]["primary_channel_default_key"])
+        self.assertEqual(status["gateway"]["primary_channel_position_precision"], 15)
+        self.assertTrue(status["gateway"]["map_position_policy_ready"])
         self.assertTrue(status["gateway"]["rf_igate_ready"])
         self.assertEqual(status["gateway"]["map_publish_interval_secs"], 3600)
         self.assertEqual(status["gateway"]["map_position_precision"], 15)
@@ -647,6 +650,8 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn('"${IMPORT_TARGET}" --device "${device}" --output "${credential_temp}"', setup)
         self.assertIn("--enable-neomesh-map", setup)
         self.assertIn('NEOMESH_MAP_MQTT_HOST="mqtt.meshtastic.liamcottle.net"', setup)
+        self.assertIn('NEOMESH_MAP_POSITION_PRECISION="15"', setup)
+        self.assertIn('--ch-set module_settings.position_precision', setup)
         self.assertIn('PCS_MESHTASTIC_MAP_MQTT_USERNAME=', setup)
         self.assertIn('PCS_MESHTASTIC_MAP_MQTT_PASSWORD=', setup)
 

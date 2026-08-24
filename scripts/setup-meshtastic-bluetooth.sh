@@ -8,6 +8,7 @@ MESHTASTIC_VERSION="2.7.11"
 PAHO_MQTT_VERSION="2.1.0"
 NEOMESH_MAP_MQTT_HOST="mqtt.meshtastic.liamcottle.net"
 NEOMESH_MAP_MQTT_PORT="1883"
+NEOMESH_MAP_POSITION_PRECISION="15"
 VENV_DIR="/opt/pcs-meshtastic"
 ENV_FILE="/etc/pcs/meshtastic.env"
 MQTT_SECRET_FILE="/etc/pcs/meshtastic-mqtt.env"
@@ -373,12 +374,36 @@ set_neomesh_map() {
     local map_host=""
     local map_username=""
     local map_password=""
+    local configured_port=""
+    local configured_device=""
+    local -a radio_args=()
 
     if [[ "${enabled}" == "yes" ]]; then
         map_host="${NEOMESH_MAP_MQTT_HOST}"
         # These are the public, uplink-only credentials published by the map.
         map_username="uplink"
         map_password="uplink"
+
+        configured_port="$(sudo awk -F= '$1 == "PCS_MESHTASTIC_PORT" { sub(/^[^=]*=/, ""); print; exit }' "${ENV_FILE}")"
+        configured_device="$(sudo awk -F= '$1 == "PCS_MESHTASTIC_DEVICE" { sub(/^[^=]*=/, ""); print; exit }' "${ENV_FILE}")"
+        if [[ -n "${configured_port}" ]]; then
+            radio_args=(--port "${configured_port}")
+        elif [[ -n "${configured_device}" ]]; then
+            radio_args=(--ble "${configured_device}")
+        else
+            echo "ERROR: Configure a Meshtastic USB or BLE radio before enabling the map mirror."
+            exit 1
+        fi
+
+        sudo systemctl stop pcs-meshtastic.service
+        if ! timeout 60 "${VENV_DIR}/bin/meshtastic" \
+            "${radio_args[@]}" \
+            --ch-set module_settings.position_precision "${NEOMESH_MAP_POSITION_PRECISION}" \
+            --ch-index 0; then
+            sudo systemctl start pcs-meshtastic.service || true
+            echo "ERROR: Could not apply the public-map position precision to the primary channel."
+            exit 1
+        fi
     fi
 
     env_temp="$(mktemp)"
@@ -414,6 +439,7 @@ set_neomesh_map() {
 
     if [[ "${enabled}" == "yes" ]]; then
         echo "Enabled uplink-only mirror for the MQTT coverage map embedded at neome.sh."
+        echo "Primary-channel position precision: ${NEOMESH_MAP_POSITION_PRECISION} bits."
         echo "The existing NeoMesh broker and its constrained downlink filters were preserved."
     else
         echo "Disabled the embedded-map MQTT mirror; the existing NeoMesh broker was preserved."

@@ -2188,6 +2188,7 @@ meshtastic_radio_mqtt_enabled = bool(meshtastic_gateway.get("radio_mqtt_enabled"
 meshtastic_radio_proxy_enabled = bool(meshtastic_gateway.get("radio_proxy_enabled"))
 meshtastic_radio_broker_matches = bool(meshtastic_gateway.get("radio_broker_matches"))
 meshtastic_rf_igate_ready = bool(meshtastic_gateway.get("rf_igate_ready"))
+meshtastic_map_position_policy_ready = bool(meshtastic_gateway.get("map_position_policy_ready"))
 meshtastic_radio_policy_ok = all((
     meshtastic_radio_mqtt_enabled,
     meshtastic_radio_proxy_enabled,
@@ -2246,8 +2247,10 @@ meshtastic_map_enabled = bool(meshtastic_gateway.get("map_reporting_enabled"))
 meshtastic_map_location = bool(meshtastic_gateway.get("map_location_opt_in"))
 meshtastic_map_interval = int(number_value(meshtastic_gateway.get("map_publish_interval_secs")) or 0)
 meshtastic_map_precision = int(number_value(meshtastic_gateway.get("map_position_precision")) or 0)
+meshtastic_channel_position_precision = int(number_value(meshtastic_gateway.get("primary_channel_position_precision")) or 0)
 meshtastic_map_label = (
-    f"enabled; location opted in; every {meshtastic_map_interval // 60}m; precision {meshtastic_map_precision}"
+    f"enabled; location opted in; every {meshtastic_map_interval // 60}m; "
+    f"map/channel precision {meshtastic_map_precision}/{meshtastic_channel_position_precision}"
     if meshtastic_map_enabled and meshtastic_map_location and meshtastic_map_interval
     else "enabled; location not shared"
     if meshtastic_map_enabled
@@ -2303,6 +2306,7 @@ elif MESHTASTIC_CONFIGURED:
         not meshtastic_map_mqtt_configured
         or (
             meshtastic_rf_igate_ready
+            and meshtastic_map_position_policy_ready
             and (meshtastic_map_mqtt_connected or offline_mode)
         )
     )
