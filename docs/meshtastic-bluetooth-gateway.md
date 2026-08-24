@@ -87,6 +87,12 @@ on the NeoMesh Meshtastic page:
 ./scripts/setup-meshtastic-bluetooth.sh --enable-neomesh-map
 ```
 
+Enabling the mirror also sets primary-channel position precision to 15 bits
+(approximately 729 meters) before saving the broker configuration. This prevents
+ordinary LongFast position packets from overriding the same precision selected
+for firmware MapReport. Disabling the mirror leaves that privacy-conservative
+channel precision in place.
+
 Disable only that mirror, without changing the primary NeoMesh broker:
 
 ```bash
