@@ -1,20 +1,23 @@
 # Meshtastic USB/Bluetooth MQTT Gateway
 
 PCS can maintain a continuous connection to one dedicated Meshtastic node and
-provide that node with local or internet MQTT access. The initial target is a
+provide that node with local or internet MQTT access. The deployed target is a
 RAK4631. USB serial is the deployed PCS transport; a BLE transport adapter is
 also included for hosts whose systemd device isolation permits BlueZ GATT.
 
-The persistent USB session, broker connection, MQTT client-proxy uplink, and
-service restart have been hardware-validated on PCS. Mesh RF behavior and the
-environmental sensor readings remain operator-validated steps.
+The persistent USB session, broker connection, MQTT client-proxy uplink,
+service restart, public-map appearance, and remote RF-to-map forwarding have
+been hardware-validated on PCS. Broader RF coverage and the environmental
+sensor's placement/accuracy remain operator-validated steps.
 
 The commissioned PCS profile uses `mqtt.neomesh.org`, encrypted primary-channel
 uplink/downlink, and Meshtastic Client Proxy over the persistent USB connection.
 The RAK4631 also has hourly map reporting enabled with location sharing opted in
 at precision 15. Successful radio-proxy publishes to the NeoMesh broker were
-validated on August 24, 2026; appearance on any particular public map frontend
-remains a separate external-service check.
+validated on August 24, 2026. IJC1 then appeared on the public map, and an
+opted-in IJC2 position received by PCS over LoRa was mirrored and appeared on
+the same map. This demonstrates the commissioned remote RF-to-public-map path;
+external map retention and availability remain outside PCS control.
 
 The Meshtastic page at `neome.sh/meshtastic/` embeds an MQTT coverage map that
 uses a separate broker. PCS can mirror every radio-generated uplink envelope to
@@ -28,7 +31,7 @@ firmware consent (`config_ok_to_mqtt`) remains authoritative for remote stations
 For IJC1 itself, the gateway synchronizes GPSD into the radio's supported fixed
 position only when no radio position exists or PCS has moved at least 500 meters.
 This lets firmware MapReport include the opted-in location without rewriting the
-RAK's flash on every hourly position refresh.
+RAK's flash on every 30-minute PCS position refresh.
 
 ## Architecture
 
@@ -73,6 +76,20 @@ position update every 30 minutes on primary channel index 0. A missing fix is
 skipped rather than replaced with zero or stale coordinates. The normal
 Meshtastic channel and position-precision rules determine who can receive the
 packet. PCS status records only update counts and timestamps, never coordinates.
+
+The 30-minute PCS interval is independent of the Meshtastic app's **Position
+Broadcast Interval**. PCS calls Meshtastic's `sendPosition()` API, which sends
+the GPSD-backed packet immediately. The app setting controls additional
+firmware-generated position broadcasts from the RAK. During the August 24
+review, that firmware interval showed 24 hours; PCS does not rewrite it. It may
+be shortened to one hour as a standalone fixed-position fallback without
+changing the PCS-managed 30-minute cadence. Keep GPS mode at **Not Present**
+for this RAK, leave the fixed position enabled, and do not use **Remove
+Position**: the receiver is attached to PCS, not to the Meshtastic board.
+
+The opted-in firmware MapReport has its own separate 3600-second interval. It
+is not the same packet schedule as either the PCS GPSD feed or the app's normal
+position broadcast setting.
 
 Disable it with:
 
@@ -173,6 +190,7 @@ giving the BLE connection to PCS:
 
 For the commissioned PCS/NeoMesh node, the non-secret radio-side policy is:
 
+- firmware `2.7.26.54e0d8d` as observed on August 24, 2026
 - MQTT address `mqtt.neomesh.org`
 - MQTT module and Client Proxy enabled
 - MQTT encryption enabled

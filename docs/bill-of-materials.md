@@ -1,12 +1,17 @@
 # Bill of Materials
 
-Status reflects the latest known acquisition state. **Purchased / awaiting delivery** does not mean installed or validated. **Purchased / as-built record pending** means the part has been acquired, but its exact installation still needs to be reconciled with the physical PCS.
+Status reflects the latest known acquisition state. **Installed / tested** means
+the part is present and its stated PCS function has been observed. It does not
+claim unlisted electrical, RF, thermal, or mechanical measurements.
+**Purchased / awaiting delivery** does not mean installed or validated.
+**Purchased / as-built record pending** means the part has been acquired, but
+its exact installation still needs to be reconciled with the physical PCS.
 
 ## Compute Hardware
 
 | Item                 | Qty | Status      | Price | Notes                                |
 | -------------------- | --: | ----------- | ----: | ------------------------------------ |
-| Raspberry Pi 4 8GB   |   1 | Owned       |     - | Main server hardware                 |
+| Raspberry Pi 4 8GB   |   1 | Installed / tested |     - | Main server hardware                 |
 | DS1307-compatible RTC module | 1 | Installed / tested | - | Boot-time reference clock |
 | External flash drive |   1 | Installed / tested |     - | Removable storage for LAN file share |
 
@@ -17,10 +22,10 @@ Status reflects the latest known acquisition state. **Purchased / awaiting deliv
 | Sierra Wireless EM7565      |   1 | Installed / tested |     - | Cellular modem                    |
 | M.2 WWAN to USB adapter     |   1 | Installed / tested |   $33 | USB adapter for modem             |
 | External LTE antennas       |   2 | Installed / tested |   $13 | Cellular antennas                 |
-| MHF4 to SMA female pigtails |   5 | Purchased |    $8 | Antenna adapter cables            |
+| MHF4 to SMA female pigtails |   5 | Purchased / as-built record pending |    $8 | Antenna adapter cables            |
 | External GPS antenna        |   1 | Installed / tested |     - | Active GPS antenna for GNSS / NTP use |
-| Thermal pad, 100x100x0.5mm  |   1 | Purchased |    $8 | Modem / adapter thermal interface |
-| 9x9x5mm heatsinks           |  20 | Purchased |    $7 | Small component heatsinks         |
+| Thermal pad, 100x100x0.5mm  |   1 | Purchased / as-built record pending |    $8 | Modem / adapter thermal interface |
+| 9x9x5mm heatsinks           |  20 | Purchased / as-built record pending |    $7 | Small component heatsinks         |
 
 ## Routing Hardware
 
@@ -33,9 +38,9 @@ Status reflects the latest known acquisition state. **Purchased / awaiting deliv
 | Item                               | Qty | Status                         | Price | Notes                                      |
 | ---------------------------------- | --: | ------------------------------ | ----: | ------------------------------------------ |
 | Pi-Star hotspot                    |   1 | Installed / tested             |     - | Fixed PCS-LAN node at `10.42.0.3`          |
-| APRS USB sound adapter             | Sabrent USB audio / C-Media card ID `Device` | Installed / tested | 1 | RX 69% (+12 dB), AGC off; TX now -16 dB pending repeat decode validation (bidirectional AFSK previously tested at -18 dB) |
-| APRS radio/PTT hardware            | SA818S V1.2 + stock Easy Digi | Installed / tested | 1 set | GPIO6 optoisolated PTT, 144.5500 MHz RF TX/RX, UART programming, messaging, IGate, and WIDE1-1 fill-in operation validated |
-| RAK4631 Meshtastic expansion       | TBD | Purchased / as-built record pending | - | USB/MQTT gateway and GPSD position delivery live-validated; sensor model, mounting record, RF behavior, and sensor accuracy pending |
+| APRS USB sound adapter             | 1 | Installed / tested | - | C-Media `0d8c:0014`, ALSA card ID `Device`; RX 69% (+12 dB), AGC off; TX -16 dB pending repeated decode characterization |
+| APRS radio/PTT hardware            | 1 set | Installed / tested | - | SA818S V1.2 + stock Easy Digi; GPIO6 PTT, 144.5500 MHz RF TX/RX, UART programming, messaging, IGate, and WIDE1-1 fill-in validated |
+| RAK4631 Meshtastic expansion       | 1 | Installed / tested | - | USB/NeoMesh gateway, 30-minute GPSD position, public-map appearance, and opted-in remote RF-to-map forwarding validated; sensor model/mounting and accuracy pending |
 
 ## Local Status Hardware
 
@@ -61,13 +66,13 @@ Status reflects the latest known acquisition state. **Purchased / awaiting deliv
 | Mean Well LRS-100-24          |   1 | Purchased / as-built record pending |     - | 120 VAC to 24 VDC, 108 W          |
 | SparkFun COM-18732            |   1 | Purchased / as-built record pending |     - | 8-36 V input to regulated 12 V    |
 | Mean Well PSD-30A-5           |   1 | Purchased / as-built record pending |     - | Regulated 12 V to 5 V, 5 A        |
-| 120 mm cooling fans           |   2 | Installed / operating                 |     - | Thermal performance not yet measured |
+| 120 mm cooling fans           |   2 | Installed / tested                    |     - | Operation confirmed; thermal performance not yet measured |
 
 ## Enclosure / Mechanical
 
 | Item                                  | Qty   | Status                              | Price | Notes                                  |
 | ------------------------------------- | ----: | ----------------------------------- | ----: | -------------------------------------- |
-| Prototype enclosure and mounting hardware | 1 set | Installed / as-built record pending | - | Dimensions, fasteners, photos, and CAD references TBD |
+| Prototype enclosure and mounting hardware | 1 set | Installed / tested | - | Operational; dimensions, fasteners, photos, and CAD references TBD |
 
 ## Estimated Listed Cost
 
@@ -75,4 +80,7 @@ Known listed cost total: **$120**
 
 This total only includes items with prices currently listed in this document. Items marked with `-` were already owned, purchased separately, or still need their purchase price recorded, so they are not included.
 
-No hardware remains marked **Planned**. Purchased expansion hardware remains uninstalled until delivery, and the power and enclosure rows still require reconciliation with the physical as-built unit before they can be called installed or electrically validated.
+No hardware remains marked **Planned** or **Purchased / awaiting delivery**.
+Rows marked **Purchased / as-built record pending**, plus the power and
+enclosure notes, still require reconciliation with the physical unit before
+they can be used as a complete electrical or mechanical replication record.

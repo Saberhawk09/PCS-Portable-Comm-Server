@@ -40,9 +40,12 @@ The SA818S, stock Easy Digi, GPIO6 PTT, USB audio, 144.5500 MHz RF path, GNSS
 beaconing, two-way APRS-IS, messaging, and WIDE1-1 fill-in operation have been
 validated. The RAK4631 persistent USB/MQTT gateway and GPSD position delivery
 are live-validated, including successful encrypted proxy publishes to the
-NeoMesh broker and opted-in hourly map reporting. Public-map frontend appearance,
-mesh RF behavior, and the case-sensor baseline remain operator checkpoints.
-The exact as-built electrical and mechanical record is also unfinished.
+NeoMesh broker, opted-in hourly map reporting, public-map appearance for IJC1,
+and RF-to-public-map forwarding of an opted-in IJC2 position heard over LoRa.
+PCS sends its GPSD-backed Meshtastic position every 30 minutes with 15-bit
+channel/map precision. Broader RF coverage and the case-sensor baseline remain
+operator checkpoints. The exact as-built electrical and mechanical record is
+also unfinished.
 
 ### Hardware
 
@@ -58,10 +61,11 @@ The exact as-built electrical and mechanical record is also unfinished.
 - GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
 - SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
 - RAK4631 Meshtastic expansion connected over USB with validated persistent
-  NeoMesh MQTT proxy, GPSD position delivery, hourly map reporting, and an
+  NeoMesh MQTT proxy, 30-minute GPSD position delivery, hourly map reporting,
+  demonstrated remote RF reception/map forwarding, and an
   uplink-only mirror for the MQTT map embedded on the NeoMesh Meshtastic page;
   the mirror carries public LongFast traffic and explicit opt-in map reports;
-  public frontend appearance and sensor accuracy remain operator checkpoints
+  sensor placement and accuracy remain operator checkpoints
 
 ### Software
 
@@ -75,16 +79,19 @@ The exact as-built electrical and mechanical record is also unfinished.
 - Managed Dire Wolf 1.8.1 startup with SA818S programming, ALSA level restoration, LAN-only AGW/KISS access, and guarded activation/rollback
 - Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
   dashboard status, guarded restart, broker/proxy policy validation, GPSD
-  position delivery, map-report status, and local environment telemetry
-- PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; credentials, external-device recovery, and RF checks remain manual
+  position delivery, public-map forwarding status, and local environment telemetry
+- PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; the
+  current `main` stack was synchronized and passed 133 live self-tests with no
+  warnings or failures on August 24, 2026; credentials, external-device
+  recovery, and RF checks remain manual
 
 ### Current Finish Work
 
 - Capture final enclosure dimensions, mounting details, photos, and CAD references
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
-- Observe RAK4631 mesh RF behavior and establish a referenced case
-  temperature/humidity baseline
+- Characterize Meshtastic range beyond the commissioned RF-to-map test and
+  establish a referenced case temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
 
 ## Hardware Setup
@@ -153,8 +160,9 @@ Expected result:
 nothing to commit, working tree clean
 PCS Pi-side self-test PASSED.
 ```
-You may also see a single warning related to the cellular profile not being active. 
-This is okay if you haven't manually activated the cellular data connection since the PCS system was installed.
+
+An intentionally disconnected manual cellular profile is informational, not a
+self-test warning. Investigate every reported warning or failure before field use.
 
 For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
@@ -291,6 +299,9 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 - [`scripts/setup-rtc.sh`](scripts/setup-rtc.sh) - Configure the DS1307 and guarded boot-time RTC seed
 - [`scripts/setup-pistar-pcs.sh`](scripts/setup-pistar-pcs.sh) - Apply or verify the Pi-Star PCS integration
 - [`scripts/setup-pistar-shutdown.sh`](scripts/setup-pistar-shutdown.sh) - Pair the PCS shutdown button with Pi-Star
+- [`scripts/setup-direwolf-aprs.sh`](scripts/setup-direwolf-aprs.sh) - Stage, validate, activate, or recover the managed APRS subsystem
+- [`scripts/setup-meshtastic-bluetooth.sh`](scripts/setup-meshtastic-bluetooth.sh) - Stage or configure the persistent Meshtastic USB/BLE MQTT gateway
+- [`scripts/pcs_gpio.py`](scripts/pcs_gpio.py) - Inspect, simulate, and deliberately test PCS GPIO status hardware
 
 See [Script Reference](scripts/README.md) for the full script list.
 
@@ -309,6 +320,8 @@ Installed and tested hardware:
 - MAX7219 8x8 health-annunciator matrix
 - Six-pixel WS2812 status-indicator chain
 - Armor Lite cooler with GPIO18 hardware-PWM fan control
+- SA818S V1.2, stock Easy Digi, C-Media USB audio, GPIO6 PTT, and managed Dire Wolf APRS
+- RAK4631 Meshtastic node over USB with NeoMesh MQTT, GPSD position, and public-map forwarding
 
 Installed with as-built records or measurements pending:
 
@@ -318,7 +331,7 @@ Remaining documentation and validation:
 
 - Record the exact as-built power components, fuses, wiring, grounding, rail measurements, and thermal results
 - Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
-- Observe RAK4631 mesh RF behavior and establish a referenced case-sensor baseline
+- Characterize Meshtastic range beyond the completed IJC2 RF-to-map test and establish a referenced case-sensor baseline
 
 For more detail, see [Bill of Materials](docs/bill-of-materials.md) and [Power System](docs/power-system.md).
 

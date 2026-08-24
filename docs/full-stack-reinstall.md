@@ -163,6 +163,11 @@ gateway transport, run:
 ./scripts/setup-meshtastic-bluetooth.sh --enable-neomesh-map
 ```
 
+The first command enforces the commissioned 1800-second PCS GPSD position
+cadence. This is independent of the radio firmware's normal Position Broadcast
+Interval. The second command enforces the 15-bit primary-channel position
+precision and preserves the separate hourly firmware MapReport.
+
 The second command preserves the primary NeoMesh broker and enables only the
 uplink mirror consumed by the MQTT coverage map embedded at
 `neome.sh/meshtastic/`. Its public uplink credentials are installed in the
@@ -285,7 +290,14 @@ was not reachable then, use the standalone command above.
 
 ## Verification
 
-The PCS Pi SD-card wipe/rebuild path was most recently verified on August 18, 2026. That validation covered the repeatable Pi-side software path and configured integrations; it did not make OpenWrt or Pi-Star flashing, credentials, appliance backups, USB identity decisions, or on-air RF checks automatic. The procedure below remains the release-standard validation because those intentional manual checkpoints still apply.
+The PCS Pi SD-card wipe/rebuild path was most recently verified on August 18,
+2026. That validation covered the repeatable Pi-side software path and
+configured integrations; it did not make OpenWrt or Pi-Star flashing,
+credentials, appliance backups, USB identity decisions, or on-air RF checks
+automatic. The current installed stack was synchronized to `main` and passed
+133 live self-tests with no warnings or failures on August 24, 2026. The
+procedure below remains the release-standard validation because those
+intentional manual checkpoints still apply.
 
 On PCS:
 
@@ -328,7 +340,7 @@ complete when:
 - Pi-Star receives a GPSD protocol response from PCS
 - coordinated shutdown readiness check passes
 - Dire Wolf is safely staged and its software test passes, or its active mode has completed the documented hardware/RF validation
-- Meshtastic is safely staged, or its active mode has a stable BLE session, broker connection, and validated allowlisted uplink/downlink
+- Meshtastic is safely staged, or its active mode has a stable selected USB/BLE transport, broker connection, policy-safe allowlisted uplink/downlink, GPSD position health, and map policy when enabled
 - required radio modes pass an operator-supervised on-air test
 
 ## Remaining Manual Checkpoints
@@ -338,7 +350,7 @@ unattended. These actions remain manual:
 
 - flashing SD cards and OpenWrt firmware
 - entering or restoring Wi-Fi, callsign, and radio-network credentials
-- pairing/trusting the RAK4631 and restoring its MQTT broker credentials and topic allowlist
+- restoring the RAK4631 identity/configuration, MQTT broker credentials, and topic allowlist; BLE pairing is needed only when BLE is deliberately selected instead of deployed USB
 - entering the Samba password
 - selecting the correct USB storage device if detection is ambiguous
 - validating RF behavior on air

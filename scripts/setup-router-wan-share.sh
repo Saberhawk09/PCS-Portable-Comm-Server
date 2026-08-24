@@ -9,7 +9,7 @@ AUTOCONNECT_PRIORITY="100"
 DISABLED_AUTOCONNECT_PRIORITY="-100"
 
 echo
-echo "=== PCS Router WAN Share Setup ==="
+echo "=== PCS Client LAN / AP Handoff Setup ==="
 echo
 
 if ! command -v nmcli >/dev/null 2>&1; then
@@ -26,10 +26,11 @@ fi
 echo "This will create a NetworkManager shared Ethernet profile."
 echo
 echo "Purpose:"
-echo "  Share the Pi's current internet connection out through ${INTERFACE_NAME}"
-echo "  so a router WAN port can receive an IP address from the Pi."
+echo "  Make the Pi the PCS LAN gateway on ${INTERFACE_NAME}."
+echo "  Connect ${INTERFACE_NAME} to a LAN port on the bridged OpenWrt AP/switch."
+echo "  Client internet traffic uses whichever Pi uplink is intentionally active."
 echo
-echo "Planned profile:"
+echo "Managed profile:"
 echo "  Name:      ${CONNECTION_NAME}"
 echo "  Interface: ${INTERFACE_NAME}"
 echo "  Address:   ${ROUTER_NET}"
@@ -115,9 +116,9 @@ else
 fi
 
 echo
-echo "PCS router WAN share profile configured."
+echo "PCS client LAN/AP handoff profile configured."
 echo
-echo "To reactivate after plugging router WAN into Pi eth0:"
+echo "To reactivate after connecting Pi eth0 to an AP/switch LAN port:"
 echo "  sudo nmcli connection up ${CONNECTION_NAME}"
 echo
 echo "To disable:"
@@ -127,6 +128,7 @@ echo "To delete this profile:"
 echo "  sudo nmcli connection delete ${CONNECTION_NAME}"
 echo
 echo "Expected result:"
-echo "  Router WAN receives a 10.42.0.x address from the Pi."
-echo "  Router clients may reach the internet through the Pi's current uplink."
+echo "  PCS clients receive 10.42.0.x addresses from the Pi."
+echo "  The OpenWrt AP remains at 10.42.0.2 and does not provide DHCP/NAT."
+echo "  Clients may reach the internet through the Pi's current uplink."
 echo

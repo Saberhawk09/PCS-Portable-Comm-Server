@@ -10,7 +10,10 @@ The PCS hardware is assembled and operational. This directory separates working-
 - LTE and active GNSS antennas
 - DS1307 RTC
 - removable USB primary storage
-- optional Pi-Star hotspot integration
+- Pi-Star hotspot on guarded RTL8152 USB Ethernet with onboard Wi-Fi disabled
+- HD44780 LCD, MAX7219 matrix, six WS2812 status pixels, and GPIO18 PWM fan
+- SA818S/Easy Digi APRS subsystem with C-Media USB audio and GPIO6 PTT
+- RAK4631 USB Meshtastic/NeoMesh gateway
 
 ## Hardware Records
 
@@ -27,5 +30,6 @@ The PCS hardware is assembled and operational. This directory separates working-
 - actual fuse values, wire gauge, and protective-earth bonding
 - measured rail voltage, current draw, and thermal results
 - antenna connector labels and final external mounting details
+- RAK4631 sensor model/mounting record and referenced temperature/humidity baseline
 
 Do not treat design values in the wiring or power documents as measured facts until their as-built tables are completed.

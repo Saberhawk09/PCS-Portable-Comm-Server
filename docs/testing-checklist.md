@@ -680,8 +680,11 @@ and disabled. For `PCS_SETUP_MESHTASTIC=yes`, it additionally requires the
 root-only configuration and credential files, enabled/running service, a fresh
 connected USB/BLE snapshot, a live MQTT session, privacy flags, and successful
 recent GPSD position delivery when selected. The status command must read the
-shared snapshot without opening the radio. Live mesh RF behavior and
-environment-sensor accuracy remain manual hardware checkpoints;
+shared snapshot without opening the radio. The commissioned PCS has
+demonstrated IJC1 public-map appearance and IJC2 RF-to-map forwarding. Repeat a
+controlled opt-in RF/map test after relevant radio, channel, MQTT, or map-policy
+changes. Broader RF coverage and environment-sensor accuracy remain manual
+hardware checkpoints;
 see [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md).
 
 With Meshtastic active, verify the public homepage contains the
@@ -695,6 +698,12 @@ For an active MQTT bridge, confirm the status snapshot reports
 `radio_mqtt_enabled`, `radio_proxy_enabled`, and `radio_broker_matches` as true.
 After a controlled radio packet or map report, confirm `mqtt_uplink` increments;
 an MQTT connection by itself is not proof that the radio supplied a publish.
+When the public-map mirror is enabled, also require
+`primary_channel_position_precision`, `map_position_precision`, and
+`map_position_policy_ready` to report `15`, `15`, and `true`. Confirm
+`map_mqtt_uplink` increments for an opted-in local MapReport or public LongFast
+packet. A public-map connection without an accepted packet is not end-to-end
+evidence.
 
 ## Service Status Test
 

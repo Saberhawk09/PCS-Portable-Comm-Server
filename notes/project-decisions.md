@@ -76,3 +76,47 @@ satisfied; repository tests do not reproduce the operator's RF measurements.
 Reasoning: physical commissioning can now support a reproducible service profile
 without weakening the safeguards that prevent an unverified rebuild from
 transmitting or exposing network TNC listeners.
+
+## 2026-08-24
+
+### Pi-Star uses guarded wired-only networking
+
+The installed Pi-Star hotspot uses its RTL8152 USB Ethernet adapter as `eth0`
+at `10.42.0.3`. A two-stage handoff verified continuous carrier and PCS
+reachability before the managed `disable-wifi` overlay disabled onboard Wi-Fi.
+Pi-Star retains its native credentials and a recoverable SD-card rollback path.
+
+Reasoning: wired Ethernet removes an unnecessary radio dependency inside the
+PCS enclosure while the guarded handoff prevents a cable, adapter, or switch
+fault from silently removing the last management path.
+
+### PCS time is GPS first with two fallbacks
+
+Chrony prefers usable GPS from the EM7565/gpsd SHM source, selects public
+Internet NTP when GPS is unavailable or rejected, and advertises the
+RTC-seeded system clock as degraded stratum-10 holdover only when neither
+authoritative source is selectable. The DS1307 seeds boot and is updated by
+`rtcsync`; it is not continuously sampled as a Chrony refclock.
+
+Reasoning: this preserves GPS independence in the field, retains an independent
+Internet sanity check/fallback, and still provides recognizable degraded local
+time after a cold boot without either source.
+
+### Meshtastic gateway commissioned over scoped USB
+
+The installed RAK4631 uses a persistent scoped USB serial session with its
+Bluetooth radio disabled. PCS proxies the radio's encrypted NeoMesh MQTT
+traffic, sends a GPSD-backed position every 30 minutes, retains the firmware's
+separate hourly opted-in MapReport, and mirrors public LongFast/map-report
+uplinks to the map broker without subscribing to it. Primary-channel and map
+position precision are enforced at 15 bits.
+
+IJC1 public-map appearance and an opted-in IJC2 position received over LoRa and
+forwarded to that map demonstrate the commissioned public gateway path. The
+service stores aggregate health only; it does not retain messages, remote
+identities, coordinates, or channel keys. Broader RF coverage and environment
+sensor accuracy remain field-characterization work.
+
+Reasoning: the scoped USB transport is reliable under the hardened systemd
+sandbox, the publish-only public mirror avoids an Internet-to-RF flood path,
+and explicit position opt-in/precision keeps public location sharing deliberate.

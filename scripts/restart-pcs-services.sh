@@ -29,7 +29,7 @@ for service in "${SERVICES[@]}"; do
     echo
 done
 
-echo "--- Router WAN handoff ---"
+echo "--- PCS client LAN / AP handoff ---"
 if command -v nmcli >/dev/null 2>&1; then
     if nmcli connection show pcs-router-wan-share >/dev/null 2>&1; then
         echo "Reactivating pcs-router-wan-share..."
@@ -61,7 +61,7 @@ echo "--- Time status ---"
 timedatectl | grep -E "System clock synchronized|NTP service|RTC in local TZ" || true
 
 echo
-echo "--- Router-side IP check ---"
+echo "--- PCS LAN IP check ---"
 ip -brief addr show eth0 || true
 
 echo
