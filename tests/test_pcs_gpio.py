@@ -22,6 +22,7 @@ FAN_SERVICE = ROOT / "systemd" / "pcs-gpio-fan.service"
 FAN_SETUP = ROOT / "scripts" / "setup-gpio-fan.sh"
 LEDS_SERVICE = ROOT / "systemd" / "pcs-gpio-leds.service"
 LEDS_SETUP = ROOT / "scripts" / "setup-gpio-leds.sh"
+SHUTDOWN_SERVICE = ROOT / "systemd" / "pcs-gpio-shutdown.service"
 PCS_STATUS = ROOT / "scripts" / "pcs-status.sh"
 PCS_SELF_TEST = ROOT / "scripts" / "pcs-self-test.sh"
 
@@ -84,6 +85,76 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pcs_gpio.LED_CRITICAL, (176, 0, 0))
         source = (ROOT / "scripts" / "pcs_gpio.py").read_text(encoding="utf-8")
         self.assertIn("ws.WS2811_STRIP_GRB", source)
+
+    def test_shutdown_state_has_requested_lcd_blue_leds_and_bed_zzz_icon(self):
+        self.assertEqual(pcs_gpio.SHUTDOWN_LCD_LINES, ("PCS Offline", "Shutting Down"))
+        self.assertEqual(pcs_gpio.LED_SHUTDOWN, (0, 0, 255))
+        self.assertEqual(
+            pcs_gpio.SHUTDOWN_LED_COLORS,
+            ((0, 0, 255),) * pcs_gpio.WS2812_COUNT,
+        )
+        self.assertEqual(
+            pcs_gpio.BED_ZZZ_ICON,
+            (0xDB, 0x49, 0xDB, 0x00, 0xC0, 0xFF, 0x81, 0x81),
+        )
+        self.assertEqual(pcs_gpio.SHUTDOWN_MATRIX_INTENSITY, 1)
+
+    def test_shutdown_writes_are_latched_instead_of_cleared(self):
+        class FakeLcd:
+            def __init__(self):
+                self.lines = None
+                self.clear = None
+
+            def text(self, lines):
+                self.lines = tuple(lines)
+
+            def close(self, *, clear=True):
+                self.clear = clear
+
+        class FakeLeds:
+            def __init__(self):
+                self.frame = None
+                self.clear = None
+
+            def colors(self, colors):
+                self.frame = tuple(colors)
+
+            def close(self, *, clear=True):
+                self.clear = clear
+
+        class FakeMatrix:
+            def __init__(self):
+                self.frame = None
+                self.level = None
+                self.clear = None
+
+            def rows(self, rows):
+                self.frame = tuple(rows)
+
+            def intensity(self, value):
+                self.level = value
+
+            def close(self, *, clear=True):
+                self.clear = clear
+
+        lcd = FakeLcd()
+        leds = FakeLeds()
+        matrix = FakeMatrix()
+        with (
+            patch.object(pcs_gpio, "HD44780", return_value=lcd),
+            patch.object(pcs_gpio, "Ws2812", return_value=leds),
+            patch.object(pcs_gpio, "Max7219", return_value=matrix),
+        ):
+            pcs_gpio.apply_shutdown_state("lcd")
+            pcs_gpio.apply_shutdown_state("leds")
+            pcs_gpio.apply_shutdown_state("matrix")
+        self.assertEqual(lcd.lines, pcs_gpio.SHUTDOWN_LCD_LINES)
+        self.assertFalse(lcd.clear)
+        self.assertEqual(leds.frame, pcs_gpio.SHUTDOWN_LED_COLORS)
+        self.assertFalse(leds.clear)
+        self.assertEqual(matrix.frame, pcs_gpio.BED_ZZZ_ICON)
+        self.assertEqual(matrix.level, pcs_gpio.SHUTDOWN_MATRIX_INTENSITY)
+        self.assertFalse(matrix.clear)
 
     def test_hardware_pwm_fan_initializes_and_closes_at_full_duty(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -602,6 +673,54 @@ class PcsGpioTests(unittest.TestCase):
         self.assertNotIn("GPIO6", service)
         self.assertNotIn("PTT", service)
 
+    def test_shutdown_service_runs_after_normal_display_daemons_stop(self):
+        service = SHUTDOWN_SERVICE.read_text(encoding="utf-8")
+        self.assertIn("DefaultDependencies=no", service)
+        self.assertIn("Conflicts=shutdown.target", service)
+        self.assertIn(
+            "Before=pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target",
+            service,
+        )
+        self.assertIn("RemainAfterExit=yes", service)
+        self.assertIn("shutdown-state lcd --hardware --apply", service)
+        self.assertIn("shutdown-state leds --hardware --apply", service)
+        self.assertIn("shutdown-state matrix --hardware --apply", service)
+        self.assertIn("DeviceAllow=/dev/gpiochip0 rw", service)
+        self.assertIn("DeviceAllow=/dev/spidev0.0 rw", service)
+        self.assertIn("DeviceAllow=/dev/mem rw", service)
+
+    def test_every_display_installer_registers_and_arms_shutdown_state(self):
+        expected_markers = {
+            LCD_SETUP: "SHUTDOWN_MARKER=\"${SHUTDOWN_MARKER_DIR}/lcd\"",
+            LEDS_SETUP: "SHUTDOWN_MARKER=\"${SHUTDOWN_MARKER_DIR}/leds\"",
+            STATS_SETUP: "SHUTDOWN_MARKER=\"${SHUTDOWN_MARKER_DIR}/matrix\"",
+        }
+        for setup_path, marker in expected_markers.items():
+            setup = setup_path.read_text(encoding="utf-8")
+            with self.subTest(setup=setup_path.name):
+                self.assertIn("pcs-gpio-shutdown.service", setup)
+                self.assertIn(marker, setup)
+                self.assertIn("systemctl enable --now pcs-gpio-shutdown.service", setup)
+
+    def test_shutdown_state_is_simulated_and_marker_aware(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            marker_dir = Path(temp_dir)
+            with patch.object(pcs_gpio, "GPIO_SHUTDOWN_MARKER_DIR", marker_dir):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    result = pcs_gpio.main(("shutdown-state", "lcd"))
+                parsed = json.loads(output.getvalue())
+                self.assertEqual(result, 0)
+                self.assertEqual(parsed["lines"], ["  PCS Offline   ", " Shutting Down  "])
+                self.assertFalse(parsed["registered"])
+                self.assertFalse(parsed["writes_performed"])
+                (marker_dir / "lcd").touch()
+                self.assertTrue(pcs_gpio.shutdown_state_plan("lcd")["registered"])
+
+    def test_real_shutdown_state_requires_double_confirmation(self):
+        with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
+            pcs_gpio.main(("shutdown-state", "leds", "--hardware"))
+
     def test_status_and_self_test_cover_every_gpio_daemon(self):
         status = PCS_STATUS.read_text(encoding="utf-8")
         self_test = PCS_SELF_TEST.read_text(encoding="utf-8")
@@ -618,6 +737,8 @@ class PcsGpioTests(unittest.TestCase):
             with self.subTest(script="pcs-self-test.sh", setting=setting):
                 self.assertIn(setting, self_test)
                 self.assertIn(service, self_test)
+        self.assertIn("pcs-gpio-shutdown.service", status)
+        self.assertIn("pcs-gpio-shutdown.service", self_test)
 
     def test_dependency_report_accepts_isolated_ws2812_environment(self):
         with tempfile.TemporaryDirectory() as temp_dir:

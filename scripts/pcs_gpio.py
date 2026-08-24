@@ -70,6 +70,8 @@ LED_HEALTHY = (0, 255, 0)
 LED_WARNING = (220, 48, 0)
 LED_CRITICAL = (176, 0, 0)
 LED_UNKNOWN = (32, 32, 96)
+LED_SHUTDOWN = (0, 0, 255)
+SHUTDOWN_LED_COLORS = (LED_SHUTDOWN,) * WS2812_COUNT
 FAN_PWM_PIN = 18
 FAN_PWM_CHANNEL = 0
 FAN_PWM_FREQUENCY_HZ = 100
@@ -90,6 +92,19 @@ MAX7219_SPI_BUS = 0
 MAX7219_SPI_DEVICE = 0
 MAX7219_SPI_HZ = 500_000
 MAX7219_INTENSITY = 3
+SHUTDOWN_MATRIX_INTENSITY = 1
+SHUTDOWN_LCD_LINES = ("PCS Offline", "Shutting Down")
+# Three compact Z glyphs above a bed/headboard. The final frame remains
+# latched in the MAX7219 after Linux releases SPI during shutdown.
+BED_ZZZ_ICON = (0xDB, 0x49, 0xDB, 0x00, 0xC0, 0xFF, 0x81, 0x81)
+GPIO_SHUTDOWN_MARKER_DIR = Path(
+    os.environ.get("PCS_GPIO_SHUTDOWN_MARKER_DIR", "/etc/pcs/gpio-shutdown")
+)
+GPIO_SHUTDOWN_MARKERS = {
+    "lcd": "lcd",
+    "leds": "leds",
+    "matrix": "matrix",
+}
 INSTALL_CONFIG_PATH = Path(
     os.environ.get(
         "PCS_INSTALL_CONFIG",
@@ -118,7 +133,7 @@ class FanController(Protocol):
 
 class LedDisplay(Protocol):
     def colors(self, colors: Sequence[tuple[int, int, int]]) -> None: ...
-    def close(self) -> None: ...
+    def close(self, *, clear: bool = True) -> None: ...
 
 
 class MockBackend:
@@ -232,9 +247,10 @@ class Max7219:
             raise ValueError("MAX7219 intensity must be from 0 to 15")
         self._write(0x0A, value)
 
-    def close(self) -> None:
-        self.rows([0] * 8)
-        self._write(0x0C, 0)
+    def close(self, *, clear: bool = True) -> None:
+        if clear:
+            self.rows([0] * 8)
+            self._write(0x0C, 0)
         self.spi.close()
 
 
@@ -266,8 +282,9 @@ class Ws2812:
             self.strip.setPixelColor(index, self._color(red, green, blue))
         self.strip.show()
 
-    def close(self) -> None:
-        self.colors([LED_OFF] * WS2812_COUNT)
+    def close(self, *, clear: bool = True) -> None:
+        if clear:
+            self.colors([LED_OFF] * WS2812_COUNT)
 
 
 class HardwarePwmFan:
@@ -409,7 +426,7 @@ class StatsSnapshot:
 class MatrixDisplay(Protocol):
     def rows(self, rows: Sequence[int]) -> None: ...
     def intensity(self, value: int) -> None: ...
-    def close(self) -> None: ...
+    def close(self, *, clear: bool = True) -> None: ...
 
 
 class LcdDisplay(Protocol):
@@ -1416,6 +1433,74 @@ def pin_map_json() -> list[dict[str, object]]:
     return [asdict(pin) for pin in PIN_ASSIGNMENTS]
 
 
+def shutdown_marker_path(
+    target: str,
+    marker_dir: Path | None = None,
+) -> Path:
+    try:
+        marker = GPIO_SHUTDOWN_MARKERS[target]
+    except KeyError as error:
+        raise ValueError(f"unknown shutdown display target: {target}") from error
+    return (marker_dir or GPIO_SHUTDOWN_MARKER_DIR) / marker
+
+
+def shutdown_state_plan(
+    target: str,
+    marker_dir: Path | None = None,
+) -> dict[str, object]:
+    marker = shutdown_marker_path(target, marker_dir)
+    plan: dict[str, object] = {
+        "state": "shutdown",
+        "target": target,
+        "marker": str(marker),
+        "registered": marker.is_file(),
+    }
+    if target == "lcd":
+        plan["lines"] = list(normalize_lcd_lines(SHUTDOWN_LCD_LINES))
+    elif target == "leds":
+        plan["colors"] = [list(color) for color in SHUTDOWN_LED_COLORS]
+    elif target == "matrix":
+        plan["rows"] = list(BED_ZZZ_ICON)
+        plan["intensity"] = SHUTDOWN_MATRIX_INTENSITY
+    return plan
+
+
+def apply_shutdown_state(target: str) -> None:
+    """Write one final display frame and release its interface without clearing it."""
+    if target == "lcd":
+        device: HD44780 | None = None
+        try:
+            device = HD44780()
+            device.text(SHUTDOWN_LCD_LINES)
+        finally:
+            if device is not None:
+                device.close(clear=False)
+        return
+
+    if target == "leds":
+        leds: Ws2812 | None = None
+        try:
+            leds = Ws2812()
+            leds.colors(SHUTDOWN_LED_COLORS)
+        finally:
+            if leds is not None:
+                leds.close(clear=False)
+        return
+
+    if target == "matrix":
+        matrix: Max7219 | None = None
+        try:
+            matrix = Max7219()
+            matrix.intensity(SHUTDOWN_MATRIX_INTENSITY)
+            matrix.rows(BED_ZZZ_ICON)
+        finally:
+            if matrix is not None:
+                matrix.close(clear=False)
+        return
+
+    raise ValueError(f"unknown shutdown display target: {target}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect and commission PCS GPIO devices safely")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1478,6 +1563,14 @@ def build_parser() -> argparse.ArgumentParser:
     lcd_status.add_argument("--apply", action="store_true", help="confirm that LCD GPIO writes are intended")
     lcd_status.add_argument("--once", action="store_true", help="show one complete rotation, then exit")
     lcd_status.add_argument("--page-seconds", type=float, default=3.0)
+
+    shutdown_state = subparsers.add_parser(
+        "shutdown-state",
+        help="latch one registered display in the PCS offline/shutdown state",
+    )
+    shutdown_state.add_argument("target", choices=tuple(GPIO_SHUTDOWN_MARKERS))
+    shutdown_state.add_argument("--hardware", action="store_true", help="select the real display hardware")
+    shutdown_state.add_argument("--apply", action="store_true", help="confirm that final display writes are intended")
     return parser
 
 
@@ -1509,6 +1602,28 @@ def main(argv: Iterable[str] | None = None) -> int:
         raise SystemExit("ERROR: real GPIO operation requires both --hardware and --apply")
     if args.apply and not args.hardware:
         raise SystemExit("ERROR: --apply is valid only together with --hardware")
+
+    if args.command == "shutdown-state":
+        plan = shutdown_state_plan(args.target)
+        if not args.hardware:
+            plan["backend"] = "simulation"
+            plan["writes_performed"] = False
+            print(json.dumps(plan, indent=2))
+            return 0
+        if not plan["registered"]:
+            plan["backend"] = "hardware"
+            plan["skipped"] = "display is not registered by its PCS installer"
+            plan["writes_performed"] = False
+            print(json.dumps(plan, indent=2))
+            return 0
+        try:
+            apply_shutdown_state(args.target)
+        except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
+            raise SystemExit(f"ERROR: {error}") from error
+        plan["backend"] = "hardware"
+        plan["writes_performed"] = True
+        print(json.dumps(plan, indent=2))
+        return 0
 
     if args.command == "led-status":
         if args.poll_seconds <= 0:

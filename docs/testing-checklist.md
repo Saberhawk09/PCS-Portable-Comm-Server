@@ -597,6 +597,26 @@ Confirm the physical pixel order against the legend in
 Do not mark the LED chain tested until all six positions and GRB colors have
 been observed on the installed hardware.
 
+## Latched Shutdown Indicator Test
+
+When any LCD, WS2812, or matrix option is selected, verify that the shared
+shutdown unit is armed and that each fitted display has a marker:
+
+```bash
+systemctl is-enabled pcs-gpio-shutdown.service
+systemctl is-active pcs-gpio-shutdown.service
+ls -l /etc/pcs/gpio-shutdown
+/usr/local/sbin/pcs-gpio shutdown-state lcd
+/usr/local/sbin/pcs-gpio shutdown-state matrix
+/opt/pcs-gpio-leds/bin/python /usr/local/sbin/pcs-gpio shutdown-state leds
+```
+
+The three driver commands above are simulations and report
+`"writes_performed": false`. After the next supervised normal shutdown,
+confirm that the LCD reads `PCS Offline` / `Shutting Down`, all six status
+pixels are blue, and the matrix shows the bed/ZZZ icon while PCS remains
+powered. A full removal of power blanks the displays by design.
+
 ## Dire Wolf / APRS Safety Test
 
 These checks apply when Dire Wolf / APRS is selected during setup. Repository
