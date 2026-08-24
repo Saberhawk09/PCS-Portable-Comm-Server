@@ -41,6 +41,8 @@ All notable user-facing PCS changes are recorded here.
 
 ### Changed
 
+- reduced the stationary PCS Meshtastic GPSD position-packet cadence from five
+  minutes to 30 minutes while retaining the separate hourly public MapReport
 - made active Meshtastic health fail closed when the radio MQTT module, Client
   Proxy, or radio/PCS broker mapping is not correctly configured
 - made the Meshtastic status command read the running USB/BLE gateway snapshot

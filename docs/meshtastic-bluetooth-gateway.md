@@ -69,7 +69,7 @@ Enable the position feed after the persistent gateway is configured:
 ```
 
 The gateway requires a valid 2D or 3D fix from `gpsd` and sends at most one
-position update every five minutes on primary channel index 0. A missing fix is
+position update every 30 minutes on primary channel index 0. A missing fix is
 skipped rather than replaced with zero or stale coordinates. The normal
 Meshtastic channel and position-precision rules determine who can receive the
 packet. PCS status records only update counts and timestamps, never coordinates.

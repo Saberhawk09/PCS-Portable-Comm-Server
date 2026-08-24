@@ -730,7 +730,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--gpsd-host", default=os.environ.get("PCS_MESHTASTIC_GPSD_HOST", "127.0.0.1"))
     parser.add_argument("--gpsd-port", type=int, default=int(os.environ.get("PCS_MESHTASTIC_GPSD_PORT", "2947")))
     parser.add_argument("--gpsd-timeout", type=float, default=3.0)
-    parser.add_argument("--position-interval", type=int, default=int(os.environ.get("PCS_MESHTASTIC_POSITION_INTERVAL", "300")))
+    parser.add_argument("--position-interval", type=int, default=int(os.environ.get("PCS_MESHTASTIC_POSITION_INTERVAL", "1800")))
     parser.add_argument("--position-channel", type=int, default=int(os.environ.get("PCS_MESHTASTIC_POSITION_CHANNEL", "0")))
     args = parser.parse_args(argv)
     if not args.device.strip() and not args.port.strip():
