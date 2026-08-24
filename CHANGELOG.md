@@ -13,6 +13,9 @@ All notable user-facing PCS changes are recorded here.
   and authenticated Meshtastic dashboard cards
 - managed SA818S initialization over `/dev/serial0` with exact group readback
 - explicit APRS ALSA restoration and verification before every Dire Wolf start
+- delayed APRS mixer restoration after each commissioned USB sound-card
+  enumeration, preventing a later distribution ALSA restore from reapplying
+  stale levels
 - LAN-only nftables enforcement for both AGW 8000/tcp and KISS 8001/tcp
 - restart-always Dire Wolf recovery for USB sound-card re-enumeration
 - atomic commissioned-profile import with stale APRS-key removal and hardware
@@ -40,7 +43,8 @@ All notable user-facing PCS changes are recorded here.
 - changed the commissioned GNSS position beacon from APRS-IS-only to independent
   channel-0 RF and direct APRS-IS packets every 10 minutes
 - reconciled the production profile to the commissioned `W8IJC-10` station on
-  144.5500 MHz with GPIO6 GPIOD PTT, 750 ms TX delay, 200 ms tail, and FX.25 TX off
+  144.5500 MHz with GPIO6 GPIOD PTT, operator-selected 700 ms TX delay, 200 ms
+  tail, -16 dB TX playback, and FX.25 TX off
 - recorded the validated SA818S, Easy Digi, UART, audio, RF, APRS-IS messaging,
   GNSS beacon, and WIDE1-1 fill-in hardware state
 - made the base installer preserve APRS active-mode and AGW/KISS LAN firewall

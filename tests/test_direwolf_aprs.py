@@ -21,6 +21,8 @@ SA818_UTILITY = ROOT / "scripts" / "pcs_sa818.py"
 SA818_SERVICE = ROOT / "systemd" / "pcs-sa818.service"
 APRS_AUDIO = ROOT / "scripts" / "pcs-aprs-audio.sh"
 APRS_AUDIO_SERVICE = ROOT / "systemd" / "pcs-aprs-audio.service"
+APRS_AUDIO_REFRESH_SERVICE = ROOT / "systemd" / "pcs-aprs-audio-refresh.service"
+APRS_AUDIO_UDEV_RULE = ROOT / "udev" / "99-pcs-aprs-audio.rules"
 
 
 class DireWolfAprsTests(unittest.TestCase):
@@ -298,6 +300,8 @@ class DireWolfAprsTests(unittest.TestCase):
         override = DIREWOLF_OVERRIDE.read_text(encoding="utf-8")
         radio_service = SA818_SERVICE.read_text(encoding="utf-8")
         audio_service = APRS_AUDIO_SERVICE.read_text(encoding="utf-8")
+        audio_refresh_service = APRS_AUDIO_REFRESH_SERVICE.read_text(encoding="utf-8")
+        audio_udev_rule = APRS_AUDIO_UDEV_RULE.read_text(encoding="utf-8")
         audio_script = APRS_AUDIO.read_text(encoding="utf-8")
 
         self.assertIn("pcs-sa818.service", override)
@@ -311,8 +315,16 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("SupplementaryGroups=dialout", radio_service)
         self.assertIn("User=direwolf", audio_service)
         self.assertIn("SupplementaryGroups=audio", audio_service)
+        self.assertIn("ExecStartPre=/usr/bin/sleep 2", audio_refresh_service)
+        self.assertIn("RemainAfterExit=no", audio_refresh_service)
+        self.assertIn('ATTRS{idVendor}=="0d8c"', audio_udev_rule)
+        self.assertIn('ATTRS{idProduct}=="0014"', audio_udev_rule)
+        self.assertIn('ENV{SYSTEMD_WANTS}+="pcs-aprs-audio-refresh.service"', audio_udev_rule)
+        self.assertIn("APRS_AUDIO_REFRESH_SERVICE_SRC", setup)
+        self.assertIn("APRS_AUDIO_UDEV_RULE_SRC", setup)
+        self.assertIn("udevadm control --reload-rules", setup)
         self.assertIn("AT+DMOSETGROUP", SA818_UTILITY.read_text(encoding="utf-8"))
-        self.assertIn('PCS_APRS_PLAYBACK_LEVEL="${PCS_APRS_PLAYBACK_LEVEL:--18dB}"', audio_script)
+        self.assertIn('PCS_APRS_PLAYBACK_LEVEL="${PCS_APRS_PLAYBACK_LEVEL:--16dB}"', audio_script)
         self.assertIn('PCS_APRS_CAPTURE_LEVEL="${PCS_APRS_CAPTURE_LEVEL:-69%}"', audio_script)
         self.assertIn("set_rx_level()", setup)
         self.assertIn("set_tx_timing()", setup)
@@ -373,7 +385,7 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("IGTXVIA 0", result.stdout)
         self.assertIn("DIGIPEAT 0 0 ^WIDE1-1$ ^WIDE1-1$", result.stdout)
         self.assertNotIn("FX25TX", result.stdout)
-        self.assertIn("TXDELAY 75", result.stdout)
+        self.assertIn("TXDELAY 70", result.stdout)
         self.assertIn("TXTAIL 20", result.stdout)
         self.assertIn("AGWPORT 8000", result.stdout)
         rf_beacon = 'TBEACON SENDTO=0 DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"'

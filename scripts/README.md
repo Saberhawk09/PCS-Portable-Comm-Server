@@ -305,7 +305,7 @@ tracker-transmit rows.
 `pcs-sa818.service` applies the commissioned 144.5500 MHz, 25 kHz, no-tone,
 squelch-1, volume-8, filters-off, tail-off profile over `/dev/serial0`, then
 requires an exact `AT+DMOREADGROUP` match. `pcs-aprs-audio.service` applies and
-verifies Sabrent/C-Media card `Device` at -18 dB playback, 69% capture, and AGC
+verifies Sabrent/C-Media card `Device` at -16 dB playback, 69% capture, and AGC
 off. Dire Wolf reruns both helpers before every start so UART or USB
 re-enumeration does not bypass the known-good profiles.
 

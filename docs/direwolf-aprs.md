@@ -121,7 +121,7 @@ The commissioned profile supplied and physically validated by the operator is:
 | Role | GPS-backed two-way digi-IGate | Selected |
 | Callsign / SSID | `W8IJC-10` | RF and APRS-IS tested |
 | RF channel | `144.5500 MHz` simplex, 25 kHz, no tones | SA818S readback and RF TX/RX tested |
-| USB audio | Sabrent/C-Media; ALSA card ID `Device` | -18 dB playback, 69% capture, AGC off; bidirectional AFSK tested |
+| USB audio | Sabrent/C-Media; ALSA card ID `Device` | Current -16 dB playback, 69% capture, AGC off; repeat TX decode validation at -16 dB |
 | APRS-IS | Conventional two-way IGate through `noam.aprs2.net` | RF-to-IS and eligible APRS-IS message return tested |
 | GPS | EM7565 NMEA through local gpsd at `localhost:2947` | 3D fix and APRS.fi position/altitude/course demonstrated |
 | Network TNC | AGW 8000/tcp and KISS 8001/tcp | EasyTerm and `kissutil` tested; both restricted to the PCS LAN |
@@ -173,7 +173,10 @@ Activation installs three prerequisite services and a Dire Wolf override:
    The SA818S convention is inverted for filters: `1` means off. The expected
    readback is `+DMOREADGROUP:1,144.5500,144.5500,0000,1,0000`.
 2. `pcs-aprs-audio.service` waits for ALSA card `Device`, applies Speaker
-   `-18dB`, Mic `69%`, and Auto Gain Control `off`, then verifies the controls.
+   `-16dB`, Mic `69%`, and Auto Gain Control `off`, then verifies the controls.
+   A C-Media-specific udev hook runs a delayed, retriggerable refresh after each
+   USB enumeration so the distribution ALSA restore rule cannot leave stale
+   mixer values behind.
 3. `pcs-aprs-kiss-firewall.service` admits AGW 8000/tcp and KISS 8001/tcp only
    on loopback or `eth0` from `10.42.0.0/24` and drops both ports elsewhere.
 4. `direwolf.service` starts after those services, gpsd, sound, and
@@ -220,7 +223,7 @@ on-air validation.
 | `PCS_APRS_AUDIO_INPUT` | `plughw:CARD=Device,DEV=0` | First `ADEVICE` parameter |
 | `PCS_APRS_AUDIO_OUTPUT` | `plughw:CARD=Device,DEV=0` | Second `ADEVICE` parameter in TX mode; RX forces `null` |
 | `PCS_APRS_AUDIO_CARD` | `Device` | Stable ALSA card ID used by the mixer service |
-| `PCS_APRS_PLAYBACK_CONTROL` / `PCS_APRS_PLAYBACK_LEVEL` | `Speaker` / `-18dB` | Commissioned transmit playback control and level |
+| `PCS_APRS_PLAYBACK_CONTROL` / `PCS_APRS_PLAYBACK_LEVEL` | `Speaker` / `-16dB` | Commissioned transmit playback control and level |
 | `PCS_APRS_CAPTURE_CONTROL` / `PCS_APRS_CAPTURE_LEVEL` | `Mic` / `69%` | Commissioned receive capture control and level |
 | `PCS_APRS_AGC_CONTROL` / `PCS_APRS_AGC_STATE` | `Auto Gain Control` / `off` | Keeps AGC disabled before every Dire Wolf start |
 | `PCS_APRS_SAMPLE_RATE` | `48000` | `ARATE` |
@@ -280,14 +283,15 @@ network.
 Dire Wolf timing directives use 10 ms units. Supervised RF testing found that
 600 ms worked after warm-up but missed the first packet after a cold start.
 The observed initial packet decoded after increasing the SA818S PTT-to-audio
-delay to 750 ms.
+delay to 750 ms. The operator has now selected 700 ms; 750 ms remains the last
+receiver-confirmed cold-start baseline until 700 ms passes repeated checks.
 
 | PCS option | Selected starting value | Activation treatment |
 | --- | --- | --- |
 | `PCS_APRS_DWAIT` | `0` | Rendered only in the TX profile. |
 | `PCS_APRS_SLOTTIME` | `10` | 100 ms channel-access slot. |
 | `PCS_APRS_PERSIST` | `63` | Conventional half-duplex persistence. |
-| `PCS_APRS_TXDELAY` | `75` | Commissioned 750 ms SA818S cold-start pre-key delay. |
+| `PCS_APRS_TXDELAY` | `70` | Operator-selected 700 ms SA818S pre-key delay; repeat cold-start verification. |
 | `PCS_APRS_TXTAIL` | `20` | Commissioned 200 ms tail. |
 | `PCS_APRS_FULLDUP` | `OFF` | Selected for the simplex tactical channel. |
 
@@ -469,8 +473,8 @@ The resulting as-built choices are:
 - `W8IJC-10` on 144.5500 MHz simplex, 25 kHz, no tones
 - SA818S V1.2, stock Easy Digi, and ALSA card `Device`
 - active-high GPIO6 through the Easy Digi optocoupler
-- -18 dB playback, 69% capture (+12 dB), AGC off; four W8IJC-7 test packets decoded at 26-56, with three at 38-56 around Dire Wolf's recommended level of 50
-- 750 ms `TXDELAY`, 200 ms `TXTAIL`
+- -16 dB playback, 69% capture (+12 dB), AGC off; receive validation remains the four W8IJC-7 packets decoded at 26-56, with three at 38-56 around Dire Wolf's recommended level of 50
+- 700 ms `TXDELAY`, 200 ms `TXTAIL`; repeat cold-start decode verification at 700 ms
 - two-way IGate, GNSS-to-APRS-IS beacon, and WIDE1-1 fill-in service
 
 Do not store an APRS-IS passcode or other credentials in Git. Supply secrets
