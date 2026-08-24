@@ -20,10 +20,11 @@ The Meshtastic page at `neome.sh/meshtastic/` embeds an MQTT coverage map that
 uses a separate broker. PCS can mirror every radio-generated uplink envelope to
 that map broker while retaining `mqtt.neomesh.org` as its primary broker. The
 mirror is publish-only and topic-scoped to the public default-key `LongFast`
-channel: it creates no public-map subscriptions, never mirrors private-channel
-topics, and cannot flood the local RF channel with internet traffic. IJC1's
-GPSD-fed positions and LongFast packets heard over RF are mirrored; firmware consent
-(`config_ok_to_mqtt`) remains authoritative for remote stations.
+channel plus Meshtastic's explicit opt-in `/2/map/` reports: it creates no
+public-map subscriptions, never mirrors private-channel topics, and cannot flood
+the local RF channel with internet traffic. IJC1's GPSD-fed positions, its
+opt-in firmware map reports, and LongFast packets heard over RF are mirrored;
+firmware consent (`config_ok_to_mqtt`) remains authoritative for remote stations.
 
 ## Architecture
 
