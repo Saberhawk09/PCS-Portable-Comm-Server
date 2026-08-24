@@ -4,6 +4,8 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.3] - 2026-08-24
+
 ### Added
 
 - commissioned NeoMesh forwarding health for the live RAK4631, including
@@ -209,7 +211,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.2...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3...HEAD
+[1.3]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.2...v1.3
 [1.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.1...v1.2
 [1.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.0...v1.1
 [1.0]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/releases/tag/v1.0
