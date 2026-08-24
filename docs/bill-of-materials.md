@@ -35,7 +35,7 @@ Status reflects the latest known acquisition state. **Purchased / awaiting deliv
 | Pi-Star hotspot                    |   1 | Installed / tested             |     - | Fixed PCS-LAN node at `10.42.0.3`          |
 | APRS USB sound adapter             | Sabrent USB audio / C-Media card ID `Device` | Installed / tested | 1 | RX 69% (+12 dB), AGC off, TX -18 dB; bidirectional AFSK tested through stock Easy Digi transformers |
 | APRS radio/PTT hardware            | SA818S V1.2 + stock Easy Digi | Installed / tested | 1 set | GPIO6 optoisolated PTT, 144.5500 MHz RF TX/RX, UART programming, messaging, IGate, and WIDE1-1 fill-in operation validated |
-| RAK4631 Meshtastic expansion       | TBD | Purchased / as-built record pending | - | Gateway software deployed; persistent BLE/MQTT operation, sensor model, mounting, and validation pending |
+| RAK4631 Meshtastic expansion       | TBD | Purchased / as-built record pending | - | USB/MQTT gateway and GPSD position delivery live-validated; sensor model, mounting record, RF behavior, and sensor accuracy pending |
 
 ## Local Status Hardware
 

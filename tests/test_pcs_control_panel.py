@@ -30,6 +30,7 @@ PUBLIC_DATA = {
     "services": {"status": "ok", "gpsd_lan_enabled": True},
     "pistar": {"configured": False},
     "aprs": {"configured": False},
+    "meshtastic": {"configured": False},
 }
 
 ADMIN_DATA = {
@@ -196,6 +197,68 @@ class PublicDataTests(unittest.TestCase):
         self.assertIn("2026-08-17T20:15:00Z", page)
         self.assertNotIn("USB audio", page)
         self.assertNotIn("must-not-render", page)
+
+    def test_meshtastic_card_is_privacy_safe_and_hidden_until_active(self):
+        staged = deepcopy(PUBLIC_DATA)
+        staged["meshtastic"] = {
+            "configured": False,
+            "status": "ok",
+            "service": "staged / disabled",
+        }
+        self.assertNotIn("Meshtastic / MQTT", pcs.render_public_page(staged).decode("utf-8"))
+
+        active = deepcopy(PUBLIC_DATA)
+        active["meshtastic"] = {
+            "configured": True,
+            "status": "ok",
+            "service": "active",
+            "node": "W8IJC PCS Portable Node (IJC1)",
+            "hardware": "RAK4631",
+            "firmware": "2.7.26.54e0d8d",
+            "transport": "usb-serial",
+            "radio_link": "connected",
+            "mqtt": "connected",
+            "broker": "mqtt.neomesh.org:1883 (plaintext)",
+            "downlink_filters": 2,
+            "mqtt_activity": "4 up / 2 down",
+            "mesh_activity": "12 RX / 7 TX",
+            "remote_nodes": "2 recent / 3 observed",
+            "last_heard": "2026-08-24T03:30:00+00:00",
+            "gpsd_position": "GPSD active; 4 sent; last 2m ago",
+            "case_environment": "83.2 F / 60.5% RH",
+            "utilization": "channel 1.5% / TX 0.1%",
+            "power": "external; 4.242 V",
+            "mqtt_password": "must-not-render",
+            "subscription_topics": "must-not-render",
+            "remote_identities": "must-not-render",
+            "position_coordinates": "must-not-render",
+        }
+        sanitized = pcs.sanitize_public_dashboard(active)
+        page = pcs.render_public_page(sanitized).decode("utf-8")
+        self.assertIn("Meshtastic / MQTT", page)
+        self.assertIn("W8IJC PCS Portable Node (IJC1)", page)
+        self.assertIn("mqtt.neomesh.org:1883 (plaintext)", page)
+        self.assertIn("GPSD active; 4 sent; last 2m ago", page)
+        self.assertNotIn("mqtt_password", sanitized["meshtastic"])
+        self.assertNotIn("subscription_topics", sanitized["meshtastic"])
+        self.assertNotIn("remote_identities", sanitized["meshtastic"])
+        self.assertNotIn("position_coordinates", sanitized["meshtastic"])
+        self.assertNotIn("must-not-render", page)
+
+    def test_meshtastic_admin_actions_are_fixed_and_confirm_restart(self):
+        self.assertIn("meshtastic-status", pcs.ACTION_MAP)
+        self.assertIn("restart-meshtastic", pcs.ACTION_MAP)
+        self.assertIn("restart-meshtastic", pcs.DANGEROUS_ACTIONS)
+        self.assertIn("restart-meshtastic", pcs.ACTION_CONFIRMS)
+        dispatcher = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")
+        installer = (ROOT / "scripts" / "setup-pcs-control-panel.sh").read_text(encoding="utf-8")
+        self.assertIn("MESHTASTIC_STATUS_FILE", dispatcher)
+        self.assertIn("meshtastic_status_action()", dispatcher)
+        self.assertIn("restart_meshtastic_action()", dispatcher)
+        self.assertIn("meshtastic-status)", dispatcher)
+        self.assertIn("restart-meshtastic)", dispatcher)
+        self.assertIn("${DISPATCHER_DST} meshtastic-status", installer)
+        self.assertIn("${DISPATCHER_DST} restart-meshtastic", installer)
 
 
 class RouteSecurityTests(unittest.TestCase):

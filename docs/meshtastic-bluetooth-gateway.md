@@ -33,8 +33,30 @@ topic, binary/text payload, and retained flag for uplink. PCS publishes that
 envelope unchanged. Messages received on explicitly allowed broker topics are
 returned through Meshtastic's dedicated MQTT proxy API.
 
-PCS does not call general message, position, owner, channel, or configuration
-write methods. Radio and channel configuration remains on the RAK4631.
+PCS does not call general message, owner, channel, or configuration write
+methods. Radio and channel configuration remains on the RAK4631. An optional
+GPSD feed can send the PCS receiver's current fix as the node's normal
+Meshtastic position packet.
+
+## PCS GPS Position Feed
+
+Enable the position feed after the persistent gateway is configured:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --enable-gpsd-position
+```
+
+The gateway requires a valid 2D or 3D fix from `gpsd` and sends at most one
+position update every five minutes on primary channel index 0. A missing fix is
+skipped rather than replaced with zero or stale coordinates. The normal
+Meshtastic channel and position-precision rules determine who can receive the
+packet. PCS status records only update counts and timestamps, never coordinates.
+
+Disable it with:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --disable-gpsd-position
+```
 
 The RAK4631 is dedicated to PCS while this service is active. Stop the gateway
 before using another serial client. In BLE mode, disconnect the Meshtastic
@@ -79,6 +101,16 @@ Staging installs:
 - `pcs-meshtastic.service`
 
 The service remains stopped and disabled in staged state.
+
+For an installed PCS, refresh versioned gateway and systemd assets without
+changing active/staged state or rewriting radio/MQTT configuration:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --refresh
+```
+
+An active gateway restarts only when a service-relevant managed file changed;
+status-helper-only updates do not interrupt the radio session.
 
 ## RAK4631 Preparation
 
@@ -216,9 +248,33 @@ Inspect it with:
 
 ```bash
 ./scripts/setup-meshtastic-bluetooth.sh --check
+/usr/local/sbin/pcs_meshtastic_status.py --check
 systemctl status pcs-meshtastic.service --no-pager
 journalctl -u pcs-meshtastic.service -n 100 --no-pager
 ```
+
+The installed status command reads the gateway's existing privacy-safe JSON
+snapshot. It does not open the USB/BLE transport or compete with the running
+daemon. Direct one-shot BLE collection exists only behind the explicit
+`--collect-ble` option and is not used by the dashboard.
+
+## PCS Dashboard Integration
+
+When the gateway is configured, the public PCS homepage includes a
+**Meshtastic / MQTT** card alongside APRS. It reports the local node and
+firmware, transport health, live MQTT state and broker, aggregate mesh/proxy
+counters, recent-node counts, GPSD position-feed health, case environment,
+LoRa utilization, and power. Staged software remains visible only to an
+authenticated operator.
+
+The authenticated dashboard adds service and status-freshness diagnostics plus
+two fixed actions: **View Meshtastic** and confirmed **Restart Meshtastic**.
+Restart reconnects the existing radio and broker configuration; it does not
+rewrite the radio, channels, credentials, subscriptions, or public-map policy.
+
+No dashboard view receives MQTT credentials, subscription topic strings,
+channel keys, message content, remote identities, or stored position
+coordinates. Topic filters remain represented only by a count.
 
 ## Enable Controlled Downlink
 

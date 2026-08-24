@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect a privacy-preserving Meshtastic status snapshot over Bluetooth LE."""
+"""Read or explicitly collect a privacy-preserving Meshtastic status snapshot."""
 
 from __future__ import annotations
 
@@ -199,6 +199,18 @@ def write_status(path: str | os.PathLike[str], status: Mapping[str, Any]) -> Non
             pass
 
 
+def read_status(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Read a gateway snapshot without opening or disturbing the radio transport."""
+
+    with Path(path).open("r", encoding="utf-8") as source:
+        status = json.load(source)
+    if not isinstance(status, dict):
+        raise ValueError("status snapshot is not a JSON object")
+    if status.get("schema_version") != SCHEMA_VERSION:
+        raise ValueError("status snapshot has an unsupported schema version")
+    return status
+
+
 def collect(device: str, timeout: int, recent_seconds: int) -> dict[str, Any]:
     from meshtastic.ble_interface import BLEInterface
 
@@ -229,11 +241,30 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--timeout", type=int, default=60)
     parser.add_argument("--recent-seconds", type=int, default=DEFAULT_RECENT_SECONDS)
+    parser.add_argument(
+        "--collect-ble",
+        action="store_true",
+        help="open the configured BLE node and replace the shared status snapshot",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="return failure unless the existing gateway snapshot is connected",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    if not args.collect_ble:
+        try:
+            status = read_status(args.status_file)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"ERROR: Meshtastic gateway status is unavailable ({exc}).")
+            return 1
+        print(json.dumps(status, indent=2, sort_keys=True))
+        return 0 if not args.check or status.get("state") == "connected" else 1
+
     if not args.device or not args.device.strip():
         status = classify_error(ValueError("device not found"))
         status["reason"] = "device-not-configured"

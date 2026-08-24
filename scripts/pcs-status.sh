@@ -407,7 +407,10 @@ case "${PCS_SETUP_MESHTASTIC}" in
         echo "Gateway:         $([[ -x /usr/local/sbin/pcs-meshtastic-gateway ]] && echo installed || echo missing)"
         echo "Service active:  $(systemctl is-active pcs-meshtastic.service 2>/dev/null || true)"
         echo "Service enabled: $(systemctl is-enabled pcs-meshtastic.service 2>/dev/null || true)"
-        if [[ -r /var/lib/pcs-meshtastic/status.json ]]; then
+        if [[ -x /usr/local/sbin/pcs_meshtastic_status.py ]]; then
+            echo "Status:"
+            /usr/local/sbin/pcs_meshtastic_status.py --check || true
+        elif [[ -r /var/lib/pcs-meshtastic/status.json ]]; then
             echo "Status:"
             python3 -m json.tool /var/lib/pcs-meshtastic/status.json || true
         else
@@ -415,7 +418,7 @@ case "${PCS_SETUP_MESHTASTIC}" in
         fi
         ;;
     *)
-        echo "Meshtastic Bluetooth gateway is not selected."
+        echo "Meshtastic USB/Bluetooth gateway is not selected."
         ;;
 esac
 echo
@@ -738,7 +741,7 @@ echo "Cockpit:                  ${COCKPIT_STATUS}"
 echo "PCS Homepage/Admin:       ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
 echo "Legacy Admin Redirect:    ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
 echo "Dire Wolf / APRS:         ${APRS_STATUS}"
-echo "Meshtastic BLE/MQTT:      ${MESHTASTIC_STATUS}"
+echo "Meshtastic USB/BLE MQTT:  ${MESHTASTIC_STATUS}"
 echo "HD44780 LCD:              ${GPIO_LCD_STATUS}"
 echo "WS2812 Indicators:        ${GPIO_LEDS_STATUS}"
 echo "MAX7219 LED Matrix:       ${GPIO_STATS_STATUS}"

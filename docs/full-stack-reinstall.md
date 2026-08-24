@@ -89,7 +89,7 @@ Configure WWAN modem NMEA GPS:       yes
 Share GPSD with trusted PCS clients: yes
 Include Pi-Star in PCS monitoring:   yes
 Stage Dire Wolf / APRS software:     yes
-Stage Meshtastic BLE/MQTT software:  yes
+Stage Meshtastic USB/Bluetooth MQTT software: yes
 Install 16x2 HD44780 LCD display:    yes (when physically fitted)
 Install six-pixel WS2812 indicators: yes (when physically fitted)
 Install MAX7219 LED matrix display:  yes (only when physically fitted)
@@ -154,6 +154,13 @@ deployed wired node; this also disables the node's Bluetooth radio. Use
 any required downlink topic filters. The radio's MQTT and channel settings,
 broker credentials, RF behavior, and sensor calibration remain manual state.
 See [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md).
+
+To make the RAK4631 use the PCS receiver's live GPSD fix after configuring its
+gateway transport, run:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --enable-gpsd-position
+```
 
 `PCS_SETUP_GPIO_LCD=yes` installs and enables the GPIO-only 16x2 HD44780
 status display. Set it to `no` on builds without the LCD; self-test then treats

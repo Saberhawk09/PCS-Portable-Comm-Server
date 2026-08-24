@@ -48,6 +48,8 @@ ACTIONS = [
     ("cellular-connect", "Connect Cellular", "Bring up the manual cellular data connection."),
     ("cellular-disconnect", "Disconnect Cellular", "Bring down the manual cellular data connection."),
     ("cellular-test", "Test Cellular", "Test cellular-only internet through the WWAN interface."),
+    ("meshtastic-status", "View Meshtastic", "Show privacy-safe node, mesh, MQTT, GPSD, and environment status."),
+    ("restart-meshtastic", "Restart Meshtastic", "Reconnect the Meshtastic radio transport and MQTT gateway."),
     ("sync-backup", "Sync USB to SD Backup", "Mirror the USB primary share to the SD backup."),
     ("mount-usb", "Mount USB Storage", "Mount the USB primary share and restart Samba."),
     ("mount-new-usb", "Mount New USB Storage", "Configure a newly attached USB device as primary storage."),
@@ -67,6 +69,7 @@ ACTION_MAP = {name: (label, desc) for name, label, desc in ACTIONS}
 ACTION_CONFIRMS = {
     "mount-new-usb": "Configure the attached USB device as PCS primary storage?",
     "safe-unmount-usb": "Sync the backup and safely unmount PCS USB storage?",
+    "restart-meshtastic": "Restart the Meshtastic radio and MQTT gateway now?",
     "reboot-system": "Reboot PCS now? The administration page will disconnect during restart.",
     "shutdown-system": "Shutdown PCS now? Physical access is required to power it back on.",
 }
@@ -74,6 +77,7 @@ ACTION_GROUPS = [
     ("Health", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
+    ("Communications", ["meshtastic-status", "restart-meshtastic"]),
     ("Storage", ["sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb"]),
     ("Services", ["restart-services", "restart-samba", "restart-modemmanager"]),
     ("Time / GPS", ["sync-time", "restart-chrony", "restart-gpsd"]),
@@ -87,6 +91,7 @@ DANGEROUS_ACTIONS = {
     "restart-modemmanager",
     "restart-chrony",
     "restart-gpsd",
+    "restart-meshtastic",
     "reboot-system",
     "shutdown-system",
 }
@@ -317,6 +322,12 @@ PUBLIC_FIELDS = {
         "aprs_is", "aprs_is_profile", "beacon", "digipeater", "kiss", "fx25", "packets",
         "last_heard", "tx_state",
     },
+    "meshtastic": {
+        "configured", "status", "service", "node", "hardware", "firmware",
+        "transport", "radio_link", "mqtt", "broker", "downlink_filters",
+        "mqtt_activity", "mesh_activity", "remote_nodes", "last_heard",
+        "gpsd_position", "case_environment", "utilization", "power",
+    },
 }
 
 
@@ -374,6 +385,7 @@ def dashboard_error(message: str, public: bool) -> dict:
             "services": {"status": "warn"},
             "pistar": {"configured": False},
             "aprs": {"configured": False},
+            "meshtastic": {"configured": False},
         }
     return {
         "generated_at": "unknown",
@@ -560,6 +572,28 @@ def render_public_page(data: dict) -> bytes:
             ("Packet activity", "packets", "not available"),
             ("Last RF packet", "last_heard", "not available"),
             ("Service", "service", "unknown"), ("RF TX", "tx_state", "Safe"),
+        ]))
+
+    meshtastic = data.get("meshtastic", {})
+    if meshtastic.get("configured"):
+        cards.append(public_card("Meshtastic / MQTT", meshtastic, [
+            ("Node", "node", "unknown"),
+            ("Hardware", "hardware", "unknown"),
+            ("Firmware", "firmware", "unknown"),
+            ("Radio transport", "transport", "unknown"),
+            ("Radio link", "radio_link", "unknown"),
+            ("MQTT", "mqtt", "unknown"),
+            ("Broker", "broker", "not configured"),
+            ("Downlink filters", "downlink_filters", 0),
+            ("MQTT activity", "mqtt_activity", "not available"),
+            ("Mesh activity", "mesh_activity", "not available"),
+            ("Remote nodes", "remote_nodes", "not available"),
+            ("Last mesh packet", "last_heard", "none observed"),
+            ("GPSD position feed", "gpsd_position", "disabled"),
+            ("Case environment", "case_environment", "unavailable"),
+            ("LoRa utilization", "utilization", "unavailable"),
+            ("Power", "power", "unknown"),
+            ("Service", "service", "unknown"),
         ]))
 
     gpsd_line = item("GPSD", "10.42.0.1:2947" if services.get("gpsd_lan_enabled") else "not enabled")

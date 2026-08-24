@@ -22,6 +22,9 @@ The homepage is read-only and does not require authentication. It shows an expli
 - USB, `PCS-Share`, and `PCS-Backup` availability and free space
 - Local file-share, NTP, GPSD, Cockpit, and OpenWrt access information
 - Pi-Star status and link only when Pi-Star integration is configured
+- Active Meshtastic node, radio transport, MQTT session/broker, aggregate mesh
+  and proxy activity, GPSD position-feed health, case environment, utilization,
+  and power state
 
 Exact coordinates and grid square are intentionally public to clients on site. The public data does not include modem or SIM identifiers, Wi-Fi secrets, detailed client identity or MAC addresses, arbitrary command output, or administrative actions.
 
@@ -58,6 +61,7 @@ The `/admin/` area contains the detailed dashboard and all operator action group
 - Health
 - Network
 - Cellular
+- Communications
 - Storage
 - Services
 - Time / GPS
@@ -185,3 +189,18 @@ ALSA or serial device paths, raw packet logs, or staged-only configuration.
 Managed service health and aggregate Dire Wolf packet telemetry are reported;
 the dashboard does not infer RF quality, deviation, wiring, or current on-air
 reachability from those software signals.
+
+The Meshtastic card follows the same active-only public policy as APRS. A
+staged gateway appears only in the authenticated dashboard; the public card is
+added after `PCS_SETUP_MESHTASTIC=yes`. It reports the local node name,
+hardware and firmware, USB/BLE link, configured broker and live MQTT state,
+downlink-filter count, aggregate MQTT and mesh counters, observed/recent-node
+counts, the last mesh timestamp, GPSD position-update health, local case
+environment, LoRa utilization, and power.
+
+The Meshtastic public contract never includes MQTT credentials, subscription
+topic strings, channel keys, message bodies, remote identities, or coordinates
+from the gateway snapshot. The authenticated card uses the same privacy-safe
+aggregate snapshot and adds service/freshness diagnostics. Operators can run
+**View Meshtastic** or the confirmed **Restart Meshtastic** action; neither
+action changes radio, channel, MQTT, map-reporting, or privacy configuration.

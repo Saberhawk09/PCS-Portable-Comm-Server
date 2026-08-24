@@ -892,7 +892,7 @@ case "${PCS_SETUP_MESHTASTIC}" in
     staged|yes)
         if [[ -x /opt/pcs-meshtastic/bin/meshtastic ]] \
             && [[ -x /opt/pcs-meshtastic/bin/python ]] \
-            && [[ -r /usr/local/sbin/pcs_meshtastic_status.py ]] \
+            && [[ -x /usr/local/sbin/pcs_meshtastic_status.py ]] \
             && [[ -r /usr/local/sbin/pcs_meshtastic_ble.py ]] \
             && [[ -x /usr/local/sbin/pcs-meshtastic-ready ]] \
             && [[ -x /usr/local/sbin/pcs-meshtastic-gateway ]]; then
@@ -915,6 +915,12 @@ case "${PCS_SETUP_MESHTASTIC}" in
                 fail "Meshtastic gateway configuration is missing or not root:root 600"
             fi
 
+            if [[ "$(stat -c '%U:%G %a' /etc/pcs/meshtastic-mqtt.env 2>/dev/null || true)" == "root:root 600" ]]; then
+                pass "Meshtastic MQTT credentials have restricted permissions"
+            else
+                fail "Meshtastic MQTT credential file is missing or not root:root 600"
+            fi
+
             if service_enabled pcs-meshtastic.service; then
                 pass "pcs-meshtastic.service is enabled"
             else
@@ -927,23 +933,48 @@ case "${PCS_SETUP_MESHTASTIC}" in
                 fail "Meshtastic gateway is configured but its service is inactive"
             fi
 
-            if python3 -c '
+            MESHTASTIC_GPSD_POSITION="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_GPSD_POSITION" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
+            MESHTASTIC_PORT="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_PORT" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
+            EXPECTED_MESHTASTIC_TRANSPORT="bluetooth-le"
+            [[ -n "${MESHTASTIC_PORT}" ]] && EXPECTED_MESHTASTIC_TRANSPORT="usb-serial"
+
+            if PCS_MESHTASTIC_GPSD_POSITION="${MESHTASTIC_GPSD_POSITION}" \
+                EXPECTED_MESHTASTIC_TRANSPORT="${EXPECTED_MESHTASTIC_TRANSPORT}" \
+                python3 -c '
 import json
+import os
+import time
 with open("/var/lib/pcs-meshtastic/status.json", encoding="utf-8") as handle:
     status = json.load(handle)
 assert status["schema_version"] == 1
-assert isinstance(status["gateway"]["ble_connected"], bool)
-assert isinstance(status["gateway"]["mqtt_connected"], bool)
+assert status["state"] == "connected"
+assert status["transport"] == os.environ["EXPECTED_MESHTASTIC_TRANSPORT"]
+assert status["gateway"]["ble_connected"] is True
+assert status["gateway"]["mqtt_connected"] is True
+assert 0 <= time.time() - status["collected_at_epoch"] <= 60
 assert status["privacy"]["messages_stored"] is False
+assert status["privacy"]["remote_identities_stored"] is False
+assert status["privacy"]["positions_stored"] is False
+assert status["privacy"]["channel_keys_stored"] is False
+if os.environ.get("PCS_MESHTASTIC_GPSD_POSITION", "").lower() == "yes":
+    assert status["gateway"]["position_source"] == "gpsd"
+    assert status["gateway"]["counters"]["position_updates"] > 0
+    assert 0 <= time.time() - status["gateway"]["last_position_update_at_epoch"] <= 900
 ' 2>/dev/null; then
-                pass "Meshtastic gateway exposes valid privacy-safe runtime status"
+                pass "Meshtastic radio, MQTT, GPSD, and privacy-safe runtime status are healthy"
             else
-                fail "Meshtastic gateway runtime status is missing or invalid"
+                fail "Meshtastic gateway runtime status is stale, disconnected, or invalid"
+            fi
+
+            if /usr/local/sbin/pcs_meshtastic_status.py --check >/dev/null 2>&1; then
+                pass "Meshtastic status command reads the live snapshot without opening the radio"
+            else
+                fail "Meshtastic status command could not read the live gateway snapshot"
             fi
         fi
         ;;
     *)
-        skip "Meshtastic Bluetooth gateway is not selected in the install configuration"
+        skip "Meshtastic USB/Bluetooth gateway is not selected in the install configuration"
         ;;
 esac
 

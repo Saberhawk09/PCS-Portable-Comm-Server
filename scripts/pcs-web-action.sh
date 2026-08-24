@@ -98,6 +98,7 @@ Allowed actions:
   dashboard-json
   status
   self-test
+  meshtastic-status
   storage-status
   sync-backup
   mount-usb
@@ -108,6 +109,7 @@ Allowed actions:
   restart-modemmanager
   restart-chrony
   restart-gpsd
+  restart-meshtastic
   restart-logs
   reboot-system
   shutdown-system
@@ -475,6 +477,8 @@ USB_MOUNT = "/mnt/pcs-usb"
 PRIMARY_SHARE = "/mnt/pcs-usb/PCS-Share"
 BACKUP_SHARE = "/srv/pcs-share-backup"
 APRS_TELEMETRY_HELPER = "/usr/local/sbin/pcs-aprs-telemetry"
+MESHTASTIC_STATUS_FILE = "/var/lib/pcs-meshtastic/status.json"
+MESHTASTIC_ENV_FILE = "/etc/pcs/meshtastic.env"
 CELLULAR_PROFILE_DEFAULT = "pcs-cellular-profile"
 LEGACY_CELLULAR_PROFILE = "pcs-cellular-tmobile"
 PI_STAR_IP = "10.42.0.3"
@@ -514,6 +518,67 @@ APRS_STATE = CONFIG.get("PCS_SETUP_APRS", "no").lower()
 APRS_STAGED = APRS_STATE == "staged"
 APRS_CONFIGURED = APRS_STATE == "yes"
 APRS_PREPARED = APRS_STAGED or APRS_CONFIGURED
+MESHTASTIC_STATE = CONFIG.get("PCS_SETUP_MESHTASTIC", "no").lower()
+MESHTASTIC_STAGED = MESHTASTIC_STATE == "staged"
+MESHTASTIC_CONFIGURED = MESHTASTIC_STATE == "yes"
+MESHTASTIC_PREPARED = MESHTASTIC_STAGED or MESHTASTIC_CONFIGURED
+
+def environment_config(path):
+    config = {}
+    try:
+        with open(path, "r", encoding="utf-8") as source:
+            for line in source:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key, raw_value = stripped.split("=", 1)
+                key = key.strip()
+                try:
+                    parts = shlex.split(raw_value, comments=False, posix=True)
+                    value = parts[0] if parts else ""
+                except Exception:
+                    value = raw_value.strip().strip("\"'")
+                if key:
+                    config[key] = value
+    except Exception:
+        pass
+    return config
+
+def json_object(path):
+    try:
+        with open(path, "r", encoding="utf-8") as source:
+            value = json.load(source)
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+def bool_value(value):
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+def number_value(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+def epoch_age(epoch, now=None):
+    numeric = number_value(epoch)
+    if numeric is None or numeric <= 0:
+        return None
+    return max(0, int((time.time() if now is None else now) - numeric))
+
+def age_label(seconds):
+    if seconds is None:
+        return "unknown"
+    if seconds < 60:
+        return f"{seconds}s ago"
+    if seconds < 3600:
+        return f"{seconds // 60}m ago"
+    return f"{seconds // 3600}h ago"
+
+def metric_label(value, suffix="", digits=1):
+    numeric = number_value(value)
+    return f"{numeric:.{digits}f}{suffix}" if numeric is not None else "unavailable"
 
 def run(cmd, timeout=8):
     try:
@@ -2086,6 +2151,132 @@ network_status = (
 )
 # END PCS ACTIVE UPLINK MODE
 
+meshtastic_env = environment_config(MESHTASTIC_ENV_FILE)
+meshtastic_runtime = json_object(MESHTASTIC_STATUS_FILE)
+meshtastic_gateway = meshtastic_runtime.get("gateway", {})
+if not isinstance(meshtastic_gateway, dict):
+    meshtastic_gateway = {}
+meshtastic_device = meshtastic_runtime.get("device", {})
+if not isinstance(meshtastic_device, dict):
+    meshtastic_device = {}
+meshtastic_mesh = meshtastic_runtime.get("mesh", {})
+if not isinstance(meshtastic_mesh, dict):
+    meshtastic_mesh = {}
+meshtastic_case = meshtastic_runtime.get("case_environment", {})
+if not isinstance(meshtastic_case, dict):
+    meshtastic_case = {}
+meshtastic_counters = meshtastic_gateway.get("counters", {})
+if not isinstance(meshtastic_counters, dict):
+    meshtastic_counters = {}
+
+meshtastic_service_active = active("pcs-meshtastic.service")
+meshtastic_service_enabled = enabled("pcs-meshtastic.service")
+meshtastic_software = (
+    os.path.isfile("/usr/local/sbin/pcs-meshtastic-gateway")
+    and os.path.isfile("/usr/local/sbin/pcs_meshtastic_status.py")
+)
+meshtastic_snapshot_age = epoch_age(meshtastic_runtime.get("collected_at_epoch"))
+meshtastic_snapshot_fresh = meshtastic_snapshot_age is not None and meshtastic_snapshot_age <= 60
+meshtastic_connected = (
+    meshtastic_runtime.get("state") == "connected"
+    and bool(meshtastic_gateway.get("ble_connected"))
+)
+meshtastic_mqtt_connected = bool(meshtastic_gateway.get("mqtt_connected"))
+meshtastic_broker_host = meshtastic_env.get("PCS_MESHTASTIC_MQTT_HOST", "")
+meshtastic_broker_port = meshtastic_env.get("PCS_MESHTASTIC_MQTT_PORT", "1883")
+meshtastic_tls = bool_value(meshtastic_env.get("PCS_MESHTASTIC_MQTT_TLS"))
+meshtastic_broker_label = (
+    f"{meshtastic_broker_host}:{meshtastic_broker_port} ({'TLS' if meshtastic_tls else 'plaintext'})"
+    if meshtastic_broker_host
+    else "not configured"
+)
+meshtastic_transport = meshtastic_runtime.get("transport") or (
+    "usb-serial" if meshtastic_env.get("PCS_MESHTASTIC_PORT") else "bluetooth-le"
+    if meshtastic_env.get("PCS_MESHTASTIC_DEVICE") else "not configured"
+)
+meshtastic_node_name = meshtastic_device.get("long_name") or "unknown"
+meshtastic_short_name = meshtastic_device.get("short_name") or "unknown"
+meshtastic_node_label = (
+    f"{meshtastic_node_name} ({meshtastic_short_name})"
+    if meshtastic_short_name != "unknown"
+    else meshtastic_node_name
+)
+meshtastic_hardware_label = " / ".join(
+    str(value)
+    for value in (meshtastic_device.get("hardware"), meshtastic_device.get("firmware"))
+    if value and str(value) != "unknown"
+) or "unknown"
+meshtastic_power = str(meshtastic_device.get("power") or "unknown")
+meshtastic_voltage = number_value(meshtastic_device.get("voltage"))
+if meshtastic_voltage is not None:
+    meshtastic_power = f"{meshtastic_power}; {meshtastic_voltage:.3f} V"
+meshtastic_downlink_filters = int(number_value(meshtastic_gateway.get("downlink_filters")) or 0)
+meshtastic_mqtt_activity = (
+    f"{int(number_value(meshtastic_counters.get('mqtt_uplink')) or 0)} up / "
+    f"{int(number_value(meshtastic_counters.get('mqtt_downlink')) or 0)} down"
+)
+meshtastic_mesh_activity = (
+    f"{int(number_value(meshtastic_mesh.get('received_packets')) or 0)} RX / "
+    f"{int(number_value(meshtastic_mesh.get('transmitted_packets')) or 0)} TX"
+)
+meshtastic_remote_nodes = (
+    f"{int(number_value(meshtastic_mesh.get('recent_remote_nodes')) or 0)} recent / "
+    f"{int(number_value(meshtastic_mesh.get('known_remote_nodes')) or 0)} observed"
+)
+meshtastic_position_enabled = bool_value(meshtastic_env.get("PCS_MESHTASTIC_GPSD_POSITION"))
+meshtastic_position_updates = int(number_value(meshtastic_counters.get("position_updates")) or 0)
+meshtastic_position_age = epoch_age(meshtastic_gateway.get("last_position_update_at_epoch"))
+meshtastic_position_label = (
+    f"GPSD active; {meshtastic_position_updates} sent; last {age_label(meshtastic_position_age)}"
+    if meshtastic_position_enabled
+    else "disabled"
+)
+meshtastic_temperature = metric_label(meshtastic_case.get("temperature_f"), " F")
+meshtastic_humidity = metric_label(meshtastic_case.get("humidity_percent"), "%")
+meshtastic_environment_label = (
+    f"{meshtastic_temperature} / {meshtastic_humidity} RH"
+    if meshtastic_temperature != "unavailable" or meshtastic_humidity != "unavailable"
+    else "unavailable"
+)
+meshtastic_utilization_label = (
+    f"channel {metric_label(meshtastic_device.get('channel_utilization_percent'), '%')} / "
+    f"TX {metric_label(meshtastic_device.get('air_utilization_tx_percent'), '%')}"
+)
+
+if MESHTASTIC_STAGED:
+    meshtastic_status = "ok" if (
+        meshtastic_software
+        and not meshtastic_service_active
+        and not meshtastic_service_enabled
+    ) else "warn"
+    meshtastic_summary = "Meshtastic gateway software staged; no node is active"
+    meshtastic_service_label = "staged / disabled"
+elif MESHTASTIC_CONFIGURED:
+    meshtastic_core_ok = all((
+        meshtastic_software,
+        meshtastic_service_active,
+        meshtastic_service_enabled,
+        meshtastic_snapshot_fresh,
+        meshtastic_connected,
+    ))
+    meshtastic_broker_ok = meshtastic_mqtt_connected or offline_mode
+    meshtastic_status = (
+        "ok" if meshtastic_core_ok and meshtastic_broker_ok
+        else "bad" if not meshtastic_service_active or not meshtastic_connected
+        else "warn"
+    )
+    if meshtastic_core_ok and meshtastic_mqtt_connected:
+        meshtastic_summary = "Meshtastic radio and MQTT gateway connected"
+    elif meshtastic_core_ok and offline_mode:
+        meshtastic_summary = "Meshtastic radio connected; MQTT waiting for an uplink"
+    else:
+        meshtastic_summary = "Configured Meshtastic gateway needs attention"
+    meshtastic_service_label = "active" if meshtastic_service_active else "inactive"
+else:
+    meshtastic_status = "ok"
+    meshtastic_summary = "Meshtastic not selected"
+    meshtastic_service_label = "not configured"
+
 cards = [
     {
         "id": "uplink-details",
@@ -2324,6 +2515,35 @@ if APRS_PREPARED:
         ],
     })
 
+if MESHTASTIC_PREPARED:
+    cards.append({
+        "id": "meshtastic",
+        "title": "Meshtastic / MQTT",
+        "status": meshtastic_status,
+        "summary": meshtastic_summary,
+        "items": [
+            {"label": "PCS state", "value": MESHTASTIC_STATE},
+            {"label": "Service", "value": meshtastic_service_label},
+            {"label": "Boot enablement", "value": "enabled" if meshtastic_service_enabled else "disabled"},
+            {"label": "Status freshness", "value": age_label(meshtastic_snapshot_age)},
+            {"label": "Node", "value": meshtastic_node_label},
+            {"label": "Hardware / firmware", "value": meshtastic_hardware_label},
+            {"label": "Transport", "value": f"{meshtastic_transport} / {'connected' if meshtastic_connected else 'disconnected'}"},
+            {"label": "Power", "value": meshtastic_power},
+            {"label": "MQTT broker", "value": meshtastic_broker_label},
+            {"label": "MQTT session", "value": "connected" if meshtastic_mqtt_connected else "disconnected"},
+            {"label": "Downlink filters", "value": str(meshtastic_downlink_filters)},
+            {"label": "MQTT proxy activity", "value": meshtastic_mqtt_activity},
+            {"label": "Mesh packet counters", "value": meshtastic_mesh_activity},
+            {"label": "Remote nodes", "value": meshtastic_remote_nodes},
+            {"label": "Last mesh packet", "value": meshtastic_mesh.get("last_heard_at") or "none observed"},
+            {"label": "GPSD position feed", "value": meshtastic_position_label},
+            {"label": "Case environment", "value": meshtastic_environment_label},
+            {"label": "LoRa utilization", "value": meshtastic_utilization_label},
+            {"label": "Stored data", "value": "aggregate counters only; no messages, remote identities, positions, or channel keys"},
+        ],
+    })
+
 card_order = [
     "system-stats",
     "services",
@@ -2338,6 +2558,7 @@ card_order = [
     "time",
     "gps",
     "aprs",
+    "meshtastic",
 ]
 
 card_rank = {card_id: index for index, card_id in enumerate(card_order)}
@@ -2365,6 +2586,7 @@ client_info = {
     "openwrt_url": "http://10.42.0.2/",
     "pi_star_configured": PI_STAR_CONFIGURED,
     "aprs_state": APRS_STATE,
+    "meshtastic_state": MESHTASTIC_STATE,
     "wan_public_ip": wan_ip or "unavailable",
     "uplink_interface": uplink_info.get("interface") or "unknown",
     "uplink_source_ip": uplink_info.get("source_ip") or "unknown",
@@ -2481,6 +2703,27 @@ if PUBLIC_VIEW:
             "last_heard": aprs_last_packet,
             "tx_state": aprs_tx_label,
         },
+        "meshtastic": {
+            "configured": MESHTASTIC_CONFIGURED,
+            "status": meshtastic_status,
+            "service": meshtastic_service_label,
+            "node": meshtastic_node_label,
+            "hardware": str(meshtastic_device.get("hardware") or "unknown"),
+            "firmware": str(meshtastic_device.get("firmware") or "unknown"),
+            "transport": meshtastic_transport,
+            "radio_link": "connected" if meshtastic_connected else "disconnected",
+            "mqtt": "connected" if meshtastic_mqtt_connected else "waiting for uplink" if offline_mode else "disconnected",
+            "broker": meshtastic_broker_label,
+            "downlink_filters": meshtastic_downlink_filters,
+            "mqtt_activity": meshtastic_mqtt_activity,
+            "mesh_activity": meshtastic_mesh_activity,
+            "remote_nodes": meshtastic_remote_nodes,
+            "last_heard": meshtastic_mesh.get("last_heard_at") or "none observed",
+            "gpsd_position": meshtastic_position_label,
+            "case_environment": meshtastic_environment_label,
+            "utilization": meshtastic_utilization_label,
+            "power": meshtastic_power,
+        },
     }
 
     public_overall = "ok"
@@ -2489,6 +2732,7 @@ if PUBLIC_VIEW:
         for section_name, section in public_sections.items()
         if isinstance(section, dict)
         and section.get("status")
+        and not (section_name in {"aprs", "meshtastic"} and not section.get("configured"))
         and not (offline_mode and section_name == "network" and openwrt_online)
     ]
     if "bad" in public_statuses:
@@ -2509,6 +2753,45 @@ PY
 
 dashboard_public_json() {
     PCS_DASHBOARD_VIEW=public dashboard_json
+}
+
+meshtastic_status_action() {
+    header "Meshtastic / MQTT Status"
+
+    echo "--- Service ---"
+    systemctl status pcs-meshtastic.service --no-pager -l || true
+    echo
+
+    echo "--- Privacy-safe gateway snapshot ---"
+    if [[ -x /usr/local/sbin/pcs_meshtastic_status.py ]]; then
+        runuser -u "${PCS_USER}" -- /usr/local/sbin/pcs_meshtastic_status.py --check || true
+    elif [[ -r /var/lib/pcs-meshtastic/status.json ]]; then
+        python3 -m json.tool /var/lib/pcs-meshtastic/status.json || true
+    else
+        echo "No Meshtastic gateway snapshot is available."
+    fi
+}
+
+restart_meshtastic_action() {
+    header "Restart Meshtastic / MQTT Gateway"
+
+    if [[ "${PCS_SETUP_MESHTASTIC:-no}" != "yes" ]]; then
+        echo "ERROR: Meshtastic is not configured as an active PCS subsystem."
+        return 1
+    fi
+    if ! systemctl cat pcs-meshtastic.service >/dev/null 2>&1; then
+        echo "ERROR: pcs-meshtastic.service is not installed."
+        return 1
+    fi
+
+    systemctl restart pcs-meshtastic.service
+    if ! timeout 150 bash -c 'until systemctl is-active --quiet pcs-meshtastic.service; do sleep 2; done'; then
+        echo "ERROR: Meshtastic gateway did not become active within 150 seconds."
+        systemctl status pcs-meshtastic.service --no-pager -l || true
+        return 1
+    fi
+    sleep 3
+    meshtastic_status_action
 }
 
 require_root
@@ -3289,6 +3572,14 @@ case "${ACTION}" in
 
     cellular-test)
         cellular_test_internet
+        ;;
+
+    meshtastic-status)
+        meshtastic_status_action
+        ;;
+
+    restart-meshtastic)
+        restart_meshtastic_action
         ;;
 
     dashboard-json)

@@ -677,10 +677,19 @@ Dire Wolf change.
 For `PCS_SETUP_MESHTASTIC=staged`, the self-test requires the pinned BLE/MQTT
 client and gateway to be installed while `pcs-meshtastic.service` stays stopped
 and disabled. For `PCS_SETUP_MESHTASTIC=yes`, it additionally requires the
-root-only configuration, enabled/running service, and a valid privacy-safe
-runtime status file. Live RAK4631 pairing, broker relay in both directions, RF
-behavior, and environment-sensor accuracy remain manual hardware checkpoints;
+root-only configuration and credential files, enabled/running service, a fresh
+connected USB/BLE snapshot, a live MQTT session, privacy flags, and successful
+recent GPSD position delivery when selected. The status command must read the
+shared snapshot without opening the radio. Live mesh RF behavior and
+environment-sensor accuracy remain manual hardware checkpoints;
 see [Meshtastic Bluetooth MQTT Gateway](meshtastic-bluetooth-gateway.md).
+
+With Meshtastic active, verify the public homepage contains the
+**Meshtastic / MQTT** card and `/api/public-status` contains only the approved
+aggregate fields. Confirm it does not expose credential keys, subscription
+topic strings, channel keys, messages, remote identities, or stored
+coordinates. After authenticating, verify **View Meshtastic** works and the
+**Restart Meshtastic** action presents a confirmation before submission.
 
 ## Service Status Test
 

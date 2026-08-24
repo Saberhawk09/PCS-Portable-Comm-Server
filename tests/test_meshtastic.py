@@ -1,4 +1,6 @@
 import json
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -97,21 +99,65 @@ class MeshtasticStatusTests(unittest.TestCase):
     def test_status_file_write_is_valid_and_atomic(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir) / "status.json"
-            meshtastic_status.write_status(target, {"state": "connected"})
-            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"state": "connected"})
+            snapshot = {"schema_version": 1, "state": "connected"}
+            meshtastic_status.write_status(target, snapshot)
+            self.assertEqual(meshtastic_status.read_status(target), snapshot)
 
-    def test_gateway_only_uses_dedicated_mqtt_proxy_send_api(self):
+    def test_status_command_reads_existing_usb_snapshot_without_collecting(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "status.json"
+            snapshot = {
+                "schema_version": 1,
+                "state": "connected",
+                "transport": "usb-serial",
+            }
+            meshtastic_status.write_status(target, snapshot)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output), mock.patch.object(
+                meshtastic_status,
+                "collect",
+            ) as collect:
+                result = meshtastic_status.main(["--status-file", str(target), "--check"])
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output.getvalue()), snapshot)
+            collect.assert_not_called()
+
+    def test_direct_ble_collection_requires_explicit_flag(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "status.json"
+            with mock.patch.object(
+                meshtastic_status,
+                "collect",
+                return_value={"schema_version": 1, "state": "connected"},
+            ) as collect, contextlib.redirect_stdout(io.StringIO()):
+                result = meshtastic_status.main(
+                    [
+                        "--collect-ble",
+                        "--device",
+                        "IJC1",
+                        "--status-file",
+                        str(target),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            collect.assert_called_once()
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["state"], "connected")
+
+    def test_gateway_limits_radio_writes_to_proxy_and_opt_in_position(self):
         source = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")
         for forbidden in (
             "sendText(",
             "sendData(",
-            "sendPosition(",
             "writeConfig(",
             "setOwner(",
             "setFixedPosition(",
         ):
             self.assertNotIn(forbidden, source)
         self.assertIn("sendMqttClientProxyMessage(topic, payload)", source)
+        self.assertIn("self.interface.sendPosition(", source)
+        self.assertIn('getattr(self.args, "gpsd_position", False)', source)
         self.assertIn("noNodes=True", source)
 
     def test_gateway_uses_pcs_ble_startup_drain_adapter(self):
@@ -177,6 +223,9 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn('paho-mqtt==${PAHO_MQTT_VERSION}', setup)
         self.assertIn('PAHO_MQTT_VERSION="2.1.0"', setup)
         self.assertIn('COLLECTOR_TARGET="/usr/local/sbin/pcs_meshtastic_status.py"', setup)
+        self.assertIn("--refresh", setup)
+        self.assertIn("refresh()", setup)
+        self.assertIn("the active gateway did not require a restart", setup)
         self.assertIn("Requires=pcs-bluetooth-ready.service", service)
         self.assertIn("ExecStart=/usr/local/sbin/pcs-bluetooth-ready", bluetooth_ready)
         self.assertIn("BLUETOOTH_READY_TARGET=\"/usr/local/sbin/pcs-bluetooth-ready\"", setup)
@@ -492,6 +541,69 @@ class MeshtasticStatusTests(unittest.TestCase):
         source = (ROOT / "scripts" / "pcs_meshtastic_import_mqtt.py").read_text(encoding="utf-8")
         self.assertNotIn("print(mqtt.password", source)
         self.assertNotIn("print(mqtt.username", source)
+
+    def test_gpsd_reader_requires_valid_tpv_fix(self):
+        class FakeSocket:
+            def __init__(self):
+                self.chunks = [
+                    b'{"class":"VERSION"}\n'
+                    b'{"class":"TPV","mode":1}\n'
+                    b'{"class":"TPV","mode":3,"lat":41.5,"lon":-81.7,"altHAE":245.6}\n'
+                ]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def settimeout(self, _timeout):
+                pass
+
+            def sendall(self, payload):
+                self.payload = payload
+
+            def recv(self, _size):
+                return self.chunks.pop(0) if self.chunks else b""
+
+        fake_socket = FakeSocket()
+        with mock.patch.object(
+            meshtastic_gateway.socket,
+            "create_connection",
+            return_value=fake_socket,
+        ):
+            position = meshtastic_gateway.read_gpsd_position(timeout=1)
+
+        self.assertEqual(position, (41.5, -81.7, 246))
+        self.assertIn(b"WATCH", fake_socket.payload)
+
+    def test_gpsd_position_update_uses_radio_api_without_storing_coordinates(self):
+        gateway = meshtastic_gateway.Gateway.__new__(meshtastic_gateway.Gateway)
+        gateway.args = SimpleNamespace(
+            gpsd_host="127.0.0.1",
+            gpsd_port=2947,
+            gpsd_timeout=3.0,
+            position_channel=0,
+        )
+        gateway.interface = mock.Mock()
+        gateway.counts = {"position_updates": 0, "gpsd_failures": 0}
+        gateway.last_position_update = None
+
+        with mock.patch.object(
+            meshtastic_gateway,
+            "read_gpsd_position",
+            return_value=(41.5, -81.7, 246),
+        ):
+            gateway._send_gpsd_position()
+
+        gateway.interface.sendPosition.assert_called_once_with(
+            latitude=41.5,
+            longitude=-81.7,
+            altitude=246,
+            channelIndex=0,
+        )
+        self.assertEqual(gateway.counts["position_updates"], 1)
+        self.assertIsNotNone(gateway.last_position_update)
 
 
 if __name__ == "__main__":
