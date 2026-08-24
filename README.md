@@ -74,14 +74,16 @@ also unfinished.
 - Pi-side self-test and status scripts
 - USB primary Samba share with SD-card backup mirror
 - GPS NMEA from `/dev/ttyUSB1` through gpsd and Chrony to LAN clients
-- Installer-selectable manual cellular control or automatic Wi-Fi-to-cellular fallback
+- Installer-selectable manual cellular control or automatic Wi-Fi-to-cellular
+  fallback; the commissioned PCS uses automatic mode, with live failover,
+  cellular-only Internet, Wi-Fi recovery, and boot persistence validated
 - LAN GPSD, NTP, and installer-assisted coordinated Pi-Star shutdown integration
 - Managed Dire Wolf 1.8.1 startup with SA818S programming, ALSA level restoration, LAN-only AGW/KISS access, and guarded activation/rollback
 - Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
   dashboard status, guarded restart, broker/proxy policy validation, GPSD
   position delivery, public-map forwarding status, and local environment telemetry
 - PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; the
-  current `main` stack was synchronized and passed 133 live self-tests with no
+  current `main` stack was synchronized and passed 137 live self-tests with no
   warnings or failures on August 24, 2026; credentials, external-device
   recovery, and RF checks remain manual
 
