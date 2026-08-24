@@ -36,7 +36,7 @@ DIREWOLF_MIN_VERSION="1.8"
 DIREWOLF_SOURCE_VERSION="1.8.1"
 DIREWOLF_SOURCE_COMMIT="a231971a652bfb574a4bae9a5d875fbce53d2267"
 DIREWOLF_SOURCE_URL="https://github.com/wb2osz/direwolf.git"
-APRS_CONFIG_VERSION_CURRENT="1"
+APRS_CONFIG_VERSION_CURRENT="2"
 MODE="${1:---prepare}"
 PROFILE="${2:-}"
 APRS_IS_PASSCODE=""
@@ -88,7 +88,7 @@ PCS_APRS_BEACON="${PCS_APRS_BEACON:-yes}"
 PCS_APRS_BEACON_TYPE="${PCS_APRS_BEACON_TYPE:-gps-tracker}"
 PCS_APRS_BEACON_INTERVAL="${PCS_APRS_BEACON_INTERVAL:-10:00}"
 PCS_APRS_BEACON_PATH="${PCS_APRS_BEACON_PATH:-direct}"
-PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-IG}"
+PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-BOTH}"
 PCS_APRS_BEACON_SYMBOL="${PCS_APRS_BEACON_SYMBOL:-igate}"
 PCS_APRS_BEACON_OVERLAY="${PCS_APRS_BEACON_OVERLAY:-T}"
 PCS_APRS_BEACON_ALTITUDE="${PCS_APRS_BEACON_ALTITUDE:-yes}"
@@ -717,7 +717,7 @@ validate_profile_values() {
     validate_value PCS_APRS_BEACON_INTERVAL "${PCS_APRS_BEACON_INTERVAL}" '^[0-9]{1,2}:[0-9]{2}$'
     validate_value PCS_APRS_BEACON_TYPE "${PCS_APRS_BEACON_TYPE}" '^(gps-tracker|fixed)$'
     validate_value PCS_APRS_BEACON_PATH "${PCS_APRS_BEACON_PATH}" '^(direct|not selected|[A-Z0-9,-]{1,40})$'
-    validate_value PCS_APRS_BEACON_SENDTO "${PCS_APRS_BEACON_SENDTO}" '^(IG|[0-9])$'
+    validate_value PCS_APRS_BEACON_SENDTO "${PCS_APRS_BEACON_SENDTO}" '^(BOTH|IG|[0-9])$'
     validate_value PCS_APRS_BEACON_SYMBOL "${PCS_APRS_BEACON_SYMBOL}" '^(not selected|[A-Za-z0-9 _/-]{1,40})$'
     validate_value PCS_APRS_BEACON_OVERLAY "${PCS_APRS_BEACON_OVERLAY}" '^[A-Za-z0-9]$'
     validate_value PCS_APRS_BEACON_COMMENT "${PCS_APRS_BEACON_COMMENT}" '^[A-Za-z0-9 .,_/+:-]{1,80}$'
@@ -769,6 +769,8 @@ render_config() {
     local audio_output="null"
     local ptt_gpio="${PCS_APRS_PTT_GPIO_LINE}"
     local beacon_via=""
+    local beacon_sendto
+    local beacon_destinations=()
 
     if [[ "${profile}" != "rx" && "${profile}" != "tx" ]]; then
         echo "ERROR: PROFILE must be rx or tx." >&2
@@ -854,11 +856,22 @@ EOF
         if [[ "${PCS_APRS_BEACON_SYMBOL}" == "not selected" ]]; then
             echo "# BLOCKED: tracker beacon symbol is not selected."
         elif [[ "${PCS_APRS_BEACON_TYPE}" == "gps-tracker" ]]; then
-            printf 'TBEACON SENDTO=%s DELAY=0:30 EVERY=%s%s SYMBOL="%s" OVERLAY=%s' \
-                "${PCS_APRS_BEACON_SENDTO}" "${PCS_APRS_BEACON_INTERVAL}" "${beacon_via}" \
-                "${PCS_APRS_BEACON_SYMBOL}" "${PCS_APRS_BEACON_OVERLAY}"
-            [[ "${PCS_APRS_BEACON_ALTITUDE}" == "yes" ]] && printf ' ALT=1'
-            printf ' COMMENT="%s"\n' "${PCS_APRS_BEACON_COMMENT}"
+            if [[ "${PCS_APRS_BEACON_SENDTO}" == "BOTH" ]]; then
+                beacon_destinations=(0 IG)
+            else
+                beacon_destinations=("${PCS_APRS_BEACON_SENDTO}")
+            fi
+            for beacon_sendto in "${beacon_destinations[@]}"; do
+                printf 'TBEACON SENDTO=%s DELAY=0:30 EVERY=%s' \
+                    "${beacon_sendto}" "${PCS_APRS_BEACON_INTERVAL}"
+                if [[ "${beacon_sendto}" != "IG" ]]; then
+                    printf '%s' "${beacon_via}"
+                fi
+                printf ' SYMBOL="%s" OVERLAY=%s' \
+                    "${PCS_APRS_BEACON_SYMBOL}" "${PCS_APRS_BEACON_OVERLAY}"
+                [[ "${PCS_APRS_BEACON_ALTITUDE}" == "yes" ]] && printf ' ALT=1'
+                printf ' COMMENT="%s"\n' "${PCS_APRS_BEACON_COMMENT}"
+            done
         else
             echo "# BLOCKED: fixed beacon generation requires reviewed coordinates."
         fi
@@ -921,6 +934,13 @@ validate_rendered_config() {
         if [[ "${PCS_APRS_BEACON}" == "yes" ]] && ! grep -Eq '^TBEACON ' "${config_file}"; then
             echo "ERROR: transmit profile is missing the selected tracker beacon." >&2
             failed=1
+        fi
+        if [[ "${PCS_APRS_BEACON}" == "yes" && "${PCS_APRS_BEACON_SENDTO}" == "BOTH" ]]; then
+            if ! grep -Eq '^TBEACON SENDTO=0 ' "${config_file}" \
+                || ! grep -Eq '^TBEACON SENDTO=IG ' "${config_file}"; then
+                echo "ERROR: dual-path tracker profile requires both RF and APRS-IS beacons." >&2
+                failed=1
+            fi
         fi
     fi
 
@@ -1151,7 +1171,7 @@ show_check() {
     echo "IGate limits: ${PCS_APRS_IGATE_TX_LIMIT_1M}/minute; ${PCS_APRS_IGATE_TX_LIMIT_5M}/5 minutes"
     echo "GPSD:         ${PCS_APRS_GPSD} (${PCS_APRS_GPSD_HOST}:${PCS_APRS_GPSD_PORT})"
     echo "TX / beacon:  ${PCS_APRS_TX_ENABLED} / ${PCS_APRS_BEACON}"
-    echo "Beacon plan:  ${PCS_APRS_BEACON_TYPE} / ${PCS_APRS_BEACON_INTERVAL} / ${PCS_APRS_BEACON_PATH}"
+    echo "Beacon plan:  ${PCS_APRS_BEACON_TYPE} / ${PCS_APRS_BEACON_INTERVAL} / ${PCS_APRS_BEACON_PATH} / ${PCS_APRS_BEACON_SENDTO}"
     echo "Digipeat:     ${PCS_APRS_DIGIPEAT} (${PCS_APRS_DIGIPEAT_MODE}; alias ${PCS_APRS_DIGIPEAT_ALIAS})"
     echo "Digi rule:    ${PCS_APRS_DIGIPEAT_ALIAS_PATTERN} / ${PCS_APRS_DIGIPEAT_WIDE_PATTERN} / ${PCS_APRS_DIGIPEAT_PREEMPTIVE}"
     echo "Digi filter:  ${PCS_APRS_DIGIPEAT_FILTER}; dedupe ${PCS_APRS_DIGIPEAT_DEDUPE_SECONDS}s"

@@ -255,7 +255,8 @@ Flag behavior:
 
 Activation also installs boot-time SA818S programming, explicit ALSA restoration,
 persistent LAN-only AGW/KISS filtering, managed Dire Wolf CSV logging/rotation,
-and restart-on-device-recovery behavior. Full option,
+restart-on-device-recovery behavior, and the commissioned independent RF plus
+direct APRS-IS GNSS beacon schedules. Full option,
 security, and rollback details are in
 [Dire Wolf / APRS Integration](../docs/direwolf-aprs.md).
 
