@@ -41,5 +41,6 @@ jobs:
           test -x scripts/pcs-admin-password-helper.py
           test -x scripts/pcs-wwan-gps-nmea-start.py
           test -x scripts/pcs_aprs_telemetry.py
+          test -x scripts/pcs_cellular_fallback.py
           test -x scripts/pcs_gpio.py
           test -x scripts/pcs_sa818.py

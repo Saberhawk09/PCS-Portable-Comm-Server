@@ -4,6 +4,17 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- installer-selectable automatic Wi-Fi-to-cellular fallback with 30-second
+  loss/recovery stability windows, service-owned session tracking, dashboard
+  visibility, status/self-test coverage, and a conservative manual default
+
+### Changed
+
+- kept the NetworkManager cellular profile non-autoconnecting in both policies
+  so manually started cellular sessions remain under operator control
+
 ## [1.3] - 2026-08-24
 
 ### Added

@@ -403,6 +403,20 @@ the legacy `pcs-cellular-tmobile` profile name; PCS status, self-test, and web
 actions will use the legacy profile if it already exists. Override the
 fresh-install name in `config/pcs-install.conf` with `PCS_CELLULAR_PROFILE`.
 
+The base installer also asks for `PCS_CELLULAR_FALLBACK_MODE`, which accepts
+`manual` (the default) or `wifi-fallback`. Profile autoconnect remains `no` in
+both modes. Automatic mode uses `pcs-cellular-fallback.service` to wait for
+active Wi-Fi loss, start cellular explicitly, record ownership in `/run`, and
+release only that owned session after Wi-Fi returns.
+
+Change or inspect the policy:
+
+```bash
+./scripts/setup-cellular-profile.sh --fallback wifi-fallback
+./scripts/setup-cellular-profile.sh --fallback manual
+./scripts/setup-cellular-profile.sh --check
+```
+
 Manual connect:
 
 ```bash

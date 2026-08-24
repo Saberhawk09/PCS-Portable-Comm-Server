@@ -19,7 +19,9 @@ Fail: 0
 Warn: 0
 ```
 
-Cellular data may be disconnected by design. The manual cellular profile should still exist after setup.
+Cellular data may be disconnected by design. The cellular profile should still
+exist after setup, with the fallback service active only when
+`PCS_CELLULAR_FALLBACK_MODE=wifi-fallback`.
 
 Then run:
 
@@ -439,7 +441,7 @@ mmcli -m 0
 
 If multiple modems or modem numbers are present, adjust the modem number.
 
-## Cellular Manual Control Test
+## Cellular Policy Test
 
 Open:
 
@@ -447,7 +449,7 @@ Open:
 http://10.42.0.1/admin/
 ```
 
-Use the PCS Control Panel to manually connect cellular data.
+In manual mode, use the PCS Control Panel to connect cellular data.
 
 Then test:
 
@@ -466,6 +468,23 @@ DNS resolves
 ```
 
 Disconnect cellular data from the Control Panel when finished.
+
+For automatic mode, first confirm the installed policy without changing it:
+
+```bash
+./scripts/setup-cellular-profile.sh --check
+systemctl is-enabled pcs-cellular-fallback.service
+systemctl is-active pcs-cellular-fallback.service
+```
+
+Perform a supervised failover test without disrupting the operator connection:
+temporarily install a test runtime configuration that names a nonexistent Wi-Fi
+interface and uses zero-second stability windows, restart the service, and
+verify that `wwan0` connects and `/run/pcs-cellular-fallback-owned` names the PCS
+profile. Restore the installer-generated configuration immediately, restart the
+service, and verify that active `wlan0` causes the owned cellular session and
+marker to clear. Never use a real Wi-Fi disconnect for this test over a Wi-Fi
+SSH session.
 
 ## OpenWrt AP Test
 
@@ -753,6 +772,7 @@ Before using PCS for an event:
 - [ ] APRS is safely staged, or its active mode has completed the documented hardware and RF validation
 - [ ] Cellular can be manually connected if needed
 - [ ] Cellular can be manually disconnected
+- [ ] Selected cellular policy, service state, and dashboard status agree
 - [ ] System survives reboot and returns to working state
 
 ## Pass Criteria

@@ -47,6 +47,10 @@ fi
 PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
 PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
+PCS_CELLULAR_FALLBACK_MODE="${PCS_CELLULAR_FALLBACK_MODE:-manual}"
+PCS_CELLULAR_FALLBACK_HELPER="/usr/local/sbin/pcs-cellular-fallback"
+PCS_CELLULAR_FALLBACK_CONFIG="/etc/pcs/cellular-fallback.conf"
+PCS_CELLULAR_FALLBACK_MARKER="/run/pcs-cellular-fallback-owned"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
@@ -1194,10 +1198,64 @@ if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_P
 
     AUTOCONNECT="$(nmcli -g connection.autoconnect connection show "${PCS_CELLULAR_PROFILE_ACTIVE}" 2>/dev/null || true)"
     if [[ "${AUTOCONNECT}" == "no" ]]; then
-        pass "Cellular profile autoconnect is disabled for manual control"
+        pass "Cellular profile autoconnect is disabled; PCS owns fallback policy"
     else
         warn "Cellular profile autoconnect is not disabled"
     fi
+
+    if [[ -x "${PCS_CELLULAR_FALLBACK_HELPER}" ]]; then
+        pass "Cellular fallback helper is installed"
+    else
+        fail "Cellular fallback helper is missing or not executable"
+    fi
+
+    if [[ -r "${PCS_CELLULAR_FALLBACK_CONFIG}" ]]; then
+        pass "Cellular fallback runtime configuration is installed"
+    else
+        fail "Cellular fallback runtime configuration is missing"
+    fi
+
+    case "${PCS_CELLULAR_FALLBACK_MODE}" in
+        wifi-fallback)
+            if service_enabled pcs-cellular-fallback.service; then
+                pass "Automatic Wi-Fi-to-cellular fallback service is enabled"
+            else
+                fail "Automatic Wi-Fi-to-cellular fallback service is not enabled"
+            fi
+            if service_active pcs-cellular-fallback.service; then
+                pass "Automatic Wi-Fi-to-cellular fallback service is active"
+            else
+                fail "Automatic Wi-Fi-to-cellular fallback service is not active"
+            fi
+            if [[ -e "${PCS_CELLULAR_FALLBACK_MARKER}" ]]; then
+                if [[ "$(cat "${PCS_CELLULAR_FALLBACK_MARKER}" 2>/dev/null)" == "${PCS_CELLULAR_PROFILE_ACTIVE}" ]]; then
+                    pass "Active cellular session is marked as fallback-owned"
+                else
+                    warn "Cellular fallback ownership marker does not match the configured profile"
+                fi
+            else
+                echo "[INFO] No fallback-owned cellular session is currently recorded"
+            fi
+            ;;
+        manual)
+            if service_enabled pcs-cellular-fallback.service; then
+                fail "Cellular fallback service is enabled while policy is manual"
+            else
+                pass "Cellular fallback service is disabled for manual policy"
+            fi
+            if service_active pcs-cellular-fallback.service; then
+                fail "Cellular fallback service is active while policy is manual"
+            else
+                pass "Cellular fallback service is inactive for manual policy"
+            fi
+            if [[ -e "${PCS_CELLULAR_FALLBACK_MARKER}" ]]; then
+                warn "Fallback ownership marker remains while policy is manual"
+            fi
+            ;;
+        *)
+            fail "Unknown cellular fallback policy: ${PCS_CELLULAR_FALLBACK_MODE}"
+            ;;
+    esac
 else
     skip "Cellular NetworkManager profile not created yet"
 fi

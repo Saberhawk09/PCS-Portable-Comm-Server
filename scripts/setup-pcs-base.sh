@@ -20,12 +20,14 @@ fi
 PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
 PCS_CELLULAR_APN_DEFAULT="fast.t-mobile.com"
 PCS_CELLULAR_ROUTE_METRIC_DEFAULT="900"
+PCS_CELLULAR_FALLBACK_MODE_DEFAULT="manual"
 PCS_SAMBA_WORKGROUP_DEFAULT="WORKGROUP"
 
 PCS_SETUP_MODE="ASK"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_CELLULAR_APN="${PCS_CELLULAR_APN:-${PCS_CELLULAR_APN_DEFAULT}}"
 PCS_CELLULAR_ROUTE_METRIC="${PCS_CELLULAR_ROUTE_METRIC:-${PCS_CELLULAR_ROUTE_METRIC_DEFAULT}}"
+PCS_CELLULAR_FALLBACK_MODE="${PCS_CELLULAR_FALLBACK_MODE:-${PCS_CELLULAR_FALLBACK_MODE_DEFAULT}}"
 PCS_SAMBA_USER="${PCS_SAMBA_USER:-${USER}}"
 PCS_SAMBA_WORKGROUP="${PCS_SAMBA_WORKGROUP:-${PCS_SAMBA_WORKGROUP_DEFAULT}}"
 PCS_SAMBA_PASSWORD="${PCS_SAMBA_PASSWORD:-}"
@@ -218,6 +220,7 @@ write_install_config() {
         printf "PCS_CELLULAR_PROFILE=%q\n" "${PCS_CELLULAR_PROFILE}"
         printf "PCS_CELLULAR_APN=%q\n" "${PCS_CELLULAR_APN}"
         printf "PCS_CELLULAR_ROUTE_METRIC=%q\n" "${PCS_CELLULAR_ROUTE_METRIC}"
+        printf "PCS_CELLULAR_FALLBACK_MODE=%q\n" "${PCS_CELLULAR_FALLBACK_MODE}"
         printf "PCS_SAMBA_USER=%q\n" "${PCS_SAMBA_USER}"
         printf "PCS_SAMBA_WORKGROUP=%q\n" "${PCS_SAMBA_WORKGROUP}"
         echo "# PCS_SAMBA_PASSWORD is intentionally not written to disk."
@@ -369,12 +372,14 @@ collect_install_answers() {
     local gpio_leds_default
     local gpio_stats_default
     local gpio_fan_default
+    local cellular_fallback_default
 
     case "${PCS_SETUP_MODE}" in
         DEFAULTS)
             PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE_DEFAULT}"
             PCS_CELLULAR_APN="${PCS_CELLULAR_APN_DEFAULT}"
             PCS_CELLULAR_ROUTE_METRIC="${PCS_CELLULAR_ROUTE_METRIC_DEFAULT}"
+            PCS_CELLULAR_FALLBACK_MODE="${PCS_CELLULAR_FALLBACK_MODE_DEFAULT}"
             PCS_SAMBA_USER="${USER}"
             PCS_SAMBA_WORKGROUP="${PCS_SAMBA_WORKGROUP_DEFAULT}"
             if [[ -z "${PCS_SAMBA_PASSWORD}" ]]; then
@@ -395,6 +400,13 @@ collect_install_answers() {
         ALL)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
             PCS_CELLULAR_APN="$(ask_value "Cellular APN" "${PCS_CELLULAR_APN}")"
+            cellular_fallback_default="no"
+            [[ "${PCS_CELLULAR_FALLBACK_MODE}" == "wifi-fallback" ]] && cellular_fallback_default="yes"
+            if [[ "$(ask_yes_no "Automatically use cellular when Wi-Fi is unavailable?" "${cellular_fallback_default}")" == "yes" ]]; then
+                PCS_CELLULAR_FALLBACK_MODE="wifi-fallback"
+            else
+                PCS_CELLULAR_FALLBACK_MODE="manual"
+            fi
             PCS_SAMBA_USER="$(ask_value "Samba username" "${PCS_SAMBA_USER}")"
             PCS_SAMBA_WORKGROUP="$(ask_value "Samba workgroup" "${PCS_SAMBA_WORKGROUP}")"
             if [[ -z "${PCS_SAMBA_PASSWORD}" ]]; then
@@ -441,6 +453,13 @@ collect_install_answers() {
         ASK)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
             PCS_CELLULAR_APN="$(ask_value "Cellular APN" "${PCS_CELLULAR_APN}")"
+            cellular_fallback_default="no"
+            [[ "${PCS_CELLULAR_FALLBACK_MODE}" == "wifi-fallback" ]] && cellular_fallback_default="yes"
+            if [[ "$(ask_yes_no "Automatically use cellular when Wi-Fi is unavailable?" "${cellular_fallback_default}")" == "yes" ]]; then
+                PCS_CELLULAR_FALLBACK_MODE="wifi-fallback"
+            else
+                PCS_CELLULAR_FALLBACK_MODE="manual"
+            fi
             PCS_SAMBA_USER="${USER}"
             PCS_SAMBA_WORKGROUP="${PCS_SAMBA_WORKGROUP:-${PCS_SAMBA_WORKGROUP_DEFAULT}}"
             PCS_SETUP_USB_PRIMARY="ask"
@@ -463,6 +482,7 @@ collect_install_answers() {
     export PCS_CELLULAR_PROFILE
     export PCS_CELLULAR_APN
     export PCS_CELLULAR_ROUTE_METRIC
+    export PCS_CELLULAR_FALLBACK_MODE
     export PCS_SAMBA_USER
     export PCS_SAMBA_WORKGROUP
     export PCS_SAMBA_PASSWORD
@@ -501,6 +521,7 @@ confirm_install_answers() {
     echo "  Cellular profile:   ${PCS_CELLULAR_PROFILE}"
     echo "  Cellular APN:       ${PCS_CELLULAR_APN}"
     echo "  Cellular metric:    ${PCS_CELLULAR_ROUTE_METRIC}"
+    echo "  Cellular fallback:  ${PCS_CELLULAR_FALLBACK_MODE}"
     echo "  Samba username:     ${PCS_SAMBA_USER}"
     echo "  Samba workgroup:    ${PCS_SAMBA_WORKGROUP}"
     echo "  Samba password:     ${samba_password_status}"
@@ -541,7 +562,7 @@ echo "  - Dependency installer"
 echo "  - Client LAN / AP handoff setup on eth0"
 echo "  - Optional password-assisted Pi-Star coordinated shutdown pairing as soon as the PCS LAN is ready"
 echo "  - RTC setup"
-echo "  - Manual cellular profile setup"
+echo "  - Cellular profile setup with optional automatic Wi-Fi fallback"
 echo "  - Samba bootstrap share setup"
 echo "  - Samba SD-card backup share setup"
 echo "  - Optional USB primary share setup, if USB storage is present"
@@ -560,7 +581,6 @@ echo "  - Legacy port 8080 admin compatibility redirect"
 echo "  - Final PCS status and self-test"
 echo
 echo "It will not automatically configure:"
-echo "  - Cellular data autoconnect"
 echo "  - EM7565 firmware, USB composition, antenna hardware, or modem-side AT changes"
 echo
 echo "WWAN modem GPS can be configured as an optional hardware step if the modem is present."
@@ -633,6 +653,7 @@ ensure_executable "scripts/test-time-source-failover.sh"
 ensure_executable "scripts/setup-rtc.sh"
 ensure_executable "scripts/setup-router-wan-share.sh"
 ensure_executable "scripts/setup-cellular-profile.sh"
+ensure_executable "scripts/pcs_cellular_fallback.py"
 ensure_executable "scripts/setup-test-samba-share.sh"
 ensure_executable "scripts/setup-samba-backup-share.sh"
 ensure_executable "scripts/setup-usb-primary-share.sh"
@@ -679,7 +700,7 @@ fi
 
 run_step "Configure RTC" "./scripts/setup-rtc.sh"
 
-run_step "Configure manual cellular profile" "./scripts/setup-cellular-profile.sh"
+run_step "Configure cellular profile and fallback policy" "./scripts/setup-cellular-profile.sh"
 
 echo
 echo "============================================================"
