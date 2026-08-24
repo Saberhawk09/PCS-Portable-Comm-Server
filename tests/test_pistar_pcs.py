@@ -68,6 +68,31 @@ class PiStarPcsTests(unittest.TestCase):
             with self.subTest(evidence=evidence):
                 self.assertIn(evidence, self.source)
 
+    def test_native_service_hygiene_is_repeatable_and_mode_aware(self):
+        for evidence in (
+            'DSTAR_DROPIN="${DSTAR_DROPIN_DIR}/50-pcs-mode-guard.conf"',
+            'ConditionPathExists=/etc/dstar-radio.dstarrepeater',
+            'ConditionPathExists=!/etc/dstar-radio.mmdvmhost',
+            'HAVEGED_DROPIN="${HAVEGED_DROPIN_DIR}/50-pcs-arm-syscall.conf"',
+            'SystemCallFilter=uname',
+            'sudo systemctl restart haveged.service',
+            'systemctl is-failed --quiet dstarrepeater.service',
+            'systemctl is-failed --quiet systemd-remount-fs.service',
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertIn(evidence, self.source)
+
+    def test_legacy_cgroup_mount_is_removed_only_for_runtime_cgroup_v2(self):
+        for evidence in (
+            'FSTAB="/etc/fstab"',
+            'cgroup_fstype="$(findmnt -no FSTYPE /sys/fs/cgroup',
+            'cgroup_fstype == "cgroup2"',
+            '# PCS disabled legacy cgroup tmpfs:',
+            'sudo cp -a "${path}" "${backup_dir}/"',
+        ):
+            with self.subTest(evidence=evidence):
+                self.assertIn(evidence, self.source)
+
     def test_final_check_requires_read_only_filesystems(self):
         self.assertIn('Pi-Star root filesystem is read-only', self.source)
         self.assertIn('Pi-Star boot filesystem is read-only', self.source)
@@ -77,6 +102,7 @@ class PiStarPcsTests(unittest.TestCase):
         self.assertIn('sudo mount -o remount,rw /boot', self.source)
         self.assertIn('remount_boot_read_only', self.source)
         self.assertIn('"${BOOT_CONFIG}"', self.source)
+        self.assertIn('"${FSTAB}"', self.source)
         self.assertIn('sudo cp -a "${path}" "${backup_dir}/"', self.source)
 
     def test_final_check_requires_wired_address_route_and_absent_wifi_device(self):

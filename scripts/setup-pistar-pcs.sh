@@ -40,10 +40,15 @@ TIMESYNCD_CONF="${TIMESYNCD_DIR}/50-pcs.conf"
 YSFGATEWAY_CONF="/etc/ysfgateway"
 MMDVMHOST_CONF="/etc/mmdvmhost"
 MOBILEGPS_CONF="/etc/mobilegps"
+FSTAB="/etc/fstab"
 BOOT_CONFIG="/boot/config.txt"
 RC_LOCAL="/etc/rc.local"
 PISTAR_AP_DROPIN_DIR="/etc/systemd/system/pistar-ap.service.d"
 PISTAR_AP_DROPIN="${PISTAR_AP_DROPIN_DIR}/50-pcs-wired-only.conf"
+DSTAR_DROPIN_DIR="/etc/systemd/system/dstarrepeater.service.d"
+DSTAR_DROPIN="${DSTAR_DROPIN_DIR}/50-pcs-mode-guard.conf"
+HAVEGED_DROPIN_DIR="/etc/systemd/system/haveged.service.d"
+HAVEGED_DROPIN="${HAVEGED_DROPIN_DIR}/50-pcs-arm-syscall.conf"
 PCS_BLOCK_BEGIN="# BEGIN PCS HOTSPOT"
 PCS_BLOCK_END="# END PCS HOTSPOT"
 WIFI_BLOCK_BEGIN="# BEGIN PCS HOTSPOT WIFI"
@@ -265,6 +270,11 @@ check_configuration() {
     local expected_rc_wifi_guard
     local expected_ap_dropin
     local actual_ap_dropin
+    local expected_dstar_dropin
+    local actual_dstar_dropin
+    local expected_haveged_dropin
+    local actual_haveged_dropin
+    local cgroup_fstype
     local managed_rc_wifi_guard
     local root_options
     local boot_options
@@ -364,6 +374,53 @@ check_configuration() {
         pass "Pi-Star AP service has the expected wired-only condition"
     else
         fail "Pi-Star AP service does not have the expected wired-only condition"
+    fi
+
+    expected_dstar_dropin="$(printf '%s\n' \
+        '[Unit]' \
+        'ConditionPathExists=/etc/dstar-radio.dstarrepeater' \
+        'ConditionPathExists=!/etc/dstar-radio.mmdvmhost')"
+    actual_dstar_dropin="$(cat "${DSTAR_DROPIN}" 2>/dev/null || true)"
+    if [[ "${actual_dstar_dropin}" == "${expected_dstar_dropin}" ]]; then
+        pass "D-Star service has the expected native-mode guard"
+    else
+        fail "D-Star service does not have the expected native-mode guard"
+    fi
+
+    expected_haveged_dropin="$(printf '%s\n' '[Service]' 'SystemCallFilter=uname')"
+    actual_haveged_dropin="$(cat "${HAVEGED_DROPIN}" 2>/dev/null || true)"
+    if [[ "${actual_haveged_dropin}" == "${expected_haveged_dropin}" ]]; then
+        pass "haveged permits the ARM uname syscall"
+    else
+        fail "haveged is missing the ARM uname syscall allowance"
+    fi
+
+    cgroup_fstype="$(findmnt -no FSTYPE /sys/fs/cgroup 2>/dev/null || true)"
+    if [[ "${cgroup_fstype}" == "cgroup2" ]]; then
+        pass "Pi-Star uses the cgroup v2 filesystem"
+        if awk 'NF >= 3 && $1 !~ /^#/ && $2 == "/sys/fs/cgroup" && $3 == "tmpfs" { found=1 } END { exit !found }' "${FSTAB}"; then
+            fail "${FSTAB} still contains the obsolete cgroup tmpfs mount"
+        else
+            pass "${FSTAB} does not override the active cgroup filesystem"
+        fi
+    else
+        warn "Pi-Star cgroup filesystem is '${cgroup_fstype:-unknown}', so the legacy fstab entry is preserved"
+    fi
+
+    if systemctl is-failed --quiet dstarrepeater.service; then
+        fail "dstarrepeater.service remains failed"
+    else
+        pass "dstarrepeater.service is not failed"
+    fi
+    if systemctl is-active --quiet haveged.service; then
+        pass "haveged.service is active"
+    else
+        fail "haveged.service is not active"
+    fi
+    if systemctl is-failed --quiet systemd-remount-fs.service; then
+        fail "systemd-remount-fs.service remains failed"
+    else
+        pass "systemd-remount-fs.service is not failed"
     fi
 
     device_path="$(readlink -f "/sys/class/net/${PCS_PISTAR_INTERFACE}/device" 2>/dev/null || true)"
@@ -555,11 +612,14 @@ for required_file in \
     "${DHCPCD_CONF}" \
     "${HOSTNAME_FILE}" \
     "${HOSTS_FILE}" \
+    "${FSTAB}" \
     "${BOOT_CONFIG}" \
     "${RC_LOCAL}" \
     "${YSFGATEWAY_CONF}" \
     "${MMDVMHOST_CONF}" \
-    "${MOBILEGPS_CONF}"; do
+    "${MOBILEGPS_CONF}" \
+    "/lib/systemd/system/dstarrepeater.service" \
+    "/lib/systemd/system/haveged.service"; do
     require_file "${required_file}"
 done
 
@@ -578,7 +638,7 @@ validate_wired_preflight
 echo
 echo "=== PCS Pi-Star Integration Setup ==="
 echo
-echo "This manages only the PCS hostname, network, time, and GPS integration."
+echo "This manages PCS hostname, network, time, GPS, and narrow native-service compatibility guards."
 echo "It preserves Wi-Fi credentials, callsigns, radio modes, and network accounts."
 echo
 echo "  Hostname:    ${PCS_PISTAR_HOSTNAME}"
@@ -625,6 +685,7 @@ for path in \
     "${DHCPCD_CONF}" \
     "${HOSTNAME_FILE}" \
     "${HOSTS_FILE}" \
+    "${FSTAB}" \
     "${BOOT_CONFIG}" \
     "${RC_LOCAL}" \
     "${YSFGATEWAY_CONF}" \
@@ -637,6 +698,12 @@ if [[ -f "${TIMESYNCD_CONF}" ]]; then
 fi
 if [[ -f "${PISTAR_AP_DROPIN}" ]]; then
     sudo cp -a "${PISTAR_AP_DROPIN}" "${backup_dir}/50-pcs-wired-only.conf"
+fi
+if [[ -f "${DSTAR_DROPIN}" ]]; then
+    sudo cp -a "${DSTAR_DROPIN}" "${backup_dir}/50-pcs-mode-guard.conf"
+fi
+if [[ -f "${HAVEGED_DROPIN}" ]]; then
+    sudo cp -a "${HAVEGED_DROPIN}" "${backup_dir}/50-pcs-arm-syscall.conf"
 fi
 
 hostname_temp="$(make_temp_file)"
@@ -661,6 +728,31 @@ awk -v hostname="${PCS_PISTAR_HOSTNAME}" '
     }
 ' "${HOSTS_FILE}" > "${hosts_temp}"
 sudo install -o root -g root -m 0644 "${hosts_temp}" "${HOSTS_FILE}"
+
+fstab_temp="$(make_temp_file)"
+cgroup_fstype="$(findmnt -no FSTYPE /sys/fs/cgroup 2>/dev/null || true)"
+python3 - "${FSTAB}" "${fstab_temp}" "${cgroup_fstype}" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+cgroup_fstype = sys.argv[3]
+rendered = []
+for line in source.read_text().splitlines():
+    fields = line.split()
+    if (
+        cgroup_fstype == "cgroup2"
+        and len(fields) >= 3
+        and not line.lstrip().startswith("#")
+        and fields[1:3] == ["/sys/fs/cgroup", "tmpfs"]
+    ):
+        rendered.append(f"# PCS disabled legacy cgroup tmpfs: {line}")
+    else:
+        rendered.append(line)
+destination.write_text("\n".join(rendered).rstrip() + "\n")
+PY
+sudo install -o root -g root -m 0644 "${fstab_temp}" "${FSTAB}"
 
 dhcpcd_temp="$(make_temp_file)"
 awk -v begin="${PCS_BLOCK_BEGIN}" -v end="${PCS_BLOCK_END}" '
@@ -773,7 +865,23 @@ else
     sudo rm -f "${PISTAR_AP_DROPIN}"
     sudo rmdir "${PISTAR_AP_DROPIN_DIR}" 2>/dev/null || true
 fi
+
+dstar_temp="$(make_temp_file)"
+printf '%s\n' \
+    '[Unit]' \
+    'ConditionPathExists=/etc/dstar-radio.dstarrepeater' \
+    'ConditionPathExists=!/etc/dstar-radio.mmdvmhost' > "${dstar_temp}"
+sudo mkdir -p "${DSTAR_DROPIN_DIR}"
+sudo install -o root -g root -m 0644 "${dstar_temp}" "${DSTAR_DROPIN}"
+
+haveged_temp="$(make_temp_file)"
+printf '%s\n' '[Service]' 'SystemCallFilter=uname' > "${haveged_temp}"
+sudo mkdir -p "${HAVEGED_DROPIN_DIR}"
+sudo install -o root -g root -m 0644 "${haveged_temp}" "${HAVEGED_DROPIN}"
+
 sudo systemctl daemon-reload
+sudo systemctl reset-failed dstarrepeater.service systemd-remount-fs.service >/dev/null 2>&1 || true
+sudo systemctl restart haveged.service
 
 timesync_temp="$(make_temp_file)"
 {

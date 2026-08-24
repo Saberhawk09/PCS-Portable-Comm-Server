@@ -370,8 +370,11 @@ requires 30 continuous seconds of RTL8152 carrier and PCS reachability before
 mutation, then manages hostname, the marked `dhcpcd` static-address block on
 `eth0`, the final recoverable `disable-wifi` boot overlay, PCS NTP,
 Pi-Star's native Wi-Fi boot/AP guards, YSFGateway's GPSD client, and the unused
-local MobileGPS path. It does not contain, erase, or modify Wi-Fi passwords,
-callsigns, or digital-network credentials.
+local MobileGPS path. On the tested Bullseye image it also removes the obsolete
+cgroup tmpfs conflict, mirrors Pi-Star's native D-Star mode markers in a systemd
+condition, and permits the ARM `uname` syscall in `haveged`'s existing sandbox.
+It does not contain, erase, or modify Wi-Fi passwords, callsigns, radio-mode
+configuration, or digital-network credentials.
 
 See [Full-Stack Reinstall Runbook](../docs/full-stack-reinstall.md).
 

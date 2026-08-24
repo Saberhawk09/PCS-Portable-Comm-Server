@@ -241,6 +241,8 @@ The script is idempotent and manages only:
   the wired handoff is verified
 - a managed `rc.local` guard and Pi-Star AP-service condition that keep native
   boot behavior clean when `wlan0` is absent
+- cgroup-v2 fstab compatibility plus mode-aware D-Star and ARM `haveged`
+  service guards for the tested Pi-Star image
 - gateway, DNS, and preferred NTP server `10.42.0.1`
 - YSFGateway's native GPSD client at `10.42.0.1:2947`
 - disabling the unused local-serial MobileGPS path

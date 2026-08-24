@@ -28,6 +28,9 @@ All notable user-facing PCS changes are recorded here.
   reachability stability window before any filesystem or Wi-Fi mutation
 - guarded Pi-Star's native Wi-Fi boot and AP-service paths so wired-only boots
   still complete their read-only remount without false Wi-Fi service failures
+- cleaned Pi-Star native boot health by removing the cgroup-v2 fstab conflict,
+  guarding legacy D-Star startup with native mode markers, and allowing ARM
+  `uname` in the haveged service sandbox
 
 ## [1.2] - 2026-08-21
 
