@@ -119,7 +119,11 @@ Possible uplinks:
 - cellular uplink through WWAN modem
 - no uplink / offline LAN only
 
-Cellular data is intentionally controlled manually through the PCS Control Panel.
+Cellular policy is installer-selectable. The conservative default is manual
+control through the PCS Control Panel. In `wifi-fallback` mode, PCS starts
+cellular after sustained loss of active Wi-Fi and releases only a session it
+started after Wi-Fi is stably restored. The NetworkManager profile itself
+remains non-autoconnecting in both modes.
 The web panel reports offline-LAN-only operation as a Network-card warning while
 keeping overall health `OK - Offline` when local PCS services have no separate
 warning or fault. Loss of the `eth0` handoff or `10.42.0.1/24` gateway remains a

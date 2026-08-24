@@ -480,17 +480,32 @@ LAN port.
 
 ### setup-cellular-profile.sh
 
-Creates or updates the manual T-Mobile cellular profile:
+Creates or updates the T-Mobile cellular profile and installs the PCS fallback
+controller:
 
 ```text
 pcs-cellular-profile
 ```
 
-The profile uses APN `fast.t-mobile.com`, route metric `900`, and autoconnect disabled. Cellular data is connected manually from the PCS Control Panel.
+The profile uses APN `fast.t-mobile.com`, route metric `900`, and autoconnect
+disabled in every mode. Fresh installs default to manual control from the PCS
+Control Panel. If the installer selects `wifi-fallback`, the managed
+`pcs-cellular-fallback.service` starts cellular after 30 seconds without active
+Wi-Fi and releases only its own cellular session after Wi-Fi is stable for 30
+seconds.
+
+Set and persist the policy without rerunning the base installer:
+
+```bash
+./scripts/setup-cellular-profile.sh --fallback wifi-fallback
+./scripts/setup-cellular-profile.sh --fallback manual
+./scripts/setup-cellular-profile.sh --check
+```
 
 Fresh installs default to `pcs-cellular-profile`. Override the name, APN, or
 route metric in `config/pcs-install.conf` with `PCS_CELLULAR_PROFILE`,
-`PCS_CELLULAR_APN`, and `PCS_CELLULAR_ROUTE_METRIC`. Older installs that still
+`PCS_CELLULAR_APN`, and `PCS_CELLULAR_ROUTE_METRIC`. Select `manual` or
+`wifi-fallback` with `PCS_CELLULAR_FALLBACK_MODE`. Older installs that still
 have `pcs-cellular-tmobile` remain supported by the status, self-test, and web
 action scripts.
 

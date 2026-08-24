@@ -23,7 +23,7 @@ PUBLIC_DATA = {
     "overall": "ok",
     "system": {"status": "ok", "uptime": "2h", "local_time": "noon", "cpu_temperature": "42 C"},
     "network": {"status": "ok", "lan_gateway": "10.42.0.1", "openwrt_online": True, "internet_available": True, "uplink_type": "Wi-Fi", "connected_client_count": 3},
-    "cellular": {"status": "ok", "modem_present": True, "connected": False, "carrier": "Field Carrier", "signal": "Good", "imei": "must-not-render"},
+    "cellular": {"status": "ok", "modem_present": True, "connected": False, "carrier": "Field Carrier", "signal": "Good", "fallback_policy": "Automatic when Wi-Fi is unavailable", "fallback_active": True, "imei": "must-not-render"},
     "time": {"status": "ok", "chrony_active": True, "synchronized": True, "source": "GNSS"},
     "gnss": {"status": "ok", "receiver_active": True, "fix": "3D fix", "satellites": "8 used", "coordinates": "38.123456, -77.123456", "grid_square": "FM18kc"},
     "storage": {"status": "ok", "usb_mounted": True, "primary_share_available": True, "backup_share_available": True, "usb_free_gb": "40 GB", "backup_free_gb": "8 GB"},
@@ -100,6 +100,8 @@ class PublicDataTests(unittest.TestCase):
     def test_public_contract_removes_unapproved_fields(self):
         sanitized = pcs.sanitize_public_dashboard(PUBLIC_DATA)
         self.assertNotIn("imei", sanitized["cellular"])
+        self.assertEqual(sanitized["cellular"]["fallback_policy"], "Automatic when Wi-Fi is unavailable")
+        self.assertTrue(sanitized["cellular"]["fallback_active"])
         self.assertEqual(sanitized["gnss"]["coordinates"], "38.123456, -77.123456")
         self.assertEqual(sanitized["gnss"]["grid_square"], "FM18kc")
 

@@ -74,7 +74,7 @@ also unfinished.
 - Pi-side self-test and status scripts
 - USB primary Samba share with SD-card backup mirror
 - GPS NMEA from `/dev/ttyUSB1` through gpsd and Chrony to LAN clients
-- Manual cellular data control with Wi-Fi fallback during development and testing
+- Installer-selectable manual cellular control or automatic Wi-Fi-to-cellular fallback
 - LAN GPSD, NTP, and installer-assisted coordinated Pi-Star shutdown integration
 - Managed Dire Wolf 1.8.1 startup with SA818S programming, ALSA level restoration, LAN-only AGW/KISS access, and guarded activation/rollback
 - Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
@@ -161,16 +161,30 @@ nothing to commit, working tree clean
 PCS Pi-side self-test PASSED.
 ```
 
-An intentionally disconnected manual cellular profile is informational, not a
-self-test warning. Investigate every reported warning or failure before field use.
+An intentionally disconnected cellular profile is informational when manual
+mode is selected or Wi-Fi is active in automatic-fallback mode. Investigate
+every reported warning or failure before field use.
 
 For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
 ## Cellular Connection Note
 
-Cellular data is intentionally configured for manual control.
+Fresh installs ask whether cellular should remain manual or automatically serve
+as a fallback when Wi-Fi is unavailable; the conservative default is manual.
+The selected policy is saved in `config/pcs-install.conf`.
 
-After a fresh setup, the WWAN modem, GPS, and manual cellular profile should be detected and configured, but the cellular data connection will not be active until it is manually connected from the PCS Control Panel.
+In `wifi-fallback` mode, PCS waits 30 seconds after active Wi-Fi is lost before
+starting cellular. After Wi-Fi has been restored for 30 seconds, it disconnects
+only a cellular session that the fallback service started itself. The
+NetworkManager profile remains non-autoconnecting in both modes, and manually
+started cellular sessions remain under operator control.
+
+Change the installed policy at any time:
+
+```bash
+./scripts/setup-cellular-profile.sh --fallback wifi-fallback
+./scripts/setup-cellular-profile.sh --fallback manual
+```
 
 Open the PCS homepage and select **Admin Login**:
 

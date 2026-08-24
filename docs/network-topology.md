@@ -92,7 +92,9 @@ It should not provide DHCP in the current PCS design. The Pi should be the only 
 
 The EM7565 is connected to the Pi through a USB WWAN enclosure.
 
-Cellular data is optional and manually controlled. PCS should continue to provide local services even when cellular data is disconnected or unavailable.
+Cellular data is optional and can be manually controlled or selected as the
+automatic fallback for unavailable Wi-Fi. PCS should continue to provide local
+services even when both uplinks are disconnected or unavailable.
 
 ## GPS / Time Role
 

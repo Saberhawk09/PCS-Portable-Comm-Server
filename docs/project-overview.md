@@ -157,11 +157,15 @@ Pi-Star Dashboard:  http://10.42.0.3 (when selected during setup)
 
 ## Cellular Internet Philosophy
 
-Cellular internet is intentionally manual and optional.
+Cellular internet is optional. Fresh installs default to manual control and can
+instead enable automatic Wi-Fi-to-cellular fallback.
 
 PCS should remain useful even when cellular service is unavailable. The LAN, Samba shares, dashboard, RTC, and local NTP service should continue working without internet access.
 
-The cellular modem may be detected and configured, but the cellular data connection is expected to be manually controlled from the PCS Control Panel.
+The cellular modem may be detected and configured while data remains
+disconnected. In manual mode the PCS Control Panel owns connection changes. In
+`wifi-fallback` mode, PCS connects after sustained Wi-Fi loss and disconnects
+only the session it automatically started when Wi-Fi returns.
 
 This avoids unwanted reconnect behavior, surprise data usage, and confusing automatic state changes in the field.
 

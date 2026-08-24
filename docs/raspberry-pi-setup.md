@@ -91,7 +91,10 @@ Fail: 0
 Warn: 0
 ```
 
-Cellular data is intentionally manual. The setup creates the cellular profile, but it does not connect cellular data automatically.
+The setup asks whether cellular should remain manual or automatically fall back
+when Wi-Fi is unavailable. Manual is the default. Both policies keep
+NetworkManager profile autoconnect disabled so that the PCS controller, rather
+than NetworkManager, owns automatic state changes.
 
 ## Network Configuration
 
@@ -193,8 +196,9 @@ Chrony:   sees GPS source for LAN NTP
 
 Modem firmware and USB composition remain deliberate manual prerequisites when
 the known-good EM7565 baseline is not already present. Once Linux exposes the
-expected modem and NMEA devices, the PCS installer configures the manual cellular
-profile and can install the WWAN NMEA, gpsd, and Chrony service path.
+expected modem and NMEA devices, the PCS installer configures the cellular
+profile and chosen fallback policy and can install the WWAN NMEA, gpsd, and
+Chrony service path.
 
 GPS setup script:
 
@@ -219,9 +223,16 @@ For more detail, see [EM7565 GPS / GNSS Notes](em7565-gps-notes.md).
 
 ## Cellular Data
 
-Cellular data is intentionally manual.
+Cellular data is optional. The installer offers:
 
-The modem and GPS may be detected and configured, but the cellular data connection is not expected to auto-connect after setup.
+- `manual` (default): operators connect and disconnect from the PCS Control Panel.
+- `wifi-fallback`: PCS connects cellular after 30 seconds without active Wi-Fi
+  and disconnects its own cellular session after Wi-Fi is stable for 30 seconds.
+
+The modem and GPS may be detected and configured while cellular data remains
+disconnected. A saved Wi-Fi profile alone does not suppress fallback; `wlan0`
+must be actively connected. Manually started cellular sessions are not claimed
+or automatically disconnected by the fallback service.
 
 Open the PCS homepage and select **Admin Login**:
 
@@ -229,7 +240,7 @@ Open the PCS homepage and select **Admin Login**:
 http://10.42.0.1/
 ```
 
-Manual cellular control avoids:
+The default manual policy avoids:
 
 - surprise data usage
 - unwanted reconnect behavior

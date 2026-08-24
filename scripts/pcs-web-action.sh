@@ -19,6 +19,7 @@ LEGACY_CELLULAR_PROFILE="pcs-cellular-tmobile"
 CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${CELLULAR_PROFILE_DEFAULT}}"
 CELLULAR_APN="${PCS_CELLULAR_APN:-fast.t-mobile.com}"
 CELLULAR_ROUTE_METRIC="${PCS_CELLULAR_ROUTE_METRIC:-900}"
+CELLULAR_FALLBACK_MODE="${PCS_CELLULAR_FALLBACK_MODE:-manual}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
 PISTAR_HOST="${PCS_PISTAR_HOST:-10.42.0.3}"
 PISTAR_USER="${PCS_PISTAR_USER:-pi-star}"
@@ -513,6 +514,7 @@ def install_config():
 
 CONFIG = install_config()
 CELLULAR_PROFILE = CONFIG.get("PCS_CELLULAR_PROFILE", CELLULAR_PROFILE_DEFAULT)
+CELLULAR_FALLBACK_MODE = CONFIG.get("PCS_CELLULAR_FALLBACK_MODE", "manual").lower()
 PI_STAR_CONFIGURED = CONFIG.get("PCS_SETUP_PISTAR", "no").lower() == "yes"
 APRS_STATE = CONFIG.get("PCS_SETUP_APRS", "no").lower()
 APRS_STAGED = APRS_STATE == "staged"
@@ -1932,6 +1934,8 @@ core_services = {
     "cockpit.socket": active("cockpit.socket"),
     "pcs-control-panel.service": active("pcs-control-panel.service"),
 }
+if CELLULAR_FALLBACK_MODE == "wifi-fallback":
+    core_services["pcs-cellular-fallback.service"] = active("pcs-cellular-fallback.service")
 
 mm_rc, mm_out, _ = run(["mmcli", "-L"], timeout=5)
 modem_present = "/Modem/" in mm_out
@@ -1942,6 +1946,9 @@ cell_ip_state = cellular_ip_assignment_state(cell_nm.get("ip_iface"))
 cell_profile_name = cellular_profile_name()
 cell_profile_present = cellular_profile_exists(cell_profile_name)
 cell_route_metric = cellular_route_metric(cell_profile_name)
+cellular_fallback_enabled = CELLULAR_FALLBACK_MODE == "wifi-fallback"
+cellular_fallback_service_active = active("pcs-cellular-fallback.service")
+cellular_fallback_owned = file_text("/run/pcs-cellular-fallback-owned") == cell_profile_name
 gpsd_active = active("gpsd")
 gps_info = merge_gps_info(merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
 
@@ -2112,6 +2119,24 @@ services_status = "ok" if all(core_services.values()) else "warn"
 cellular_registered = cell_info.get("registration") in {"home", "roaming"}
 cellular_connected = cell_nm.get("state") == "connected"
 cellular_status = "ok" if modem_present and (cellular_registered or cellular_connected) else "warn"
+cellular_policy_label = (
+    "Automatic when Wi-Fi is unavailable"
+    if cellular_fallback_enabled
+    else "Manual"
+)
+cellular_summary = (
+    "Cellular data connected"
+    if cellular_connected
+    else "Modem ready; automatic Wi-Fi fallback armed"
+    if cellular_registered and cellular_fallback_enabled and cellular_fallback_service_active
+    else "Modem ready; fallback configured but service inactive"
+    if cellular_registered and cellular_fallback_enabled
+    else "Modem ready; cellular data is manual"
+    if cellular_registered
+    else "Modem detected; waiting for network registration"
+    if modem_present
+    else "Waiting for WWAN modem hardware"
+)
 gps_has_modem_data = gps_info.get("gps_data") == "present"
 gps_fix_text = str(gps_info.get("fix_quality", "")).lower()
 gps_has_valid_fix = any(term in gps_fix_text for term in [
@@ -2468,27 +2493,20 @@ cards = [
         "id": "cellular",
         "title": "Cellular / WWAN",
         "status": cellular_status,
-        "summary": (
-            "Cellular data connected"
-            if cellular_connected
-            else "Modem ready; cellular data is manual"
-            if cellular_registered
-            else "Modem detected; waiting for network registration"
-            if modem_present
-            else "Waiting for WWAN modem hardware"
-        ),
+        "summary": cellular_summary,
         "items": [
             {
                 "label": "PCS cellular state",
-                "value": (
-                    "Cellular data connected"
-                    if cellular_connected
-                    else "Modem ready; cellular data is manual"
-                    if cellular_registered
-                    else "Modem detected; waiting for network registration"
-                    if modem_present
-                    else "No WWAN modem detected"
-                ),
+                "value": cellular_summary,
+            },
+            {"label": "Fallback policy", "value": cellular_policy_label},
+            {
+                "label": "Fallback service",
+                "value": "active" if cellular_fallback_service_active else "inactive",
+            },
+            {
+                "label": "Session ownership",
+                "value": "automatic fallback" if cellular_fallback_owned else "manual or disconnected",
             },
             {"label": "ModemManager", "value": "active" if active("ModemManager") else "inactive"},
             {"label": "WWAN modem", "value": "detected" if modem_present else "not detected yet"},
@@ -2692,6 +2710,8 @@ if PUBLIC_VIEW:
             "carrier": cellular_items.get("Operator", "unknown"),
             "access_technology": cellular_items.get("Access tech", "unknown"),
             "signal": signal_quality_label(cellular_items.get("Signal quality", "")),
+            "fallback_policy": cellular_policy_label,
+            "fallback_active": cellular_fallback_service_active,
         },
         "time": {
             "status": time_status,
@@ -2926,6 +2946,17 @@ cellular_safe_status() {
             || true
     else
         echo "${cell_con} profile does not exist yet"
+    fi
+
+    echo
+    echo "--- Cellular fallback policy ---"
+    echo "Configured policy: ${CELLULAR_FALLBACK_MODE}"
+    echo "Fallback service enabled: $(systemctl is-enabled pcs-cellular-fallback.service 2>/dev/null || true)"
+    echo "Fallback service active: $(systemctl is-active pcs-cellular-fallback.service 2>/dev/null || true)"
+    if [[ -e /run/pcs-cellular-fallback-owned ]]; then
+        echo "Session ownership: automatic fallback"
+    else
+        echo "Session ownership: manual or disconnected"
     fi
 
     echo
@@ -3206,6 +3237,9 @@ cellular_disconnect() {
 
     if nmcli -t -f NAME connection show | grep -qx "${cell_con}"; then
         nmcli connection down "${cell_con}" || true
+        if [[ "${CELLULAR_FALLBACK_MODE}" == "wifi-fallback" ]]; then
+            echo "Automatic fallback remains armed and may reconnect cellular while Wi-Fi is unavailable."
+        fi
     else
         echo "Connection ${cell_con} does not exist."
     fi

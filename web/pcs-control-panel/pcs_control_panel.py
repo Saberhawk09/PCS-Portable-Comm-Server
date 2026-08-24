@@ -45,8 +45,8 @@ ACTIONS = [
     ("wifi-connect", "Connect Wi-Fi", "Connect to the strongest visible saved Wi-Fi network."),
     ("wifi-disconnect", "Disable Wi-Fi Radio", "Turn off Pi Wi-Fi for offline or cellular-only operation."),
     ("cellular-status", "View Cellular", "Show WWAN modem and cellular connection state."),
-    ("cellular-connect", "Connect Cellular", "Bring up the manual cellular data connection."),
-    ("cellular-disconnect", "Disconnect Cellular", "Bring down the manual cellular data connection."),
+    ("cellular-connect", "Connect Cellular", "Bring up cellular data without changing the fallback policy."),
+    ("cellular-disconnect", "Disconnect Cellular", "Bring down cellular data; automatic mode may reconnect it if Wi-Fi is unavailable."),
     ("cellular-test", "Test Cellular", "Test cellular-only internet through the WWAN interface."),
     ("meshtastic-status", "View Meshtastic", "Show privacy-safe node, mesh, MQTT, GPSD, and environment status."),
     ("restart-meshtastic", "Restart Meshtastic", "Reconnect the Meshtastic radio transport and MQTT gateway."),
@@ -311,7 +311,7 @@ PUBLIC_CACHE = TimedCache()
 PUBLIC_FIELDS = {
     "system": {"status", "uptime", "local_time", "cpu_temperature", "cpu_load", "memory_used", "root_storage_used"},
     "network": {"status", "offline", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "uplink_type", "connected_client_count"},
-    "cellular": {"status", "modem_present", "connected", "carrier", "access_technology", "signal"},
+    "cellular": {"status", "modem_present", "connected", "carrier", "access_technology", "signal", "fallback_policy", "fallback_active"},
     "time": {"status", "chrony_active", "synchronized", "source", "reference"},
     "gnss": {"status", "receiver_active", "fix", "satellites", "coordinates", "grid_square", "utc_time"},
     "storage": {"status", "usb_mounted", "primary_share_available", "backup_share_available", "usb_free_gb", "backup_free_gb"},
@@ -537,7 +537,8 @@ def render_public_page(data: dict) -> bytes:
         public_card("Cellular", cellular, [
             ("Modem present", "modem_present", False), ("Connected", "connected", False),
             ("Carrier", "carrier", "unknown"), ("Access technology", "access_technology", "unknown"),
-            ("Signal", "signal", "unknown"),
+            ("Signal", "signal", "unknown"), ("Fallback policy", "fallback_policy", "Manual"),
+            ("Fallback service active", "fallback_active", False),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),
         public_card("GNSS Position", gnss, [
             ("Receiver active", "receiver_active", False), ("Fix", "fix", "unknown"),

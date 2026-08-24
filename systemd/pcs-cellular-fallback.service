@@ -1,0 +1,26 @@
+[Unit]
+Description=PCS automatic Wi-Fi-to-cellular fallback
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/sbin/pcs-cellular-fallback --config /etc/pcs/cellular-fallback.conf
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX
+DevicePolicy=closed
+
+[Install]
+WantedBy=multi-user.target

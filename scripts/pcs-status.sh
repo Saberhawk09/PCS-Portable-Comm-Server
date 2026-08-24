@@ -34,6 +34,8 @@ fi
 PCS_CELLULAR_PROFILE_DEFAULT="pcs-cellular-profile"
 PCS_CELLULAR_PROFILE_LEGACY="pcs-cellular-tmobile"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
+PCS_CELLULAR_FALLBACK_MODE="${PCS_CELLULAR_FALLBACK_MODE:-manual}"
+PCS_CELLULAR_FALLBACK_MARKER="/run/pcs-cellular-fallback-owned"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
 PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-no}"
 PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-no}"
@@ -241,6 +243,25 @@ if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_P
         || true
 else
     echo "${PCS_CELLULAR_PROFILE_ACTIVE} profile does not exist"
+fi
+
+echo
+echo "[Cellular fallback policy]"
+echo "Configured policy: ${PCS_CELLULAR_FALLBACK_MODE}"
+if systemctl is-enabled --quiet pcs-cellular-fallback.service 2>/dev/null; then
+    echo "pcs-cellular-fallback.service enabled: yes"
+else
+    echo "pcs-cellular-fallback.service enabled: no"
+fi
+if systemctl is-active --quiet pcs-cellular-fallback.service 2>/dev/null; then
+    echo "pcs-cellular-fallback.service active: yes"
+else
+    echo "pcs-cellular-fallback.service active: no"
+fi
+if [[ -e "${PCS_CELLULAR_FALLBACK_MARKER}" ]]; then
+    echo "Cellular session ownership: automatic fallback"
+else
+    echo "Cellular session ownership: manual or disconnected"
 fi
 
 echo
@@ -542,7 +563,11 @@ if systemctl is-active --quiet ModemManager; then
         if nmcli device status 2>/dev/null | awk '$2 == "gsm" && $3 == "connected" { found=1 } END { exit found ? 0 : 1 }'; then
             WWAN_SUMMARY="modem detected, cellular connected"
         else
-            WWAN_SUMMARY="modem detected, cellular disconnected/manual"
+            if [[ "${PCS_CELLULAR_FALLBACK_MODE}" == "wifi-fallback" ]]; then
+                WWAN_SUMMARY="modem detected, cellular standby (automatic Wi-Fi fallback)"
+            else
+                WWAN_SUMMARY="modem detected, cellular disconnected/manual"
+            fi
         fi
     else
         WWAN_SUMMARY="ModemManager active, no modem detected"
@@ -831,7 +856,11 @@ echo "- PCS public status is available at http://${PCS_ROUTER_IP}/ on the router
 echo "- Authenticated operator controls are available through the visible Admin Login panel or http://${PCS_ROUTER_IP}/admin/."
 echo "- WWAN modem and GPS NMEA are supported and tested."
 echo "- GPSD is expected to be active when WWAN modem GPS setup is installed."
-echo "- EM7565 LTE registration, NMEA, GPSD, and GPS-disciplined Chrony are validated; cellular data remains manually controlled."
+if [[ "${PCS_CELLULAR_FALLBACK_MODE}" == "wifi-fallback" ]]; then
+    echo "- EM7565 LTE registration, NMEA, GPSD, and GPS-disciplined Chrony are validated; cellular data is armed as an automatic Wi-Fi fallback."
+else
+    echo "- EM7565 LTE registration, NMEA, GPSD, and GPS-disciplined Chrony are validated; cellular data remains manually controlled."
+fi
 echo
 
 echo "=== End PCS Status ==="
