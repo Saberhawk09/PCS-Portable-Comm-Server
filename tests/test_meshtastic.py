@@ -183,10 +183,20 @@ class MeshtasticStatusTests(unittest.TestCase):
             nodes={},
             myInfo=None,
             metadata=None,
-            localNode=SimpleNamespace(moduleConfig=SimpleNamespace(mqtt=radio_mqtt)),
+            localNode=SimpleNamespace(
+                moduleConfig=SimpleNamespace(mqtt=radio_mqtt),
+                localConfig=SimpleNamespace(lora=SimpleNamespace(config_ok_to_mqtt=True)),
+                channels=[SimpleNamespace(settings=SimpleNamespace(
+                    psk=b"\x01",
+                    uplink_enabled=True,
+                    downlink_enabled=True,
+                ))],
+            ),
         )
         gateway.ble_connected = True
         gateway.mqtt_connected = True
+        gateway.map_mqtt_enabled = True
+        gateway.map_mqtt_connected = True
         gateway.args = SimpleNamespace(
             port="/dev/ttyACM0",
             mqtt_host="mqtt.neomesh.org",
@@ -198,6 +208,7 @@ class MeshtasticStatusTests(unittest.TestCase):
         gateway.last_position_update = None
         gateway.counts = {"mqtt_uplink": 1}
         gateway.radio_to_mqtt = SimpleNamespace(qsize=lambda: 0)
+        gateway.radio_to_map_mqtt = SimpleNamespace(qsize=lambda: 0)
         gateway.mqtt_to_radio = SimpleNamespace(qsize=lambda: 0)
 
         with mock.patch.object(
@@ -211,6 +222,12 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertTrue(status["gateway"]["radio_proxy_enabled"])
         self.assertTrue(status["gateway"]["map_reporting_enabled"])
         self.assertTrue(status["gateway"]["map_location_opt_in"])
+        self.assertTrue(status["gateway"]["map_mqtt_configured"])
+        self.assertTrue(status["gateway"]["map_mqtt_connected"])
+        self.assertTrue(status["gateway"]["radio_ok_to_mqtt"])
+        self.assertTrue(status["gateway"]["primary_channel_uplink"])
+        self.assertTrue(status["gateway"]["primary_channel_default_key"])
+        self.assertTrue(status["gateway"]["rf_igate_ready"])
         self.assertEqual(status["gateway"]["map_publish_interval_secs"], 3600)
         self.assertEqual(status["gateway"]["map_position_precision"], 15)
         serialized = json.dumps(status)
@@ -317,6 +334,21 @@ class MeshtasticStatusTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             meshtastic_gateway.parse_subscriptions("msh/US/2/e/+/+")
 
+    def test_map_mirror_allows_only_public_longfast_uplink(self):
+        self.assertTrue(
+            meshtastic_gateway.map_mirror_topic_allowed(
+                "msh/US/OH/2/e/LongFast/!gateway"
+            )
+        )
+        self.assertFalse(
+            meshtastic_gateway.map_mirror_topic_allowed(
+                "msh/US/OH/2/e/private-channel/!gateway"
+            )
+        )
+        self.assertFalse(
+            meshtastic_gateway.map_mirror_topic_allowed("msh/US/OH/2/e/PKI/!gateway")
+        )
+
     def test_proxy_payload_preserves_binary_and_encodes_text(self):
         class ProxyMessage:
             def __init__(self, variant, data=b"", text=""):
@@ -355,6 +387,9 @@ class MeshtasticStatusTests(unittest.TestCase):
             def reconnect_delay_set(self, **_kwargs):
                 pass
 
+            def username_pw_set(self, *_args, **_kwargs):
+                pass
+
             def publish(self, topic, payload, qos, retain):
                 self.published.append((topic, payload, qos, retain))
                 return PublishInfo()
@@ -379,7 +414,7 @@ class MeshtasticStatusTests(unittest.TestCase):
                 self.sent.append((topic, payload))
 
         class ProxyMessage:
-            topic = "msh/US/2/e/channel/!gateway"
+            topic = "msh/US/2/e/LongFast/!gateway"
             data = b"\x01\x02service-envelope"
             text = ""
             retained = False
@@ -395,6 +430,12 @@ class MeshtasticStatusTests(unittest.TestCase):
             mqtt_tls=False,
             mqtt_ca_file="",
             mqtt_subscriptions=(),
+            map_mqtt_host="mqtt.meshtastic.liamcottle.net",
+            map_mqtt_client_id="pcs-test-map",
+            map_mqtt_username="uplink",
+            map_mqtt_password="uplink",
+            map_mqtt_tls=False,
+            map_mqtt_ca_file="",
             status_file="unused.json",
         )
         gateway = meshtastic_gateway.Gateway(args, FakeMqtt, FakePub())
@@ -402,6 +443,7 @@ class MeshtasticStatusTests(unittest.TestCase):
         gateway.interface = interface
         gateway.ble_connected = True
         gateway.mqtt_connected = True
+        gateway.map_mqtt_connected = True
 
         gateway._on_proxy_message(ProxyMessage(), interface)
         gateway._drain()
@@ -409,6 +451,11 @@ class MeshtasticStatusTests(unittest.TestCase):
             gateway.client.published,
             [(ProxyMessage.topic, ProxyMessage.data, 0, False)],
         )
+        self.assertEqual(
+            gateway.map_client.published,
+            [(ProxyMessage.topic, ProxyMessage.data, 0, False)],
+        )
+        self.assertEqual(gateway.counts["map_mqtt_uplink"], 1)
 
         echoed = SimpleNamespace(topic=ProxyMessage.topic, payload=ProxyMessage.data)
         gateway._on_mqtt_message(None, None, echoed)
@@ -593,6 +640,10 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn("EnvironmentFile=-/etc/pcs/meshtastic-mqtt.env", service)
         self.assertIn("--import-radio-mqtt", setup)
         self.assertIn('"${IMPORT_TARGET}" --device "${device}" --output "${credential_temp}"', setup)
+        self.assertIn("--enable-neomesh-map", setup)
+        self.assertIn('NEOMESH_MAP_MQTT_HOST="mqtt.meshtastic.liamcottle.net"', setup)
+        self.assertIn('PCS_MESHTASTIC_MAP_MQTT_USERNAME=', setup)
+        self.assertIn('PCS_MESHTASTIC_MAP_MQTT_PASSWORD=', setup)
 
     def test_mqtt_import_quotes_environment_values_without_printing_secrets(self):
         self.assertEqual(meshtastic_import_mqtt.quote_environment_value("mesh"), '"mesh"')

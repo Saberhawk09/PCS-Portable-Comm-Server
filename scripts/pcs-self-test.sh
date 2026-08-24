@@ -935,10 +935,12 @@ case "${PCS_SETUP_MESHTASTIC}" in
 
             MESHTASTIC_GPSD_POSITION="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_GPSD_POSITION" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
             MESHTASTIC_PORT="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_PORT" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
+            MESHTASTIC_MAP_MQTT_HOST="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_MAP_MQTT_HOST" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
             EXPECTED_MESHTASTIC_TRANSPORT="bluetooth-le"
             [[ -n "${MESHTASTIC_PORT}" ]] && EXPECTED_MESHTASTIC_TRANSPORT="usb-serial"
 
             if PCS_MESHTASTIC_GPSD_POSITION="${MESHTASTIC_GPSD_POSITION}" \
+                PCS_MESHTASTIC_MAP_MQTT_HOST="${MESHTASTIC_MAP_MQTT_HOST}" \
                 EXPECTED_MESHTASTIC_TRANSPORT="${EXPECTED_MESHTASTIC_TRANSPORT}" \
                 python3 -c '
 import json
@@ -954,6 +956,14 @@ assert status["gateway"]["mqtt_connected"] is True
 assert status["gateway"]["radio_mqtt_enabled"] is True
 assert status["gateway"]["radio_proxy_enabled"] is True
 assert status["gateway"]["radio_broker_matches"] is True
+if os.environ.get("PCS_MESHTASTIC_MAP_MQTT_HOST"):
+    assert status["gateway"]["map_mqtt_configured"] is True
+    assert status["gateway"]["map_mqtt_connected"] is True
+    assert status["gateway"]["counters"]["map_mqtt_uplink"] > 0
+    assert status["gateway"]["radio_ok_to_mqtt"] is True
+    assert status["gateway"]["primary_channel_uplink"] is True
+    assert status["gateway"]["primary_channel_default_key"] is True
+    assert status["gateway"]["rf_igate_ready"] is True
 assert 0 <= time.time() - status["collected_at_epoch"] <= 60
 assert status["privacy"]["messages_stored"] is False
 assert status["privacy"]["remote_identities_stored"] is False

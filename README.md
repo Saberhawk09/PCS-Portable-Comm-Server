@@ -58,8 +58,9 @@ The exact as-built electrical and mechanical record is also unfinished.
 - GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
 - SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
 - RAK4631 Meshtastic expansion connected over USB with validated persistent
-  NeoMesh MQTT proxy, GPSD position delivery, and hourly map reporting; public
-  map appearance, mesh RF behavior, and sensor accuracy remain operator checkpoints
+  NeoMesh MQTT proxy, GPSD position delivery, hourly map reporting, and an
+  uplink-only mirror for the MQTT map embedded on the NeoMesh Meshtastic page;
+  public frontend appearance and sensor accuracy remain operator checkpoints
 
 ### Software
 

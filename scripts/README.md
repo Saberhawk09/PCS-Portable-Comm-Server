@@ -58,6 +58,8 @@ Meshtastic node and transparently relays its MQTT client-proxy traffic:
 ./scripts/setup-meshtastic-bluetooth.sh --configure-usb /dev/ttyACM0 MQTT_HOST MQTT_PORT
 ./scripts/setup-meshtastic-bluetooth.sh --enable-gpsd-position
 ./scripts/setup-meshtastic-bluetooth.sh --disable-gpsd-position
+./scripts/setup-meshtastic-bluetooth.sh --enable-neomesh-map
+./scripts/setup-meshtastic-bluetooth.sh --disable-neomesh-map
 ./scripts/setup-meshtastic-bluetooth.sh --check
 ```
 
@@ -66,8 +68,11 @@ selected transport connected continuously. USB configuration disables the
 node's Bluetooth radio and exposes only `/dev/ttyACM0` inside the hardened
 service. MQTT downlink starts with no subscriptions and must be given exact
 topic filters deliberately. The optional GPSD feed sends a fresh local fix at a
-bounded interval without retaining coordinates. The installed status command
-reads the running gateway snapshot without reopening the radio. The public and
+bounded interval without retaining coordinates. The optional NeoMesh page
+integration preserves the primary broker and mirrors uplink only to the
+separate broker consumed by its embedded MQTT coverage map; it never subscribes
+the radio to that public broker. The installed status command reads the running
+gateway snapshot without reopening the radio. The public and
 authenticated dashboards expose only approved aggregate node, MQTT, mesh,
 GPSD, utilization, power, and environment fields. See
 [Meshtastic USB/Bluetooth MQTT Gateway](../docs/meshtastic-bluetooth-gateway.md).

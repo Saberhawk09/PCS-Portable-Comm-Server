@@ -9,6 +9,9 @@ All notable user-facing PCS changes are recorded here.
 - commissioned NeoMesh forwarding health for the live RAK4631, including
   encrypted primary-channel uplink/downlink, serial Client Proxy, broker-match
   validation, and opted-in hourly map-report status
+- optional uplink-only mirroring to the separate MQTT broker used by the
+  coverage map embedded at `neome.sh/meshtastic/`, with connection and publish
+  health exposed without public-broker downlink
 - exposed the privacy-safe radio forwarding and public-map policy on the public
   and authenticated Meshtastic dashboard cards
 - managed SA818S initialization over `/dev/serial0` with exact group readback

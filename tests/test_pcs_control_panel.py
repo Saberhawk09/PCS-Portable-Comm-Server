@@ -220,9 +220,11 @@ class PublicDataTests(unittest.TestCase):
             "mqtt": "connected",
             "broker": "mqtt.neomesh.org:1883 (plaintext)",
             "mqtt_policy": "enabled / client proxy / broker matched",
+            "rf_igate": "ready; public LongFast RF uplink with sender consent",
             "map_reporting": "enabled; location opted in; every 60m; precision 15",
             "downlink_filters": 2,
             "mqtt_activity": "4 up / 2 down",
+            "map_mqtt": "connected; 4 mirrored uplinks",
             "mesh_activity": "12 RX / 7 TX",
             "remote_nodes": "2 recent / 3 observed",
             "last_heard": "2026-08-24T03:30:00+00:00",
@@ -241,7 +243,9 @@ class PublicDataTests(unittest.TestCase):
         self.assertIn("W8IJC PCS Portable Node (IJC1)", page)
         self.assertIn("mqtt.neomesh.org:1883 (plaintext)", page)
         self.assertIn("enabled / client proxy / broker matched", page)
+        self.assertIn("ready; public LongFast RF uplink with sender consent", page)
         self.assertIn("enabled; location opted in; every 60m; precision 15", page)
+        self.assertIn("connected; 4 mirrored uplinks", page)
         self.assertIn("GPSD active; 4 sent; last 2m ago", page)
         self.assertNotIn("mqtt_password", sanitized["meshtastic"])
         self.assertNotIn("subscription_topics", sanitized["meshtastic"])

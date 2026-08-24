@@ -6,6 +6,8 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
 MESHTASTIC_VERSION="2.7.11"
 PAHO_MQTT_VERSION="2.1.0"
+NEOMESH_MAP_MQTT_HOST="mqtt.meshtastic.liamcottle.net"
+NEOMESH_MAP_MQTT_PORT="1883"
 VENV_DIR="/opt/pcs-meshtastic"
 ENV_FILE="/etc/pcs/meshtastic.env"
 MQTT_SECRET_FILE="/etc/pcs/meshtastic-mqtt.env"
@@ -28,7 +30,7 @@ BLUETOOTH_READY_SERVICE_SOURCE="${REPO_DIR}/systemd/pcs-bluetooth-ready.service"
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--refresh|--scan|--import-radio-mqtt DEVICE|--configure DEVICE MQTT_HOST [MQTT_PORT]|--configure-usb /dev/ttyACM0 MQTT_HOST [MQTT_PORT]|--enable-gpsd-position|--disable-gpsd-position|--check|--disable
+Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--refresh|--scan|--import-radio-mqtt DEVICE|--configure DEVICE MQTT_HOST [MQTT_PORT]|--configure-usb /dev/ttyACM0 MQTT_HOST [MQTT_PORT]|--enable-gpsd-position|--disable-gpsd-position|--enable-neomesh-map|--disable-neomesh-map|--check|--disable
 
   --prepare           Install pinned Bluetooth/MQTT support; leave gateway disabled.
   --refresh           Refresh managed gateway files while preserving active/staged state.
@@ -41,6 +43,10 @@ Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--refresh|--scan|--impo
                       Send a fresh PCS GPSD fix through the node every five minutes.
   --disable-gpsd-position
                       Stop supplying PCS GPSD fixes to the node.
+  --enable-neomesh-map
+                      Mirror uplink only to the MQTT map embedded at neome.sh.
+  --disable-neomesh-map
+                      Disable only the public map mirror; preserve NeoMesh MQTT.
   --check             Inspect installed, paired, gateway service, and status state.
   --disable           Stop and disable the PCS gateway without changing the radio.
 
@@ -142,6 +148,9 @@ prepare() {
             printf 'PCS_MESHTASTIC_MQTT_PORT=1883\n'
             printf 'PCS_MESHTASTIC_MQTT_TLS=no\n'
             printf 'PCS_MESHTASTIC_MQTT_SUBSCRIPTIONS=\n'
+            printf 'PCS_MESHTASTIC_MAP_MQTT_HOST=\n'
+            printf 'PCS_MESHTASTIC_MAP_MQTT_PORT=1883\n'
+            printf 'PCS_MESHTASTIC_MAP_MQTT_TLS=no\n'
             printf 'PCS_MESHTASTIC_GPSD_POSITION=no\n'
             printf 'PCS_MESHTASTIC_POSITION_INTERVAL=300\n'
             printf 'PCS_MESHTASTIC_POSITION_CHANNEL=0\n'
@@ -155,6 +164,8 @@ prepare() {
         {
             printf 'PCS_MESHTASTIC_MQTT_USERNAME=\n'
             printf 'PCS_MESHTASTIC_MQTT_PASSWORD=\n'
+            printf 'PCS_MESHTASTIC_MAP_MQTT_USERNAME=\n'
+            printf 'PCS_MESHTASTIC_MAP_MQTT_PASSWORD=\n'
         } > "${secret_temp}"
         sudo install -o root -g root -m 0600 "${secret_temp}" "${MQTT_SECRET_FILE}"
         rm -f "${secret_temp}"
@@ -353,6 +364,62 @@ set_gpsd_position() {
     echo "PCS GPSD position feed: ${value}"
 }
 
+set_neomesh_map() {
+    require_normal_user
+    require_prepared
+    local enabled="$1"
+    local env_temp
+    local secret_temp
+    local map_host=""
+    local map_username=""
+    local map_password=""
+
+    if [[ "${enabled}" == "yes" ]]; then
+        map_host="${NEOMESH_MAP_MQTT_HOST}"
+        # These are the public, uplink-only credentials published by the map.
+        map_username="uplink"
+        map_password="uplink"
+    fi
+
+    env_temp="$(mktemp)"
+    secret_temp="$(mktemp)"
+    trap 'rm -f -- "${env_temp}" "${secret_temp}"' RETURN
+    sudo awk -F= -v host="${map_host}" -v port="${NEOMESH_MAP_MQTT_PORT}" '
+        BEGIN { host_seen=0; port_seen=0; tls_seen=0 }
+        $1 == "PCS_MESHTASTIC_MAP_MQTT_HOST" { print $1 "=" host; host_seen=1; next }
+        $1 == "PCS_MESHTASTIC_MAP_MQTT_PORT" { print $1 "=" port; port_seen=1; next }
+        $1 == "PCS_MESHTASTIC_MAP_MQTT_TLS" { print $1 "=no"; tls_seen=1; next }
+        { print }
+        END {
+            if (!host_seen) print "PCS_MESHTASTIC_MAP_MQTT_HOST=" host
+            if (!port_seen) print "PCS_MESHTASTIC_MAP_MQTT_PORT=" port
+            if (!tls_seen) print "PCS_MESHTASTIC_MAP_MQTT_TLS=no"
+        }
+    ' "${ENV_FILE}" > "${env_temp}"
+    sudo awk -F= -v username="${map_username}" -v password="${map_password}" '
+        BEGIN { username_seen=0; password_seen=0 }
+        $1 == "PCS_MESHTASTIC_MAP_MQTT_USERNAME" { print $1 "=" username; username_seen=1; next }
+        $1 == "PCS_MESHTASTIC_MAP_MQTT_PASSWORD" { print $1 "=" password; password_seen=1; next }
+        { print }
+        END {
+            if (!username_seen) print "PCS_MESHTASTIC_MAP_MQTT_USERNAME=" username
+            if (!password_seen) print "PCS_MESHTASTIC_MAP_MQTT_PASSWORD=" password
+        }
+    ' "${MQTT_SECRET_FILE}" > "${secret_temp}"
+    sudo install -o root -g root -m 0600 "${env_temp}" "${ENV_FILE}"
+    sudo install -o root -g root -m 0600 "${secret_temp}" "${MQTT_SECRET_FILE}"
+    rm -f -- "${env_temp}" "${secret_temp}"
+    trap - RETURN
+    sudo systemctl restart pcs-meshtastic.service
+
+    if [[ "${enabled}" == "yes" ]]; then
+        echo "Enabled uplink-only mirror for the MQTT coverage map embedded at neome.sh."
+        echo "The existing NeoMesh broker and its constrained downlink filters were preserved."
+    else
+        echo "Disabled the embedded-map MQTT mirror; the existing NeoMesh broker was preserved."
+    fi
+}
+
 check() {
     echo "=== PCS Meshtastic USB/Bluetooth ==="
     echo "Pinned client: Meshtastic Python ${MESHTASTIC_VERSION}; Paho MQTT ${PAHO_MQTT_VERSION}"
@@ -369,6 +436,7 @@ check() {
     echo "BLE target:    $(has_config_value PCS_MESHTASTIC_DEVICE && echo configured || echo not-configured)"
     echo "USB target:    $(has_config_value PCS_MESHTASTIC_PORT && echo configured || echo not-configured)"
     echo "MQTT broker:   $(has_config_value PCS_MESHTASTIC_MQTT_HOST && echo configured || echo not-configured)"
+    echo "Map mirror:    $(has_config_value PCS_MESHTASTIC_MAP_MQTT_HOST && echo configured || echo not-configured)"
     echo "GPSD position:  $(sudo awk -F= '$1 == "PCS_MESHTASTIC_GPSD_POSITION" { print $2; exit }' "${ENV_FILE}" 2>/dev/null || true)"
     if [[ -r "${STATUS_FILE}" ]]; then
         echo "Status:"
@@ -412,6 +480,12 @@ case "${1:-}" in
         ;;
     --disable-gpsd-position)
         set_gpsd_position no
+        ;;
+    --enable-neomesh-map)
+        set_neomesh_map yes
+        ;;
+    --disable-neomesh-map)
+        set_neomesh_map no
         ;;
     --disable)
         disable

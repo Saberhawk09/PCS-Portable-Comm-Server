@@ -2182,9 +2182,12 @@ meshtastic_connected = (
     and bool(meshtastic_gateway.get("ble_connected"))
 )
 meshtastic_mqtt_connected = bool(meshtastic_gateway.get("mqtt_connected"))
+meshtastic_map_mqtt_configured = bool(meshtastic_gateway.get("map_mqtt_configured"))
+meshtastic_map_mqtt_connected = bool(meshtastic_gateway.get("map_mqtt_connected"))
 meshtastic_radio_mqtt_enabled = bool(meshtastic_gateway.get("radio_mqtt_enabled"))
 meshtastic_radio_proxy_enabled = bool(meshtastic_gateway.get("radio_proxy_enabled"))
 meshtastic_radio_broker_matches = bool(meshtastic_gateway.get("radio_broker_matches"))
+meshtastic_rf_igate_ready = bool(meshtastic_gateway.get("rf_igate_ready"))
 meshtastic_radio_policy_ok = all((
     meshtastic_radio_mqtt_enabled,
     meshtastic_radio_proxy_enabled,
@@ -2223,10 +2226,21 @@ meshtastic_mqtt_activity = (
     f"{int(number_value(meshtastic_counters.get('mqtt_uplink')) or 0)} up / "
     f"{int(number_value(meshtastic_counters.get('mqtt_downlink')) or 0)} down"
 )
+meshtastic_map_mqtt_activity = (
+    f"{'connected' if meshtastic_map_mqtt_connected else 'disconnected'}; "
+    f"{int(number_value(meshtastic_counters.get('map_mqtt_uplink')) or 0)} mirrored uplinks"
+    if meshtastic_map_mqtt_configured
+    else "not configured"
+)
 meshtastic_radio_policy_label = (
     "enabled / client proxy / broker matched"
     if meshtastic_radio_policy_ok
     else "radio MQTT, Client Proxy, or broker mismatch"
+)
+meshtastic_rf_igate_label = (
+    "ready; public LongFast RF uplink with sender consent"
+    if meshtastic_rf_igate_ready
+    else "not ready; check LongFast key, uplink, and OK to MQTT"
 )
 meshtastic_map_enabled = bool(meshtastic_gateway.get("map_reporting_enabled"))
 meshtastic_map_location = bool(meshtastic_gateway.get("map_location_opt_in"))
@@ -2285,13 +2299,20 @@ elif MESHTASTIC_CONFIGURED:
         meshtastic_radio_policy_ok,
     ))
     meshtastic_broker_ok = meshtastic_mqtt_connected or offline_mode
+    meshtastic_map_broker_ok = (
+        not meshtastic_map_mqtt_configured
+        or (
+            meshtastic_rf_igate_ready
+            and (meshtastic_map_mqtt_connected or offline_mode)
+        )
+    )
     meshtastic_status = (
-        "ok" if meshtastic_core_ok and meshtastic_broker_ok
+        "ok" if meshtastic_core_ok and meshtastic_broker_ok and meshtastic_map_broker_ok
         else "bad" if not meshtastic_service_active or not meshtastic_connected
         else "warn"
     )
-    if meshtastic_core_ok and meshtastic_mqtt_connected:
-        meshtastic_summary = "Meshtastic radio and MQTT gateway connected"
+    if meshtastic_core_ok and meshtastic_mqtt_connected and meshtastic_map_broker_ok:
+        meshtastic_summary = "Meshtastic RF gateway and MQTT map uplinks connected"
     elif meshtastic_core_ok and offline_mode:
         meshtastic_summary = "Meshtastic radio connected; MQTT waiting for an uplink"
     else:
@@ -2558,9 +2579,11 @@ if MESHTASTIC_PREPARED:
             {"label": "MQTT broker", "value": meshtastic_broker_label},
             {"label": "MQTT session", "value": "connected" if meshtastic_mqtt_connected else "disconnected"},
             {"label": "Radio MQTT policy", "value": meshtastic_radio_policy_label},
+            {"label": "RF to internet IGate", "value": meshtastic_rf_igate_label},
             {"label": "Public map report", "value": meshtastic_map_label},
             {"label": "Downlink filters", "value": str(meshtastic_downlink_filters)},
             {"label": "MQTT proxy activity", "value": meshtastic_mqtt_activity},
+            {"label": "Embedded map mirror", "value": meshtastic_map_mqtt_activity},
             {"label": "Mesh packet counters", "value": meshtastic_mesh_activity},
             {"label": "Remote nodes", "value": meshtastic_remote_nodes},
             {"label": "Last mesh packet", "value": meshtastic_mesh.get("last_heard_at") or "none observed"},
@@ -2742,9 +2765,11 @@ if PUBLIC_VIEW:
             "mqtt": "connected" if meshtastic_mqtt_connected else "waiting for uplink" if offline_mode else "disconnected",
             "broker": meshtastic_broker_label,
             "mqtt_policy": meshtastic_radio_policy_label,
+            "rf_igate": meshtastic_rf_igate_label,
             "map_reporting": meshtastic_map_label,
             "downlink_filters": meshtastic_downlink_filters,
             "mqtt_activity": meshtastic_mqtt_activity,
+            "map_mqtt": meshtastic_map_mqtt_activity,
             "mesh_activity": meshtastic_mesh_activity,
             "remote_nodes": meshtastic_remote_nodes,
             "last_heard": meshtastic_mesh.get("last_heard_at") or "none observed",
