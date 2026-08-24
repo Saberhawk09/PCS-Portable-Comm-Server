@@ -41,7 +41,7 @@ Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--refresh|--scan|--impo
   --configure ...     Record a paired BLE target and broker, then enable the gateway.
   --configure-usb ... Disable radio Bluetooth, use /dev/ttyACM0, and enable the gateway.
   --enable-gpsd-position
-                      Send a fresh PCS GPSD fix through the node every five minutes.
+                      Send a fresh PCS GPSD fix through the node every 30 minutes.
   --disable-gpsd-position
                       Stop supplying PCS GPSD fixes to the node.
   --enable-neomesh-map
@@ -153,7 +153,7 @@ prepare() {
             printf 'PCS_MESHTASTIC_MAP_MQTT_PORT=1883\n'
             printf 'PCS_MESHTASTIC_MAP_MQTT_TLS=no\n'
             printf 'PCS_MESHTASTIC_GPSD_POSITION=no\n'
-            printf 'PCS_MESHTASTIC_POSITION_INTERVAL=300\n'
+            printf 'PCS_MESHTASTIC_POSITION_INTERVAL=1800\n'
             printf 'PCS_MESHTASTIC_POSITION_CHANNEL=0\n'
         } > "${env_temp}"
         sudo install -o root -g root -m 0600 "${env_temp}" "${ENV_FILE}"
@@ -347,22 +347,38 @@ set_gpsd_position() {
     local value="$1"
     local env_temp
     env_temp="$(mktemp)"
-    sudo awk -v value="${value}" '
-        BEGIN { replaced=0 }
+    sudo awk -v value="${value}" -v interval="1800" '
+        BEGIN { enabled_replaced=0; interval_replaced=0 }
         /^PCS_MESHTASTIC_GPSD_POSITION=/ {
             print "PCS_MESHTASTIC_GPSD_POSITION=" value
-            replaced=1
+            enabled_replaced=1
+            next
+        }
+        /^PCS_MESHTASTIC_POSITION_INTERVAL=/ {
+            if (value == "yes") {
+                print "PCS_MESHTASTIC_POSITION_INTERVAL=" interval
+            } else {
+                print
+            }
+            interval_replaced=1
             next
         }
         { print }
         END {
-            if (!replaced) print "PCS_MESHTASTIC_GPSD_POSITION=" value
+            if (!enabled_replaced) print "PCS_MESHTASTIC_GPSD_POSITION=" value
+            if (value == "yes" && !interval_replaced) {
+                print "PCS_MESHTASTIC_POSITION_INTERVAL=" interval
+            }
         }
     ' "${ENV_FILE}" > "${env_temp}"
     sudo install -o root -g root -m 0600 "${env_temp}" "${ENV_FILE}"
     rm -f "${env_temp}"
     sudo systemctl restart pcs-meshtastic.service
-    echo "PCS GPSD position feed: ${value}"
+    if [[ "${value}" == "yes" ]]; then
+        echo "PCS GPSD position feed: yes (every 30 minutes)"
+    else
+        echo "PCS GPSD position feed: no"
+    fi
 }
 
 set_neomesh_map() {

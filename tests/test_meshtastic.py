@@ -655,6 +655,18 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn('PCS_MESHTASTIC_MAP_MQTT_USERNAME=', setup)
         self.assertIn('PCS_MESHTASTIC_MAP_MQTT_PASSWORD=', setup)
 
+    def test_stationary_pcs_position_interval_defaults_to_thirty_minutes(self):
+        setup = (ROOT / "scripts" / "setup-meshtastic-bluetooth.sh").read_text(encoding="utf-8")
+        with mock.patch.dict("os.environ", {}, clear=True):
+            args = meshtastic_gateway.parse_args(
+                ["--device", "IJC1", "--mqtt-host", "mqtt.example"]
+            )
+
+        self.assertEqual(args.position_interval, 1_800)
+        self.assertIn("PCS_MESHTASTIC_POSITION_INTERVAL=1800", setup)
+        self.assertIn('-v interval="1800"', setup)
+        self.assertIn('value == "yes" && !interval_replaced', setup)
+
     def test_mqtt_import_quotes_environment_values_without_printing_secrets(self):
         self.assertEqual(meshtastic_import_mqtt.quote_environment_value("mesh"), '"mesh"')
         self.assertEqual(
