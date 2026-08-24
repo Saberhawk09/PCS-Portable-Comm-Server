@@ -160,7 +160,13 @@ gateway transport, run:
 
 ```bash
 ./scripts/setup-meshtastic-bluetooth.sh --enable-gpsd-position
+./scripts/setup-meshtastic-bluetooth.sh --enable-neomesh-map
 ```
+
+The second command preserves the primary NeoMesh broker and enables only the
+uplink mirror consumed by the MQTT coverage map embedded at
+`neome.sh/meshtastic/`. Its public uplink credentials are installed in the
+existing root-only MQTT environment file; no public-map downlink is enabled.
 
 `PCS_SETUP_GPIO_LCD=yes` installs and enables the GPIO-only 16x2 HD44780
 status display. Set it to `no` on builds without the LCD; self-test then treats

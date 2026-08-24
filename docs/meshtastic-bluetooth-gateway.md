@@ -16,6 +16,15 @@ at precision 15. Successful radio-proxy publishes to the NeoMesh broker were
 validated on August 24, 2026; appearance on any particular public map frontend
 remains a separate external-service check.
 
+The Meshtastic page at `neome.sh/meshtastic/` embeds an MQTT coverage map that
+uses a separate broker. PCS can mirror every radio-generated uplink envelope to
+that map broker while retaining `mqtt.neomesh.org` as its primary broker. The
+mirror is publish-only and topic-scoped to the public default-key `LongFast`
+channel: it creates no public-map subscriptions, never mirrors private-channel
+topics, and cannot flood the local RF channel with internet traffic. IJC1's
+GPSD-fed positions and LongFast packets heard over RF are mirrored; firmware consent
+(`config_ok_to_mqtt`) remains authoritative for remote stations.
+
 ## Architecture
 
 ```text
@@ -63,6 +72,19 @@ Disable it with:
 
 ```bash
 ./scripts/setup-meshtastic-bluetooth.sh --disable-gpsd-position
+```
+
+Enable the separate uplink-only mirror used by the MQTT coverage map embedded
+on the NeoMesh Meshtastic page:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --enable-neomesh-map
+```
+
+Disable only that mirror, without changing the primary NeoMesh broker:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --disable-neomesh-map
 ```
 
 The RAK4631 is dedicated to PCS while this service is active. Stop the gateway
@@ -285,7 +307,8 @@ When the gateway is configured, the public PCS homepage includes a
 **Meshtastic / MQTT** card alongside APRS. It reports the local node and
 firmware, transport health, live MQTT state and broker, aggregate mesh/proxy
 counters, recent-node counts, GPSD position-feed health, case environment,
-LoRa utilization, power, radio/PCS broker agreement, and the public-map policy.
+LoRa utilization, power, radio/PCS broker agreement, the public-map policy, and
+embedded-map mirror connection/uplink health.
 Staged software remains visible only to an authenticated operator.
 
 The authenticated dashboard adds service and status-freshness diagnostics plus

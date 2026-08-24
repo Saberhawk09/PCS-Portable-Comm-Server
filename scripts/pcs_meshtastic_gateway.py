@@ -96,6 +96,16 @@ def parse_subscriptions(value: str | None) -> tuple[str, ...]:
     return topics
 
 
+def map_mirror_topic_allowed(topic: str) -> bool:
+    """Mirror only the public default LongFast channel, never private channels."""
+
+    segments = topic.split("/")
+    return any(
+        segments[index:index + 3] == ["2", "e", "LongFast"]
+        for index in range(max(0, len(segments) - 2))
+    )
+
+
 def proxy_payload(message: Any) -> bytes:
     """Return the active protobuf payload variant without converting binary data."""
 
@@ -150,7 +160,7 @@ class EchoCache:
 
 
 class Gateway:
-    """Own one persistent radio session and one reconnecting MQTT session."""
+    """Own one radio session, its primary MQTT session, and an optional map mirror."""
 
     def __init__(self, args: argparse.Namespace, mqtt_module: Any, pub: Any) -> None:
         self.args = args
@@ -160,17 +170,23 @@ class Gateway:
         self.interface: Any = None
         self.mqtt_connected = False
         self._mqtt_ever_connected = False
+        self.map_mqtt_connected = False
+        self._map_mqtt_ever_connected = False
+        self.map_mqtt_enabled = bool(str(getattr(args, "map_mqtt_host", "") or "").strip())
         self.ble_connected = False
         self.radio_to_mqtt: queue.Queue[tuple[str, bytes, bool]] = queue.Queue(maxsize=256)
+        self.radio_to_map_mqtt: queue.Queue[tuple[str, bytes, bool]] = queue.Queue(maxsize=256)
         self.mqtt_to_radio: queue.Queue[tuple[str, bytes]] = queue.Queue(maxsize=256)
         self.echoes = EchoCache()
         self.counts = {
             "mqtt_uplink": 0,
+            "map_mqtt_uplink": 0,
             "mqtt_downlink": 0,
             "echoes_suppressed": 0,
             "queue_drops": 0,
             "ble_reconnects": 0,
             "mqtt_reconnects": 0,
+            "map_mqtt_reconnects": 0,
             "position_updates": 0,
             "gpsd_failures": 0,
         }
@@ -178,6 +194,7 @@ class Gateway:
         self.last_error: str | None = None
         self.started = time.time()
         self.client = self._new_mqtt_client()
+        self.map_client = self._new_map_mqtt_client() if self.map_mqtt_enabled else None
 
     def _new_mqtt_client(self) -> Any:
         client = self.mqtt_module.Client(
@@ -194,6 +211,27 @@ class Gateway:
         if self.args.mqtt_tls:
             client.tls_set(
                 ca_certs=self.args.mqtt_ca_file or None,
+                cert_reqs=ssl.CERT_REQUIRED,
+            )
+        return client
+
+    def _new_map_mqtt_client(self) -> Any:
+        """Create an uplink-only client for the public map's separate broker."""
+
+        client = self.mqtt_module.Client(
+            self.mqtt_module.CallbackAPIVersion.VERSION2,
+            client_id=getattr(self.args, "map_mqtt_client_id", "pcs-meshtastic-map"),
+            protocol=self.mqtt_module.MQTTv311,
+        )
+        client.on_connect = self._on_map_mqtt_connect
+        client.on_disconnect = self._on_map_mqtt_disconnect
+        client.reconnect_delay_set(min_delay=2, max_delay=60)
+        username = getattr(self.args, "map_mqtt_username", "")
+        if username:
+            client.username_pw_set(username, getattr(self.args, "map_mqtt_password", "") or None)
+        if getattr(self.args, "map_mqtt_tls", False):
+            client.tls_set(
+                ca_certs=getattr(self.args, "map_mqtt_ca_file", "") or None,
                 cert_reqs=ssl.CERT_REQUIRED,
             )
         return client
@@ -223,6 +261,26 @@ class Gateway:
                 self.last_error = "mqtt-disconnected"
             LOG.warning("MQTT disconnected; automatic reconnect remains active")
 
+    def _on_map_mqtt_connect(
+        self, _client: Any, _userdata: Any, _flags: Any, reason_code: Any, _properties: Any
+    ) -> None:
+        reason_value = getattr(reason_code, "value", reason_code)
+        if getattr(reason_code, "is_failure", False) or reason_value != 0:
+            LOG.warning("Public map MQTT broker refused the connection")
+            return
+        if self._map_mqtt_ever_connected:
+            self.counts["map_mqtt_reconnects"] += 1
+        self._map_mqtt_ever_connected = True
+        self.map_mqtt_connected = True
+        LOG.info("Public map MQTT mirror connected (uplink only)")
+
+    def _on_map_mqtt_disconnect(
+        self, _client: Any, _userdata: Any, _flags: Any, _reason_code: Any, _properties: Any
+    ) -> None:
+        self.map_mqtt_connected = False
+        if not self.stop_event.is_set():
+            LOG.warning("Public map MQTT mirror disconnected; automatic reconnect remains active")
+
     def _on_mqtt_message(self, _client: Any, _userdata: Any, message: Any) -> None:
         topic = str(message.topic)
         payload = bytes(message.payload)
@@ -241,6 +299,8 @@ class Gateway:
             if not topic or topic.startswith("$") or "+" in topic or "#" in topic:
                 raise ValueError("unsafe MQTT publish topic")
             self._put_latest(self.radio_to_mqtt, (topic, payload, retained))
+            if self.map_mqtt_enabled and map_mirror_topic_allowed(topic):
+                self._put_latest(self.radio_to_map_mqtt, (topic, payload, retained))
         except (TypeError, ValueError) as exc:
             self.counts["queue_drops"] += 1
             self.last_error = "invalid-radio-mqtt-message"
@@ -272,11 +332,22 @@ class Gateway:
 
         status["transport"] = "usb-serial" if getattr(self.args, "port", "") else "bluetooth-le"
 
+        local_node: Any = None
         radio_mqtt: Any = None
         if self.interface is not None:
             local_node = getattr(self.interface, "localNode", None)
             module_config = getattr(local_node, "moduleConfig", None)
             radio_mqtt = getattr(module_config, "mqtt", None)
+
+        local_config = getattr(local_node, "localConfig", None)
+        radio_lora = getattr(local_config, "lora", None)
+        channels = getattr(local_node, "channels", ()) or ()
+        primary_channel = channels[0] if channels else None
+        primary_settings = getattr(primary_channel, "settings", None)
+        primary_default_key = bytes(getattr(primary_settings, "psk", b"")) == b"\x01"
+        primary_uplink = getattr(primary_settings, "uplink_enabled", None)
+        primary_downlink = getattr(primary_settings, "downlink_enabled", None)
+        radio_ok_to_mqtt = getattr(radio_lora, "config_ok_to_mqtt", None)
 
         radio_mqtt_address = str(getattr(radio_mqtt, "address", "") or "").strip().lower().rstrip(".")
         pcs_mqtt_address = str(getattr(self.args, "mqtt_host", "") or "").strip().lower().rstrip(".")
@@ -286,9 +357,22 @@ class Gateway:
             "mode": "transparent-mqtt-client-proxy",
             "ble_connected": self.ble_connected,
             "mqtt_connected": self.mqtt_connected,
+            "map_mqtt_configured": self.map_mqtt_enabled,
+            "map_mqtt_connected": self.map_mqtt_connected,
             "downlink_filters": len(self.args.mqtt_subscriptions),
             "radio_mqtt_enabled": getattr(radio_mqtt, "enabled", None),
             "radio_proxy_enabled": getattr(radio_mqtt, "proxy_to_client_enabled", None),
+            "radio_ok_to_mqtt": radio_ok_to_mqtt,
+            "primary_channel_uplink": primary_uplink,
+            "primary_channel_downlink": primary_downlink,
+            "primary_channel_default_key": primary_default_key,
+            "rf_igate_ready": bool(
+                radio_ok_to_mqtt
+                and primary_uplink
+                and primary_default_key
+                and getattr(radio_mqtt, "enabled", False)
+                and getattr(radio_mqtt, "proxy_to_client_enabled", False)
+            ),
             "radio_broker_matches": bool(
                 radio_mqtt_address
                 and pcs_mqtt_address
@@ -306,6 +390,7 @@ class Gateway:
             "counters": dict(self.counts),
             "queued": {
                 "to_mqtt": self.radio_to_mqtt.qsize(),
+                "to_map_mqtt": self.radio_to_map_mqtt.qsize(),
                 "to_radio": self.mqtt_to_radio.qsize(),
             },
         }
@@ -355,6 +440,19 @@ class Gateway:
                     self.echoes.consume(topic, payload)
                     self._put_latest(self.radio_to_mqtt, (topic, payload, retained))
                     self.last_error = "mqtt-publish-failed"
+                    break
+
+        if self.map_mqtt_connected and self.map_client is not None:
+            for _ in range(16):
+                try:
+                    topic, payload, retained = self.radio_to_map_mqtt.get_nowait()
+                except queue.Empty:
+                    break
+                info = self.map_client.publish(topic, payload, qos=0, retain=retained)
+                if info.rc == self.mqtt_module.MQTT_ERR_SUCCESS:
+                    self.counts["map_mqtt_uplink"] += 1
+                else:
+                    self._put_latest(self.radio_to_map_mqtt, (topic, payload, retained))
                     break
 
         if self.ble_connected and self.interface is not None:
@@ -451,6 +549,13 @@ class Gateway:
             keepalive=self.args.mqtt_keepalive,
         )
         self.client.loop_start()
+        if self.map_client is not None:
+            self.map_client.connect_async(
+                self.args.map_mqtt_host,
+                self.args.map_mqtt_port,
+                keepalive=self.args.mqtt_keepalive,
+            )
+            self.map_client.loop_start()
         next_ble_attempt = 0.0
         next_status = 0.0
         next_position = 0.0
@@ -505,8 +610,12 @@ class Gateway:
         finally:
             self.client.disconnect()
             self.client.loop_stop()
+            if self.map_client is not None:
+                self.map_client.disconnect()
+                self.map_client.loop_stop()
             self._close_ble()
             self.mqtt_connected = False
+            self.map_mqtt_connected = False
             self.last_error = "service-stopped"
             self._write_status()
             self.pub.unsubscribe(self._on_proxy_message, PROXY_TOPIC)
@@ -530,6 +639,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mqtt-tls", action="store_true", default=_bool(os.environ.get("PCS_MESHTASTIC_MQTT_TLS")))
     parser.add_argument("--mqtt-subscriptions", type=parse_subscriptions, default=parse_subscriptions(os.environ.get("PCS_MESHTASTIC_MQTT_SUBSCRIPTIONS")))
     parser.add_argument("--mqtt-keepalive", type=int, default=60)
+    parser.add_argument("--map-mqtt-host", default=os.environ.get("PCS_MESHTASTIC_MAP_MQTT_HOST", ""))
+    parser.add_argument("--map-mqtt-port", type=int, default=int(os.environ.get("PCS_MESHTASTIC_MAP_MQTT_PORT", "1883")))
+    parser.add_argument("--map-mqtt-client-id", default=os.environ.get("PCS_MESHTASTIC_MAP_MQTT_CLIENT_ID", "pcs-meshtastic-map"))
+    parser.add_argument("--map-mqtt-username", default=os.environ.get("PCS_MESHTASTIC_MAP_MQTT_USERNAME", ""))
+    parser.add_argument("--map-mqtt-password", default=os.environ.get("PCS_MESHTASTIC_MAP_MQTT_PASSWORD", ""))
+    parser.add_argument("--map-mqtt-ca-file", default=os.environ.get("PCS_MESHTASTIC_MAP_MQTT_CA_FILE", ""))
+    parser.add_argument("--map-mqtt-tls", action="store_true", default=_bool(os.environ.get("PCS_MESHTASTIC_MAP_MQTT_TLS")))
     parser.add_argument("--ble-timeout", type=int, default=60)
     parser.add_argument("--ble-retry-seconds", type=int, default=15)
     parser.add_argument("--status-interval", type=int, default=10)
@@ -551,6 +667,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("PCS_MESHTASTIC_MQTT_HOST is required")
     if not 1 <= args.mqtt_port <= 65535:
         parser.error("MQTT port must be between 1 and 65535")
+    if args.map_mqtt_host.strip() and not 1 <= args.map_mqtt_port <= 65535:
+        parser.error("map MQTT port must be between 1 and 65535")
     if not 1 <= args.gpsd_port <= 65535:
         parser.error("GPSD port must be between 1 and 65535")
     if args.position_interval < 60:
