@@ -75,6 +75,7 @@ specific install or service operation.
 | `--capabilities` | No | Report Dire Wolf version, gpsd, GPIO, nftables, `gen_packets`, `atest`, FX.25, and variable-speed fixture support. |
 | `--list-audio` | No | List USB and ALSA devices, stable card-ID candidates, and CM108/CM119 information. |
 | `--detect-audio` | Local config only | Record a stable ALSA endpoint only when exactly one USB card has both capture and playback; refuse ambiguous or missing hardware and reset audio validation gates. |
+| `--set-rx-level PERCENT` | Mixer and local config only | Persist and apply a validated USB capture percentage without regenerating `/etc/direwolf.conf`, restarting Dire Wolf, or touching TX playback. |
 | `--software-test` | Temporary files only | Run AX.25, FX.25, and variable-speed audio-file encode/decode fixtures without a radio. |
 | `--render-config rx` | No | Print the proposed receive/IGate configuration with a visible passcode placeholder. |
 | `--render-config tx` | No | Print the proposed complete transmit configuration with unresolved choices marked `BLOCKED`. |
@@ -119,7 +120,7 @@ The commissioned profile supplied and physically validated by the operator is:
 | Role | GPS-backed two-way digi-IGate | Selected |
 | Callsign / SSID | `W8IJC-10` | RF and APRS-IS tested |
 | RF channel | `144.5500 MHz` simplex, 25 kHz, no tones | SA818S readback and RF TX/RX tested |
-| USB audio | Sabrent/C-Media; ALSA card ID `Device` | -18 dB playback, 100% capture, AGC off; bidirectional AFSK tested |
+| USB audio | Sabrent/C-Media; ALSA card ID `Device` | -18 dB playback, 69% capture, AGC off; bidirectional AFSK tested |
 | APRS-IS | Conventional two-way IGate through `noam.aprs2.net` | RF-to-IS and eligible APRS-IS message return tested |
 | GPS | EM7565 NMEA through local gpsd at `localhost:2947` | 3D fix and APRS.fi position/altitude/course demonstrated |
 | Network TNC | AGW 8000/tcp and KISS 8001/tcp | EasyTerm and `kissutil` tested; both restricted to the PCS LAN |
@@ -171,7 +172,7 @@ Activation installs three prerequisite services and a Dire Wolf override:
    The SA818S convention is inverted for filters: `1` means off. The expected
    readback is `+DMOREADGROUP:1,144.5500,144.5500,0000,1,0000`.
 2. `pcs-aprs-audio.service` waits for ALSA card `Device`, applies Speaker
-   `-18dB`, Mic `100%`, and Auto Gain Control `off`, then verifies the controls.
+   `-18dB`, Mic `69%`, and Auto Gain Control `off`, then verifies the controls.
 3. `pcs-aprs-kiss-firewall.service` admits AGW 8000/tcp and KISS 8001/tcp only
    on loopback or `eth0` from `10.42.0.0/24` and drops both ports elsewhere.
 4. `direwolf.service` starts after those services, gpsd, sound, and
@@ -219,7 +220,7 @@ on-air validation.
 | `PCS_APRS_AUDIO_OUTPUT` | `plughw:CARD=Device,DEV=0` | Second `ADEVICE` parameter in TX mode; RX forces `null` |
 | `PCS_APRS_AUDIO_CARD` | `Device` | Stable ALSA card ID used by the mixer service |
 | `PCS_APRS_PLAYBACK_CONTROL` / `PCS_APRS_PLAYBACK_LEVEL` | `Speaker` / `-18dB` | Commissioned transmit playback control and level |
-| `PCS_APRS_CAPTURE_CONTROL` / `PCS_APRS_CAPTURE_LEVEL` | `Mic` / `100%` | Commissioned receive capture control and level |
+| `PCS_APRS_CAPTURE_CONTROL` / `PCS_APRS_CAPTURE_LEVEL` | `Mic` / `69%` | Commissioned receive capture control and level |
 | `PCS_APRS_AGC_CONTROL` / `PCS_APRS_AGC_STATE` | `Auto Gain Control` / `off` | Keeps AGC disabled before every Dire Wolf start |
 | `PCS_APRS_SAMPLE_RATE` | `48000` | `ARATE` |
 | `PCS_APRS_AUDIO_CHANNELS` | `1` | `ACHANNELS` |
@@ -437,12 +438,23 @@ tool is available. `--detect-audio` selects only when exactly one USB ALSA card
 has both capture and playback nodes. Zero or multiple candidates are refused;
 ambiguous devices are never guessed.
 
+After supervised packet-level measurement, apply a corrected capture value
+without changing the active Dire Wolf TX configuration:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --set-rx-level 69
+```
+
+The command updates `config/pcs-install.conf`, backs up and replaces the
+root-owned `/etc/pcs/aprs/audio.conf`, and restarts only the audio restoration
+oneshot. It rolls both configuration files back if mixer verification fails.
+
 The resulting as-built choices are:
 
 - `W8IJC-10` on 144.5500 MHz simplex, 25 kHz, no tones
 - SA818S V1.2, stock Easy Digi, and ALSA card `Device`
 - active-high GPIO6 through the Easy Digi optocoupler
-- -18 dB playback, 100% capture, AGC off, receive level about 39
+- -18 dB playback, 69% capture (+12 dB), AGC off; W8IJC-7 test packets measured 38-56 around Dire Wolf's recommended level of 50
 - 900 ms `TXDELAY`, 200 ms `TXTAIL`
 - two-way IGate, GNSS-to-APRS-IS beacon, and WIDE1-1 fill-in service
 

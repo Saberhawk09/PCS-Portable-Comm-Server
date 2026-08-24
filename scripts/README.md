@@ -221,6 +221,7 @@ validation, activation, testing, and rollback:
 ./scripts/setup-direwolf-aprs.sh --record-validation
 ./scripts/setup-direwolf-aprs.sh --list-audio
 ./scripts/setup-direwolf-aprs.sh --detect-audio
+./scripts/setup-direwolf-aprs.sh --set-rx-level 69
 ./scripts/setup-direwolf-aprs.sh --check
 ./scripts/setup-direwolf-aprs.sh --capabilities
 ./scripts/setup-direwolf-aprs.sh --software-test
@@ -252,6 +253,8 @@ Flag behavior:
 - `--record-validation` records hardware evidence but never activates the service.
 - `--list-audio`, `--check`, and `--capabilities` are read-only discovery/status commands.
 - `--detect-audio` records a stable ALSA ID only for one unambiguous USB capture/playback card and resets audio evidence gates.
+- `--set-rx-level PERCENT` persists and applies a validated RX mixer level
+  without regenerating Dire Wolf or touching the active TX profile.
 - `--software-test` uses temporary WAV files to verify AX.25, FX.25, and timing tolerance without RF.
 - `--render-config rx|tx` prints a proposed configuration with no real passcode.
 - `--validate-config rx|tx` lints the proposal and reports every activation blocker.
@@ -289,7 +292,7 @@ tracker-transmit rows.
 `pcs-sa818.service` applies the commissioned 144.5500 MHz, 25 kHz, no-tone,
 squelch-1, volume-8, filters-off, tail-off profile over `/dev/serial0`, then
 requires an exact `AT+DMOREADGROUP` match. `pcs-aprs-audio.service` applies and
-verifies Sabrent/C-Media card `Device` at -18 dB playback, 100% capture, and AGC
+verifies Sabrent/C-Media card `Device` at -18 dB playback, 69% capture, and AGC
 off. Dire Wolf reruns both helpers before every start so UART or USB
 re-enumeration does not bypass the known-good profiles.
 
