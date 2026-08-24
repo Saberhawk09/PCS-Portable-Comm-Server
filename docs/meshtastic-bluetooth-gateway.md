@@ -25,6 +25,10 @@ public-map subscriptions, never mirrors private-channel topics, and cannot flood
 the local RF channel with internet traffic. IJC1's GPSD-fed positions, its
 opt-in firmware map reports, and LongFast packets heard over RF are mirrored;
 firmware consent (`config_ok_to_mqtt`) remains authoritative for remote stations.
+For IJC1 itself, the gateway synchronizes GPSD into the radio's supported fixed
+position only when no radio position exists or PCS has moved at least 500 meters.
+This lets firmware MapReport include the opted-in location without rewriting the
+RAK's flash on every hourly position refresh.
 
 ## Architecture
 
@@ -50,10 +54,11 @@ topic, binary/text payload, and retained flag for uplink. PCS publishes that
 envelope unchanged. Messages received on explicitly allowed broker topics are
 returned through Meshtastic's dedicated MQTT proxy API.
 
-PCS does not call general message, owner, channel, or configuration write
-methods. Radio and channel configuration remains on the RAK4631. An optional
-GPSD feed can send the PCS receiver's current fix as the node's normal
-Meshtastic position packet.
+PCS does not call general message, owner, or channel write methods. Radio and
+channel configuration remains on the RAK4631. The one narrow configuration
+exception is the opted-in public-map position: when that mirror is enabled, PCS
+uses Meshtastic's fixed-position API only for an absent or materially moved
+GPSD fix. Normal refreshes remain ordinary Meshtastic position packets.
 
 ## PCS GPS Position Feed
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import logging
+import math
 import os
 import queue
 import signal
@@ -24,6 +25,7 @@ from pcs_meshtastic_status import build_status, classify_error, write_status
 LOG = logging.getLogger("pcs-meshtastic-gateway")
 PROXY_TOPIC = "meshtastic.mqttclientproxymessage"
 DEFAULT_STATUS_FILE = "/var/lib/pcs-meshtastic/status.json"
+MAP_POSITION_UPDATE_DISTANCE_METERS = 500.0
 
 
 def read_gpsd_position(
@@ -111,6 +113,42 @@ def map_mirror_topic_allowed(topic: str) -> bool:
     return longfast or map_report
 
 
+def radio_local_position(interface: Any) -> tuple[float, float] | None:
+    """Return the radio's own position without logging or persisting it on PCS."""
+
+    node_info = interface.getMyNodeInfo() or {}
+    position = node_info.get("position") or {}
+    latitude = position.get("latitude")
+    longitude = position.get("longitude")
+    if not isinstance(latitude, (int, float)):
+        latitude_i = position.get("latitudeI")
+        latitude = latitude_i * 1e-7 if isinstance(latitude_i, (int, float)) else None
+    if not isinstance(longitude, (int, float)):
+        longitude_i = position.get("longitudeI")
+        longitude = longitude_i * 1e-7 if isinstance(longitude_i, (int, float)) else None
+    if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+        return None
+    if not latitude or not longitude or not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+        return None
+    return float(latitude), float(longitude)
+
+
+def position_distance_meters(
+    first: tuple[float, float], second: tuple[float, float]
+) -> float:
+    """Return great-circle distance between two latitude/longitude pairs."""
+
+    lat1, lon1 = (math.radians(value) for value in first)
+    lat2, lon2 = (math.radians(value) for value in second)
+    delta_lat = lat2 - lat1
+    delta_lon = lon2 - lon1
+    haversine = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
+    )
+    return 6_371_000.0 * 2 * math.atan2(math.sqrt(haversine), math.sqrt(1 - haversine))
+
+
 def proxy_payload(message: Any) -> bytes:
     """Return the active protobuf payload variant without converting binary data."""
 
@@ -193,6 +231,7 @@ class Gateway:
             "mqtt_reconnects": 0,
             "map_mqtt_reconnects": 0,
             "position_updates": 0,
+            "fixed_position_updates": 0,
             "gpsd_failures": 0,
         }
         self.last_position_update: float | None = None
@@ -410,12 +449,30 @@ class Gateway:
                 port=getattr(self.args, "gpsd_port", 2947),
                 timeout=getattr(self.args, "gpsd_timeout", 3.0),
             )
-            self.interface.sendPosition(
-                latitude=latitude,
-                longitude=longitude,
-                altitude=altitude,
-                channelIndex=getattr(self.args, "position_channel", 0),
+            current_position = radio_local_position(self.interface)
+            update_map_position = bool(
+                self.map_mqtt_enabled
+                and (
+                    current_position is None
+                    or position_distance_meters(current_position, (latitude, longitude))
+                    >= MAP_POSITION_UPDATE_DISTANCE_METERS
+                )
             )
+            if update_map_position:
+                # Meshtastic MapReport reads the firmware's localPosition. The
+                # ordinary sendPosition client call transmits a packet but does
+                # not populate that value, so use the supported admin API only
+                # when the public-map position is absent or materially stale.
+                self.interface.localNode.setFixedPosition(latitude, longitude, altitude)
+                self.counts["fixed_position_updates"] += 1
+                LOG.info("Updated the radio's GPSD-backed map position")
+            else:
+                self.interface.sendPosition(
+                    latitude=latitude,
+                    longitude=longitude,
+                    altitude=altitude,
+                    channelIndex=getattr(self.args, "position_channel", 0),
+                )
             self.counts["position_updates"] += 1
             self.last_position_update = time.time()
             LOG.info("Sent fresh PCS GPSD position to the Meshtastic node")
