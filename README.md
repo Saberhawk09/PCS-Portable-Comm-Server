@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml)
 
-A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, optional Pi-Star integration, and hardware-safe APRS staging.
+A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and muli-protocol radio interface/hotspot.
 
 What started as an annoyance caused by Windows networking has evolved into my first end-to-end hardware and software project.
 
@@ -21,6 +21,7 @@ This GitHub will also use a mix of my own writing and AI-generated text. All tex
 - Samba file share reachable by connected clients
 - NMEA GPS-disciplined / internet NTP reference for connected clients
 - Optional cellular internet connectivity for connected clients
+- Multi-Protocol radio interface (APRS, Meshtastic, Pi-Star)
 - Rugged and durable enclosure for field deployment
 - Emergency/grid power capable
 - Easy operation by non-technical users
@@ -29,11 +30,12 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
 
-PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, optional Pi-Star support, and guarded APRS deployment. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF activation remain deliberate operator-supervised steps.
+PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, and optional APRS, Pi-Star, and Meshtastic support. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF activation remain deliberate operator-supervised steps.
 
 The PCS hardware is an operational v1 prototype. The AC/DC source selector,
 cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas,
 HD44780 LCD, MAX7219 matrix, WS2812 indicators, and APRS subsystem are installed.
+
 The SA818S, stock Easy Digi, GPIO6 PTT, USB audio, 144.5500 MHz RF path, GNSS
 beaconing, two-way APRS-IS, messaging, and WIDE1-1 fill-in operation have been
 validated. The RAK4631 gateway software is deployed but its persistent
@@ -51,8 +53,8 @@ The exact as-built electrical and mechanical record is also unfinished.
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
 - Operational AC/DC power system with source selector switch; as-built electrical measurements and wiring records remain pending
 - HD44780 16x2 LCD, MAX7219 8x8 annunciator, and six-pixel WS2812 status chain
-- GPIO18 hardware-PWM Armor Lite fan control; commanded duty is validated but RPM is not measured
-- SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation on 144.5500 MHz
+- GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
+- SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
 - RAK4631 Meshtastic expansion connected to PCS with its gateway software deployed; persistent BLE/MQTT operation and sensor validation pending
 
 ### Software
@@ -73,7 +75,6 @@ The exact as-built electrical and mechanical record is also unfinished.
 - Capture final enclosure dimensions, mounting details, photos, and CAD references
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
-- Deploy and reboot-test the managed APRS service integration on the PCS Pi
 - Complete and validate the RAK4631 BLE/MQTT connection and establish a case temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
 
