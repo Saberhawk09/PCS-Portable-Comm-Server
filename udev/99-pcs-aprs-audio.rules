@@ -1,0 +1,4 @@
+# Reapply the managed PCS profile whenever the commissioned C-Media adapter
+# (USB 0d8c:0014) creates its ALSA control device. The delayed oneshot runs
+# after the distribution's 90-alsa-restore rule and remains retriggerable.
+ACTION=="add", SUBSYSTEM=="sound", KERNEL=="controlC*", ATTRS{idVendor}=="0d8c", ATTRS{idProduct}=="0014", TAG+="systemd", ENV{SYSTEMD_WANTS}+="pcs-aprs-audio-refresh.service"

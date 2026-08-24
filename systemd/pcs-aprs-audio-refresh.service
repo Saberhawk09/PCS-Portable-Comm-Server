@@ -1,0 +1,21 @@
+[Unit]
+Description=Reapply PCS APRS audio after USB sound-card enumeration
+After=sound.target
+ConditionPathExists=/etc/pcs/aprs/audio.conf
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=direwolf
+Group=direwolf
+SupplementaryGroups=audio
+Environment=PCS_APRS_AUDIO_CONFIG=/etc/pcs/aprs/audio.conf
+# Let the distribution ALSA restore rule finish before enforcing the PCS profile.
+ExecStartPre=/usr/bin/sleep 2
+ExecStart=/usr/local/sbin/pcs-aprs-audio --apply --wait-seconds 15
+RemainAfterExit=no
+TimeoutStartSec=25s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
