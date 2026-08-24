@@ -76,6 +76,7 @@ specific install or service operation.
 | `--list-audio` | No | List USB and ALSA devices, stable card-ID candidates, and CM108/CM119 information. |
 | `--detect-audio` | Local config only | Record a stable ALSA endpoint only when exactly one USB card has both capture and playback; refuse ambiguous or missing hardware and reset audio validation gates. |
 | `--set-rx-level PERCENT` | Mixer and local config only | Persist and apply a validated USB capture percentage without regenerating `/etc/direwolf.conf`, restarting Dire Wolf, or touching TX playback. |
+| `--set-tx-timing DELAY TAIL` | Local config only | Record validated 10 ms `TXDELAY`/`TXTAIL` units. Dire Wolf must be active and the requested values must exactly match `/etc/direwolf.conf`; the command never edits or restarts the live service. |
 | `--software-test` | Temporary files only | Run AX.25, FX.25, and variable-speed audio-file encode/decode fixtures without a radio. |
 | `--render-config rx` | No | Print the proposed receive/IGate configuration with a visible passcode placeholder. |
 | `--render-config tx` | No | Print the proposed complete transmit configuration with unresolved choices marked `BLOCKED`. |
@@ -276,17 +277,30 @@ network.
 | `PCS_APRS_DIGIPEAT_DEDUPE_SECONDS` | Seconds | Selected as `30`. |
 | `PCS_APRS_FX25_TX` | `yes` / `no` | Commissioned as `no`; normal FX.25 receive support does not require this. |
 
-Dire Wolf timing directives use 10 ms units. PCS testing found 700 ms or less
-unusable, 800 ms marginal, and 900 ms reliable for the SA818S PTT-to-audio delay.
+Dire Wolf timing directives use 10 ms units. Final supervised RF testing found
+600 ms to be the lowest reliable SA818S PTT-to-audio delay; shorter values were
+not reliable.
 
 | PCS option | Selected starting value | Activation treatment |
 | --- | --- | --- |
 | `PCS_APRS_DWAIT` | `0` | Rendered only in the TX profile. |
 | `PCS_APRS_SLOTTIME` | `10` | 100 ms channel-access slot. |
 | `PCS_APRS_PERSIST` | `63` | Conventional half-duplex persistence. |
-| `PCS_APRS_TXDELAY` | `90` | Commissioned 900 ms SA818S pre-key delay. |
+| `PCS_APRS_TXDELAY` | `60` | Commissioned 600 ms SA818S pre-key delay. |
 | `PCS_APRS_TXTAIL` | `20` | Commissioned 200 ms tail. |
 | `PCS_APRS_FULLDUP` | `OFF` | Selected for the simplex tactical channel. |
+
+After supervised RF timing validation, make the currently active values part
+of the repeatable managed profile without regenerating the live configuration:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --set-tx-timing 60 20
+```
+
+The command requires an active installation and refuses any values that do not
+already match `/etc/direwolf.conf`. It records the match in
+`config/pcs-install.conf` without restarting Dire Wolf or changing existing
+hardware-evidence flags.
 
 ### TNC clients, APRS-IS, GPS, and logging
 
@@ -455,7 +469,7 @@ The resulting as-built choices are:
 - SA818S V1.2, stock Easy Digi, and ALSA card `Device`
 - active-high GPIO6 through the Easy Digi optocoupler
 - -18 dB playback, 69% capture (+12 dB), AGC off; four W8IJC-7 test packets decoded at 26-56, with three at 38-56 around Dire Wolf's recommended level of 50
-- 900 ms `TXDELAY`, 200 ms `TXTAIL`
+- 600 ms `TXDELAY`, 200 ms `TXTAIL`
 - two-way IGate, GNSS-to-APRS-IS beacon, and WIDE1-1 fill-in service
 
 Do not store an APRS-IS passcode or other credentials in Git. Supply secrets

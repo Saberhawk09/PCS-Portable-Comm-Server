@@ -667,7 +667,7 @@ sudo grep -E '^(MYCALL|PTT|TXDELAY|TXTAIL|AGWPORT|KISSPORT|IGTXVIA|IGTXLIMIT|TBE
 ```
 
 Expected commissioned core values are `W8IJC-10`, `PTT GPIOD gpiochip0 6`,
-`TXDELAY 90`, `TXTAIL 20`, AGW 8000, KISS 8001, direct `IGTXVIA 0`, limits
+`TXDELAY 60`, `TXTAIL 20`, AGW 8000, KISS 8001, direct `IGTXVIA 0`, limits
 `6 10`, independent `TBEACON SENDTO=0` and `TBEACON SENDTO=IG` GPS tracker
 schedules, and the one-hop WIDE1-1 fill-in rule. From a PCS-LAN client, verify
 both ports are reachable; from every uplink interface, verify both are rejected.
