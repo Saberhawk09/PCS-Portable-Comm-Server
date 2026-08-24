@@ -102,6 +102,16 @@ Staging installs:
 
 The service remains stopped and disabled in staged state.
 
+For an installed PCS, refresh versioned gateway and systemd assets without
+changing active/staged state or rewriting radio/MQTT configuration:
+
+```bash
+./scripts/setup-meshtastic-bluetooth.sh --refresh
+```
+
+An active gateway restarts only when a service-relevant managed file changed;
+status-helper-only updates do not interrupt the radio session.
+
 ## RAK4631 Preparation
 
 Use the Meshtastic mobile application or another supervised client before
@@ -238,9 +248,33 @@ Inspect it with:
 
 ```bash
 ./scripts/setup-meshtastic-bluetooth.sh --check
+/usr/local/sbin/pcs_meshtastic_status.py --check
 systemctl status pcs-meshtastic.service --no-pager
 journalctl -u pcs-meshtastic.service -n 100 --no-pager
 ```
+
+The installed status command reads the gateway's existing privacy-safe JSON
+snapshot. It does not open the USB/BLE transport or compete with the running
+daemon. Direct one-shot BLE collection exists only behind the explicit
+`--collect-ble` option and is not used by the dashboard.
+
+## PCS Dashboard Integration
+
+When the gateway is configured, the public PCS homepage includes a
+**Meshtastic / MQTT** card alongside APRS. It reports the local node and
+firmware, transport health, live MQTT state and broker, aggregate mesh/proxy
+counters, recent-node counts, GPSD position-feed health, case environment,
+LoRa utilization, and power. Staged software remains visible only to an
+authenticated operator.
+
+The authenticated dashboard adds service and status-freshness diagnostics plus
+two fixed actions: **View Meshtastic** and confirmed **Restart Meshtastic**.
+Restart reconnects the existing radio and broker configuration; it does not
+rewrite the radio, channels, credentials, subscriptions, or public-map policy.
+
+No dashboard view receives MQTT credentials, subscription topic strings,
+channel keys, message content, remote identities, or stored position
+coordinates. Topic filters remain represented only by a count.
 
 ## Enable Controlled Downlink
 

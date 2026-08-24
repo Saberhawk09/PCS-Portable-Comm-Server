@@ -17,9 +17,16 @@ All notable user-facing PCS changes are recorded here.
   recoverable onboard Wi-Fi disable policy
 - latched visual shutdown state with `PCS Offline` / `Shutting Down` on the
   LCD, six blue status pixels, and a subdued bed/ZZZ matrix icon
+- active-only public and authenticated Meshtastic dashboard integration for
+  node, USB/BLE, MQTT, aggregate mesh/proxy, GPSD, case environment,
+  utilization, and power status
+- fixed privacy-safe Meshtastic status and confirmed gateway-restart actions
+- opt-in bounded GPSD position delivery to the attached Meshtastic node
 
 ### Changed
 
+- made the Meshtastic status command read the running USB/BLE gateway snapshot
+  by default so dashboard checks never compete for the radio transport
 - reduced the commissioned APRS USB capture gain from 100%/+23 dB to
   69%/+12 dB after four live W8IJC-7 packets decoded at 26-56, with three at
   38-56 near Dire Wolf's recommended receive level of 50

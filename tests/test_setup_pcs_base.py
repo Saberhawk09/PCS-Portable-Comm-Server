@@ -75,7 +75,7 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-ask}"', self.source)
         self.assertIn('printf "PCS_SETUP_MESHTASTIC=%q\\n"', self.source)
         self.assertIn(
-            'Stage optional Meshtastic Bluetooth support without connecting to or configuring a radio?',
+            'Stage optional Meshtastic USB/Bluetooth support without connecting to or configuring a radio?',
             self.source,
         )
         self.assertIn('./scripts/setup-meshtastic-bluetooth.sh --prepare', self.source)

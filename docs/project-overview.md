@@ -11,7 +11,7 @@ PCS is intended to feature/provide:
 - Cellular internet access when available
 - GPS/Internet disciplined NTP server
 - Web-based system monitoring and control
-- Optional Pi-Star, APRS, and Meshtastic Bluetooth/MQTT integration
+- Optional Pi-Star, APRS, and Meshtastic USB/Bluetooth MQTT integration
 - Simple operation by non-technical users
 - Rugged enclosure and field power support
 
@@ -24,17 +24,17 @@ stock Easy Digi isolation, GPIO6 PTT, Sabrent/C-Media USB audio, 144.5500 MHz
 RF TX/RX, GNSS beaconing, two-way APRS-IS messaging, and WIDE1-1 fill-in
 digipeating have been demonstrated. Repository integration manages radio/audio
 preparation, service recovery, LAN-only clients, monitoring, and rollback. The
-RAK4631 gateway software is deployed to PCS, but its persistent
-BLE/MQTT connection, RF behavior, and local environment telemetry remain
-hardware-unvalidated. The exact as-built power, wiring, grounding, thermal,
-enclosure, and mounting records are also still pending.
+RAK4631 is deployed over USB with its persistent MQTT session, GPSD position
+delivery, and privacy-safe local telemetry validated on the live PCS. Mesh RF
+behavior and the local environment sensor's accuracy remain operator
+checkpoints. The exact as-built power, wiring, grounding, thermal, enclosure,
+and mounting records are also still pending.
 
 Current focus:
 
 - Polish the software
 - Improve reliability and error handling with setup and operation
-- Deploy and reboot-test the managed APRS integration on the PCS Pi
-- Complete and validate the RAK4631 BLE/MQTT connection and case sensor
+- Observe RAK4631 mesh RF behavior and compare its case sensor with a reference
 - Keep documentation and releases aligned with the fielded system
 
 ## Current Tested Hardware
@@ -56,9 +56,9 @@ Current tested hardware includes:
 - Armor Lite cooler with GPIO18 hardware-PWM fan control
 - SA818S, stock Easy Digi, Sabrent/C-Media USB audio, and GPIO6 APRS PTT path
 
-Purchased and awaiting installation or validation:
+Installed with as-built records or measurements pending:
 
-- RAK4631 persistent BLE/MQTT connection and attached environment sensor validation
+- RAK4631 sensor model/mounting record and referenced environment baseline
 
 Purchased hardware is not treated as installed or validated until it has been commissioned and tested.
 
@@ -126,7 +126,12 @@ The current software baseline includes:
 - Cockpit access
 - systemd service integration
 
-Meshtastic integration is locally implemented as a repeatable, persistent RAK4631 BLE-to-MQTT client-proxy gateway. It includes reconnect handling, explicit downlink topic filters, echo suppression, privacy-safe counters, and temperature/humidity from the locally attached node. It remains unverified on PCS hardware until the RAK4631 is paired, the broker path is commissioned, RF behavior is observed, and the case sensor is compared with a reference.
+Meshtastic integration is deployed as a repeatable, persistent RAK4631
+USB-to-MQTT client-proxy gateway. The USB session, broker connection, bounded
+GPSD position delivery, and privacy-safe runtime telemetry are live-validated.
+The public/admin dashboards report approved aggregate node, MQTT, mesh, GPSD,
+environment, utilization, and power fields. Mesh RF behavior and case-sensor
+accuracy still require operator observation and comparison with a reference.
 
 ## Current Client Access
 
@@ -217,7 +222,7 @@ The working build is operational. Remaining work is primarily documentation, mea
 - record actual fuse values, wire gauge, rail voltage, current draw, and thermal results
 - finish permanent external LTE and GNSS antenna labeling and mounting documentation
 - preserve operator-supervised RF activation and verify managed APRS startup after reboot
-- complete and validate the Meshtastic BLE/MQTT connection and sensor baseline
+- observe Meshtastic mesh RF behavior and establish a referenced sensor baseline
 - consider battery voltage monitoring and low-voltage safe shutdown hardware
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
 

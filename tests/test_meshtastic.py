@@ -1,4 +1,6 @@
 import json
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -97,8 +99,51 @@ class MeshtasticStatusTests(unittest.TestCase):
     def test_status_file_write_is_valid_and_atomic(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = Path(temp_dir) / "status.json"
-            meshtastic_status.write_status(target, {"state": "connected"})
-            self.assertEqual(json.loads(target.read_text(encoding="utf-8")), {"state": "connected"})
+            snapshot = {"schema_version": 1, "state": "connected"}
+            meshtastic_status.write_status(target, snapshot)
+            self.assertEqual(meshtastic_status.read_status(target), snapshot)
+
+    def test_status_command_reads_existing_usb_snapshot_without_collecting(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "status.json"
+            snapshot = {
+                "schema_version": 1,
+                "state": "connected",
+                "transport": "usb-serial",
+            }
+            meshtastic_status.write_status(target, snapshot)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output), mock.patch.object(
+                meshtastic_status,
+                "collect",
+            ) as collect:
+                result = meshtastic_status.main(["--status-file", str(target), "--check"])
+
+            self.assertEqual(result, 0)
+            self.assertEqual(json.loads(output.getvalue()), snapshot)
+            collect.assert_not_called()
+
+    def test_direct_ble_collection_requires_explicit_flag(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "status.json"
+            with mock.patch.object(
+                meshtastic_status,
+                "collect",
+                return_value={"schema_version": 1, "state": "connected"},
+            ) as collect, contextlib.redirect_stdout(io.StringIO()):
+                result = meshtastic_status.main(
+                    [
+                        "--collect-ble",
+                        "--device",
+                        "IJC1",
+                        "--status-file",
+                        str(target),
+                    ]
+                )
+
+            self.assertEqual(result, 0)
+            collect.assert_called_once()
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["state"], "connected")
 
     def test_gateway_limits_radio_writes_to_proxy_and_opt_in_position(self):
         source = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")
@@ -178,6 +223,9 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn('paho-mqtt==${PAHO_MQTT_VERSION}', setup)
         self.assertIn('PAHO_MQTT_VERSION="2.1.0"', setup)
         self.assertIn('COLLECTOR_TARGET="/usr/local/sbin/pcs_meshtastic_status.py"', setup)
+        self.assertIn("--refresh", setup)
+        self.assertIn("refresh()", setup)
+        self.assertIn("the active gateway did not require a restart", setup)
         self.assertIn("Requires=pcs-bluetooth-ready.service", service)
         self.assertIn("ExecStart=/usr/local/sbin/pcs-bluetooth-ready", bluetooth_ready)
         self.assertIn("BLUETOOTH_READY_TARGET=\"/usr/local/sbin/pcs-bluetooth-ready\"", setup)

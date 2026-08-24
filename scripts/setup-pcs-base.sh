@@ -432,7 +432,7 @@ collect_install_answers() {
             PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
             PCS_SETUP_APRS="$(ask_yes_no "Stage optional Dire Wolf / APRS software without enabling radio or RF transmit?" "${aprs_default}")"
-            PCS_SETUP_MESHTASTIC="$(ask_yes_no "Stage optional Meshtastic Bluetooth support without connecting to or configuring a radio?" "${meshtastic_default}")"
+            PCS_SETUP_MESHTASTIC="$(ask_yes_no "Stage optional Meshtastic USB/Bluetooth support without connecting to or configuring a radio?" "${meshtastic_default}")"
             PCS_SETUP_GPIO_LCD="$(ask_yes_no "Install and start the optional 16x2 HD44780 LCD status display?" "${gpio_lcd_default}")"
             PCS_SETUP_GPIO_LEDS="$(ask_yes_no "Install and start the optional six-pixel WS2812 status indicators?" "${gpio_leds_default}")"
             PCS_SETUP_GPIO_STATS="$(ask_yes_no "Install and start the optional MAX7219 LED matrix statistics display?" "${gpio_stats_default}")"
@@ -1046,7 +1046,7 @@ esac
 
 echo
 echo "============================================================"
-echo "OPTIONAL STEP: Stage Meshtastic Bluetooth support"
+echo "OPTIONAL STEP: Stage Meshtastic USB/Bluetooth support"
 echo "============================================================"
 echo
 echo "This installs a pinned Meshtastic BLE/MQTT client and privacy-preserving"
@@ -1059,24 +1059,24 @@ if [[ "${PCS_SETUP_MESHTASTIC}" == "yes" || "${PCS_SETUP_MESHTASTIC}" == "no" ]]
 elif [[ "${PCS_SETUP_MESHTASTIC}" == "staged" ]]; then
     meshtastic_answer="yes"
 else
-    meshtastic_answer="$(ask_yes_no "Stage Meshtastic Bluetooth support now?" "no")"
+    meshtastic_answer="$(ask_yes_no "Stage Meshtastic USB/Bluetooth support now?" "no")"
 fi
 
 case "${meshtastic_answer}" in
     y|Y|yes|YES|Yes)
         if ./scripts/setup-meshtastic-bluetooth.sh --prepare; then
             PCS_SETUP_MESHTASTIC="staged"
-            echo "Meshtastic Bluetooth software staging completed."
+            echo "Meshtastic USB/Bluetooth software staging completed."
         else
             echo
-            echo "WARNING: Meshtastic Bluetooth software staging failed."
+            echo "WARNING: Meshtastic USB/Bluetooth software staging failed."
             echo "You can retry it later with:"
             echo "  ./scripts/setup-meshtastic-bluetooth.sh --prepare"
         fi
         ;;
     *)
         PCS_SETUP_MESHTASTIC="no"
-        echo "Skipping Meshtastic Bluetooth software staging."
+        echo "Skipping Meshtastic USB/Bluetooth software staging."
         echo "You can run it later with:"
         echo "  ./scripts/setup-meshtastic-bluetooth.sh --prepare"
         ;;

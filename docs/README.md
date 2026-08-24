@@ -72,17 +72,17 @@ The current documentation uses these status boundaries:
 
 The SA818S/Easy Digi APRS hardware, UART, GPIO6 PTT, Sabrent/C-Media audio,
 144.5500 MHz RF path, two-way APRS-IS messaging, GNSS beaconing, and WIDE1-1
-fill-in operation are installed and tested. The persistent RAK4631 Bluetooth/MQTT gateway is
-deployed to PCS and repeatably staged, including local temperature/humidity
-telemetry, but the continuous BLE/MQTT link, RF behavior, and sensor accuracy
-remain hardware-unvalidated.
+fill-in operation are installed and tested. The persistent RAK4631 USB/MQTT
+gateway, GPSD position delivery, and privacy-safe local temperature/humidity
+telemetry are deployed and live-validated. Mesh RF behavior and sensor accuracy
+remain operator checkpoints.
 
 Current documentation priorities:
 
 - capture exact enclosure dimensions, mounting locations, and CAD/export references
 - reconcile power and wiring notes with the physical build
 - record measured rail voltage, current draw, fuse sizes, wire gauge, and thermal results
-- install and validate the APRS radio/PTT path
+- observe Meshtastic mesh RF behavior and establish a referenced sensor baseline
 - complete and validate the RAK4631 BLE pairing, MQTT proxy, RF behavior, and case-sensor baseline
 - extend the general testing and release checklists for the guarded APRS workflow
 - keep install and validation steps copy/paste friendly

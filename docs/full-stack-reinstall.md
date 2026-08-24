@@ -89,7 +89,7 @@ Configure WWAN modem NMEA GPS:       yes
 Share GPSD with trusted PCS clients: yes
 Include Pi-Star in PCS monitoring:   yes
 Stage Dire Wolf / APRS software:     yes
-Stage Meshtastic BLE/MQTT software:  yes
+Stage Meshtastic USB/Bluetooth MQTT software: yes
 Install 16x2 HD44780 LCD display:    yes (when physically fitted)
 Install six-pixel WS2812 indicators: yes (when physically fitted)
 Install MAX7219 LED matrix display:  yes (only when physically fitted)

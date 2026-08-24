@@ -38,8 +38,9 @@ HD44780 LCD, MAX7219 matrix, WS2812 indicators, and APRS subsystem are installed
 
 The SA818S, stock Easy Digi, GPIO6 PTT, USB audio, 144.5500 MHz RF path, GNSS
 beaconing, two-way APRS-IS, messaging, and WIDE1-1 fill-in operation have been
-validated. The RAK4631 gateway software is deployed but its persistent
-BLE/MQTT connection, RF behavior, and case-sensor baseline remain unvalidated.
+validated. The RAK4631 persistent USB/MQTT gateway and GPSD position delivery
+are live-validated; mesh RF behavior and the case-sensor baseline remain
+operator checkpoints.
 The exact as-built electrical and mechanical record is also unfinished.
 
 ### Hardware
@@ -55,7 +56,9 @@ The exact as-built electrical and mechanical record is also unfinished.
 - HD44780 16x2 LCD, MAX7219 8x8 annunciator, and six-pixel WS2812 status chain
 - GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
 - SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
-- RAK4631 Meshtastic expansion connected to PCS with its gateway software deployed; persistent BLE/MQTT operation and sensor validation pending
+- RAK4631 Meshtastic expansion connected over USB with validated persistent
+  MQTT and GPSD position delivery; mesh RF behavior and sensor accuracy remain
+  operator checkpoints
 
 ### Software
 
@@ -67,7 +70,9 @@ The exact as-built electrical and mechanical record is also unfinished.
 - Manual cellular data control with Wi-Fi fallback during development and testing
 - LAN GPSD, NTP, and installer-assisted coordinated Pi-Star shutdown integration
 - Managed Dire Wolf 1.8.1 startup with SA818S programming, ALSA level restoration, LAN-only AGW/KISS access, and guarded activation/rollback
-- Repeatable Meshtastic BLE/MQTT gateway staging; persistent pairing, broker relay, and RAK4631 environmental telemetry validation pending
+- Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
+  dashboard status, guarded restart, GPSD position delivery, and local
+  environment telemetry
 - PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; credentials, external-device recovery, and RF checks remain manual
 
 ### Current Finish Work
@@ -75,7 +80,8 @@ The exact as-built electrical and mechanical record is also unfinished.
 - Capture final enclosure dimensions, mounting details, photos, and CAD references
 - Reconcile the power and wiring documents with the physical as-built system
 - Record measured rail voltages, current draw, fuse values, and thermal behavior
-- Complete and validate the RAK4631 BLE/MQTT connection and establish a case temperature/humidity baseline
+- Observe RAK4631 mesh RF behavior and establish a referenced case
+  temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
 
 ## Hardware Setup
@@ -111,7 +117,7 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can stage Dire Wolf without activating an RF path, can stage the persistent Meshtastic Bluetooth/MQTT gateway without connecting to a radio, and can install the 16x2 HD44780 status display, six-pixel WS2812 indicators, MAX7219 annunciator, and GPIO18 hardware-PWM thermal fan controller.
+The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can stage Dire Wolf without activating an RF path, can stage the persistent Meshtastic USB/Bluetooth MQTT gateway without connecting to a radio, and can install the 16x2 HD44780 status display, six-pixel WS2812 indicators, MAX7219 annunciator, and GPIO18 hardware-PWM thermal fan controller.
 
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 
@@ -301,17 +307,15 @@ Installed and tested hardware:
 - Six-pixel WS2812 status-indicator chain
 - Armor Lite cooler with GPIO18 hardware-PWM fan control
 
-Purchased and awaiting installation or validation:
+Installed with as-built records or measurements pending:
 
-- remaining APRS radio/PTT interface hardware
-- RAK4631 persistent BLE/MQTT connection and attached environment sensor validation
+- RAK4631 sensor model/mounting record and referenced environment baseline
 
 Remaining documentation and validation:
 
 - Record the exact as-built power components, fuses, wiring, grounding, rail measurements, and thermal results
 - Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
-- Bench-test and operator-supervise APRS activation before enabling any RF transmit path
-- Complete and validate the RAK4631 persistent BLE/MQTT connection and case-sensor baseline
+- Observe RAK4631 mesh RF behavior and establish a referenced case-sensor baseline
 
 For more detail, see [Bill of Materials](docs/bill-of-materials.md) and [Power System](docs/power-system.md).
 

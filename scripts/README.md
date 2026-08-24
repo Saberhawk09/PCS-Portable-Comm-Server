@@ -29,7 +29,7 @@ This installs/configures:
 - Optional WWAN GNSS and LAN-only GPSD sharing
 - Optional Pi-Star monitoring and local-access links
 - Optional guarded Dire Wolf / SA818S APRS integration
-- Optional Meshtastic Bluetooth/MQTT gateway software staging with the service disabled
+- Optional Meshtastic USB/Bluetooth MQTT gateway software staging with the service disabled
 - PCS restart service
 - PCS public homepage and authenticated control panel
 - Legacy port 8080 admin compatibility redirect
@@ -43,7 +43,7 @@ confirmation; SSH still requests the Pi-Star password directly and never
 stores it. If Pi-Star is unavailable, pairing remains an optional failure and
 the rest of the PCS installation continues.
 
-## Meshtastic Bluetooth / MQTT
+## Meshtastic USB/Bluetooth / MQTT
 
 ### setup-meshtastic-bluetooth.sh
 
@@ -52,9 +52,12 @@ Meshtastic node and transparently relays its MQTT client-proxy traffic:
 
 ```bash
 ./scripts/setup-meshtastic-bluetooth.sh --prepare
+./scripts/setup-meshtastic-bluetooth.sh --refresh
 ./scripts/setup-meshtastic-bluetooth.sh --scan
 ./scripts/setup-meshtastic-bluetooth.sh --configure DEVICE MQTT_HOST MQTT_PORT
 ./scripts/setup-meshtastic-bluetooth.sh --configure-usb /dev/ttyACM0 MQTT_HOST MQTT_PORT
+./scripts/setup-meshtastic-bluetooth.sh --enable-gpsd-position
+./scripts/setup-meshtastic-bluetooth.sh --disable-gpsd-position
 ./scripts/setup-meshtastic-bluetooth.sh --check
 ```
 
@@ -62,9 +65,15 @@ Staging never contacts or configures the radio. Configured operation keeps the
 selected transport connected continuously. USB configuration disables the
 node's Bluetooth radio and exposes only `/dev/ttyACM0` inside the hardened
 service. MQTT downlink starts with no subscriptions and must be given exact
-topic filters deliberately. The status snapshot also
-exposes temperature/humidity from the local node's environment sensor for a
-future PCS case-telemetry display. See [Meshtastic USB/Bluetooth MQTT Gateway](../docs/meshtastic-bluetooth-gateway.md).
+topic filters deliberately. The optional GPSD feed sends a fresh local fix at a
+bounded interval without retaining coordinates. The installed status command
+reads the running gateway snapshot without reopening the radio. The public and
+authenticated dashboards expose only approved aggregate node, MQTT, mesh,
+GPSD, utilization, power, and environment fields. See
+[Meshtastic USB/Bluetooth MQTT Gateway](../docs/meshtastic-bluetooth-gateway.md).
+`--refresh` reinstalls versioned gateway assets while preserving configured or
+staged state, and restarts an active gateway only when a service-relevant file
+changed.
 
 ## Dependencies
 
@@ -604,6 +613,8 @@ scripts/pcs-web-action.sh
 ```
 
 This script should not run arbitrary user-provided shell commands.
+Meshtastic integration adds only fixed privacy-safe status and confirmed
+gateway-restart actions; it does not expose radio or MQTT configuration writes.
 
 ## Service Restart
 

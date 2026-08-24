@@ -28,9 +28,10 @@ BLUETOOTH_READY_SERVICE_SOURCE="${REPO_DIR}/systemd/pcs-bluetooth-ready.service"
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--scan|--import-radio-mqtt DEVICE|--configure DEVICE MQTT_HOST [MQTT_PORT]|--configure-usb /dev/ttyACM0 MQTT_HOST [MQTT_PORT]|--enable-gpsd-position|--disable-gpsd-position|--check|--disable
+Usage: ./scripts/setup-meshtastic-bluetooth.sh --prepare|--refresh|--scan|--import-radio-mqtt DEVICE|--configure DEVICE MQTT_HOST [MQTT_PORT]|--configure-usb /dev/ttyACM0 MQTT_HOST [MQTT_PORT]|--enable-gpsd-position|--disable-gpsd-position|--check|--disable
 
   --prepare           Install pinned Bluetooth/MQTT support; leave gateway disabled.
+  --refresh           Refresh managed gateway files while preserving active/staged state.
   --scan              List discoverable Meshtastic BLE devices (10-second scan).
   --import-radio-mqtt DEVICE
                       Copy the radio's broker credentials into PCS without displaying them.
@@ -121,7 +122,7 @@ prepare() {
         "meshtastic[cli]==${MESHTASTIC_VERSION}" \
         "paho-mqtt==${PAHO_MQTT_VERSION}"
 
-    sudo install -o root -g root -m 0644 "${COLLECTOR_SOURCE}" "${COLLECTOR_TARGET}"
+    sudo install -o root -g root -m 0755 "${COLLECTOR_SOURCE}" "${COLLECTOR_TARGET}"
     sudo install -o root -g root -m 0755 "${GATEWAY_SOURCE}" "${GATEWAY_TARGET}"
     sudo install -o root -g root -m 0644 "${BLE_SOURCE}" "${BLE_TARGET}"
     sudo install -o root -g root -m 0755 "${IMPORT_SOURCE}" "${IMPORT_TARGET}"
@@ -167,6 +168,43 @@ prepare() {
     echo "Meshtastic Python ${MESHTASTIC_VERSION} and Paho MQTT ${PAHO_MQTT_VERSION} are staged."
     echo "The gateway remains disabled until the node is paired and --configure is run."
     set_install_state staged
+}
+
+refresh() {
+    local restart_required=0
+
+    require_normal_user
+    require_prepared
+
+    if ! sudo cmp -s "${GATEWAY_SOURCE}" "${GATEWAY_TARGET}" \
+        || ! sudo cmp -s "${BLE_SOURCE}" "${BLE_TARGET}" \
+        || ! sudo cmp -s "${RADIO_READY_SOURCE}" "${RADIO_READY_TARGET}" \
+        || ! sudo cmp -s "${SERVICE_SOURCE}" /etc/systemd/system/pcs-meshtastic.service; then
+        restart_required=1
+    fi
+
+    sudo install -o root -g root -m 0755 "${COLLECTOR_SOURCE}" "${COLLECTOR_TARGET}"
+    sudo install -o root -g root -m 0755 "${GATEWAY_SOURCE}" "${GATEWAY_TARGET}"
+    sudo install -o root -g root -m 0644 "${BLE_SOURCE}" "${BLE_TARGET}"
+    sudo install -o root -g root -m 0755 "${IMPORT_SOURCE}" "${IMPORT_TARGET}"
+    sudo install -o root -g root -m 0755 "${BLUETOOTH_READY_SOURCE}" "${BLUETOOTH_READY_TARGET}"
+    sudo install -o root -g root -m 0755 "${RADIO_READY_SOURCE}" "${RADIO_READY_TARGET}"
+    sudo install -o root -g root -m 0644 "${MODEMMANAGER_RULE_SOURCE}" /etc/udev/rules.d/99-pcs-meshtastic.rules
+    sudo install -o root -g root -m 0644 "${BLUETOOTH_READY_SERVICE_SOURCE}" /etc/systemd/system/pcs-bluetooth-ready.service
+    sudo install -o root -g root -m 0644 "${SERVICE_SOURCE}" /etc/systemd/system/pcs-meshtastic.service
+    sudo systemctl daemon-reload
+    sudo udevadm control --reload-rules
+
+    if systemctl is-active --quiet pcs-meshtastic.service; then
+        if [[ "${restart_required}" -eq 1 ]]; then
+            sudo systemctl restart pcs-meshtastic.service
+            echo "Refreshed managed Meshtastic files and restarted the active gateway."
+        else
+            echo "Refreshed managed Meshtastic files; the active gateway did not require a restart."
+        fi
+    else
+        echo "Refreshed managed Meshtastic files; the gateway's inactive state was preserved."
+    fi
 }
 
 scan() {
@@ -316,10 +354,10 @@ set_gpsd_position() {
 }
 
 check() {
-    echo "=== PCS Meshtastic Bluetooth ==="
+    echo "=== PCS Meshtastic USB/Bluetooth ==="
     echo "Pinned client: Meshtastic Python ${MESHTASTIC_VERSION}; Paho MQTT ${PAHO_MQTT_VERSION}"
     echo "Virtual env:   $([[ -x "${VENV_DIR}/bin/python" ]] && echo installed || echo missing)"
-    echo "Status helper: $([[ -r "${COLLECTOR_TARGET}" ]] && echo installed || echo missing)"
+    echo "Status helper: $([[ -x "${COLLECTOR_TARGET}" ]] && echo installed || echo missing)"
     echo "Gateway:       $([[ -x "${GATEWAY_TARGET}" ]] && echo installed || echo missing)"
     echo "BLE transport: $([[ -r "${BLE_TARGET}" ]] && echo installed || echo missing)"
     echo "Bluetooth:     $(systemctl is-active bluetooth.service 2>/dev/null || true)"
@@ -350,6 +388,9 @@ disable() {
 case "${1:-}" in
     --prepare)
         prepare
+        ;;
+    --refresh)
+        refresh
         ;;
     --scan)
         scan
