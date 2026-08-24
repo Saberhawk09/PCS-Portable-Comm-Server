@@ -373,7 +373,7 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("IGTXVIA 0", result.stdout)
         self.assertIn("DIGIPEAT 0 0 ^WIDE1-1$ ^WIDE1-1$", result.stdout)
         self.assertNotIn("FX25TX", result.stdout)
-        self.assertIn("TXDELAY 60", result.stdout)
+        self.assertIn("TXDELAY 75", result.stdout)
         self.assertIn("TXTAIL 20", result.stdout)
         self.assertIn("AGWPORT 8000", result.stdout)
         rf_beacon = 'TBEACON SENDTO=0 DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"'

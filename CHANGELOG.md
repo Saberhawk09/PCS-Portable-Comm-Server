@@ -26,7 +26,7 @@ All notable user-facing PCS changes are recorded here.
 - changed the commissioned GNSS position beacon from APRS-IS-only to independent
   channel-0 RF and direct APRS-IS packets every 10 minutes
 - reconciled the production profile to the commissioned `W8IJC-10` station on
-  144.5500 MHz with GPIO6 GPIOD PTT, 600 ms TX delay, 200 ms tail, and FX.25 TX off
+  144.5500 MHz with GPIO6 GPIOD PTT, 750 ms TX delay, 200 ms tail, and FX.25 TX off
 - recorded the validated SA818S, Easy Digi, UART, audio, RF, APRS-IS messaging,
   GNSS beacon, and WIDE1-1 fill-in hardware state
 - made the base installer preserve APRS active-mode and AGW/KISS LAN firewall

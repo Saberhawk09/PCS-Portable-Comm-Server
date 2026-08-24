@@ -277,16 +277,17 @@ network.
 | `PCS_APRS_DIGIPEAT_DEDUPE_SECONDS` | Seconds | Selected as `30`. |
 | `PCS_APRS_FX25_TX` | `yes` / `no` | Commissioned as `no`; normal FX.25 receive support does not require this. |
 
-Dire Wolf timing directives use 10 ms units. Final supervised RF testing found
-600 ms to be the lowest reliable SA818S PTT-to-audio delay; shorter values were
-not reliable.
+Dire Wolf timing directives use 10 ms units. Supervised RF testing found that
+600 ms worked after warm-up but missed the first packet after a cold start.
+The observed initial packet decoded after increasing the SA818S PTT-to-audio
+delay to 750 ms.
 
 | PCS option | Selected starting value | Activation treatment |
 | --- | --- | --- |
 | `PCS_APRS_DWAIT` | `0` | Rendered only in the TX profile. |
 | `PCS_APRS_SLOTTIME` | `10` | 100 ms channel-access slot. |
 | `PCS_APRS_PERSIST` | `63` | Conventional half-duplex persistence. |
-| `PCS_APRS_TXDELAY` | `60` | Commissioned 600 ms SA818S pre-key delay. |
+| `PCS_APRS_TXDELAY` | `75` | Commissioned 750 ms SA818S cold-start pre-key delay. |
 | `PCS_APRS_TXTAIL` | `20` | Commissioned 200 ms tail. |
 | `PCS_APRS_FULLDUP` | `OFF` | Selected for the simplex tactical channel. |
 
@@ -294,7 +295,7 @@ After supervised RF timing validation, make the currently active values part
 of the repeatable managed profile without regenerating the live configuration:
 
 ```bash
-./scripts/setup-direwolf-aprs.sh --set-tx-timing 60 20
+./scripts/setup-direwolf-aprs.sh --set-tx-timing 75 20
 ```
 
 The command requires an active installation and refuses any values that do not
@@ -469,7 +470,7 @@ The resulting as-built choices are:
 - SA818S V1.2, stock Easy Digi, and ALSA card `Device`
 - active-high GPIO6 through the Easy Digi optocoupler
 - -18 dB playback, 69% capture (+12 dB), AGC off; four W8IJC-7 test packets decoded at 26-56, with three at 38-56 around Dire Wolf's recommended level of 50
-- 600 ms `TXDELAY`, 200 ms `TXTAIL`
+- 750 ms `TXDELAY`, 200 ms `TXTAIL`
 - two-way IGate, GNSS-to-APRS-IS beacon, and WIDE1-1 fill-in service
 
 Do not store an APRS-IS passcode or other credentials in Git. Supply secrets
