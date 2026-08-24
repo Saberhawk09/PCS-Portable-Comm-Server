@@ -152,11 +152,13 @@ class MeshtasticStatusTests(unittest.TestCase):
             "sendData(",
             "writeConfig(",
             "setOwner(",
-            "setFixedPosition(",
         ):
             self.assertNotIn(forbidden, source)
         self.assertIn("sendMqttClientProxyMessage(topic, payload)", source)
         self.assertIn("self.interface.sendPosition(", source)
+        self.assertIn("self.interface.localNode.setFixedPosition(", source)
+        self.assertIn("MAP_POSITION_UPDATE_DISTANCE_METERS", source)
+        self.assertIn("self.map_mqtt_enabled", source)
         self.assertIn('getattr(self.args, "gpsd_position", False)', source)
         self.assertIn('"radio_broker_matches": bool(', source)
         self.assertIn('"map_reporting_enabled": getattr(', source)
@@ -705,6 +707,8 @@ class MeshtasticStatusTests(unittest.TestCase):
             position_channel=0,
         )
         gateway.interface = mock.Mock()
+        gateway.interface.getMyNodeInfo.return_value = {}
+        gateway.map_mqtt_enabled = False
         gateway.counts = {"position_updates": 0, "gpsd_failures": 0}
         gateway.last_position_update = None
 
@@ -723,6 +727,69 @@ class MeshtasticStatusTests(unittest.TestCase):
         )
         self.assertEqual(gateway.counts["position_updates"], 1)
         self.assertIsNotNone(gateway.last_position_update)
+
+    def test_gpsd_map_update_sets_fixed_position_when_radio_has_no_local_fix(self):
+        gateway = meshtastic_gateway.Gateway.__new__(meshtastic_gateway.Gateway)
+        gateway.args = SimpleNamespace(
+            gpsd_host="127.0.0.1",
+            gpsd_port=2947,
+            gpsd_timeout=3.0,
+            position_channel=0,
+        )
+        gateway.interface = mock.Mock()
+        gateway.interface.getMyNodeInfo.return_value = {}
+        gateway.map_mqtt_enabled = True
+        gateway.counts = {
+            "position_updates": 0,
+            "fixed_position_updates": 0,
+            "gpsd_failures": 0,
+        }
+        gateway.last_position_update = None
+
+        with mock.patch.object(
+            meshtastic_gateway,
+            "read_gpsd_position",
+            return_value=(41.5, -81.7, 246),
+        ):
+            gateway._send_gpsd_position()
+
+        gateway.interface.localNode.setFixedPosition.assert_called_once_with(
+            41.5, -81.7, 246
+        )
+        gateway.interface.sendPosition.assert_not_called()
+        self.assertEqual(gateway.counts["position_updates"], 1)
+        self.assertEqual(gateway.counts["fixed_position_updates"], 1)
+
+    def test_gpsd_map_update_avoids_fixed_position_write_for_nearby_fix(self):
+        gateway = meshtastic_gateway.Gateway.__new__(meshtastic_gateway.Gateway)
+        gateway.args = SimpleNamespace(
+            gpsd_host="127.0.0.1",
+            gpsd_port=2947,
+            gpsd_timeout=3.0,
+            position_channel=0,
+        )
+        gateway.interface = mock.Mock()
+        gateway.interface.getMyNodeInfo.return_value = {
+            "position": {"latitudeI": 415000000, "longitudeI": -817000000}
+        }
+        gateway.map_mqtt_enabled = True
+        gateway.counts = {
+            "position_updates": 0,
+            "fixed_position_updates": 0,
+            "gpsd_failures": 0,
+        }
+        gateway.last_position_update = None
+
+        with mock.patch.object(
+            meshtastic_gateway,
+            "read_gpsd_position",
+            return_value=(41.5001, -81.7001, 246),
+        ):
+            gateway._send_gpsd_position()
+
+        gateway.interface.localNode.setFixedPosition.assert_not_called()
+        gateway.interface.sendPosition.assert_called_once()
+        self.assertEqual(gateway.counts["fixed_position_updates"], 0)
 
 
 if __name__ == "__main__":

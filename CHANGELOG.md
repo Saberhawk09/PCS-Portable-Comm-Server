@@ -15,6 +15,8 @@ All notable user-facing PCS changes are recorded here.
   and publish health exposed without public-broker downlink
 - exposed the privacy-safe radio forwarding and public-map policy on the public
   and authenticated Meshtastic dashboard cards
+- GPSD-backed synchronization of the RAK4631's local map position, with a
+  500-meter movement threshold to avoid unnecessary fixed-position flash writes
 - managed SA818S initialization over `/dev/serial0` with exact group readback
 - explicit APRS ALSA restoration and verification before every Dire Wolf start
 - delayed APRS mixer restoration after each commissioned USB sound-card
