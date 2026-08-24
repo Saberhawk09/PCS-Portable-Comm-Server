@@ -219,6 +219,8 @@ class PublicDataTests(unittest.TestCase):
             "radio_link": "connected",
             "mqtt": "connected",
             "broker": "mqtt.neomesh.org:1883 (plaintext)",
+            "mqtt_policy": "enabled / client proxy / broker matched",
+            "map_reporting": "enabled; location opted in; every 60m; precision 15",
             "downlink_filters": 2,
             "mqtt_activity": "4 up / 2 down",
             "mesh_activity": "12 RX / 7 TX",
@@ -238,6 +240,8 @@ class PublicDataTests(unittest.TestCase):
         self.assertIn("Meshtastic / MQTT", page)
         self.assertIn("W8IJC PCS Portable Node (IJC1)", page)
         self.assertIn("mqtt.neomesh.org:1883 (plaintext)", page)
+        self.assertIn("enabled / client proxy / broker matched", page)
+        self.assertIn("enabled; location opted in; every 60m; precision 15", page)
         self.assertIn("GPSD active; 4 sent; last 2m ago", page)
         self.assertNotIn("mqtt_password", sanitized["meshtastic"])
         self.assertNotIn("subscription_topics", sanitized["meshtastic"])
@@ -255,6 +259,8 @@ class PublicDataTests(unittest.TestCase):
         self.assertIn("MESHTASTIC_STATUS_FILE", dispatcher)
         self.assertIn("meshtastic_status_action()", dispatcher)
         self.assertIn("restart_meshtastic_action()", dispatcher)
+        self.assertIn("meshtastic_radio_policy_ok", dispatcher)
+        self.assertIn("Public map report", dispatcher)
         self.assertIn("meshtastic-status)", dispatcher)
         self.assertIn("restart-meshtastic)", dispatcher)
         self.assertIn("${DISPATCHER_DST} meshtastic-status", installer)

@@ -691,6 +691,11 @@ topic strings, channel keys, messages, remote identities, or stored
 coordinates. After authenticating, verify **View Meshtastic** works and the
 **Restart Meshtastic** action presents a confirmation before submission.
 
+For an active MQTT bridge, confirm the status snapshot reports
+`radio_mqtt_enabled`, `radio_proxy_enabled`, and `radio_broker_matches` as true.
+After a controlled radio packet or map report, confirm `mqtt_uplink` increments;
+an MQTT connection by itself is not proof that the radio supplied a publish.
+
 ## Service Status Test
 
 On the Pi:

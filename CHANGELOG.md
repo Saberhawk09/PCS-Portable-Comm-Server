@@ -6,6 +6,11 @@ All notable user-facing PCS changes are recorded here.
 
 ### Added
 
+- commissioned NeoMesh forwarding health for the live RAK4631, including
+  encrypted primary-channel uplink/downlink, serial Client Proxy, broker-match
+  validation, and opted-in hourly map-report status
+- exposed the privacy-safe radio forwarding and public-map policy on the public
+  and authenticated Meshtastic dashboard cards
 - managed SA818S initialization over `/dev/serial0` with exact group readback
 - explicit APRS ALSA restoration and verification before every Dire Wolf start
 - LAN-only nftables enforcement for both AGW 8000/tcp and KISS 8001/tcp
@@ -25,6 +30,8 @@ All notable user-facing PCS changes are recorded here.
 
 ### Changed
 
+- made active Meshtastic health fail closed when the radio MQTT module, Client
+  Proxy, or radio/PCS broker mapping is not correctly configured
 - made the Meshtastic status command read the running USB/BLE gateway snapshot
   by default so dashboard checks never compete for the radio transport
 - reduced the commissioned APRS USB capture gain from 100%/+23 dB to

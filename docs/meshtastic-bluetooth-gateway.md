@@ -9,6 +9,13 @@ The persistent USB session, broker connection, MQTT client-proxy uplink, and
 service restart have been hardware-validated on PCS. Mesh RF behavior and the
 environmental sensor readings remain operator-validated steps.
 
+The commissioned PCS profile uses `mqtt.neomesh.org`, encrypted primary-channel
+uplink/downlink, and Meshtastic Client Proxy over the persistent USB connection.
+The RAK4631 also has hourly map reporting enabled with location sharing opted in
+at precision 15. Successful radio-proxy publishes to the NeoMesh broker were
+validated on August 24, 2026; appearance on any particular public map frontend
+remains a separate external-service check.
+
 ## Architecture
 
 ```text
@@ -129,6 +136,20 @@ giving the BLE connection to PCS:
    policy that PCS will use.
 8. Enable uplink and/or downlink only on the intended channels.
 9. Prefer encrypted channels and a private broker for operational traffic.
+
+For the commissioned PCS/NeoMesh node, the non-secret radio-side policy is:
+
+- MQTT address `mqtt.neomesh.org`
+- MQTT module and Client Proxy enabled
+- MQTT encryption enabled
+- primary channel uplink and downlink enabled
+- map reporting and location opt-in enabled
+- 3600-second map interval and position precision 15
+- LoRa `config_ok_to_mqtt` enabled
+
+Broker credentials and the encrypted channel key remain outside Git. The active
+gateway status must report `radio_mqtt_enabled`, `radio_proxy_enabled`, and
+`radio_broker_matches` as true; PCS self-test treats a mismatch as a failure.
 
 The exact firmware version matters. Headless BLE pairing and client-proxy bugs
 have existed in individual Meshtastic firmware releases, so a failure must not
@@ -264,8 +285,8 @@ When the gateway is configured, the public PCS homepage includes a
 **Meshtastic / MQTT** card alongside APRS. It reports the local node and
 firmware, transport health, live MQTT state and broker, aggregate mesh/proxy
 counters, recent-node counts, GPSD position-feed health, case environment,
-LoRa utilization, and power. Staged software remains visible only to an
-authenticated operator.
+LoRa utilization, power, radio/PCS broker agreement, and the public-map policy.
+Staged software remains visible only to an authenticated operator.
 
 The authenticated dashboard adds service and status-freshness diagnostics plus
 two fixed actions: **View Meshtastic** and confirmed **Restart Meshtastic**.

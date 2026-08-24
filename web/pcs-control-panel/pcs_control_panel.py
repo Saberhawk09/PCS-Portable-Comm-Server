@@ -325,6 +325,7 @@ PUBLIC_FIELDS = {
     "meshtastic": {
         "configured", "status", "service", "node", "hardware", "firmware",
         "transport", "radio_link", "mqtt", "broker", "downlink_filters",
+        "mqtt_policy", "map_reporting",
         "mqtt_activity", "mesh_activity", "remote_nodes", "last_heard",
         "gpsd_position", "case_environment", "utilization", "power",
     },
@@ -584,6 +585,8 @@ def render_public_page(data: dict) -> bytes:
             ("Radio link", "radio_link", "unknown"),
             ("MQTT", "mqtt", "unknown"),
             ("Broker", "broker", "not configured"),
+            ("Radio MQTT policy", "mqtt_policy", "unknown"),
+            ("Public map report", "map_reporting", "disabled"),
             ("Downlink filters", "downlink_filters", 0),
             ("MQTT activity", "mqtt_activity", "not available"),
             ("Mesh activity", "mesh_activity", "not available"),

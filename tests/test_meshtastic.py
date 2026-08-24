@@ -158,7 +158,72 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn("sendMqttClientProxyMessage(topic, payload)", source)
         self.assertIn("self.interface.sendPosition(", source)
         self.assertIn('getattr(self.args, "gpsd_position", False)', source)
+        self.assertIn('"radio_broker_matches": bool(', source)
+        self.assertIn('"map_reporting_enabled": getattr(', source)
+        self.assertIn('"map_location_opt_in": getattr(', source)
         self.assertIn("noNodes=True", source)
+
+    def test_gateway_reports_radio_proxy_broker_and_map_policy_without_secrets(self):
+        map_settings = SimpleNamespace(
+            should_report_location=True,
+            publish_interval_secs=3600,
+            position_precision=15,
+        )
+        radio_mqtt = SimpleNamespace(
+            enabled=True,
+            proxy_to_client_enabled=True,
+            address="MQTT.NEOMESH.ORG.",
+            map_reporting_enabled=True,
+            map_report_settings=map_settings,
+            username="must-not-render",
+            password="must-not-render",
+        )
+        gateway = object.__new__(meshtastic_gateway.Gateway)
+        gateway.interface = SimpleNamespace(
+            nodes={},
+            myInfo=None,
+            metadata=None,
+            localNode=SimpleNamespace(moduleConfig=SimpleNamespace(mqtt=radio_mqtt)),
+        )
+        gateway.ble_connected = True
+        gateway.mqtt_connected = True
+        gateway.args = SimpleNamespace(
+            port="/dev/ttyACM0",
+            mqtt_host="mqtt.neomesh.org",
+            mqtt_subscriptions=(),
+            gpsd_position=False,
+        )
+        gateway.started = 123
+        gateway.last_error = None
+        gateway.last_position_update = None
+        gateway.counts = {"mqtt_uplink": 1}
+        gateway.radio_to_mqtt = SimpleNamespace(qsize=lambda: 0)
+        gateway.mqtt_to_radio = SimpleNamespace(qsize=lambda: 0)
+
+        with mock.patch.object(
+            meshtastic_gateway,
+            "build_status",
+            return_value={"schema_version": 1, "state": "connected"},
+        ):
+            status = gateway._status()
+
+        self.assertTrue(status["gateway"]["radio_broker_matches"])
+        self.assertTrue(status["gateway"]["radio_proxy_enabled"])
+        self.assertTrue(status["gateway"]["map_reporting_enabled"])
+        self.assertTrue(status["gateway"]["map_location_opt_in"])
+        self.assertEqual(status["gateway"]["map_publish_interval_secs"], 3600)
+        self.assertEqual(status["gateway"]["map_position_precision"], 15)
+        serialized = json.dumps(status)
+        self.assertNotIn("must-not-render", serialized)
+
+        gateway.args.mqtt_host = "different.example"
+        with mock.patch.object(
+            meshtastic_gateway,
+            "build_status",
+            return_value={"schema_version": 1, "state": "connected"},
+        ):
+            mismatch = gateway._status()
+        self.assertFalse(mismatch["gateway"]["radio_broker_matches"])
 
     def test_gateway_uses_pcs_ble_startup_drain_adapter(self):
         gateway = (ROOT / "scripts" / "pcs_meshtastic_gateway.py").read_text(encoding="utf-8")
