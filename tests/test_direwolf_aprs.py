@@ -154,7 +154,8 @@ class DireWolfAprsTests(unittest.TestCase):
         example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
 
         self.assertIn('PCS_SETUP_APRS="staged"', example)
-        self.assertIn('PCS_APRS_CONFIG_VERSION="1"', example)
+        self.assertIn('PCS_APRS_CONFIG_VERSION="2"', example)
+        self.assertIn('PCS_APRS_BEACON_SENDTO="BOTH"', example)
         for evidence_key in (
             "PCS_APRS_RX_AUDIO_VALIDATED",
             "PCS_APRS_RADIO_CHANNEL_VALIDATED",
@@ -165,6 +166,17 @@ class DireWolfAprsTests(unittest.TestCase):
             with self.subTest(evidence_key=evidence_key):
                 self.assertIn(f'{evidence_key}="no"', example)
                 self.assertNotIn(f'{evidence_key}="yes"', example)
+
+    def test_commissioned_tracker_requires_independent_rf_and_is_schedules(self):
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+        base_setup = BASE_SETUP_SCRIPT.read_text(encoding="utf-8")
+        self_test = (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8")
+
+        self.assertIn('PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-BOTH}"', setup)
+        self.assertIn('PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-BOTH}"', base_setup)
+        self.assertIn("beacon_destinations=(0 IG)", setup)
+        self.assertIn("dual-path tracker profile requires both RF and APRS-IS beacons", setup)
+        self.assertIn("Active APRS position beacon is scheduled for both RF and APRS-IS", self_test)
 
     def test_profile_import_replaces_stale_aprs_block_but_preserves_live_mode(self):
         setup = SETUP_SCRIPT.read_text(encoding="utf-8")
@@ -348,7 +360,11 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("TXDELAY 90", result.stdout)
         self.assertIn("TXTAIL 20", result.stdout)
         self.assertIn("AGWPORT 8000", result.stdout)
-        self.assertIn('TBEACON SENDTO=IG DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
+        rf_beacon = 'TBEACON SENDTO=0 DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"'
+        is_beacon = 'TBEACON SENDTO=IG DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"'
+        self.assertIn(rf_beacon, result.stdout)
+        self.assertIn(is_beacon, result.stdout)
+        self.assertEqual(2, sum(line.startswith("TBEACON ") for line in result.stdout.splitlines()))
         self.assertNotIn("BLOCKED", result.stdout)
 
     @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")
@@ -369,8 +385,34 @@ class DireWolfAprsTests(unittest.TestCase):
             )
 
         self.assertNotIn("BLOCKED", result.stdout)
+        self.assertIn('TBEACON SENDTO=0 DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
         self.assertIn('TBEACON SENDTO=IG DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
         self.assertIn("GPSD localhost 2947", result.stdout)
+
+    @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")
+    def test_dual_path_applies_via_only_to_the_rf_beacon(self):
+        profile = INSTALL_EXAMPLE.read_text(encoding="utf-8").replace(
+            'PCS_APRS_BEACON_PATH="direct"',
+            'PCS_APRS_BEACON_PATH="WIDE1-1"',
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            install_config = Path(temp_dir) / "pcs-install.conf"
+            install_config.write_text(profile, encoding="utf-8")
+            env = os.environ.copy()
+            env["PCS_INSTALL_CONFIG"] = str(install_config)
+            result = subprocess.run(
+                ["bash", str(SETUP_SCRIPT), "--render-config", "tx"],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+        rf_line = next(line for line in result.stdout.splitlines() if line.startswith("TBEACON SENDTO=0 "))
+        is_line = next(line for line in result.stdout.splitlines() if line.startswith("TBEACON SENDTO=IG "))
+        self.assertIn(" via=WIDE1-1 ", rf_line)
+        self.assertNotIn(" via=", is_line)
 
 
 if __name__ == "__main__":

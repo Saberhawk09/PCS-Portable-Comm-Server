@@ -648,10 +648,11 @@ sudo grep -E '^(MYCALL|PTT|TXDELAY|TXTAIL|AGWPORT|KISSPORT|IGTXVIA|IGTXLIMIT|TBE
 
 Expected commissioned core values are `W8IJC-10`, `PTT GPIOD gpiochip0 6`,
 `TXDELAY 90`, `TXTAIL 20`, AGW 8000, KISS 8001, direct `IGTXVIA 0`, limits
-`6 10`, an Internet-only GPS tracker beacon, and the one-hop WIDE1-1 fill-in
-rule. From a PCS-LAN client, verify both ports are reachable; from every uplink
-interface, verify both are rejected. Reconfirm RF behavior after any radio,
-sound-card, cable, GPIO, antenna, or Dire Wolf change.
+`6 10`, independent `TBEACON SENDTO=0` and `TBEACON SENDTO=IG` GPS tracker
+schedules, and the one-hop WIDE1-1 fill-in rule. From a PCS-LAN client, verify
+both ports are reachable; from every uplink interface, verify both are rejected.
+Reconfirm RF behavior after any radio, sound-card, cable, GPIO, antenna, or
+Dire Wolf change.
 
 For `PCS_SETUP_MESHTASTIC=staged`, the self-test requires the pinned BLE/MQTT
 client and gateway to be installed while `pcs-meshtastic.service` stays stopped

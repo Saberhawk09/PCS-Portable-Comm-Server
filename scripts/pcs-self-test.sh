@@ -59,6 +59,8 @@ PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
 PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_BEACON="${PCS_APRS_BEACON:-no}"
+PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-IG}"
 PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
 PCS_APRS_RADIO_INIT="${PCS_APRS_RADIO_INIT:-no}"
@@ -797,6 +799,14 @@ case "${PCS_SETUP_APRS}" in
                     pass "Active APRS transmit profile contains the selected guarded directives"
                 else
                     fail "Active APRS transmit profile is missing its commissioned PTT/digipeater directives"
+                fi
+                if [[ "${PCS_APRS_BEACON}" == "yes" && "${PCS_APRS_BEACON_SENDTO}" == "BOTH" ]]; then
+                    if sudo -n grep -Eq '^TBEACON SENDTO=0 ' /etc/direwolf.conf \
+                        && sudo -n grep -Eq '^TBEACON SENDTO=IG ' /etc/direwolf.conf; then
+                        pass "Active APRS position beacon is scheduled for both RF and APRS-IS"
+                    else
+                        fail "Active APRS dual-path position beacon is missing its RF or APRS-IS schedule"
+                    fi
                 fi
                 ;;
             *)

@@ -125,7 +125,7 @@ The commissioned profile supplied and physically validated by the operator is:
 | Network TNC | AGW 8000/tcp and KISS 8001/tcp | EasyTerm and `kissutil` tested; both restricted to the PCS LAN |
 | RF transmit | Enabled only by guarded TX profile | 3/3 PCS-to-FT3D and 10/10 acknowledged long messages demonstrated |
 | PTT | Active-high BCM GPIO6 / pin 31 through Easy Digi | Bench and RF tested; Dire Wolf uses `PTT GPIOD gpiochip0 6` |
-| Beacon | GPS tracker to APRS-IS every 10 minutes | `SENDTO=IG`, `igate` symbol, `T` overlay, altitude enabled |
+| Beacon | GPS tracker to RF and APRS-IS every 10 minutes | independent `SENDTO=0` and `SENDTO=IG` beacons selected; post-change RF/IS observation required |
 | Digipeater | WIDE1-1 one-hop fill-in only | 4/4 FT3D-to-PCS packets and `[0H]` repeat behavior demonstrated |
 | FX.25 transmit | Disabled | Not part of the commissioned on-air profile; receive support remains available |
 | Packet logging | Enabled | Managed directory, retention, telemetry parser, and dashboard fields implemented |
@@ -259,8 +259,8 @@ network.
 | `PCS_APRS_BEACON` | `yes` / `no` | Enables `TBEACON` in the guarded TX profile after interval/path/symbol review. |
 | `PCS_APRS_BEACON_TYPE` | `gps-tracker` / `fixed` | Selected as `gps-tracker`. |
 | `PCS_APRS_BEACON_INTERVAL` | Dire Wolf interval | Selected as `10:00` (every 10 minutes). |
-| `PCS_APRS_BEACON_PATH` | RF path or empty/direct | Commissioned as direct; `SENDTO=IG` keeps this beacon off RF. |
-| `PCS_APRS_BEACON_SENDTO` | `IG` or channel | `IG` sends the GNSS tracker beacon to APRS-IS rather than RF. |
+| `PCS_APRS_BEACON_PATH` | RF path or empty/direct | Commissioned as direct and applied only to the RF copy. |
+| `PCS_APRS_BEACON_SENDTO` | `BOTH`, `IG`, or channel | Commissioned as `BOTH`, which renders one channel-0 RF beacon and one direct APRS-IS beacon. |
 | `PCS_APRS_BEACON_SYMBOL` | APRS symbol description | Commissioned as `igate`. |
 | `PCS_APRS_BEACON_OVERLAY` | Single overlay character | Commissioned as `T`. |
 | `PCS_APRS_BEACON_ALTITUDE` | `yes` / `no` | Adds `ALT=1` when enabled. |
