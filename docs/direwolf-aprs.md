@@ -454,7 +454,7 @@ The resulting as-built choices are:
 - `W8IJC-10` on 144.5500 MHz simplex, 25 kHz, no tones
 - SA818S V1.2, stock Easy Digi, and ALSA card `Device`
 - active-high GPIO6 through the Easy Digi optocoupler
-- -18 dB playback, 69% capture (+12 dB), AGC off; W8IJC-7 test packets measured 38-56 around Dire Wolf's recommended level of 50
+- -18 dB playback, 69% capture (+12 dB), AGC off; four W8IJC-7 test packets decoded at 26-56, with three at 38-56 around Dire Wolf's recommended level of 50
 - 900 ms `TXDELAY`, 200 ms `TXTAIL`
 - two-way IGate, GNSS-to-APRS-IS beacon, and WIDE1-1 fill-in service
 
