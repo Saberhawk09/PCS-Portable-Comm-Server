@@ -97,13 +97,18 @@ def parse_subscriptions(value: str | None) -> tuple[str, ...]:
 
 
 def map_mirror_topic_allowed(topic: str) -> bool:
-    """Mirror only the public default LongFast channel, never private channels."""
+    """Mirror public LongFast traffic and explicit opt-in firmware map reports."""
 
     segments = topic.split("/")
-    return any(
+    longfast = any(
         segments[index:index + 3] == ["2", "e", "LongFast"]
         for index in range(max(0, len(segments) - 2))
     )
+    map_report = any(
+        segments[index:index + 2] == ["2", "map"]
+        for index in range(max(0, len(segments) - 1))
+    )
+    return longfast or map_report
 
 
 def proxy_payload(message: Any) -> bytes:

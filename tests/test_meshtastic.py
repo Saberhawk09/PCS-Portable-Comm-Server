@@ -334,11 +334,14 @@ class MeshtasticStatusTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             meshtastic_gateway.parse_subscriptions("msh/US/2/e/+/+")
 
-    def test_map_mirror_allows_only_public_longfast_uplink(self):
+    def test_map_mirror_allows_public_longfast_and_opt_in_map_reports(self):
         self.assertTrue(
             meshtastic_gateway.map_mirror_topic_allowed(
                 "msh/US/OH/2/e/LongFast/!gateway"
             )
+        )
+        self.assertTrue(
+            meshtastic_gateway.map_mirror_topic_allowed("msh/US/OH/2/map/")
         )
         self.assertFalse(
             meshtastic_gateway.map_mirror_topic_allowed(

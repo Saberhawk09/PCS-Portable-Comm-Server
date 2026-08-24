@@ -60,6 +60,7 @@ The exact as-built electrical and mechanical record is also unfinished.
 - RAK4631 Meshtastic expansion connected over USB with validated persistent
   NeoMesh MQTT proxy, GPSD position delivery, hourly map reporting, and an
   uplink-only mirror for the MQTT map embedded on the NeoMesh Meshtastic page;
+  the mirror carries public LongFast traffic and explicit opt-in map reports;
   public frontend appearance and sensor accuracy remain operator checkpoints
 
 ### Software
