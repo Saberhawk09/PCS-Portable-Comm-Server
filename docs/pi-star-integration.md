@@ -75,6 +75,18 @@ root and boot filesystem states. The final profile adds a managed
 `dtoverlay=disable-wifi` block to `/boot/config.txt`, guards Pi-Star's native
 `rc.local` Wi-Fi command so the read-only remount still runs without `wlan0`,
 and makes the native AP service conditional on Wi-Fi hardware being present.
+It also keeps Pi-Star's native service state clean on the tested Bullseye image:
+
+- an obsolete `/sys/fs/cgroup` tmpfs entry is commented only when cgroup v2 is
+  already mounted there;
+- the legacy D-Star repeater unit is skipped when Pi-Star's own marker selects
+  MMDVMHost instead; and
+- `haveged` retains its existing systemd sandbox with the missing ARM `uname`
+  syscall added to its allowlist.
+
+The check mode verifies these guards and requires `haveged`, D-Star, and the
+systemd remount unit to be free of failed state. The original fstab and any
+previous drop-ins are included in the normal timestamped backup.
 It does not erase stored Wi-Fi credentials. Environment variables can override
 the documented defaults; run the script without `sudo` so its scoped sudo
 operations and backup behavior remain intact.
