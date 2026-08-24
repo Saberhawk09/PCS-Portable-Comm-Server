@@ -458,6 +458,20 @@ else
 fi
 echo
 
+echo "--- Latched GPIO Shutdown Indicators ---"
+if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" \
+    || "${PCS_SETUP_GPIO_LEDS}" == "yes" \
+    || "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+    echo "Service active:  $(systemctl is-active pcs-gpio-shutdown.service 2>/dev/null || true)"
+    echo "Service enabled: $(systemctl is-enabled pcs-gpio-shutdown.service 2>/dev/null || true)"
+    echo "LCD registered:  $([[ -f /etc/pcs/gpio-shutdown/lcd ]] && echo yes || echo no)"
+    echo "LEDs registered: $([[ -f /etc/pcs/gpio-shutdown/leds ]] && echo yes || echo no)"
+    echo "Matrix marker:    $([[ -f /etc/pcs/gpio-shutdown/matrix ]] && echo yes || echo no)"
+else
+    echo "No visual status hardware is selected."
+fi
+echo
+
 echo "--- GPIO18 Hardware PWM Fan ---"
 echo "PCS state: ${PCS_SETUP_GPIO_FAN}"
 if [[ "${PCS_SETUP_GPIO_FAN}" == "yes" ]]; then

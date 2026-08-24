@@ -170,6 +170,11 @@ self-test then treat them as an intentionally omitted optional feature.
 MAX7219 display service. Set it to `no` on builds without the matrix; status and
 self-test then treat the display as an intentionally omitted optional feature.
 
+Each selected visual-display installer also installs and arms the common
+`pcs-gpio-shutdown.service` and registers only its own hardware. This restores
+the LCD offline text, six blue WS2812 pixels, and bed/ZZZ matrix shutdown state
+without a separate manual setup step.
+
 `PCS_SETUP_GPIO_FAN=yes` disables unused onboard analogue audio, enables PWM0
 on GPIO18, and installs the fail-safe thermal controller. The USB Dire Wolf
 sound adapter is unaffected. The PWM overlay becomes active after the reboot

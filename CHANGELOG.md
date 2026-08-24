@@ -15,6 +15,8 @@ All notable user-facing PCS changes are recorded here.
 - idempotent Raspberry Pi UART/serial-console preparation for APRS rebuilds
 - guarded two-stage Pi-Star handoff to its RTL8152 USB Ethernet adapter with a
   recoverable onboard Wi-Fi disable policy
+- latched visual shutdown state with `PCS Offline` / `Shutting Down` on the
+  LCD, six blue status pixels, and a subdued bed/ZZZ matrix icon
 
 ### Changed
 
