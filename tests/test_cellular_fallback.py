@@ -1,4 +1,6 @@
 import importlib.util
+import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -92,6 +94,8 @@ class ControllerTests(unittest.TestCase):
 
             self.assertEqual(network_manager.connect_calls, 1)
             self.assertEqual(marker.read_text(encoding="utf-8").strip(), "pcs-cellular-profile")
+            if os.name == "posix":
+                self.assertEqual(stat.S_IMODE(marker.stat().st_mode), 0o644)
 
     def test_restored_wifi_disconnects_only_owned_session_after_stability(self):
         with tempfile.TemporaryDirectory() as temporary:
