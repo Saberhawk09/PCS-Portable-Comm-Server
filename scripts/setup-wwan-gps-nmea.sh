@@ -73,9 +73,10 @@ sudo mkdir -p "${CHRONY_DROPIN_DIR}"
 
 sudo tee "${CHRONY_DROPIN}" >/dev/null <<'EOF'
 # PCS WWAN modem GPS via gpsd
-# gpsd publishes NMEA time to SHM 0.
-# This is GPS NMEA timing without PPS.
-refclock SHM 0 refid GPS precision 1e-1 poll 4 delay 0.2
+# gpsd publishes NMEA time to SHM 0. This is GPS NMEA timing without PPS.
+# Prefer GPS whenever it is selectable. Chrony still rejects invalid,
+# unreachable, or inconsistent samples and then uses Internet NTP.
+refclock SHM 0 refid GPS precision 1e-1 poll 4 delay 0.2 prefer
 EOF
 
 echo

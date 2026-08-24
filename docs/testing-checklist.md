@@ -331,8 +331,14 @@ chronyc tracking
 Expected:
 
 ```text
-Chrony is running and serving time
+GPS is selected when it is usable
+Internet NTP is selected when GPS is unavailable
+The stratum-10 local clock is used only when neither is selectable
+Chrony is running and serving time in all three states
 ```
+
+For the controlled, fully restored source-failover procedure, see
+[PCS Time-Source Hierarchy](time-sources.md#controlled-failover-test).
 
 From Windows:
 
@@ -354,12 +360,16 @@ On the Pi:
 ls /dev/rtc*
 timedatectl
 dmesg | grep -i rtc
+systemctl status pcs-rtc-seed.service --no-pager
+sudo /usr/local/sbin/pcs-rtc-seed --check
 ```
 
 Expected:
 
 ```text
 RTC device exists
+RTC seed service completed before Chrony
+RTC contains a readable, plausible UTC value
 System time is sane after reboot
 ```
 

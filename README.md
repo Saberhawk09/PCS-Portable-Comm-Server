@@ -175,6 +175,7 @@ For additional documentation, start here:
 - [Full-Stack Reinstall Runbook](docs/full-stack-reinstall.md)
 - [WWAN Card Setup](docs/wwan-card-setup.md)
 - [GPS Network Sharing](docs/gps-network-sharing.md)
+- [GPS, Internet NTP, and RTC Time Sources](docs/time-sources.md)
 - [Pi-Star Integration](docs/pi-star-integration.md)
 - [Meshtastic USB/Bluetooth MQTT Gateway](docs/meshtastic-bluetooth-gateway.md)
 - [Samba File Share](docs/samba-file-share.md)
@@ -276,6 +277,8 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 - [`scripts/setup-pcs-control-panel.sh`](scripts/setup-pcs-control-panel.sh) - Install the public homepage and authenticated control panel
 - [`scripts/setup-dashboard-redirect.sh`](scripts/setup-dashboard-redirect.sh) - Install the legacy port 8080 redirect to `/admin/`
 - [`scripts/setup-gpsd-lan-proxy.sh`](scripts/setup-gpsd-lan-proxy.sh) - Publish GPSD only on the trusted PCS LAN
+- [`scripts/setup-chrony-lan-ntp.sh`](scripts/setup-chrony-lan-ntp.sh) - Configure GPS-first, Internet-second LAN NTP with RTC holdover
+- [`scripts/setup-rtc.sh`](scripts/setup-rtc.sh) - Configure the DS1307 and guarded boot-time RTC seed
 - [`scripts/setup-pistar-pcs.sh`](scripts/setup-pistar-pcs.sh) - Apply or verify the Pi-Star PCS integration
 - [`scripts/setup-pistar-shutdown.sh`](scripts/setup-pistar-shutdown.sh) - Pair the PCS shutdown button with Pi-Star
 

@@ -1850,6 +1850,8 @@ rtc_local = timedate_value("RTC in local TZ")
 chrony_ref = chrony.get("Reference ID", "")
 chrony_stratum = chrony.get("Stratum", "")
 chrony_local_fallback = chrony_ref.startswith("7F7F0101") or chrony_stratum == "10"
+chrony_selected_gps = "(GPS)" in chrony_ref.upper()
+rtc_seed_active = active("pcs-rtc-seed.service")
 
 smbd_active = active("smbd")
 primary_share_ok = dir_exists(PRIMARY_SHARE) and has_samba_share("PCS-Share")
@@ -2039,7 +2041,7 @@ chrony_gps_source_present = any(term in chrony_sources_out.upper() for term in [
 ])
 
 storage_status = "ok" if usb_mount and primary_share_ok and backup_share_ok and last_sync else "warn"
-time_status = "ok" if chrony_active and clock_sync == "yes" else "warn"
+time_status = "ok" if chrony_active and clock_sync == "yes" and not chrony_local_fallback else "warn"
 samba_status = "ok" if smbd_active and primary_share_ok and backup_share_ok else "bad"
 services_status = "ok" if all(core_services.values()) else "warn"
 cellular_registered = cell_info.get("registration") in {"home", "roaming"}
@@ -2191,12 +2193,13 @@ cards = [
         "id": "time",
         "title": "Time / NTP",
         "status": time_status,
-        "summary": "Chrony synchronized" if time_status == "ok" and not chrony_local_fallback else "Chrony using local fallback" if chrony_local_fallback else "Time needs attention",
+        "summary": "Chrony synchronized to preferred GPS" if time_status == "ok" and chrony_selected_gps else "Chrony synchronized to Internet NTP" if time_status == "ok" else "Chrony using RTC holdover" if chrony_local_fallback and rtc_seed_active else "Chrony using local clock fallback" if chrony_local_fallback else "Time needs attention",
         "items": [
             {"label": "Chrony", "value": "active" if chrony_active else "inactive"},
             {"label": "System synchronized", "value": clock_sync or "unknown"},
             {"label": "NTP service", "value": ntp_service or "unknown"},
             {"label": "RTC local TZ", "value": rtc_local or "unknown"},
+            {"label": "RTC boot seed", "value": "completed" if rtc_seed_active else "inactive or unavailable"},
             {"label": "Reference", "value": chrony_ref or "unknown"},
             {"label": "Stratum", "value": chrony_stratum or "unknown"},
         ],
@@ -2420,10 +2423,12 @@ if PUBLIC_VIEW:
             "synchronized": clock_sync == "yes",
             "source": (
                 "GNSS"
-                if chrony_gps_source_present and clock_sync == "yes"
+                if chrony_selected_gps and clock_sync == "yes"
                 else "Internet NTP"
                 if clock_sync == "yes" and not chrony_local_fallback
-                else "RTC / local fallback"
+                else "RTC holdover"
+                if chrony_local_fallback and rtc_seed_active
+                else "Local clock fallback"
                 if chrony_local_fallback
                 else "Unsynchronized"
             ),
@@ -2958,10 +2963,12 @@ cellular_test_internet() {
 
 
 sync_time_now() {
+    local tracking_after_sync
+
     header "Sync Time Now"
 
-    echo "Chrony will poll configured sources and choose the best available time source."
-    echo "This may use internet NTP, GPS, or local fallback depending on current conditions."
+    echo "Chrony will prefer usable GPS, then use Internet NTP if GPS is unavailable."
+    echo "RTC-seeded local holdover remains the final degraded fallback."
     echo
 
     echo "--- Chrony tracking before sync ---"
@@ -2987,10 +2994,18 @@ sync_time_now() {
     echo "--- Waiting for synchronized state ---"
     chronyc waitsync 30 0.5 0.0 2 || true
 
-    if [[ -e /dev/rtc0 ]]; then
+    tracking_after_sync="$(chronyc tracking 2>/dev/null || true)"
+
+    if [[ -e /dev/rtc0 ]] \
+        && grep -qE '^Leap status[[:space:]]*:[[:space:]]*Normal' <<<"${tracking_after_sync}" \
+        && ! grep -qE '^Reference ID[[:space:]]*:[[:space:]]*7F7F0101' <<<"${tracking_after_sync}" \
+        && ! grep -qE '^Stratum[[:space:]]*:[[:space:]]*10([[:space:]]|$)' <<<"${tracking_after_sync}"; then
         echo
-        echo "--- Writing synchronized system time to RTC ---"
+        echo "--- Writing authoritative GPS/Internet time to RTC ---"
         hwclock --systohc --utc || true
+    elif [[ -e /dev/rtc0 ]]; then
+        echo
+        echo "--- RTC write skipped: Chrony has no authoritative GPS/Internet synchronization ---"
     else
         echo
         echo "--- RTC not present; skipping RTC write ---"
