@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml)
 
-A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and muli-protocol radio interface/hotspot.
+A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and multi-protocol radio interface/hotspot.
 
 What started as an annoyance caused by Windows networking has evolved into my first end-to-end hardware and software project.
 
