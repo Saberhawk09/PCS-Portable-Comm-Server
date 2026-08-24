@@ -120,7 +120,9 @@ class FallbackController:
     def _record_ownership(self) -> None:
         temporary = self.marker_path.with_name(f"{self.marker_path.name}.tmp.{os.getpid()}")
         temporary.write_text(f"{self.config.cellular_profile}\n", encoding="utf-8")
-        os.chmod(temporary, 0o600)
+        # The profile name is not secret. World-readable/root-writable mode lets
+        # the normal-user status and self-test tools verify ownership safely.
+        os.chmod(temporary, 0o644)
         os.replace(temporary, self.marker_path)
 
     def _clear_ownership(self) -> None:
