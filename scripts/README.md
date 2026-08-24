@@ -222,7 +222,7 @@ validation, activation, testing, and rollback:
 ./scripts/setup-direwolf-aprs.sh --list-audio
 ./scripts/setup-direwolf-aprs.sh --detect-audio
 ./scripts/setup-direwolf-aprs.sh --set-rx-level 69
-./scripts/setup-direwolf-aprs.sh --set-tx-timing 60 20
+./scripts/setup-direwolf-aprs.sh --set-tx-timing 75 20
 ./scripts/setup-direwolf-aprs.sh --check
 ./scripts/setup-direwolf-aprs.sh --capabilities
 ./scripts/setup-direwolf-aprs.sh --software-test
