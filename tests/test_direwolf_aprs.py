@@ -140,6 +140,7 @@ class DireWolfAprsTests(unittest.TestCase):
             "--prepare", "--prepare-uart", "--import-commissioned-profile",
             "--configure-options", "--record-validation", "--check",
             "--capabilities", "--list-audio", "--detect-audio", "--set-rx-level",
+            "--set-tx-timing",
             "--software-test", "--render-config",
             "--validate-config", "--activate-rx", "--activate-tx", "--rollback",
             "--help", "-h",
@@ -314,6 +315,9 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn('PCS_APRS_PLAYBACK_LEVEL="${PCS_APRS_PLAYBACK_LEVEL:--18dB}"', audio_script)
         self.assertIn('PCS_APRS_CAPTURE_LEVEL="${PCS_APRS_CAPTURE_LEVEL:-69%}"', audio_script)
         self.assertIn("set_rx_level()", setup)
+        self.assertIn("set_tx_timing()", setup)
+        self.assertIn("Dire Wolf must be active before commissioned TX timing can be recorded", setup)
+        self.assertIn("refusing to record timing that differs from active", setup)
         self.assertIn("Dire Wolf was not restarted; its live TX configuration was untouched.", setup)
         self.assertIn(
             'PCS_APRS_CAPTURE_LEVEL="69%"',
@@ -369,7 +373,7 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("IGTXVIA 0", result.stdout)
         self.assertIn("DIGIPEAT 0 0 ^WIDE1-1$ ^WIDE1-1$", result.stdout)
         self.assertNotIn("FX25TX", result.stdout)
-        self.assertIn("TXDELAY 90", result.stdout)
+        self.assertIn("TXDELAY 60", result.stdout)
         self.assertIn("TXTAIL 20", result.stdout)
         self.assertIn("AGWPORT 8000", result.stdout)
         rf_beacon = 'TBEACON SENDTO=0 DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"'

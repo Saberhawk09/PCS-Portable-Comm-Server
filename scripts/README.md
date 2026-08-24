@@ -222,6 +222,7 @@ validation, activation, testing, and rollback:
 ./scripts/setup-direwolf-aprs.sh --list-audio
 ./scripts/setup-direwolf-aprs.sh --detect-audio
 ./scripts/setup-direwolf-aprs.sh --set-rx-level 69
+./scripts/setup-direwolf-aprs.sh --set-tx-timing 60 20
 ./scripts/setup-direwolf-aprs.sh --check
 ./scripts/setup-direwolf-aprs.sh --capabilities
 ./scripts/setup-direwolf-aprs.sh --software-test
@@ -255,6 +256,9 @@ Flag behavior:
 - `--detect-audio` records a stable ALSA ID only for one unambiguous USB capture/playback card and resets audio evidence gates.
 - `--set-rx-level PERCENT` persists and applies a validated RX mixer level
   without regenerating Dire Wolf or touching the active TX profile.
+- `--set-tx-timing DELAY TAIL` requires active Dire Wolf and records validated
+  10 ms timing units only when they match `/etc/direwolf.conf`; it never
+  restarts Dire Wolf.
 - `--software-test` uses temporary WAV files to verify AX.25, FX.25, and timing tolerance without RF.
 - `--render-config rx|tx` prints a proposed configuration with no real passcode.
 - `--validate-config rx|tx` lints the proposal and reports every activation blocker.

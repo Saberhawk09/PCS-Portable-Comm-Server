@@ -39,6 +39,7 @@ DIREWOLF_SOURCE_URL="https://github.com/wb2osz/direwolf.git"
 APRS_CONFIG_VERSION_CURRENT="2"
 MODE="${1:---prepare}"
 PROFILE="${2:-}"
+VALUE2="${3:-}"
 APRS_IS_PASSCODE=""
 
 if [[ -f "${INSTALL_CONFIG}" ]]; then
@@ -108,7 +109,7 @@ PCS_APRS_LOG_RETENTION_DAYS="${PCS_APRS_LOG_RETENTION_DAYS:-14}"
 PCS_APRS_DWAIT="${PCS_APRS_DWAIT:-0}"
 PCS_APRS_SLOTTIME="${PCS_APRS_SLOTTIME:-10}"
 PCS_APRS_PERSIST="${PCS_APRS_PERSIST:-63}"
-PCS_APRS_TXDELAY="${PCS_APRS_TXDELAY:-90}"
+PCS_APRS_TXDELAY="${PCS_APRS_TXDELAY:-60}"
 PCS_APRS_TXTAIL="${PCS_APRS_TXTAIL:-20}"
 PCS_APRS_FULLDUP="${PCS_APRS_FULLDUP:-OFF}"
 PCS_APRS_RX_AUDIO_VALIDATED="${PCS_APRS_RX_AUDIO_VALIDATED:-no}"
@@ -133,7 +134,7 @@ PCS_APRS_RADIO_TX_TAIL="${PCS_APRS_RADIO_TX_TAIL:-off}"
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/setup-direwolf-aprs.sh COMMAND [PROFILE]
+Usage: ./scripts/setup-direwolf-aprs.sh COMMAND [ARGUMENTS]
 
   --prepare              Install Dire Wolf and stage the safe template.
                          The service remains stopped and disabled.
@@ -152,6 +153,9 @@ Usage: ./scripts/setup-direwolf-aprs.sh COMMAND [PROFILE]
                          card by stable card ID; refuse zero or multiple matches.
   --set-rx-level PERCENT Persist and apply the USB capture level without
                          regenerating Dire Wolf or touching the TX profile.
+  --set-tx-timing DELAY TAIL
+                         Record validated 10 ms TXDELAY/TXTAIL units. Dire Wolf
+                         must be active and values must match its live file.
   --software-test        Run AX.25, FX.25, and timing loopback fixtures.
   --render-config PROFILE
                          Print a proposed rx or tx configuration. Secrets are
@@ -1303,6 +1307,48 @@ set_rx_level() {
     echo "Dire Wolf was not restarted; its live TX configuration was untouched."
 }
 
+set_tx_timing() {
+    local requested_delay="${1:-}"
+    local requested_tail="${2:-}"
+    local delay=""
+    local tail=""
+    local live_delay=""
+    local live_tail=""
+
+    require_normal_user
+    if [[ ! "${requested_delay}" =~ ^[0-9]{1,4}$ \
+        || ! "${requested_tail}" =~ ^[0-9]{1,4}$ ]]; then
+        echo "ERROR: --set-tx-timing requires TXDELAY and TXTAIL values from 0 through 9999." >&2
+        return 2
+    fi
+    delay="$((10#${requested_delay}))"
+    tail="$((10#${requested_tail}))"
+
+    if ! systemctl is-active --quiet direwolf.service 2>/dev/null; then
+        echo "ERROR: Dire Wolf must be active before commissioned TX timing can be recorded." >&2
+        echo "No managed configuration was changed." >&2
+        return 1
+    fi
+
+    ensure_sudo
+    live_delay="$(sudo awk '$1 == "TXDELAY" { print $2; exit }' "${DIREWOLF_CONFIG}")"
+    live_tail="$(sudo awk '$1 == "TXTAIL" { print $2; exit }' "${DIREWOLF_CONFIG}")"
+    if [[ "${live_delay}" != "${delay}" || "${live_tail}" != "${tail}" ]]; then
+        echo "ERROR: refusing to record timing that differs from active ${DIREWOLF_CONFIG}." >&2
+        echo "Active: TXDELAY ${live_delay:-missing}; TXTAIL ${live_tail:-missing}." >&2
+        echo "Requested: TXDELAY ${delay}; TXTAIL ${tail}." >&2
+        return 1
+    fi
+
+    PCS_APRS_TXDELAY="${delay}"
+    PCS_APRS_TXTAIL="${tail}"
+    set_install_config_value PCS_APRS_TXDELAY "${PCS_APRS_TXDELAY}"
+    set_install_config_value PCS_APRS_TXTAIL "${PCS_APRS_TXTAIL}"
+    echo "Recorded TXDELAY ${PCS_APRS_TXDELAY} and TXTAIL ${PCS_APRS_TXTAIL} in ${INSTALL_CONFIG}."
+    echo "The active Dire Wolf configuration already matches. No service was restarted."
+    echo "Existing hardware-validation evidence was not changed."
+}
+
 find_rpi_boot_file() {
     local name="$1"
 
@@ -1756,6 +1802,9 @@ case "${MODE}" in
         ;;
     --set-rx-level)
         set_rx_level "${PROFILE}"
+        ;;
+    --set-tx-timing)
+        set_tx_timing "${PROFILE}" "${VALUE2}"
         ;;
     --software-test)
         bash "${SOFTWARE_TEST}"
