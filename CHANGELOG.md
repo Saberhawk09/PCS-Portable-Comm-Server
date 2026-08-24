@@ -20,6 +20,9 @@ All notable user-facing PCS changes are recorded here.
 
 ### Changed
 
+- reduced the commissioned APRS USB capture gain from 100%/+23 dB to
+  69%/+12 dB after live W8IJC-7 packets measured 38-56 near Dire Wolf's
+  recommended receive level of 50
 - changed the commissioned GNSS position beacon from APRS-IS-only to independent
   channel-0 RF and direct APRS-IS packets every 10 minutes
 - reconciled the production profile to the commissioned `W8IJC-10` station on

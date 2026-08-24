@@ -139,7 +139,8 @@ class DireWolfAprsTests(unittest.TestCase):
         flags = {
             "--prepare", "--prepare-uart", "--import-commissioned-profile",
             "--configure-options", "--record-validation", "--check",
-            "--capabilities", "--list-audio", "--detect-audio", "--software-test", "--render-config",
+            "--capabilities", "--list-audio", "--detect-audio", "--set-rx-level",
+            "--software-test", "--render-config",
             "--validate-config", "--activate-rx", "--activate-tx", "--rollback",
             "--help", "-h",
         }
@@ -311,6 +312,17 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("SupplementaryGroups=audio", audio_service)
         self.assertIn("AT+DMOSETGROUP", SA818_UTILITY.read_text(encoding="utf-8"))
         self.assertIn('PCS_APRS_PLAYBACK_LEVEL="${PCS_APRS_PLAYBACK_LEVEL:--18dB}"', audio_script)
+        self.assertIn('PCS_APRS_CAPTURE_LEVEL="${PCS_APRS_CAPTURE_LEVEL:-69%}"', audio_script)
+        self.assertIn("set_rx_level()", setup)
+        self.assertIn("Dire Wolf was not restarted; its live TX configuration was untouched.", setup)
+        self.assertIn(
+            'PCS_APRS_CAPTURE_LEVEL="69%"',
+            (ROOT / "config" / "pcs-install.example.conf").read_text(encoding="utf-8"),
+        )
+        self.assertIn(
+            'PCS_APRS_CAPTURE_LEVEL="${PCS_APRS_CAPTURE_LEVEL:-69%}"',
+            (ROOT / "scripts" / "setup-pcs-base.sh").read_text(encoding="utf-8"),
+        )
         self.assertIn('sset "${PCS_APRS_PLAYBACK_CONTROL}" --', audio_script)
         self.assertIn('sset "${PCS_APRS_CAPTURE_CONTROL}"', audio_script)
         self.assertIn('sset "${PCS_APRS_AGC_CONTROL}"', audio_script)

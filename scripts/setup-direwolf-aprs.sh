@@ -59,7 +59,7 @@ PCS_APRS_AUDIO_CARD="${PCS_APRS_AUDIO_CARD:-Device}"
 PCS_APRS_PLAYBACK_CONTROL="${PCS_APRS_PLAYBACK_CONTROL:-Speaker}"
 PCS_APRS_PLAYBACK_LEVEL="${PCS_APRS_PLAYBACK_LEVEL:--18dB}"
 PCS_APRS_CAPTURE_CONTROL="${PCS_APRS_CAPTURE_CONTROL:-Mic}"
-PCS_APRS_CAPTURE_LEVEL="${PCS_APRS_CAPTURE_LEVEL:-100%}"
+PCS_APRS_CAPTURE_LEVEL="${PCS_APRS_CAPTURE_LEVEL:-69%}"
 PCS_APRS_AGC_CONTROL="${PCS_APRS_AGC_CONTROL:-Auto Gain Control}"
 PCS_APRS_AGC_STATE="${PCS_APRS_AGC_STATE:-off}"
 PCS_APRS_SAMPLE_RATE="${PCS_APRS_SAMPLE_RATE:-48000}"
@@ -150,6 +150,8 @@ Usage: ./scripts/setup-direwolf-aprs.sh COMMAND [PROFILE]
   --list-audio           Perform read-only USB, ALSA, and PTT discovery.
   --detect-audio         Record exactly one unambiguous USB ALSA capture/playback
                          card by stable card ID; refuse zero or multiple matches.
+  --set-rx-level PERCENT Persist and apply the USB capture level without
+                         regenerating Dire Wolf or touching the TX profile.
   --software-test        Run AX.25, FX.25, and timing loopback fixtures.
   --render-config PROFILE
                          Print a proposed rx or tx configuration. Secrets are
@@ -1238,6 +1240,69 @@ ensure_sudo() {
     fi
 }
 
+write_audio_environment() {
+    local destination="$1"
+
+    printf 'PCS_APRS_AUDIO_CARD=%q\nPCS_APRS_PLAYBACK_CONTROL=%q\nPCS_APRS_PLAYBACK_LEVEL=%q\nPCS_APRS_CAPTURE_CONTROL=%q\nPCS_APRS_CAPTURE_LEVEL=%q\nPCS_APRS_AGC_CONTROL=%q\nPCS_APRS_AGC_STATE=%q\n' \
+        "${PCS_APRS_AUDIO_CARD}" "${PCS_APRS_PLAYBACK_CONTROL}" "${PCS_APRS_PLAYBACK_LEVEL}" \
+        "${PCS_APRS_CAPTURE_CONTROL}" "${PCS_APRS_CAPTURE_LEVEL}" \
+        "${PCS_APRS_AGC_CONTROL}" "${PCS_APRS_AGC_STATE}" >"${destination}"
+}
+
+set_rx_level() {
+    local requested="${1:-}"
+    local numeric="${requested%\%}"
+    local previous_level="${PCS_APRS_CAPTURE_LEVEL}"
+    local temp_dir=""
+    local audio_env=""
+    local backup_file=""
+    local timestamp=""
+
+    require_normal_user
+    if [[ ! "${numeric}" =~ ^[0-9]{1,3}$ ]] || (( 10#${numeric} > 100 )); then
+        echo "ERROR: --set-rx-level requires a percentage from 0 through 100." >&2
+        return 2
+    fi
+
+    PCS_APRS_CAPTURE_LEVEL="${numeric}%"
+    set_install_config_value PCS_APRS_CAPTURE_LEVEL "${PCS_APRS_CAPTURE_LEVEL}"
+
+    if ! systemctl is-enabled --quiet pcs-aprs-audio.service 2>/dev/null; then
+        echo "Recorded PCS_APRS_CAPTURE_LEVEL=${PCS_APRS_CAPTURE_LEVEL} in ${INSTALL_CONFIG}."
+        echo "PCS APRS audio restoration is not enabled; no mixer or service state changed."
+        return 0
+    fi
+
+    ensure_sudo
+    if ! sudo test -s "${APRS_CONFIG_DIR}/audio.conf"; then
+        echo "Recorded PCS_APRS_CAPTURE_LEVEL=${PCS_APRS_CAPTURE_LEVEL} in ${INSTALL_CONFIG}."
+        echo "No active PCS APRS audio profile was found; no mixer or service state changed."
+        return 0
+    fi
+    temp_dir="$(mktemp -d)"
+    audio_env="${temp_dir}/audio.conf"
+    write_audio_environment "${audio_env}"
+    timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    sudo install -d -o root -g direwolf -m 0750 "${BACKUP_DIR}"
+    backup_file="$(sudo mktemp "${BACKUP_DIR}/audio.conf.${timestamp}.XXXXXX")"
+    sudo cp --preserve=mode,ownership,timestamps -- "${APRS_CONFIG_DIR}/audio.conf" "${backup_file}"
+    sudo install -o root -g direwolf -m 0640 "${audio_env}" "${APRS_CONFIG_DIR}/audio.conf"
+
+    if ! sudo systemctl restart pcs-aprs-audio.service; then
+        echo "ERROR: the new receive level failed verification; restoring ${previous_level}." >&2
+        sudo install -o root -g direwolf -m 0640 "${backup_file}" "${APRS_CONFIG_DIR}/audio.conf"
+        sudo systemctl restart pcs-aprs-audio.service || true
+        set_install_config_value PCS_APRS_CAPTURE_LEVEL "${previous_level}"
+        rm -rf -- "${temp_dir}"
+        return 1
+    fi
+
+    rm -rf -- "${temp_dir}"
+    echo "PCS APRS receive capture is now ${PCS_APRS_CAPTURE_LEVEL}."
+    echo "Runtime backup: ${backup_file}"
+    echo "Dire Wolf was not restarted; its live TX configuration was untouched."
+}
+
 find_rpi_boot_file() {
     local name="$1"
 
@@ -1434,10 +1499,7 @@ install_runtime_support() {
 
     printf 'PCS_APRS_AGW_PORT=%q\nPCS_APRS_KISS_PORT=%q\nPCS_APRS_KISS_LAN_INTERFACE=%q\nPCS_APRS_KISS_LAN_NETWORK=%q\n' \
         "${PCS_APRS_AGW_PORT}" "${PCS_APRS_KISS_PORT}" "${PCS_APRS_KISS_LAN_INTERFACE}" "${PCS_APRS_KISS_LAN_NETWORK}" >"${kiss_env}"
-    printf 'PCS_APRS_AUDIO_CARD=%q\nPCS_APRS_PLAYBACK_CONTROL=%q\nPCS_APRS_PLAYBACK_LEVEL=%q\nPCS_APRS_CAPTURE_CONTROL=%q\nPCS_APRS_CAPTURE_LEVEL=%q\nPCS_APRS_AGC_CONTROL=%q\nPCS_APRS_AGC_STATE=%q\n' \
-        "${PCS_APRS_AUDIO_CARD}" "${PCS_APRS_PLAYBACK_CONTROL}" "${PCS_APRS_PLAYBACK_LEVEL}" \
-        "${PCS_APRS_CAPTURE_CONTROL}" "${PCS_APRS_CAPTURE_LEVEL}" \
-        "${PCS_APRS_AGC_CONTROL}" "${PCS_APRS_AGC_STATE}" >"${audio_env}"
+    write_audio_environment "${audio_env}"
     cat >"${sa818_ini}" <<EOF
 [radio]
 device = ${PCS_APRS_RADIO_DEVICE}
@@ -1691,6 +1753,9 @@ case "${MODE}" in
         ;;
     --detect-audio)
         detect_audio
+        ;;
+    --set-rx-level)
+        set_rx_level "${PROFILE}"
         ;;
     --software-test)
         bash "${SOFTWARE_TEST}"
