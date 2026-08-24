@@ -2182,6 +2182,14 @@ meshtastic_connected = (
     and bool(meshtastic_gateway.get("ble_connected"))
 )
 meshtastic_mqtt_connected = bool(meshtastic_gateway.get("mqtt_connected"))
+meshtastic_radio_mqtt_enabled = bool(meshtastic_gateway.get("radio_mqtt_enabled"))
+meshtastic_radio_proxy_enabled = bool(meshtastic_gateway.get("radio_proxy_enabled"))
+meshtastic_radio_broker_matches = bool(meshtastic_gateway.get("radio_broker_matches"))
+meshtastic_radio_policy_ok = all((
+    meshtastic_radio_mqtt_enabled,
+    meshtastic_radio_proxy_enabled,
+    meshtastic_radio_broker_matches,
+))
 meshtastic_broker_host = meshtastic_env.get("PCS_MESHTASTIC_MQTT_HOST", "")
 meshtastic_broker_port = meshtastic_env.get("PCS_MESHTASTIC_MQTT_PORT", "1883")
 meshtastic_tls = bool_value(meshtastic_env.get("PCS_MESHTASTIC_MQTT_TLS"))
@@ -2214,6 +2222,22 @@ meshtastic_downlink_filters = int(number_value(meshtastic_gateway.get("downlink_
 meshtastic_mqtt_activity = (
     f"{int(number_value(meshtastic_counters.get('mqtt_uplink')) or 0)} up / "
     f"{int(number_value(meshtastic_counters.get('mqtt_downlink')) or 0)} down"
+)
+meshtastic_radio_policy_label = (
+    "enabled / client proxy / broker matched"
+    if meshtastic_radio_policy_ok
+    else "radio MQTT, Client Proxy, or broker mismatch"
+)
+meshtastic_map_enabled = bool(meshtastic_gateway.get("map_reporting_enabled"))
+meshtastic_map_location = bool(meshtastic_gateway.get("map_location_opt_in"))
+meshtastic_map_interval = int(number_value(meshtastic_gateway.get("map_publish_interval_secs")) or 0)
+meshtastic_map_precision = int(number_value(meshtastic_gateway.get("map_position_precision")) or 0)
+meshtastic_map_label = (
+    f"enabled; location opted in; every {meshtastic_map_interval // 60}m; precision {meshtastic_map_precision}"
+    if meshtastic_map_enabled and meshtastic_map_location and meshtastic_map_interval
+    else "enabled; location not shared"
+    if meshtastic_map_enabled
+    else "disabled"
 )
 meshtastic_mesh_activity = (
     f"{int(number_value(meshtastic_mesh.get('received_packets')) or 0)} RX / "
@@ -2258,6 +2282,7 @@ elif MESHTASTIC_CONFIGURED:
         meshtastic_service_enabled,
         meshtastic_snapshot_fresh,
         meshtastic_connected,
+        meshtastic_radio_policy_ok,
     ))
     meshtastic_broker_ok = meshtastic_mqtt_connected or offline_mode
     meshtastic_status = (
@@ -2532,6 +2557,8 @@ if MESHTASTIC_PREPARED:
             {"label": "Power", "value": meshtastic_power},
             {"label": "MQTT broker", "value": meshtastic_broker_label},
             {"label": "MQTT session", "value": "connected" if meshtastic_mqtt_connected else "disconnected"},
+            {"label": "Radio MQTT policy", "value": meshtastic_radio_policy_label},
+            {"label": "Public map report", "value": meshtastic_map_label},
             {"label": "Downlink filters", "value": str(meshtastic_downlink_filters)},
             {"label": "MQTT proxy activity", "value": meshtastic_mqtt_activity},
             {"label": "Mesh packet counters", "value": meshtastic_mesh_activity},
@@ -2714,6 +2741,8 @@ if PUBLIC_VIEW:
             "radio_link": "connected" if meshtastic_connected else "disconnected",
             "mqtt": "connected" if meshtastic_mqtt_connected else "waiting for uplink" if offline_mode else "disconnected",
             "broker": meshtastic_broker_label,
+            "mqtt_policy": meshtastic_radio_policy_label,
+            "map_reporting": meshtastic_map_label,
             "downlink_filters": meshtastic_downlink_filters,
             "mqtt_activity": meshtastic_mqtt_activity,
             "mesh_activity": meshtastic_mesh_activity,

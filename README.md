@@ -39,8 +39,9 @@ HD44780 LCD, MAX7219 matrix, WS2812 indicators, and APRS subsystem are installed
 The SA818S, stock Easy Digi, GPIO6 PTT, USB audio, 144.5500 MHz RF path, GNSS
 beaconing, two-way APRS-IS, messaging, and WIDE1-1 fill-in operation have been
 validated. The RAK4631 persistent USB/MQTT gateway and GPSD position delivery
-are live-validated; mesh RF behavior and the case-sensor baseline remain
-operator checkpoints.
+are live-validated, including successful encrypted proxy publishes to the
+NeoMesh broker and opted-in hourly map reporting. Public-map frontend appearance,
+mesh RF behavior, and the case-sensor baseline remain operator checkpoints.
 The exact as-built electrical and mechanical record is also unfinished.
 
 ### Hardware
@@ -57,8 +58,8 @@ The exact as-built electrical and mechanical record is also unfinished.
 - GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
 - SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
 - RAK4631 Meshtastic expansion connected over USB with validated persistent
-  MQTT and GPSD position delivery; mesh RF behavior and sensor accuracy remain
-  operator checkpoints
+  NeoMesh MQTT proxy, GPSD position delivery, and hourly map reporting; public
+  map appearance, mesh RF behavior, and sensor accuracy remain operator checkpoints
 
 ### Software
 
@@ -71,8 +72,8 @@ The exact as-built electrical and mechanical record is also unfinished.
 - LAN GPSD, NTP, and installer-assisted coordinated Pi-Star shutdown integration
 - Managed Dire Wolf 1.8.1 startup with SA818S programming, ALSA level restoration, LAN-only AGW/KISS access, and guarded activation/rollback
 - Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
-  dashboard status, guarded restart, GPSD position delivery, and local
-  environment telemetry
+  dashboard status, guarded restart, broker/proxy policy validation, GPSD
+  position delivery, map-report status, and local environment telemetry
 - PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; credentials, external-device recovery, and RF checks remain manual
 
 ### Current Finish Work

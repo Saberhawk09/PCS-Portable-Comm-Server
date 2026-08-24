@@ -951,6 +951,9 @@ assert status["state"] == "connected"
 assert status["transport"] == os.environ["EXPECTED_MESHTASTIC_TRANSPORT"]
 assert status["gateway"]["ble_connected"] is True
 assert status["gateway"]["mqtt_connected"] is True
+assert status["gateway"]["radio_mqtt_enabled"] is True
+assert status["gateway"]["radio_proxy_enabled"] is True
+assert status["gateway"]["radio_broker_matches"] is True
 assert 0 <= time.time() - status["collected_at_epoch"] <= 60
 assert status["privacy"]["messages_stored"] is False
 assert status["privacy"]["remote_identities_stored"] is False
@@ -961,9 +964,9 @@ if os.environ.get("PCS_MESHTASTIC_GPSD_POSITION", "").lower() == "yes":
     assert status["gateway"]["counters"]["position_updates"] > 0
     assert 0 <= time.time() - status["gateway"]["last_position_update_at_epoch"] <= 900
 ' 2>/dev/null; then
-                pass "Meshtastic radio, MQTT, GPSD, and privacy-safe runtime status are healthy"
+                pass "Meshtastic radio, Client Proxy, broker mapping, GPSD, and privacy-safe runtime status are healthy"
             else
-                fail "Meshtastic gateway runtime status is stale, disconnected, or invalid"
+                fail "Meshtastic gateway runtime status, Client Proxy, or broker mapping is invalid"
             fi
 
             if /usr/local/sbin/pcs_meshtastic_status.py --check >/dev/null 2>&1; then

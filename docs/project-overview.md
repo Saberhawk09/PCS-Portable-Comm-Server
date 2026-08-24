@@ -128,10 +128,12 @@ The current software baseline includes:
 
 Meshtastic integration is deployed as a repeatable, persistent RAK4631
 USB-to-MQTT client-proxy gateway. The USB session, broker connection, bounded
-GPSD position delivery, and privacy-safe runtime telemetry are live-validated.
-The public/admin dashboards report approved aggregate node, MQTT, mesh, GPSD,
-environment, utilization, and power fields. Mesh RF behavior and case-sensor
-accuracy still require operator observation and comparison with a reference.
+GPSD position delivery, encrypted NeoMesh proxy publishes, opted-in hourly map
+reporting, and privacy-safe runtime telemetry are live-validated. The public/admin
+dashboards report approved aggregate node, MQTT, mesh, GPSD, environment,
+utilization, power, broker-policy, and map-policy fields. Public-map frontend
+appearance, mesh RF behavior, and case-sensor accuracy still require operator
+observation and comparison with a reference.
 
 ## Current Client Access
 

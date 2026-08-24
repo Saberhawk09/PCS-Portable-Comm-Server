@@ -278,6 +278,10 @@ class Gateway:
             module_config = getattr(local_node, "moduleConfig", None)
             radio_mqtt = getattr(module_config, "mqtt", None)
 
+        radio_mqtt_address = str(getattr(radio_mqtt, "address", "") or "").strip().lower().rstrip(".")
+        pcs_mqtt_address = str(getattr(self.args, "mqtt_host", "") or "").strip().lower().rstrip(".")
+        map_settings = getattr(radio_mqtt, "map_report_settings", None)
+
         status["gateway"] = {
             "mode": "transparent-mqtt-client-proxy",
             "ble_connected": self.ble_connected,
@@ -285,6 +289,15 @@ class Gateway:
             "downlink_filters": len(self.args.mqtt_subscriptions),
             "radio_mqtt_enabled": getattr(radio_mqtt, "enabled", None),
             "radio_proxy_enabled": getattr(radio_mqtt, "proxy_to_client_enabled", None),
+            "radio_broker_matches": bool(
+                radio_mqtt_address
+                and pcs_mqtt_address
+                and radio_mqtt_address == pcs_mqtt_address
+            ),
+            "map_reporting_enabled": getattr(radio_mqtt, "map_reporting_enabled", None),
+            "map_location_opt_in": getattr(map_settings, "should_report_location", None),
+            "map_publish_interval_secs": getattr(map_settings, "publish_interval_secs", None),
+            "map_position_precision": getattr(map_settings, "position_precision", None),
             "started_at_epoch": int(self.started),
             "position_source": "gpsd" if getattr(self.args, "gpsd_position", False) else "radio",
             "last_position_update_at_epoch": (
