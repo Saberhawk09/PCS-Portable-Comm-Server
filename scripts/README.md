@@ -67,8 +67,9 @@ Staging never contacts or configures the radio. Configured operation keeps the
 selected transport connected continuously. USB configuration disables the
 node's Bluetooth radio and exposes only `/dev/ttyACM0` inside the hardened
 service. MQTT downlink starts with no subscriptions and must be given exact
-topic filters deliberately. The optional GPSD feed sends a fresh local fix at a
-bounded interval without retaining coordinates. The optional NeoMesh page
+topic filters deliberately. The optional GPSD feed sends a fresh local fix
+every 30 minutes without retaining coordinates; this direct PCS packet cadence
+is independent of the radio firmware's normal Position Broadcast Interval. The optional NeoMesh page
 integration preserves the primary broker and mirrors uplink only to the
 separate broker consumed by its embedded MQTT coverage map; it never subscribes
 the radio to that public broker. The installed status command reads the running
@@ -472,7 +473,10 @@ This profile is currently used as the PCS client LAN/AP handoff.
 
 The script disables generated competing `eth0` profiles such as `netplan-eth0`, gives the PCS shared profile a higher autoconnect priority, and activates it immediately when link is present.
 
-The name still references router WAN sharing, but the current preferred topology uses the attached router/AP as a bridge/AP/switch.
+The script and retained NetworkManager profile name still reference the older
+router-WAN design for upgrade compatibility. Its prompts and current behavior
+describe the attached OpenWrt device as a bridge/AP/switch connected through a
+LAN port.
 
 ### setup-cellular-profile.sh
 
@@ -657,7 +661,14 @@ Includes:
 - Storage paths
 - Services
 - Dire Wolf / APRS staged or active state
+- Meshtastic gateway, MQTT, GPSD position, and public-map policy state
+- GPIO display, indicator, matrix, and fan state when installed
 - Client access info
+
+The script describes the commissioned OpenWrt AP/switch topology while retaining
+legacy NetworkManager profile names for upgrade compatibility. It also checks
+the system `i2cdetect` path directly when an unprivileged shell omits
+`/usr/sbin` from `PATH`.
 
 ### pcs-self-test.sh
 

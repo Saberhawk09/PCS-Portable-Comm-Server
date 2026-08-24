@@ -25,16 +25,18 @@ RF TX/RX, GNSS beaconing, two-way APRS-IS messaging, and WIDE1-1 fill-in
 digipeating have been demonstrated. Repository integration manages radio/audio
 preparation, service recovery, LAN-only clients, monitoring, and rollback. The
 RAK4631 is deployed over USB with its persistent MQTT session, GPSD position
-delivery, and privacy-safe local telemetry validated on the live PCS. Mesh RF
-behavior and the local environment sensor's accuracy remain operator
-checkpoints. The exact as-built power, wiring, grounding, thermal, enclosure,
-and mounting records are also still pending.
+delivery, and privacy-safe local telemetry validated on the live PCS. IJC1 has
+appeared on the public map, and an opted-in IJC2 position heard over LoRa was
+forwarded through PCS and appeared on that map, demonstrating the remote
+RF-to-map gateway path. Broader RF coverage and the local environment sensor's
+accuracy remain operator checkpoints. The exact as-built power, wiring,
+grounding, thermal, enclosure, and mounting records are also still pending.
 
 Current focus:
 
 - Polish the software
 - Improve reliability and error handling with setup and operation
-- Observe RAK4631 mesh RF behavior and compare its case sensor with a reference
+- Characterize Meshtastic range beyond the commissioned RF-to-map test and compare its case sensor with a reference
 - Keep documentation and releases aligned with the fielded system
 
 ## Current Tested Hardware
@@ -55,6 +57,7 @@ Current tested hardware includes:
 - Six-pixel WS2812 status-indicator chain
 - Armor Lite cooler with GPIO18 hardware-PWM fan control
 - SA818S, stock Easy Digi, Sabrent/C-Media USB audio, and GPIO6 APRS PTT path
+- RAK4631 USB Meshtastic gateway with demonstrated NeoMesh/public-map forwarding
 
 Installed with as-built records or measurements pending:
 
@@ -129,11 +132,13 @@ The current software baseline includes:
 Meshtastic integration is deployed as a repeatable, persistent RAK4631
 USB-to-MQTT client-proxy gateway. The USB session, broker connection, bounded
 GPSD position delivery, encrypted NeoMesh proxy publishes, opted-in hourly map
-reporting, and privacy-safe runtime telemetry are live-validated. The public/admin
+reporting, 30-minute PCS position packets, and privacy-safe runtime telemetry
+are live-validated. The public/admin
 dashboards report approved aggregate node, MQTT, mesh, GPSD, environment,
-utilization, power, broker-policy, and map-policy fields. Public-map frontend
-appearance, mesh RF behavior, and case-sensor accuracy still require operator
-observation and comparison with a reference.
+utilization, power, broker-policy, and map-policy fields. Public-map appearance
+for IJC1 and remote RF-to-map forwarding for IJC2 have been demonstrated.
+Broader RF coverage and case-sensor accuracy still require operator observation
+and comparison with a reference.
 
 ## Current Client Access
 
@@ -164,7 +169,7 @@ This avoids unwanted reconnect behavior, surprise data usage, and confusing auto
 
 PCS is designed to provide stable local network time.
 
-The intended time hierarchy is:
+The installed time hierarchy is:
 
 ```text
 GNSS NMEA data from WWAN modem
@@ -173,7 +178,11 @@ GNSS NMEA data from WWAN modem
 gpsd
         |
         v
-Chrony
+Chrony preferred GPS source
+        |
+        +-- public Internet NTP fallback
+        |
+        +-- RTC-seeded system-clock holdover when neither is usable
         |
         v
 PCS LAN clients
@@ -223,12 +232,16 @@ The working build is operational. Remaining work is primarily documentation, mea
 - reconcile the documented power architecture with the physical as-built wiring
 - record actual fuse values, wire gauge, rail voltage, current draw, and thermal results
 - finish permanent external LTE and GNSS antenna labeling and mounting documentation
-- preserve operator-supervised RF activation and verify managed APRS startup after reboot
-- observe Meshtastic mesh RF behavior and establish a referenced sensor baseline
+- preserve operator-supervised RF activation after any APRS hardware or profile change
+- characterize Meshtastic range beyond the commissioned RF-to-map test and establish a referenced sensor baseline
 - consider battery voltage monitoring and low-voltage safe shutdown hardware
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
 
-The PCS Pi SD-card wipe/rebuild was most recently verified on August 18, 2026. Credential entry, external-appliance recovery, radio identity, firmware flashing, and on-air RF checks intentionally remain manual.
+The PCS Pi SD-card wipe/rebuild was most recently verified on August 18, 2026.
+The deployed stack was synchronized to current `main` and passed 133 live
+self-tests with no warnings or failures on August 24, 2026. Credential entry,
+external-appliance recovery, radio identity, firmware flashing, and on-air RF
+checks intentionally remain manual.
 
 ## Related Documentation
 

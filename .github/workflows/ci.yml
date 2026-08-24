@@ -25,25 +25,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Compile Python sources
-        run: |
-          python -m py_compile \
-            scripts/pcs-admin-password-helper.py \
-            scripts/pcs_aprs_telemetry.py \
-            scripts/pcs_meshtastic_gateway.py \
-            scripts/pcs_meshtastic_status.py \
-            scripts/pcs_gpio.py \
-            scripts/pcs-wwan-gps-nmea-start.py \
-            tests/serve_pcs_ui_fixture.py \
-            tests/test_pcs_admin_password_helper.py \
-            tests/test_pcs_control_panel.py \
-            tests/test_pcs_gpio.py \
-            tests/test_documentation.py \
-            tests/test_direwolf_aprs.py \
-            tests/test_aprs_telemetry.py \
-            tests/test_meshtastic.py \
-            tests/test_setup_pcs_base.py \
-            web/pcs-control-panel/pcs_control_panel.py \
-            web/pcs-control-panel/pcs_dashboard_redirect.py
+        run: python -m compileall -q scripts tests web
 
       - name: Check shell syntax
         run: |
@@ -51,13 +33,13 @@ jobs:
             bash -n "$script"
           done
 
-      - name: Check executable hardware and APRS helpers
+      - name: Check executable shell scripts and installed Python helpers
         run: |
-          test -x scripts/pcs-aprs-kiss-firewall.sh
-          test -x scripts/pcs-bluetooth-ready.sh
+          for script in scripts/*.sh; do
+            test -x "$script"
+          done
+          test -x scripts/pcs-admin-password-helper.py
+          test -x scripts/pcs-wwan-gps-nmea-start.py
           test -x scripts/pcs_aprs_telemetry.py
-          test -x scripts/setup-gpio-leds.sh
-          test -x scripts/setup-gpio-stats.sh
-          test -x scripts/setup-meshtastic-bluetooth.sh
-          test -x scripts/setup-direwolf-aprs.sh
-          test -x scripts/test-direwolf-aprs-software.sh
+          test -x scripts/pcs_gpio.py
+          test -x scripts/pcs_sa818.py

@@ -20,6 +20,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Linksys EA4500 OpenWrt AP Setup](linksys-ea4500-ap.md)
 - [Samba File Share](samba-file-share.md)
 - [PCS Control Panel](pcs-control-panel.md)
+- [Cockpit Service Button](cockpit-service-button.md)
 - [Testing Checklist](testing-checklist.md)
 - [Release Checklist](release-checklist.md)
 - [Script Reference](../scripts/README.md)
@@ -30,6 +31,10 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Power System](power-system.md)
 - [Wiring Notes](../hardware/wiring-notes.md)
 - [Enclosure Notes](../hardware/enclosure-notes.md)
+
+## Historical Comparison Notes
+
+- [Cellular Plan and Modem Comparison Notes](cellular-plan-modem-testing.md) - dated operator testing context, not a current plan recommendation
 
 ## Current Working Architecture
 
@@ -61,7 +66,11 @@ Pi-Star:         http://10.42.0.3 (when selected during setup)
 
 ## Documentation Status
 
-The software, network, storage, WWAN/GNSS, Pi-Star, and managed Dire Wolf / APRS documents describe the current working system as of August 2026. The Pi-side wipe/rebuild path was most recently verified on August 18, 2026.
+The software, network, storage, WWAN/GNSS, Pi-Star, managed Dire Wolf/APRS, and
+Meshtastic documents describe the commissioned system as of August 24, 2026.
+The Pi-side wipe/rebuild path was most recently verified on August 18, 2026;
+the synchronized current stack passed 133 live self-tests without warnings or
+failures on August 24.
 
 The current documentation uses these status boundaries:
 
@@ -74,7 +83,8 @@ The SA818S/Easy Digi APRS hardware, UART, GPIO6 PTT, Sabrent/C-Media audio,
 144.5500 MHz RF path, two-way APRS-IS messaging, GNSS beaconing, and WIDE1-1
 fill-in operation are installed and tested. The persistent RAK4631 USB/MQTT
 gateway, GPSD position delivery, and privacy-safe local temperature/humidity
-telemetry are deployed and live-validated. Mesh RF behavior and sensor accuracy
+telemetry are deployed and live-validated. IJC1 public-map visibility and IJC2
+RF-to-map forwarding are demonstrated; broader RF coverage and sensor accuracy
 remain operator checkpoints.
 
 Current documentation priorities:
@@ -82,8 +92,8 @@ Current documentation priorities:
 - capture exact enclosure dimensions, mounting locations, and CAD/export references
 - reconcile power and wiring notes with the physical build
 - record measured rail voltage, current draw, fuse sizes, wire gauge, and thermal results
-- observe Meshtastic mesh RF behavior and establish a referenced sensor baseline
-- complete and validate the RAK4631 BLE pairing, MQTT proxy, RF behavior, and case-sensor baseline
+- characterize Meshtastic range beyond the commissioned RF-to-map test and establish a referenced sensor baseline
+- preserve the deployed RAK4631 USB transport, NeoMesh proxy, 30-minute GPSD position cadence, hourly map reporting, and 15-bit public position policy
 - extend the general testing and release checklists for the guarded APRS workflow
 - keep install and validation steps copy/paste friendly
 - update the changelog and release checklist with every public release

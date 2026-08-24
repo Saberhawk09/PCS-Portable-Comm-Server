@@ -171,8 +171,12 @@ fi
 echo
 
 echo "--- I2C Bus 1 ---"
-if command -v i2cdetect >/dev/null 2>&1; then
-    sudo i2cdetect -y 1
+I2CDETECT_BIN="$(command -v i2cdetect 2>/dev/null || true)"
+if [[ -z "${I2CDETECT_BIN}" && -x /usr/sbin/i2cdetect ]]; then
+    I2CDETECT_BIN="/usr/sbin/i2cdetect"
+fi
+if [[ -n "${I2CDETECT_BIN}" ]]; then
+    sudo "${I2CDETECT_BIN}" -y 1
 else
     echo "i2c-tools not installed"
 fi
@@ -753,7 +757,7 @@ echo
 
 echo "--- PCS Client Access Info ---"
 echo
-echo "Use these from a client behind the PCS/test router:"
+echo "Use these from a client connected to the PCS AP/switch:"
 echo
 echo "Primary file share:"
 echo "  \\\\${PCS_ROUTER_IP}\\${PCS_SHARE_NAME}"
@@ -807,19 +811,19 @@ echo "PCS Admin Login:"
 echo "  start http://${PCS_ROUTER_IP}/admin/"
 echo
 
-echo "--- Current Test Topology ---"
+echo "--- Current PCS Topology ---"
 echo
-echo "Expected current test path:"
-echo "  Client → test router Wi-Fi/LAN → router WAN → Pi ${PCS_ETH_IFACE} → Pi ${PCS_WIFI_IFACE} → home router/internet"
+echo "Field LAN path:"
+echo "  Client → OpenWrt AP/switch Wi-Fi/LAN → Pi ${PCS_ETH_IFACE} (${PCS_ROUTER_IP})"
 echo
-echo "Future PCS path:"
-echo "  Client → PCS router Wi-Fi/LAN → router WAN → Pi ${PCS_ETH_IFACE} → cellular modem → internet"
+echo "Optional internet path:"
+echo "  Client → OpenWrt AP/switch → Pi ${PCS_ETH_IFACE} → selected Pi Wi-Fi/cellular uplink"
 echo
 
 echo "--- Notes ---"
 echo
 echo "- ${PCS_ROUTER_IP} is the stable router-side Pi address for PCS clients."
-echo "- ${PCS_HOSTNAME}.local may not resolve from behind the router because mDNS usually does not cross router WAN/LAN boundaries."
+echo "- ${PCS_HOSTNAME}.local may not resolve on every client because mDNS behavior varies across bridged AP and client-isolation configurations."
 echo "- ${PCS_SHARE_NAME} is the current primary/test share."
 echo "- ${PCS_BACKUP_SHARE_NAME} is the SD-card backup mirror share."
 echo "- Run ./scripts/sync-pcs-share-to-backup.sh to manually mirror the primary share to backup."
@@ -827,7 +831,7 @@ echo "- PCS public status is available at http://${PCS_ROUTER_IP}/ on the router
 echo "- Authenticated operator controls are available through the visible Admin Login panel or http://${PCS_ROUTER_IP}/admin/."
 echo "- WWAN modem and GPS NMEA are supported and tested."
 echo "- GPSD is expected to be active when WWAN modem GPS setup is installed."
-echo "- Future EM7565 modem validation is still pending."
+echo "- EM7565 LTE registration, NMEA, GPSD, and GPS-disciplined Chrony are validated; cellular data remains manually controlled."
 echo
 
 echo "=== End PCS Status ==="

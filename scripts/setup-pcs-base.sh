@@ -550,6 +550,7 @@ echo "  - Optional WWAN modem NMEA GPS setup, if WWAN GPS hardware is present"
 echo "  - Optional LAN-only GPSD sharing for trusted PCS devices"
 echo "  - Optional Pi-Star monitoring and local-access links"
 echo "  - Optional hardware-safe Dire Wolf / APRS software staging"
+echo "  - Optional hardware-safe Meshtastic USB/Bluetooth MQTT software staging"
 echo "  - Optional six-pixel WS2812 status indicators"
 echo "  - Optional MAX7219 LED matrix statistics display"
 echo "  - Optional GPIO18 hardware PWM thermal fan control"
@@ -560,7 +561,7 @@ echo "  - Final PCS status and self-test"
 echo
 echo "It will not automatically configure:"
 echo "  - Cellular data autoconnect"
-echo "  - Future EM7565-specific settings"
+echo "  - EM7565 firmware, USB composition, antenna hardware, or modem-side AT changes"
 echo
 echo "WWAN modem GPS can be configured as an optional hardware step if the modem is present."
 echo

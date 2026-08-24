@@ -41,6 +41,17 @@ All notable user-facing PCS changes are recorded here.
 
 ### Changed
 
+- reconciled the maintained README, hardware inventory, setup/recovery guides,
+  operator status output, and project decisions with the commissioned August 24
+  system, including wired-only Pi-Star, GPS-first timekeeping, active APRS, and
+  the validated IJC1/IJC2 Meshtastic map paths
+- expanded CI to compile every maintained Python source and verify executable
+  mode on every shell installer/helper instead of relying on stale file lists
+- corrected the local client-name example and operator output for the current
+  Linksys EA4500 OpenWrt AP/switch topology while preserving legacy profile
+  names required for in-place upgrades
+- made I2C status discovery robust when an unprivileged shell omits
+  `/usr/sbin` from `PATH`
 - reduced the stationary PCS Meshtastic GPSD position-packet cadence from five
   minutes to 30 minutes while retaining the separate hourly public MapReport
 - made active Meshtastic health fail closed when the radio MQTT module, Client

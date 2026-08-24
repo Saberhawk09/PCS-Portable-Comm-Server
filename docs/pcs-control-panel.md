@@ -196,7 +196,10 @@ added after `PCS_SETUP_MESHTASTIC=yes`. It reports the local node name,
 hardware and firmware, USB/BLE link, configured broker and live MQTT state,
 downlink-filter count, aggregate MQTT and mesh counters, observed/recent-node
 counts, the last mesh timestamp, GPSD position-update health, local case
-environment, LoRa utilization, and power.
+environment, LoRa utilization, power, and the privacy-safe map-reporting policy.
+The commissioned evidence currently includes the PCS node's public-map
+appearance and one opted-in remote RF station relayed through PCS to the map;
+those observations do not establish general RF coverage.
 
 The Meshtastic public contract never includes MQTT credentials, subscription
 topic strings, channel keys, message bodies, remote identities, or coordinates

@@ -107,13 +107,21 @@ EM7565 GNSS NMEA
 gpsd
         |
         v
-Chrony
+Chrony preferred GPS source
+        |
+        +-- public Internet NTP fallback
+        |
+        +-- RTC-seeded system-clock holdover when neither is usable
         |
         v
 LAN clients using 10.42.0.1 as NTP server
 ```
 
-The Raspberry Pi RTC helps maintain sane time before GPS or internet time is available.
+The Raspberry Pi RTC provides a guarded boot-time seed before GPS or Internet
+time is available. It is not a continuously sampled Chrony source; synchronized
+GPS/Internet time is written back through `rtcsync`, and Chrony advertises the
+seeded system clock at degraded stratum 10 only when neither authoritative
+source is selectable.
 
 The Pi-Star hotspot uses `10.42.0.1` as its preferred NTP server. PCS can also
 share the WWAN modem's GNSS data with trusted field-LAN devices through an
