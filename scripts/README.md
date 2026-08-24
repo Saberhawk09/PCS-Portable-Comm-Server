@@ -175,6 +175,15 @@ uplinks; no uplink is amber, while an unreachable OpenWrt AP is red.
 The pinned `rpi-ws281x` package lives in `/opt/pcs-gpio-leds` rather than the
 Raspberry Pi OS system Python environment.
 
+The LCD, WS2812, and matrix installers also install and arm the shared
+`pcs-gpio-shutdown.service`. During a normal halt, reboot, or poweroff, the
+regular display daemons stop first. The shutdown service then leaves
+`PCS Offline` / `Shutting Down` on the LCD, turns all six status pixels blue,
+and latches a dim bed/ZZZ icon on the matrix. Per-device marker files under
+`/etc/pcs/gpio-shutdown` prevent optional hardware that was never installed
+from being probed. The final images remain visible only while display power is
+still present.
+
 ### setup-gpio-fan.sh
 
 Configures GPIO18/physical pin 12 as PWM0 and installs the persistent thermal

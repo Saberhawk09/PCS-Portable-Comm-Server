@@ -180,6 +180,26 @@ missing, installs `pcs_gpio.py` as `/usr/local/sbin/pcs-gpio`, and enables
 `PCS_SETUP_GPIO_STATS=yes|no` optional choice, so PCS builds without the matrix
 leave it disabled.
 
+## Latched Shutdown State
+
+Each LCD, WS2812, or matrix installer also registers that device with the
+shared `pcs-gpio-shutdown.service`. The service is ordered before the normal
+display daemons at startup, which makes systemd stop those daemons first and
+run the final display writes afterward during a normal halt, reboot, or
+poweroff:
+
+- LCD: `PCS Offline` and `Shutting Down`
+- WS2812: all six pixels blue at the configured 32/255 global brightness
+- MAX7219: a bed with three compact Z glyphs at intensity 1
+
+The drivers release GPIO, PCM/DMA, and SPI ownership without clearing those
+final frames, so the controllers retain them while PCS remains electrically
+powered. Removing power naturally blanks all three displays. Device markers
+under `/etc/pcs/gpio-shutdown` ensure a build probes only the visual hardware
+installed by its corresponding PCS setup script. This state is informational;
+it does not replace confirmation that Linux has completed shutdown before
+disconnecting power.
+
 ## PTT Logic
 
 ```text

@@ -983,6 +983,42 @@ else
     skip "MAX7219 LED matrix is not selected in the install configuration"
 fi
 
+section "Latched GPIO Shutdown Indicators"
+
+if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" \
+    || "${PCS_SETUP_GPIO_LEDS}" == "yes" \
+    || "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+    if service_enabled pcs-gpio-shutdown.service; then
+        pass "pcs-gpio-shutdown.service is enabled"
+    else
+        fail "GPIO displays are selected but pcs-gpio-shutdown.service is disabled"
+    fi
+
+    if service_active pcs-gpio-shutdown.service; then
+        pass "pcs-gpio-shutdown.service is active and armed"
+    else
+        fail "GPIO displays are selected but pcs-gpio-shutdown.service is not armed"
+    fi
+
+    if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" ]]; then
+        [[ -f /etc/pcs/gpio-shutdown/lcd ]] \
+            && pass "Selected LCD is registered for shutdown state" \
+            || fail "Selected LCD is missing its shutdown-state marker"
+    fi
+    if [[ "${PCS_SETUP_GPIO_LEDS}" == "yes" ]]; then
+        [[ -f /etc/pcs/gpio-shutdown/leds ]] \
+            && pass "Selected WS2812 indicators are registered for shutdown state" \
+            || fail "Selected WS2812 indicators are missing their shutdown-state marker"
+    fi
+    if [[ "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+        [[ -f /etc/pcs/gpio-shutdown/matrix ]] \
+            && pass "Selected matrix is registered for shutdown state" \
+            || fail "Selected matrix is missing its shutdown-state marker"
+    fi
+else
+    skip "No LCD, WS2812 indicators, or matrix is selected for shutdown indication"
+fi
+
 section "GPIO18 Hardware PWM Fan"
 
 if [[ "${PCS_SETUP_GPIO_FAN}" == "yes" ]]; then

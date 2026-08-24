@@ -1,0 +1,36 @@
+[Unit]
+Description=PCS latched offline display state during shutdown
+DefaultDependencies=no
+After=local-fs.target
+Before=pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/true
+RemainAfterExit=yes
+ExecStop=-/usr/local/sbin/pcs-gpio shutdown-state lcd --hardware --apply
+ExecStop=-/opt/pcs-gpio-leds/bin/python /usr/local/sbin/pcs-gpio shutdown-state leds --hardware --apply
+ExecStop=-/usr/local/sbin/pcs-gpio shutdown-state matrix --hardware --apply
+TimeoutStopSec=15
+User=root
+Group=root
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX
+DevicePolicy=closed
+DeviceAllow=/dev/gpiochip0 rw
+DeviceAllow=/dev/spidev0.0 rw
+DeviceAllow=/dev/mem rw
+DeviceAllow=/dev/gpiomem rw
+DeviceAllow=/dev/vcio rw
+
+[Install]
+WantedBy=multi-user.target
