@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 RTC_DEVICE="${PCS_RTC_DEVICE:-/dev/rtc0}"
+RTC_READ_ATTEMPTS="${PCS_RTC_READ_ATTEMPTS:-10}"
 MINIMUM_RTC_EPOCH=1704067200  # 2024-01-01T00:00:00Z
 MAXIMUM_RTC_EPOCH=4102444800  # 2100-01-01T00:00:00Z
 MODE="seed"
@@ -43,7 +44,17 @@ if [[ ! -e "${RTC_DEVICE}" ]]; then
     exit 0
 fi
 
-if ! rtc_output="$(hwclock --rtc="${RTC_DEVICE}" --show --utc 2>&1)"; then
+rtc_output=""
+rtc_read_ok="no"
+for _attempt in $(seq 1 "${RTC_READ_ATTEMPTS}"); do
+    if rtc_output="$(hwclock --rtc="${RTC_DEVICE}" --show --utc 2>&1)"; then
+        rtc_read_ok="yes"
+        break
+    fi
+    (( _attempt < RTC_READ_ATTEMPTS )) && sleep 1
+done
+
+if [[ "${rtc_read_ok}" != "yes" ]]; then
     echo "WARNING: PCS hardware RTC could not be read; leaving the system clock unchanged." >&2
     echo "${rtc_output}" >&2
     [[ "${MODE}" == "check" ]] && exit 1

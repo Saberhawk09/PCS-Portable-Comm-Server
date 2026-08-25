@@ -15,9 +15,12 @@ sanity check.
 
 The DS1307 is not configured as a continuously sampled Chrony refclock.
 `pcs-rtc-seed.service` reads it once before Chrony starts, and rejects unreadable
-or implausible dates. Chrony's `rtcsync` then copies authoritative GPS/Internet
-time back to the RTC while synchronized. The local server advertises stratum 10
-during holdover so clients can recognize that its time is degraded.
+or implausible dates. The helper waits for `/dev/rtc0` and retries transient
+early-boot read failures for up to ten attempts before falling back without
+changing the system clock. Chrony's `rtcsync` then copies authoritative
+GPS/Internet time back to the RTC while synchronized. The local server
+advertises stratum 10 during holdover so clients can recognize that its time is
+degraded.
 
 ## Installed Configuration
 

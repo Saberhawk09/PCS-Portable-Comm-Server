@@ -32,10 +32,11 @@ boot file changes, reboot before attempting activation.
 The staging command:
 
 - installs the Raspberry Pi OS / Debian `direwolf` package and supporting tools
-- verifies Dire Wolf 1.8 or newer; when the distribution package is older,
-  builds the pinned stable 1.8.1 tag at commit
+- verifies Dire Wolf 1.8 or newer with the PCS tracker clock-jump guard; when
+  either requirement is missing, builds the pinned stable 1.8.1 tag at commit
   `a231971a652bfb574a4bae9a5d875fbce53d2267` from the
-  [official Dire Wolf repository](https://github.com/wb2osz/direwolf)
+  [official Dire Wolf repository](https://github.com/wb2osz/direwolf) and
+  applies the maintained tracker guard
 - installs a receive-only example under `/etc/pcs/aprs/`
 - records `PCS_SETUP_APRS="staged"` in the ignored local install config
 - stops and disables `direwolf.service`
@@ -54,9 +55,9 @@ managed ordering override that selects the validated executable path and starts
 only after radio programming, ALSA restoration, GPSD, networking, and LAN
 firewalling. The Debian package remains
 installed because it supplies the service account and unit; a newer pinned
-source build is installed under `/usr/local` only when the packaged version is
-too old. Re-running `--prepare` skips the build when an installed 1.8+ version
-already satisfies the requirement.
+source build is installed under `/usr/local` when the packaged version is too
+old or lacks the tracker clock-jump guard. Re-running `--prepare` skips the
+build only when both the 1.8+ and guard requirements are already satisfied.
 
 ## Command Reference
 
@@ -66,7 +67,7 @@ specific install or service operation.
 
 | Command | Changes state | Purpose |
 | --- | --- | --- |
-| `--prepare` | Yes | Install Dire Wolf, nftables, libgpiod tools, and build dependencies; build pinned stable 1.8.1 if the packaged version is older than 1.8; copy the safe template; keep Dire Wolf stopped and disabled. |
+| `--prepare` | Yes | Install Dire Wolf, nftables, libgpiod tools, and build dependencies; build guarded pinned stable 1.8.1 if the installed binary is older than 1.8 or lacks the tracker clock-jump fix; copy the safe template; keep Dire Wolf stopped and disabled. |
 | `--configure-options` | Local config only | Interactively record non-secret desired-profile values. It never collects the APRS-IS passcode. |
 | `--import-commissioned-profile` | Local config only | Replace the complete managed APRS block with the versioned PCS profile, preserve non-APRS and active-mode state, back up the prior local config, and reset every hardware-evidence gate. |
 | `--prepare-uart` | Boot files and services | Idempotently set `enable_uart=1`, remove the Pi serial login console, and disable serial getty units without changing Bluetooth. Existing boot files receive one-time `.pcs-pre-uart.bak` backups. |
@@ -504,6 +505,22 @@ same recovery path later.
 After successful activation, the installer refreshes an already-commissioned
 PCS control panel and preserves its credentials. A full base installation also
 installs the current panel at its normal later step.
+
+## Tracker Clock-Jump Protection
+
+Dire Wolf 1.8.1 already suppresses replay bursts for ordinary scheduled
+beacons after a forward system-clock correction, but its fixed-interval
+`TBEACON` path does not apply the same check. On a clockless cold boot, a later
+GPS or NTP correction can therefore enqueue every missed tracker interval.
+
+PCS applies
+[`patches/direwolf-1.8.1-tracker-clock-jump.patch`](../patches/direwolf-1.8.1-tracker-clock-jump.patch)
+to both fixed-interval tracker paths. After one due tracker event, an overdue
+schedule is moved to one full interval after the corrected current time. This
+keeps receive, IGate, and offline digipeating operation independent of Internet
+availability while preventing historical position packets from flooding RF or
+APRS-IS. `--prepare` verifies the protection in the installed executable and
+rebuilds the pinned source if it is absent.
 
 ## Software-Only Validation Boundary
 

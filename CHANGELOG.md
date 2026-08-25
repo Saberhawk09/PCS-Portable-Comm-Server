@@ -4,6 +4,16 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-08-25
+
+### Fixed
+
+- prevented Dire Wolf fixed-interval GPS tracker beacons from replaying every
+  missed interval after a large forward clock correction, while preserving
+  APRS receive, IGate, and offline digipeating behavior
+- made the DS1307 cold-boot seed wait for its device unit and retry transient
+  early-boot read failures before Chrony starts
+
 ## [1.3.1] - 2026-08-24
 
 ### Added
@@ -224,7 +234,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3...v1.3.1
 [1.3]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.2...v1.3
 [1.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.1...v1.2

@@ -1,0 +1,34 @@
+diff --git a/src/beacon.c b/src/beacon.c
+index d48e710..657abca 100644
+--- a/src/beacon.c
++++ b/src/beacon.c
+@@ -422,7 +422,14 @@ static void * beacon_thread (void *arg)
+ 	          else {
+ 	            /* Stay with the schedule. */
+ 	            /* Important for slotted.  Might reconsider otherwise. */
+ 	            bp->next += bp->every;
++
++	            /* Do not replay every missed tracker interval after a clock step. */
++	            if (bp->next < now) {
++	              bp->next = now + bp->every;
++	              text_color_set(DW_COLOR_INFO);
++	              dw_printf("\nSystem clock appears to have jumped forward.  Tracker beacon schedule updated.\n\n");
++	            }
+ 	          }
+ 	        }
+ 	        else if (g_misc_config_p->sb_configured) {
+@@ -442,7 +449,14 @@ static void * beacon_thread (void *arg)
+ 	        }
+ 	        else {
+ 	          /* Tracker beacon, fixed spacing. */
+ 	          bp->next += bp->every;
++
++	          /* Do not replay every missed tracker interval after a clock step. */
++	          if (bp->next < now) {
++	            bp->next = now + bp->every;
++	            text_color_set(DW_COLOR_INFO);
++	            dw_printf("\nSystem clock appears to have jumped forward.  Tracker beacon schedule updated.\n\n");
++	          }
+ 	        }
+ 	      }
+ 	      else {
