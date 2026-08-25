@@ -142,6 +142,14 @@ direwolf_supports_gpsd() {
     command_exists direwolf && direwolf -t 0 -h 2>&1 | grep -qi 'gpsd'
 }
 
+direwolf_has_tracker_clock_jump_guard() {
+    local direwolf_bin=""
+
+    direwolf_bin="$(command -v direwolf 2>/dev/null || true)"
+    [[ -n "${direwolf_bin}" ]] \
+        && grep -aFq "Tracker beacon schedule updated." "${direwolf_bin}"
+}
+
 service_active() {
     systemctl is-active --quiet "$1"
 }
@@ -730,6 +738,14 @@ case "${PCS_SETUP_APRS}" in
                 fail "Active APRS tracker requires gpsd.service"
             fi
             echo "APRS GPSD target: ${PCS_APRS_GPSD_HOST}:${PCS_APRS_GPSD_PORT}"
+        fi
+
+        if [[ "${PCS_APRS_BEACON}" == "yes" ]]; then
+            if direwolf_has_tracker_clock_jump_guard; then
+                pass "Dire Wolf tracker beacon clock-jump guard is installed"
+            else
+                fail "Active APRS tracker requires the Dire Wolf clock-jump guard"
+            fi
         fi
 
         if service_active direwolf.service; then

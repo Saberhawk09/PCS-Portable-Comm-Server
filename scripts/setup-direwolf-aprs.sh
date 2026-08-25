@@ -40,6 +40,8 @@ DIREWOLF_MIN_VERSION="1.8"
 DIREWOLF_SOURCE_VERSION="1.8.1"
 DIREWOLF_SOURCE_COMMIT="a231971a652bfb574a4bae9a5d875fbce53d2267"
 DIREWOLF_SOURCE_URL="https://github.com/wb2osz/direwolf.git"
+DIREWOLF_CLOCK_JUMP_PATCH="${REPO_DIR}/patches/direwolf-1.8.1-tracker-clock-jump.patch"
+DIREWOLF_CLOCK_JUMP_MARKER="Tracker beacon schedule updated."
 APRS_CONFIG_VERSION_CURRENT="2"
 MODE="${1:---prepare}"
 PROFILE="${2:-}"
@@ -967,19 +969,36 @@ version_at_least() {
     [[ -n "${actual}" ]] && [[ "$(printf '%s\n%s\n' "${required}" "${actual}" | sort -V | head -n 1)" == "${required}" ]]
 }
 
+direwolf_has_tracker_clock_jump_guard() {
+    local direwolf_bin=""
+
+    direwolf_bin="$(command -v direwolf 2>/dev/null || true)"
+    [[ -n "${direwolf_bin}" ]] \
+        && grep -aFq "${DIREWOLF_CLOCK_JUMP_MARKER}" "${direwolf_bin}"
+}
+
 ensure_supported_direwolf() {
     local installed_version=""
     local source_dir=""
     local actual_commit=""
 
     installed_version="$(direwolf_numeric_version 2>/dev/null || true)"
-    if version_at_least "${installed_version}" "${DIREWOLF_MIN_VERSION}"; then
-        echo "Dire Wolf ${installed_version} already satisfies PCS ${DIREWOLF_MIN_VERSION}+ requirements."
+    if version_at_least "${installed_version}" "${DIREWOLF_MIN_VERSION}" \
+        && direwolf_has_tracker_clock_jump_guard; then
+        echo "Dire Wolf ${installed_version} already satisfies PCS ${DIREWOLF_MIN_VERSION}+ and tracker clock-jump requirements."
         return 0
     fi
 
-    echo "Debian supplied Dire Wolf ${installed_version:-unknown}; PCS requires ${DIREWOLF_MIN_VERSION}+ for this profile."
-    echo "Building pinned stable Dire Wolf ${DIREWOLF_SOURCE_VERSION} (${DIREWOLF_SOURCE_COMMIT})..."
+    if ! version_at_least "${installed_version}" "${DIREWOLF_MIN_VERSION}"; then
+        echo "Debian supplied Dire Wolf ${installed_version:-unknown}; PCS requires ${DIREWOLF_MIN_VERSION}+ for this profile."
+    else
+        echo "Dire Wolf ${installed_version} lacks the PCS tracker clock-jump guard."
+    fi
+    if [[ ! -f "${DIREWOLF_CLOCK_JUMP_PATCH}" ]]; then
+        echo "ERROR: missing Dire Wolf tracker clock-jump patch: ${DIREWOLF_CLOCK_JUMP_PATCH}" >&2
+        return 1
+    fi
+    echo "Building pinned stable Dire Wolf ${DIREWOLF_SOURCE_VERSION} (${DIREWOLF_SOURCE_COMMIT}) with the PCS tracker clock-jump guard..."
     source_dir="$(mktemp -d /tmp/pcs-direwolf-source.XXXXXX)"
 
     if ! (
@@ -991,6 +1010,8 @@ ensure_supported_direwolf() {
             echo "ERROR: Dire Wolf tag resolved to unexpected commit ${actual_commit}." >&2
             exit 1
         fi
+        git -C "${source_dir}" apply --check "${DIREWOLF_CLOCK_JUMP_PATCH}"
+        git -C "${source_dir}" apply "${DIREWOLF_CLOCK_JUMP_PATCH}"
         cmake -S "${source_dir}" -B "${source_dir}/build" -DCMAKE_BUILD_TYPE=Release
         cmake --build "${source_dir}/build" --parallel "$(nproc)"
         sudo cmake --install "${source_dir}/build"
@@ -1007,7 +1028,11 @@ ensure_supported_direwolf() {
         echo "ERROR: installed Dire Wolf ${installed_version:-unknown} does not satisfy ${DIREWOLF_MIN_VERSION}+." >&2
         return 1
     fi
-    echo "Installed supported Dire Wolf ${installed_version} at $(command -v direwolf)."
+    if ! direwolf_has_tracker_clock_jump_guard; then
+        echo "ERROR: installed Dire Wolf ${installed_version} is missing the tracker clock-jump guard." >&2
+        return 1
+    fi
+    echo "Installed supported Dire Wolf ${installed_version} with tracker clock-jump protection at $(command -v direwolf)."
 }
 
 show_capabilities() {
@@ -1031,6 +1056,7 @@ show_capabilities() {
 
     echo "=== PCS Dire Wolf Capability Report ==="
     echo "Dire Wolf version:      ${version}"
+    echo "Tracker clock-jump guard: $(direwolf_has_tracker_clock_jump_guard && echo yes || echo no)"
     echo "OS codename:            ${os_codename}"
     echo "gpsd compiled support:  $(grep -qi gpsd <<<"${help_text}" && echo yes || echo no)"
     echo "libgpiod compiled support: $(grep -qi libgpiod <<<"${help_text}" && echo yes || echo no)"
@@ -1100,6 +1126,7 @@ collect_activation_blockers() {
             id -nG direwolf | tr ' ' '\n' | grep -Fxq gpio || record_blocker "the direwolf service account is not in the gpio group"
         fi
         if [[ "${PCS_APRS_BEACON}" == "yes" ]]; then
+            direwolf_has_tracker_clock_jump_guard || record_blocker "Dire Wolf is missing the tracker clock-jump guard; run --prepare"
             [[ "${PCS_APRS_BEACON_PATH}" != "not selected" ]] || record_blocker "beacon RF path is not selected"
             [[ "${PCS_APRS_BEACON_SYMBOL}" != "not selected" ]] || record_blocker "beacon APRS symbol is not selected"
         fi

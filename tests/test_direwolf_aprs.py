@@ -291,6 +291,21 @@ class DireWolfAprsTests(unittest.TestCase):
             'DIREWOLF_SOURCE_COMMIT="a231971a652bfb574a4bae9a5d875fbce53d2267"',
             setup,
         )
+        self.assertIn("direwolf-1.8.1-tracker-clock-jump.patch", setup)
+        self.assertIn("direwolf_has_tracker_clock_jump_guard", setup)
+        self.assertIn('git -C "${source_dir}" apply --check', setup)
+        self.assertIn("Tracker clock-jump guard:", setup)
+        self.assertIn("missing the tracker clock-jump guard", setup)
+        clock_patch = (ROOT / "patches" / "direwolf-1.8.1-tracker-clock-jump.patch").read_text(encoding="utf-8")
+        self.assertEqual(2, clock_patch.count("Tracker beacon schedule updated."))
+
+        self_test = (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8")
+        self.assertIn("direwolf_has_tracker_clock_jump_guard", self_test)
+        aprs_cases = self_test.split('case "${PCS_SETUP_APRS}" in', 1)[1]
+        staged_case, active_case = aprs_cases.split("    yes)", 1)
+        guard_failure = "Active APRS tracker requires the Dire Wolf clock-jump guard"
+        self.assertNotIn(guard_failure, staged_case)
+        self.assertIn(guard_failure, active_case)
         self.assertIn("libgpiod-dev libgps-dev", setup)
         self.assertIn("@DIREWOLF_BIN@", override)
         self.assertIn('sed "s|@DIREWOLF_BIN@|${direwolf_bin}|g"', setup)
