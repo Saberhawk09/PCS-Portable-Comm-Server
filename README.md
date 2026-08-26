@@ -69,7 +69,7 @@ also unfinished.
 
 ### Software
 
-- Reliable unattended startup after power-on or reboot
+- Reliable unattended startup after power-on or reboot, with bounded GPIO boot indicators before live health alerts
 - Public PCS status homepage and password-protected administration at `10.42.0.1`
 - Pi-side self-test and status scripts
 - USB primary Samba share with SD-card backup mirror

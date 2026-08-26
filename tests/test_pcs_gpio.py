@@ -23,6 +23,8 @@ FAN_SETUP = ROOT / "scripts" / "setup-gpio-fan.sh"
 LEDS_SERVICE = ROOT / "systemd" / "pcs-gpio-leds.service"
 LEDS_SETUP = ROOT / "scripts" / "setup-gpio-leds.sh"
 SHUTDOWN_SERVICE = ROOT / "systemd" / "pcs-gpio-shutdown.service"
+STARTUP_SERVICE = ROOT / "systemd" / "pcs-gpio-startup.service"
+STARTUP_SCRIPT = ROOT / "scripts" / "pcs-gpio-startup.sh"
 PCS_STATUS = ROOT / "scripts" / "pcs-status.sh"
 PCS_SELF_TEST = ROOT / "scripts" / "pcs-self-test.sh"
 
@@ -98,6 +100,90 @@ class PcsGpioTests(unittest.TestCase):
             (0xDB, 0x49, 0xDB, 0x00, 0xC0, 0xFF, 0x81, 0x81),
         )
         self.assertEqual(pcs_gpio.SHUTDOWN_MATRIX_INTENSITY, 1)
+
+    def test_startup_state_has_requested_message_spectrum_and_all_pixel_frame(self):
+        self.assertEqual(pcs_gpio.STARTUP_LCD_LINES, ("PCS Booting Up", "Stand by..."))
+        self.assertIn((255, 0, 0), pcs_gpio.STARTUP_LED_SEQUENCE)
+        self.assertIn((0, 255, 0), pcs_gpio.STARTUP_LED_SEQUENCE)
+        self.assertIn((0, 0, 255), pcs_gpio.STARTUP_LED_SEQUENCE)
+        self.assertIn((255, 255, 255), pcs_gpio.STARTUP_LED_SEQUENCE)
+        self.assertGreater(pcs_gpio.STARTUP_LED_FRAME_SECONDS, pcs_gpio.STARTUP_FRAME_SECONDS)
+        self.assertEqual(pcs_gpio.STARTUP_MATRIX_FRAMES[0], (0xFF,) * 8)
+
+    def test_startup_led_and_matrix_self_tests_latch_boot_frames(self):
+        class FakeLeds:
+            def __init__(self):
+                self.frames = []
+
+            def colors(self, colors):
+                self.frames.append(tuple(colors))
+
+        class FakeMatrix:
+            def __init__(self):
+                self.frames = []
+                self.intensities = []
+
+            def rows(self, rows):
+                self.frames.append(tuple(rows))
+
+            def intensity(self, value):
+                self.intensities.append(value)
+
+        leds = FakeLeds()
+        matrix = FakeMatrix()
+        pauses = []
+        pcs_gpio.run_startup_leds(leds, sleeper=pauses.append)
+        pcs_gpio.run_startup_matrix(matrix, sleeper=pauses.append)
+        self.assertEqual(len(leds.frames), len(pcs_gpio.STARTUP_LED_SEQUENCE) + 1)
+        self.assertTrue(all(len(frame) == pcs_gpio.WS2812_COUNT for frame in leds.frames))
+        self.assertEqual(leds.frames[-1], (pcs_gpio.STARTUP_LED_LATCH,) * 6)
+        self.assertEqual(matrix.frames[0], (0xFF,) * 8)
+        self.assertEqual(matrix.frames[-1], pcs_gpio.STARTUP_MATRIX_LATCH)
+        self.assertEqual(matrix.intensities, [pcs_gpio.STARTUP_MATRIX_INTENSITY, 1])
+
+    def test_startup_led_repeat_restarts_the_spectrum(self):
+        class StopAnimation(Exception):
+            pass
+
+        class FakeLeds:
+            def __init__(self):
+                self.frames = []
+
+            def colors(self, colors):
+                self.frames.append(tuple(colors))
+
+        leds = FakeLeds()
+
+        def stop_after_repeat(_seconds):
+            if len(leds.frames) > len(pcs_gpio.STARTUP_LED_SEQUENCE):
+                raise StopAnimation
+
+        with self.assertRaises(StopAnimation):
+            pcs_gpio.run_startup_leds(leds, repeat=True, sleeper=stop_after_repeat)
+        self.assertEqual(
+            leds.frames[len(pcs_gpio.STARTUP_LED_SEQUENCE)],
+            (pcs_gpio.STARTUP_LED_SEQUENCE[0],) * pcs_gpio.WS2812_COUNT,
+        )
+
+    def test_startup_readiness_is_healthy_only_when_alerts_are_absent(self):
+        healthy = pcs_gpio.MatrixHealthSnapshot(
+            stats=pcs_gpio.StatsSnapshot(40, 20, 8, True, network_uplink="WiFi"),
+            root_used_percent=20,
+            primary_usb_mounted=True,
+            failed_services=0,
+            pistar_online=True,
+            router_online=True,
+        )
+        warning = pcs_gpio.MatrixHealthSnapshot(
+            stats=pcs_gpio.StatsSnapshot(40, 20, 0, False, network_uplink="Offline"),
+            root_used_percent=20,
+            primary_usb_mounted=True,
+            failed_services=0,
+            pistar_online=False,
+            router_online=True,
+        )
+        self.assertTrue(pcs_gpio.startup_readiness(healthy)["ready"])
+        self.assertFalse(pcs_gpio.startup_readiness(warning)["ready"])
 
     def test_shutdown_writes_are_latched_instead_of_cleared(self):
         class FakeLcd:
@@ -678,7 +764,7 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("DefaultDependencies=no", service)
         self.assertIn("Conflicts=shutdown.target", service)
         self.assertIn(
-            "Before=pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target",
+            "Before=pcs-gpio-startup.service pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target",
             service,
         )
         self.assertIn("RemainAfterExit=yes", service)
@@ -688,6 +774,42 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("DeviceAllow=/dev/gpiochip0 rw", service)
         self.assertIn("DeviceAllow=/dev/spidev0.0 rw", service)
         self.assertIn("DeviceAllow=/dev/mem rw", service)
+
+    def test_startup_service_is_bounded_hardened_and_orders_normal_displays(self):
+        service = STARTUP_SERVICE.read_text(encoding="utf-8")
+        script = STARTUP_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("Before=pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service", service)
+        self.assertIn("After=local-fs.target pcs-gpio-shutdown.service", service)
+        self.assertIn("TimeoutStartSec=150", service)
+        self.assertIn("RemainAfterExit=yes", service)
+        self.assertIn("DeviceAllow=/dev/gpiochip0 rw", service)
+        self.assertIn("DeviceAllow=/dev/spidev0.0 rw", service)
+        self.assertIn("DeviceAllow=/dev/mem rw", service)
+        self.assertIn('TIMEOUT_SECONDS="${PCS_GPIO_STARTUP_TIMEOUT_SECONDS:-90}"', script)
+        self.assertIn("startup-state lcd --hardware --apply", script)
+        self.assertIn("startup-state leds --repeat --hardware --apply", script)
+        self.assertIn("startup-state matrix --hardware --apply", script)
+        self.assertIn("trap on_exit EXIT", script)
+        self.assertIn('kill "${led_animation_pid}"', script)
+        self.assertIn('wait "${led_animation_pid}"', script)
+        self.assertIn('"${DRIVER}" startup-ready', script)
+        self.assertIn("persistent alerts remain visible", script)
+
+    def test_normal_indicator_services_wait_for_startup_handoff(self):
+        for path in (LCD_SERVICE, LEDS_SERVICE, STATS_SERVICE):
+            service = path.read_text(encoding="utf-8")
+            with self.subTest(service=path.name):
+                self.assertIn("After=", service)
+                self.assertIn("pcs-gpio-startup.service", service)
+                self.assertIn("Wants=", service)
+
+    def test_display_installers_install_and_enable_startup_service(self):
+        for path in (LCD_SETUP, LEDS_SETUP, STATS_SETUP):
+            setup = path.read_text(encoding="utf-8")
+            with self.subTest(setup=path.name):
+                self.assertIn("pcs-gpio-startup.sh", setup)
+                self.assertIn("pcs-gpio-startup.service", setup)
+                self.assertIn("systemctl enable pcs-gpio-startup.service", setup)
 
     def test_every_display_installer_registers_and_arms_shutdown_state(self):
         expected_markers = {
@@ -717,6 +839,21 @@ class PcsGpioTests(unittest.TestCase):
                 (marker_dir / "lcd").touch()
                 self.assertTrue(pcs_gpio.shutdown_state_plan("lcd")["registered"])
 
+    def test_startup_state_is_simulated_and_marker_aware(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            marker_dir = Path(temp_dir)
+            with patch.object(pcs_gpio, "GPIO_SHUTDOWN_MARKER_DIR", marker_dir):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    result = pcs_gpio.main(("startup-state", "lcd"))
+                parsed = json.loads(output.getvalue())
+                self.assertEqual(result, 0)
+                self.assertEqual(parsed["lines"], [" PCS Booting Up ", "  Stand by...   "])
+                self.assertFalse(parsed["registered"])
+                self.assertFalse(parsed["writes_performed"])
+                (marker_dir / "lcd").touch()
+                self.assertTrue(pcs_gpio.startup_state_plan("lcd")["registered"])
+
     def test_real_shutdown_state_requires_double_confirmation(self):
         with self.assertRaisesRegex(SystemExit, "--hardware and --apply"):
             pcs_gpio.main(("shutdown-state", "leds", "--hardware"))
@@ -739,6 +876,9 @@ class PcsGpioTests(unittest.TestCase):
                 self.assertIn(service, self_test)
         self.assertIn("pcs-gpio-shutdown.service", status)
         self.assertIn("pcs-gpio-shutdown.service", self_test)
+        self.assertIn("pcs-gpio-startup.service", status)
+        self.assertIn("pcs-gpio-startup.service", self_test)
+        self.assertIn("/usr/local/sbin/pcs-gpio-startup", self_test)
 
     def test_dependency_report_accepts_isolated_ws2812_environment(self):
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 RTC_DEVICE="${PCS_RTC_DEVICE:-/dev/rtc0}"
 RTC_READ_ATTEMPTS="${PCS_RTC_READ_ATTEMPTS:-10}"
+RTC_SEED_ATTEMPTS="${PCS_RTC_SEED_ATTEMPTS:-10}"
 MINIMUM_RTC_EPOCH=1704067200  # 2024-01-01T00:00:00Z
 MAXIMUM_RTC_EPOCH=4102444800  # 2100-01-01T00:00:00Z
 MODE="seed"
@@ -79,4 +80,18 @@ if [[ "${MODE}" == "check" ]]; then
 fi
 
 echo "Seeding the system clock from ${RTC_DEVICE}: ${rtc_output}"
-hwclock --rtc="${RTC_DEVICE}" --hctosys --utc
+rtc_seed_output=""
+rtc_seed_ok="no"
+for _attempt in $(seq 1 "${RTC_SEED_ATTEMPTS}"); do
+    if rtc_seed_output="$(hwclock --rtc="${RTC_DEVICE}" --hctosys --utc 2>&1)"; then
+        rtc_seed_ok="yes"
+        break
+    fi
+    (( _attempt < RTC_SEED_ATTEMPTS )) && sleep 1
+done
+
+if [[ "${rtc_seed_ok}" != "yes" ]]; then
+    echo "WARNING: PCS hardware RTC could not seed the system clock; leaving the current clock unchanged." >&2
+    echo "${rtc_seed_output}" >&2
+    exit 0
+fi

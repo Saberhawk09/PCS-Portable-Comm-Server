@@ -5,9 +5,13 @@ set -Eeuo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRIVER_SOURCE="${REPO_DIR}/scripts/pcs_gpio.py"
 UNIT_SOURCE="${REPO_DIR}/systemd/pcs-gpio-leds.service"
+STARTUP_SCRIPT_SOURCE="${REPO_DIR}/scripts/pcs-gpio-startup.sh"
+STARTUP_UNIT_SOURCE="${REPO_DIR}/systemd/pcs-gpio-startup.service"
 SHUTDOWN_UNIT_SOURCE="${REPO_DIR}/systemd/pcs-gpio-shutdown.service"
 DRIVER_TARGET="/usr/local/sbin/pcs-gpio"
 UNIT_TARGET="/etc/systemd/system/pcs-gpio-leds.service"
+STARTUP_SCRIPT_TARGET="/usr/local/sbin/pcs-gpio-startup"
+STARTUP_UNIT_TARGET="/etc/systemd/system/pcs-gpio-startup.service"
 SHUTDOWN_UNIT_TARGET="/etc/systemd/system/pcs-gpio-shutdown.service"
 SHUTDOWN_MARKER_DIR="/etc/pcs/gpio-shutdown"
 SHUTDOWN_MARKER="${SHUTDOWN_MARKER_DIR}/leds"
@@ -40,6 +44,8 @@ check_state() {
     echo "Pixel count: 6"
     systemctl is-enabled pcs-gpio-leds.service 2>/dev/null || true
     systemctl is-active pcs-gpio-leds.service 2>/dev/null || true
+    systemctl is-enabled pcs-gpio-startup.service 2>/dev/null || true
+    systemctl is-active pcs-gpio-startup.service 2>/dev/null || true
     systemctl is-enabled pcs-gpio-shutdown.service 2>/dev/null || true
     systemctl is-active pcs-gpio-shutdown.service 2>/dev/null || true
 }
@@ -51,6 +57,8 @@ install_service() {
     fi
     [[ -f "${DRIVER_SOURCE}" ]] || { echo "ERROR: Missing ${DRIVER_SOURCE}"; exit 1; }
     [[ -f "${UNIT_SOURCE}" ]] || { echo "ERROR: Missing ${UNIT_SOURCE}"; exit 1; }
+    [[ -f "${STARTUP_SCRIPT_SOURCE}" ]] || { echo "ERROR: Missing ${STARTUP_SCRIPT_SOURCE}"; exit 1; }
+    [[ -f "${STARTUP_UNIT_SOURCE}" ]] || { echo "ERROR: Missing ${STARTUP_UNIT_SOURCE}"; exit 1; }
     [[ -f "${SHUTDOWN_UNIT_SOURCE}" ]] || { echo "ERROR: Missing ${SHUTDOWN_UNIT_SOURCE}"; exit 1; }
 
     if [[ ! -x "${VENV_PYTHON}" ]]; then
@@ -68,11 +76,14 @@ install_service() {
     sudo "${VENV_PYTHON}" -c 'import rpi_ws281x'
 
     sudo install -o root -g root -m 0755 "${DRIVER_SOURCE}" "${DRIVER_TARGET}"
+    sudo install -o root -g root -m 0755 "${STARTUP_SCRIPT_SOURCE}" "${STARTUP_SCRIPT_TARGET}"
     sudo install -o root -g root -m 0644 "${UNIT_SOURCE}" "${UNIT_TARGET}"
+    sudo install -o root -g root -m 0644 "${STARTUP_UNIT_SOURCE}" "${STARTUP_UNIT_TARGET}"
     sudo install -o root -g root -m 0644 "${SHUTDOWN_UNIT_SOURCE}" "${SHUTDOWN_UNIT_TARGET}"
     sudo install -d -o root -g root -m 0755 "${SHUTDOWN_MARKER_DIR}"
     sudo install -o root -g root -m 0644 /dev/null "${SHUTDOWN_MARKER}"
     sudo systemctl daemon-reload
+    sudo systemctl enable pcs-gpio-startup.service
     sudo systemctl enable --now pcs-gpio-shutdown.service
     sudo systemctl enable --now pcs-gpio-leds.service
     check_state

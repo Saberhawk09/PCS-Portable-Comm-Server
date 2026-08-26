@@ -1,15 +1,16 @@
 [Unit]
-Description=PCS six-pixel WS2812 health indicators
-After=local-fs.target ModemManager.service gpsd.service pcs-gpio-startup.service
-Wants=ModemManager.service gpsd.service pcs-gpio-startup.service
+Description=PCS boot indicator self-test and bounded readiness grace
+After=local-fs.target pcs-gpio-shutdown.service
+Before=pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service
+Wants=pcs-gpio-shutdown.service
 
 [Service]
-Type=simple
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-gpio-startup
+RemainAfterExit=yes
+TimeoutStartSec=150
 User=root
 Group=root
-ExecStart=/opt/pcs-gpio-leds/bin/python /usr/local/sbin/pcs-gpio led-status --hardware --apply
-Restart=on-failure
-RestartSec=3
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
@@ -21,6 +22,8 @@ LockPersonality=yes
 MemoryDenyWriteExecute=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 DevicePolicy=closed
+DeviceAllow=/dev/gpiochip0 rw
+DeviceAllow=/dev/spidev0.0 rw
 DeviceAllow=/dev/mem rw
 DeviceAllow=/dev/gpiomem rw
 DeviceAllow=/dev/vcio rw
