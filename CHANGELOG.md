@@ -4,6 +4,34 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- sanitized WireGuard remote-management cards for the public homepage and
+  authenticated admin dashboard, including boot, firewall, handshake, route,
+  and aggregate transfer status without key or endpoint disclosure
+- guarded Dire Wolf APRS-IS recovery after a confirmed default-uplink change,
+  with a native reconnect grace period, DNS gate, restart cooldown, and a
+  no-restart installation path
+
+- WireGuard management-plane implementation with strict `/32`
+  split-tunnel validation, PCS-LAN-to-home isolation, protected administrative
+  listeners, NetworkManager shared-LAN compatibility, handshake-gated
+  activation, deactivation/rollback, tests, and an operator runbook
+- default-off base-installer integration using the ignored
+  `private-config/wg-pcs.conf` client profile, with strict safe-subset import
+  and all-or-nothing activation
+- ASUS profile compatibility that validates but discards the exported DNS
+  override and stores an optional WireGuard PSK in a separate root-only file
+- phased design for a versioned PCS API and native Android companion, with
+  explicit authentication, privacy, HTTPS, and deployment gates
+
+### Security
+
+- prohibited default routes, home-LAN prefixes, broad WireGuard management
+  sources, arbitrary remote commands, and committed VPN private keys
+- kept remote management default-off for fresh installs; the commissioned PCS
+  activation was separately handshake-gated and supervised
+
 ## [1.3.2] - 2026-08-25
 
 ### Fixed

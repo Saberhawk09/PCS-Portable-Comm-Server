@@ -96,6 +96,13 @@ also unfinished.
   establish a referenced case temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
 
+The outbound WireGuard remote-management plane was commissioned on PCS on
+2026-08-26. It is an explicit, default-off base-installer choice using an
+ignored private profile and individually authorized management-peer `/32`s.
+The PCS API and Android companion remain paused local roadmap work and are not
+deployed. See [WireGuard Remote Management](docs/wireguard-remote-management.md)
+and the [Remote Management/API/Android Roadmap](docs/remote-management-api-android-roadmap.md).
+
 ## Hardware Setup
 
 Before running setup, connect the hardware you want the installer to configure:
@@ -205,6 +212,8 @@ For additional documentation, start here:
 - [Power System](docs/power-system.md)
 - [Network Topology](docs/network-topology.md)
 - [Network Design](docs/network-design.md)
+- [WireGuard Remote Management](docs/wireguard-remote-management.md) - commissioned outbound management tunnel
+- [Remote Management, PCS API, and Android Companion Roadmap](docs/remote-management-api-android-roadmap.md)
 - [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
 - [Full-Stack Reinstall Runbook](docs/full-stack-reinstall.md)
 - [WWAN Card Setup](docs/wwan-card-setup.md)
@@ -317,6 +326,7 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 - [`scripts/setup-pistar-shutdown.sh`](scripts/setup-pistar-shutdown.sh) - Pair the PCS shutdown button with Pi-Star
 - [`scripts/setup-direwolf-aprs.sh`](scripts/setup-direwolf-aprs.sh) - Stage, validate, activate, or recover the managed APRS subsystem
 - [`scripts/setup-meshtastic-bluetooth.sh`](scripts/setup-meshtastic-bluetooth.sh) - Stage or configure the persistent Meshtastic USB/BLE MQTT gateway
+- [`scripts/setup-wireguard-management.sh`](scripts/setup-wireguard-management.sh) - Opt-in WireGuard profile import and commissioned management workflow
 - [`scripts/pcs_gpio.py`](scripts/pcs_gpio.py) - Inspect, simulate, and deliberately test PCS GPIO status hardware
 
 See [Script Reference](scripts/README.md) for the full script list.

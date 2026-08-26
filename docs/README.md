@@ -9,6 +9,8 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Project Overview](project-overview.md)
 - [Network Topology](network-topology.md)
 - [Network Design](network-design.md)
+- [WireGuard Remote Management](wireguard-remote-management.md) - local implementation; not deployed
+- [Remote Management, PCS API, and Android Companion Roadmap](remote-management-api-android-roadmap.md)
 - [Raspberry Pi Setup](raspberry-pi-setup.md)
 - [Full-Stack Reinstall Runbook](full-stack-reinstall.md)
 - [EM7565 GPS / GNSS Notes](em7565-gps-notes.md)
@@ -78,6 +80,7 @@ The current documentation uses these status boundaries:
 - **Software staged:** installed and testable without activating dependent hardware or RF
 - **Purchased / awaiting delivery:** acquired but not installed or validated
 - **As-built record pending:** operational hardware whose exact wiring, measurements, mounting, or part reconciliation is still incomplete
+- **Local implementation only:** repository work that is not installed or validated on PCS
 
 The SA818S/Easy Digi APRS hardware, UART, GPIO6 PTT, Sabrent/C-Media audio,
 144.5500 MHz RF path, two-way APRS-IS messaging, GNSS beaconing, and WIDE1-1

@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh PCS WireGuard DDNS endpoint over IPv4
+After=network-online.target wg-quick@wg-pcs.service
+Wants=network-online.target
+ConditionPathExists=/sys/class/net/wg-pcs
+
+[Service]
+Type=oneshot
+Environment=PCS_WIREGUARD_CONFIG=/etc/pcs/wireguard-management.conf
+ExecStart=/usr/local/sbin/pcs-wireguard-endpoint-refresh

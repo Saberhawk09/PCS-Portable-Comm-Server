@@ -15,6 +15,11 @@ PCS_OPENWRT_AP_ADDR="10.42.0.2"
 PCS_PISTAR_ADDR="10.42.0.3"
 PCS_GPSD_LAN_ADDR="10.42.0.1"
 PCS_GPSD_LAN_PORT="2947"
+PCS_WIREGUARD_CONFIG="${PCS_WIREGUARD_CONFIG:-/etc/pcs/wireguard-management.conf}"
+PCS_WIREGUARD_INTERFACE="wg-pcs"
+PCS_WIREGUARD_RUNTIME_CONFIG="/etc/wireguard/wg-pcs.conf"
+PCS_WIREGUARD_FIREWALL="/usr/local/sbin/pcs-wireguard-firewall"
+PCS_WIREGUARD_ENDPOINT_REFRESH="/usr/local/sbin/pcs-wireguard-endpoint-refresh"
 
 PCS_SAMBA_SHARE="PCS-Share"
 PCS_USB_MOUNT="/mnt/pcs-usb"
@@ -426,6 +431,102 @@ else
     echo "[INFO] No additional PCS client neighbors are visible on ${PCS_ETH_IFACE}"
 fi
 
+section "WireGuard Remote Management"
+
+if ! sudo -n test -f "${PCS_WIREGUARD_RUNTIME_CONFIG}" 2>/dev/null; then
+    skip "WireGuard management has no activated runtime configuration"
+else
+    PCS_WG_USE_PRESHARED_KEY="no"
+    PCS_WG_PRESHARED_KEY_FILE="/etc/pcs/wireguard/preshared.key"
+    if [[ -r "${PCS_WIREGUARD_CONFIG}" ]]; then
+        # shellcheck source=/dev/null
+        source "${PCS_WIREGUARD_CONFIG}"
+    fi
+    if [[ "${PCS_WG_USE_PRESHARED_KEY}" == "yes" ]]; then
+        WG_PSK_MODE="$(sudo -n stat -c '%a' "${PCS_WG_PRESHARED_KEY_FILE}" 2>/dev/null || true)"
+        if [[ "${WG_PSK_MODE}" == "600" || "${WG_PSK_MODE}" == "400" ]]; then
+            pass "WireGuard pre-shared key is present with root-only permissions"
+        else
+            fail "Configured WireGuard pre-shared key is missing or not root-only"
+        fi
+    else
+        skip "WireGuard peer does not use an optional pre-shared key"
+    fi
+
+    if [[ -x "${PCS_WIREGUARD_FIREWALL}" ]]; then
+        pass "PCS WireGuard firewall helper is installed"
+    else
+        fail "Configured WireGuard management is missing its firewall helper"
+    fi
+
+    if service_enabled pcs-wireguard-firewall.service \
+        && service_active pcs-wireguard-firewall.service; then
+        pass "PCS WireGuard isolation firewall is enabled and active"
+    else
+        fail "Configured WireGuard management requires an enabled, active isolation firewall"
+    fi
+
+    if [[ -x "${PCS_WIREGUARD_ENDPOINT_REFRESH}" ]] \
+        && service_enabled pcs-wireguard-endpoint-refresh.timer \
+        && service_active pcs-wireguard-endpoint-refresh.timer; then
+        pass "WireGuard IPv4 DDNS endpoint refresh is installed, enabled, and active"
+    else
+        fail "Configured WireGuard management requires its enabled IPv4 endpoint-refresh timer"
+    fi
+
+    if service_enabled "wg-quick@${PCS_WIREGUARD_INTERFACE}.service"; then
+        pass "WireGuard management service is enabled"
+    else
+        fail "Configured WireGuard management service is not enabled"
+    fi
+
+    if service_active "wg-quick@${PCS_WIREGUARD_INTERFACE}.service" \
+        && ip link show dev "${PCS_WIREGUARD_INTERFACE}" >/dev/null 2>&1; then
+        pass "WireGuard management interface is active"
+        WG_INTERFACE_ACTIVE="yes"
+    else
+        warn "WireGuard interface is inactive; an offline hostname endpoint will retry when an uplink becomes available"
+        WG_INTERFACE_ACTIVE="no"
+    fi
+
+    if ip -4 route show default dev "${PCS_WIREGUARD_INTERFACE}" | grep -q . \
+        || ip -6 route show default dev "${PCS_WIREGUARD_INTERFACE}" 2>/dev/null | grep -q .; then
+        fail "WireGuard management must not install a default route"
+    else
+        pass "WireGuard management has no IPv4 or IPv6 default route"
+    fi
+
+    if [[ -x "${PCS_WIREGUARD_FIREWALL}" ]] \
+        && sudo -n env PCS_WIREGUARD_CONFIG="${PCS_WIREGUARD_CONFIG}" \
+            "${PCS_WIREGUARD_FIREWALL}" --check >/dev/null 2>&1; then
+        pass "WireGuard host, forwarding, and NetworkManager compatibility rules pass inspection"
+    else
+        warn "WireGuard firewall inspection needs sudo; run setup-wireguard-management.sh --check interactively"
+    fi
+
+    if [[ "${WG_INTERFACE_ACTIVE}" == "yes" ]]; then
+        WG_ENDPOINT="$(sudo -n wg show "${PCS_WIREGUARD_INTERFACE}" endpoints 2>/dev/null \
+            | awk 'NR == 1 { print $2 }' || true)"
+        if [[ -z "${WG_ENDPOINT}" ]]; then
+            fail "WireGuard has no resolved peer endpoint"
+        elif [[ "${WG_ENDPOINT}" == \[* ]]; then
+            fail "WireGuard peer endpoint is IPv6; the managed DDNS refresher must select IPv4"
+        else
+            pass "WireGuard peer endpoint is resolved over IPv4"
+        fi
+
+        WG_LATEST_HANDSHAKE="$(sudo -n wg show "${PCS_WIREGUARD_INTERFACE}" latest-handshakes 2>/dev/null \
+            | awk 'NR == 1 { print $2 }' || true)"
+        if [[ -n "${WG_LATEST_HANDSHAKE}" && "${WG_LATEST_HANDSHAKE}" != "0" ]]; then
+            pass "WireGuard has recorded an authenticated peer handshake"
+        else
+            warn "WireGuard is active but has no recorded handshake; WAN or home hub may be unavailable"
+        fi
+    else
+        skip "WireGuard handshake check while the interface is inactive"
+    fi
+fi
+
 section "Internet / DNS"
 
 if [[ "${WIFI_CONNECTED}" -eq 0 && "${CELLULAR_CONNECTED}" -eq 0 && -z "${DEFAULT_IFACE}" ]]; then
@@ -758,6 +859,21 @@ case "${PCS_SETUP_APRS}" in
             pass "direwolf.service is enabled"
         else
             fail "APRS is configured but direwolf.service is disabled"
+        fi
+
+        if [[ "${PCS_APRS_IGATE}" == "yes" ]]; then
+            if [[ -x /usr/local/sbin/pcs-direwolf-uplink-recovery \
+                && -x /etc/NetworkManager/dispatcher.d/91-pcs-direwolf-uplink-recovery ]] \
+                && systemctl cat pcs-direwolf-uplink-recovery.service >/dev/null 2>&1; then
+                pass "Dire Wolf APRS-IS uplink recovery is installed"
+            else
+                fail "Active APRS-IS requires the guarded uplink recovery integration"
+            fi
+            if [[ -s /run/pcs-direwolf-uplink ]]; then
+                pass "Dire Wolf uplink recovery has a route baseline"
+            else
+                fail "Dire Wolf uplink recovery route baseline is missing"
+            fi
         fi
 
         if sudo -n test -s /etc/direwolf.conf; then

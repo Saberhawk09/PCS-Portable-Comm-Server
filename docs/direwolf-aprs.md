@@ -183,7 +183,25 @@ Activation installs three prerequisite services and a Dire Wolf override:
 4. `direwolf.service` starts after those services, gpsd, sound, and
    `network-online.target`. Its pre-start hooks reapply both the radio and audio
    profiles on every restart. `Restart=always` with a five-second delay lets it
-   recover when the UART or USB sound card disappears and later re-enumerates.
+    recover when the UART or USB sound card disappears and later re-enumerates.
+5. `91-pcs-direwolf-uplink-recovery` asks a hardened oneshot helper to evaluate
+   confirmed NetworkManager changes. It compares the selected IPv4 default
+   interface with a runtime baseline, gives Dire Wolf 45 seconds to reconnect
+   by itself, verifies APRS-IS DNS, and restarts Dire Wolf only when its
+   APRS-IS TCP session is still absent. A five-minute cooldown prevents repeated
+   restarts and their associated 30-second startup beacon schedule.
+
+For an already-active installation, install only this recovery integration with:
+
+```bash
+./scripts/setup-direwolf-aprs.sh --install-uplink-recovery
+```
+
+This command does not regenerate `/etc/direwolf.conf`, restart Dire Wolf, key
+PTT, or transmit. The route-change recovery itself may restart an active TX
+profile only after a real uplink transition and failed native APRS-IS recovery.
+If APRS-IS DNS is unavailable, it leaves Dire Wolf running so its normal retry
+loop can continue without causing an unnecessary RF startup beacon.
 
 Dire Wolf alone owns GPIO6 PTT. The UART initializer never keys the radio. The
 bench FTDI adapter must be unplugged during normal RF operation: it previously

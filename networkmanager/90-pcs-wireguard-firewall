@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+
+# NetworkManager rebuilds its ipv4.method=shared nftables table whenever the
+# PCS eth0 profile changes. Refresh the narrow WireGuard-to-LAN compatibility
+# rules after relevant dispatcher events, but only while the feature firewall
+# is deliberately active.
+
+set -u
+
+interface="${1:-}"
+action="${2:-}"
+
+case "${action}" in
+    up|down|reapply|connectivity-change|dhcp4-change)
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+if systemctl is-active --quiet pcs-wireguard-firewall.service; then
+    if [[ "${interface}" == "eth0" || "${interface}" == "wg-pcs" || "${interface}" == "none" ]]; then
+        /usr/local/sbin/pcs-wireguard-firewall --refresh-networkmanager
+    fi
+
+    # A hostname endpoint may not resolve during an offline boot. Do not bring
+    # up any uplink; simply retry the enabled tunnel after NetworkManager tells
+    # us that an operator-selected Wi-Fi/cellular interface is now available.
+    if [[ "${action}" == "up" || "${action}" == "connectivity-change" ]]; then
+        if systemctl is-enabled --quiet wg-quick@wg-pcs.service \
+            && ! systemctl is-active --quiet wg-quick@wg-pcs.service; then
+            systemctl --no-block start wg-quick@wg-pcs.service
+        elif systemctl is-active --quiet wg-quick@wg-pcs.service; then
+            systemctl --no-block start pcs-wireguard-endpoint-refresh.service
+        fi
+    fi
+fi

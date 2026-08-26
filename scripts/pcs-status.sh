@@ -22,6 +22,9 @@ PCS_CONTROL_URL="http://10.42.0.1"
 PCS_ADMIN_URL="http://10.42.0.1/admin/"
 PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
 PCS_DASHBOARD_REDIRECT_URL="http://10.42.0.1:8080"
+PCS_WIREGUARD_CONFIG="${PCS_WIREGUARD_CONFIG:-/etc/pcs/wireguard-management.conf}"
+PCS_WIREGUARD_INTERFACE="wg-pcs"
+PCS_WIREGUARD_RUNTIME_CONFIG="/etc/wireguard/wg-pcs.conf"
 
 REPO_DIR="/home/pi/Projects/PCS-Portable-Comm-Server"
 INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
@@ -150,6 +153,36 @@ echo
 
 echo "--- Routes ---"
 ip route 2>/dev/null || echo "ip route unavailable"
+echo
+
+echo "--- WireGuard Remote Management ---"
+if [[ ! -f "${PCS_WIREGUARD_RUNTIME_CONFIG}" ]]; then
+    if [[ -f "${PCS_WIREGUARD_CONFIG}" ]]; then
+        echo "Deployment inputs present; no activated runtime configuration"
+    else
+        echo "Not configured"
+    fi
+else
+    echo "Firewall service: $(systemctl is-active pcs-wireguard-firewall.service 2>/dev/null || true)"
+    echo "Tunnel service:   $(systemctl is-active "wg-quick@${PCS_WIREGUARD_INTERFACE}.service" 2>/dev/null || true)"
+    if ip link show dev "${PCS_WIREGUARD_INTERFACE}" >/dev/null 2>&1; then
+        ip -brief addr show dev "${PCS_WIREGUARD_INTERFACE}" 2>/dev/null || true
+        echo "Allowed management routes:"
+        sudo -n wg show "${PCS_WIREGUARD_INTERFACE}" allowed-ips 2>/dev/null \
+            || echo "  unavailable without elevated access"
+        echo "Latest handshake:"
+        sudo -n wg show "${PCS_WIREGUARD_INTERFACE}" latest-handshakes 2>/dev/null \
+            || echo "  unavailable without elevated access"
+        if ip -4 route show default dev "${PCS_WIREGUARD_INTERFACE}" | grep -q . \
+            || ip -6 route show default dev "${PCS_WIREGUARD_INTERFACE}" 2>/dev/null | grep -q .; then
+            echo "SAFETY ERROR: a default route uses ${PCS_WIREGUARD_INTERFACE}"
+        else
+            echo "Default route: unchanged (split tunnel)"
+        fi
+    else
+        echo "Interface ${PCS_WIREGUARD_INTERFACE} is absent"
+    fi
+fi
 echo
 
 echo "--- DNS ---"
@@ -618,6 +651,7 @@ RTC_STATUS="unknown"
 PRIMARY_SHARE_STATUS="unknown"
 BACKUP_SHARE_STATUS="unknown"
 BACKUP_SYNC_STATUS="unknown"
+WIREGUARD_STATUS="not configured"
 
 if command -v nmcli >/dev/null 2>&1; then
     WIFI_STATE="$(nmcli -t -f DEVICE,STATE device status | awk -F: -v dev="${PCS_WIFI_IFACE}" '$1 == dev {print $2}')"
@@ -768,6 +802,21 @@ else
     BACKUP_SYNC_STATUS="no sync timestamp found"
 fi
 
+if [[ -f "${PCS_WIREGUARD_RUNTIME_CONFIG}" ]]; then
+    if systemctl is-active --quiet pcs-wireguard-firewall.service \
+        && systemctl is-active --quiet "wg-quick@${PCS_WIREGUARD_INTERFACE}.service" \
+        && ip link show dev "${PCS_WIREGUARD_INTERFACE}" >/dev/null 2>&1; then
+        if ip -4 route show default dev "${PCS_WIREGUARD_INTERFACE}" | grep -q . \
+            || ip -6 route show default dev "${PCS_WIREGUARD_INTERFACE}" 2>/dev/null | grep -q .; then
+            WIREGUARD_STATUS="SAFETY ERROR: default route installed"
+        else
+            WIREGUARD_STATUS="active split tunnel"
+        fi
+    else
+        WIREGUARD_STATUS="configured / inactive"
+    fi
+fi
+
 echo "Hostname:                 ${PCS_HOSTNAME}"
 echo "Wi-Fi uplink ${PCS_WIFI_IFACE}:       ${WIFI_STATE}"
 echo "Ethernet handoff ${PCS_ETH_IFACE}:    ${ETH_STATE}"
@@ -782,6 +831,7 @@ echo "Last backup sync:         ${BACKUP_SYNC_STATUS}"
 echo "Cockpit:                  ${COCKPIT_STATUS}"
 echo "PCS Homepage/Admin:       ${CONTROL_PANEL_STATUS} (${PCS_CONTROL_URL})"
 echo "Legacy Admin Redirect:    ${DASHBOARD_REDIRECT_STATUS} (${PCS_DASHBOARD_REDIRECT_URL})"
+echo "WireGuard Management:     ${WIREGUARD_STATUS}"
 echo "Dire Wolf / APRS:         ${APRS_STATUS}"
 echo "Meshtastic USB/BLE MQTT:  ${MESHTASTIC_STATUS}"
 echo "HD44780 LCD:              ${GPIO_LCD_STATUS}"

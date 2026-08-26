@@ -11,6 +11,15 @@ administrator password.
 
 The current field interface uses HTTP. Do not expose ports `80`, `8080`, `9090`, Samba, GPSD, or SSH directly to the public internet, and do not bridge untrusted clients onto the PCS LAN without an additional security boundary.
 
+The commissioned PCS uses the repository's outbound WireGuard management
+client with explicit management-peer `/32` routes and firewall-enforced
+asymmetric access: authorized WireGuard sources may administer PCS, while PCS
+LAN clients cannot initiate traffic into the tunnel or home network. Fresh
+installs remain default-off. Do not weaken this to a default route, a home-LAN
+`AllowedIPs` prefix, permissive hub forwarding, or an Internet-exposed PCS
+listener. A successful VPN handshake is not sufficient validation; routing and
+both endpoint firewalls must be tested.
+
 ## Reporting a Vulnerability
 
 Use the repository's private vulnerability-reporting form under **Security > Advisories > Report a vulnerability**. Do not publish an unpatched vulnerability, credential, device identifier, or precise private deployment detail in a public issue.
@@ -28,6 +37,7 @@ Do not commit:
 - Passwords
 - API keys
 - WireGuard private keys
+- Deployment-local WireGuard endpoints, peer inventories, and home firewall dumps
 - SIM identifiers, phone numbers, or carrier-account/billing information
 - Runtime network dumps from private deployments; the documented `10.42.0.0/24` PCS design is intentionally versioned
 - Real modem carrier/account details
@@ -35,6 +45,15 @@ Do not commit:
 - Personal identifying information
 
 Example configs should use placeholder values only.
+
+For base setup, the expected secret client export is
+`private-config/wg-pcs.conf`, which is ignored by Git. It must be a normal
+user-owned, non-symlink file with mode `0600` or `0400`. The importer accepts
+only `Address`/`PrivateKey`/a narrowly validated ignored `DNS` value and one
+peer's `PublicKey`/optional `PresharedKey`/`Endpoint`/`AllowedIPs`/
+`PersistentKeepalive`; command hooks and other `wg-quick` extensions are
+rejected. Imported PSKs are stored separately as root-owned mode `0600` and
+never written to the readable policy file.
 
 Good example values:
 

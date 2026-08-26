@@ -311,6 +311,7 @@ PUBLIC_CACHE = TimedCache()
 PUBLIC_FIELDS = {
     "system": {"status", "uptime", "local_time", "cpu_temperature", "cpu_load", "memory_used", "root_storage_used"},
     "network": {"status", "offline", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "uplink_type", "connected_client_count"},
+    "remote_management": {"configured", "status", "connection", "management_address", "boot_enabled", "firewall_active", "latest_handshake"},
     "cellular": {"status", "modem_present", "connected", "carrier", "access_technology", "signal", "fallback_policy", "fallback_active"},
     "time": {"status", "chrony_active", "synchronized", "source", "reference"},
     "gnss": {"status", "receiver_active", "fix", "satellites", "coordinates", "grid_square", "utc_time"},
@@ -379,6 +380,7 @@ def dashboard_error(message: str, public: bool) -> dict:
             "error": message,
             "system": {"status": "bad"},
             "network": {"status": "warn", "lan_gateway": "10.42.0.1"},
+            "remote_management": {"configured": False, "status": "warn"},
             "cellular": {"status": "warn"},
             "time": {"status": "warn"},
             "gnss": {"status": "warn"},
@@ -516,6 +518,7 @@ def render_public_page(data: dict) -> bytes:
     system = data.get("system", {})
     network = data.get("network", {})
     cellular = data.get("cellular", {})
+    remote_management = data.get("remote_management", {})
     time_info = data.get("time", {})
     gnss = data.get("gnss", {})
     storage = data.get("storage", {})
@@ -534,6 +537,18 @@ def render_public_page(data: dict) -> bytes:
             ("Active uplink", "uplink_type", "None"),
             ("Connected clients", "connected_client_count", 0),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),
+    ]
+
+    if remote_management.get("configured"):
+        cards.append(public_card("Remote Management", remote_management, [
+            ("Connection", "connection", "unknown"),
+            ("Management address", "management_address", "unavailable"),
+            ("Latest handshake", "latest_handshake", "unknown"),
+            ("Starts on boot", "boot_enabled", False),
+            ("Isolation firewall", "firewall_active", False),
+        ]).replace(">True<", ">Yes<").replace(">False<", ">No<"))
+
+    cards.extend([
         public_card("Cellular", cellular, [
             ("Modem present", "modem_present", False), ("Connected", "connected", False),
             ("Carrier", "carrier", "unknown"), ("Access technology", "access_technology", "unknown"),
@@ -554,7 +569,7 @@ def render_public_page(data: dict) -> bytes:
             ("PCS-Backup available", "backup_share_available", False), ("USB free", "usb_free_gb", "unknown"),
             ("Backup free", "backup_free_gb", "unknown"),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),
-    ]
+    ])
 
     pistar = data.get("pistar", {})
     if pistar.get("configured"):

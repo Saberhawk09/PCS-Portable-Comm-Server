@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# NetworkManager runs dispatchers as root. The oneshot helper independently
+# verifies that the selected IPv4 default interface actually changed.
+
+ACTION="${2:-}"
+
+case "${ACTION}" in
+    up|down|connectivity-change|dhcp4-change|reapply)
+        systemctl --no-block start pcs-direwolf-uplink-recovery.service >/dev/null 2>&1 || true
+        ;;
+esac
+
+exit 0
