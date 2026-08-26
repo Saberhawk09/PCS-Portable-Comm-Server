@@ -43,6 +43,74 @@ confirmation; SSH still requests the Pi-Star password directly and never
 stores it. If Pi-Star is unavailable, pairing remains an optional failure and
 the rest of the PCS installation continues.
 
+WireGuard remote management is an explicit, default-off base-installer choice.
+The implementation was commissioned on PCS on 2026-08-26 after supervised
+home-hub, peer-isolation, cellular, routed-LAN, and reboot-recovery tests.
+
+## WireGuard Remote Management
+
+### setup-wireguard-management.sh
+
+Manages the opt-in outbound management client. For base setup, first place the
+private client export at ignored path `private-config/wg-pcs.conf`; the
+installer validates it before installing anything and requires a real
+home-hub handshake before accepting activation.
+
+```bash
+./scripts/setup-wireguard-management.sh --prepare
+./scripts/setup-wireguard-management.sh --validate-profile private-config/wg-pcs.conf
+./scripts/setup-wireguard-management.sh --import-profile private-config/wg-pcs.conf
+./scripts/setup-wireguard-management.sh --generate-key
+./scripts/setup-wireguard-management.sh --validate-config
+./scripts/setup-wireguard-management.sh --configure
+./scripts/setup-wireguard-management.sh --activate
+./scripts/setup-wireguard-management.sh --check
+./scripts/setup-wireguard-management.sh --deactivate
+./scripts/setup-wireguard-management.sh --rollback
+./scripts/setup-wireguard-management.sh --help
+```
+
+Preparation and configuration keep the tunnel/firewall disabled. Activation
+requires confirmation, rejects broad routes, applies isolation first, proves
+that no default route uses `wg-pcs`, and requires an authenticated handshake or
+rolls back. Deactivation preserves runtime inputs; rollback removes feature
+files but deliberately preserves private and pre-shared key material plus the
+deployment-local config.
+The profile importer accepts ASUS `DNS` and `PresharedKey` fields. DNS is
+narrowly validated but never applied; the PSK is stored separately as a
+root-only mode-`0600` secret and rendered only into the protected tunnel file.
+Command hooks, Table/MTU changes, extra peers, symlinks, and files readable by
+another user remain rejected.
+
+### pcs-wireguard-firewall.sh
+
+Normally managed by `pcs-wireguard-firewall.service`:
+
+```bash
+sudo /usr/local/sbin/pcs-wireguard-firewall --apply
+sudo /usr/local/sbin/pcs-wireguard-firewall --check
+sudo /usr/local/sbin/pcs-wireguard-firewall --clear
+sudo /usr/local/sbin/pcs-wireguard-firewall --refresh-networkmanager
+sudo /usr/local/sbin/pcs-wireguard-firewall --validate-config
+```
+
+It blocks new PCS-LAN traffic into the tunnel, accepts routed management only
+from explicit `/32` sources, blocks WireGuard forwarding toward other PCS
+interfaces, and protects administrative TCP listeners from uplink ingress. A
+NetworkManager dispatcher refreshes only the narrow allow rules that its shared
+`eth0` firewall table would otherwise erase. If a DDNS endpoint could not
+resolve during an offline boot, the dispatcher passively retries the already
+enabled tunnel after NetworkManager reports an operator-selected uplink; it
+never starts Wi-Fi or cellular itself. See
+[WireGuard Remote Management](../docs/wireguard-remote-management.md).
+
+### pcs-wireguard-endpoint-refresh.sh
+
+Normally managed by `pcs-wireguard-endpoint-refresh.service` and its five-minute
+timer. It resolves the configured DDNS hostname over IPv4 and updates only the
+active WireGuard peer endpoint. It does not change routes, DNS policy, or uplink
+state. NetworkManager also requests a refresh after relevant uplink events.
+
 ## Meshtastic USB/Bluetooth / MQTT
 
 ### setup-meshtastic-bluetooth.sh
@@ -314,6 +382,7 @@ validation, activation, testing, and rollback:
 ./scripts/setup-direwolf-aprs.sh --check
 ./scripts/setup-direwolf-aprs.sh --capabilities
 ./scripts/setup-direwolf-aprs.sh --software-test
+./scripts/setup-direwolf-aprs.sh --install-uplink-recovery
 ./scripts/setup-direwolf-aprs.sh --render-config rx
 ./scripts/setup-direwolf-aprs.sh --render-config tx
 ./scripts/setup-direwolf-aprs.sh --validate-config rx
@@ -348,6 +417,9 @@ Flag behavior:
   10 ms timing units only when they match `/etc/direwolf.conf`; it never
   restarts Dire Wolf.
 - `--software-test` uses temporary WAV files to verify AX.25, FX.25, and timing tolerance without RF.
+- `--install-uplink-recovery` installs only the guarded NetworkManager-triggered
+  APRS-IS recovery helper. It records the current default interface but does not
+  restart Dire Wolf or touch the radio during installation.
 - `--render-config rx|tx` prints a proposed configuration with no real passcode.
 - `--validate-config rx|tx` lints the proposal and reports every activation blocker.
 - `--activate-rx` installs a transactional receive/IGate profile with null output and no RF transmit directives.
@@ -363,6 +435,11 @@ restart-on-device-recovery behavior, and the commissioned independent RF plus
 direct APRS-IS GNSS beacon schedules. Full option,
 security, and rollback details are in
 [Dire Wolf / APRS Integration](../docs/direwolf-aprs.md).
+
+The uplink recovery helper waits for Dire Wolf's native reconnect first. It
+restarts only after the default IPv4 interface changed, APRS-IS DNS resolves,
+no Dire Wolf APRS-IS TCP session exists after the grace period, and the
+five-minute restart cooldown has expired.
 
 ### pcs_aprs_telemetry.py
 

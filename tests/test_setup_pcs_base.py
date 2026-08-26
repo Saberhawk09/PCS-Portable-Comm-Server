@@ -41,6 +41,41 @@ class SetupPcsBaseTests(unittest.TestCase):
             self.source,
         )
 
+    def test_wireguard_setup_is_upfront_default_off_and_all_or_nothing(self):
+        self.assertIn('PCS_SETUP_WIREGUARD="${PCS_SETUP_WIREGUARD:-ask}"', self.source)
+        self.assertIn('PCS_WIREGUARD_PROFILE_DEFAULT="private-config/wg-pcs.conf"', self.source)
+        self.assertIn('printf "PCS_SETUP_WIREGUARD=%q\\n"', self.source)
+        self.assertIn('printf "PCS_WIREGUARD_PROFILE=%q\\n"', self.source)
+        self.assertIn(
+            'Import and activate WireGuard remote management from ${PCS_WIREGUARD_PROFILE_DEFAULT}?',
+            self.source,
+        )
+        self.assertIn('setup-wireguard-management.sh --validate-profile', self.source)
+        self.assertIn('setup-wireguard-management.sh --prepare', self.source)
+        self.assertIn('setup-wireguard-management.sh --import-profile', self.source)
+        self.assertIn('setup-wireguard-management.sh --activate', self.source)
+        self.assertIn('setup-wireguard-management.sh --check', self.source)
+        self.assertIn('setup-wireguard-management.sh --rollback', self.source)
+        self.assertIn('PCS_SETUP_WIREGUARD="no"', self.source)
+
+    def test_wireguard_step_runs_after_network_setup_without_moving_pistar_or_rtc(self):
+        dependency_step = self.source.index('run_step "Install dependencies"')
+        lan_step = self.source.index('run_step "Configure client LAN/AP handoff on eth0"')
+        pairing_step = self.source.index('"Pair Pi-Star coordinated shutdown"')
+        rtc_step = self.source.index('run_step "Configure RTC"')
+        cellular_step = self.source.index(
+            'run_step "Configure cellular profile and fallback policy"'
+        )
+        wireguard_step = self.source.index(
+            'OPTIONAL STEP: Configure WireGuard remote management'
+        )
+
+        self.assertLess(dependency_step, lan_step)
+        self.assertLess(lan_step, pairing_step)
+        self.assertLess(pairing_step, rtc_step)
+        self.assertLess(rtc_step, cellular_step)
+        self.assertLess(cellular_step, wireguard_step)
+
     def test_max7219_setup_is_optional_and_reuses_configured_answer(self):
         self.assertIn('PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"', self.source)
         self.assertIn('printf "PCS_SETUP_GPIO_STATS=%q\\n"', self.source)

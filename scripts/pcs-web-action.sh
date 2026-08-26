@@ -601,6 +601,74 @@ def active(service):
 def enabled(service):
     return subprocess.run(["systemctl", "is-enabled", "--quiet", service], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
+def wireguard_runtime():
+    service_active = active("wg-quick@wg-pcs.service")
+    service_enabled = enabled("wg-quick@wg-pcs.service")
+    firewall_active = active("pcs-wireguard-firewall.service")
+    firewall_enabled = enabled("pcs-wireguard-firewall.service")
+    refresh_active = active("pcs-wireguard-endpoint-refresh.timer")
+    refresh_enabled = enabled("pcs-wireguard-endpoint-refresh.timer")
+    configured = (
+        str(CONFIG.get("PCS_SETUP_WIREGUARD", "no")).lower() == "yes"
+        or service_enabled
+        or os.path.isfile("/etc/wireguard/wg-pcs.conf")
+    )
+
+    address = "unavailable"
+    rc, out, _ = run(["ip", "-4", "-o", "address", "show", "dev", "wg-pcs"], timeout=4)
+    if rc == 0:
+        match = re.search(r"\binet\s+(\S+)", out)
+        if match:
+            address = match.group(1)
+
+    latest_epoch = 0
+    rc, out, _ = run(["wg", "show", "wg-pcs", "latest-handshakes"], timeout=4)
+    if rc == 0:
+        for line in out.splitlines():
+            fields = line.split()
+            if len(fields) >= 2 and fields[-1].isdigit():
+                latest_epoch = max(latest_epoch, int(fields[-1]))
+    handshake_age = epoch_age(latest_epoch)
+
+    allowed_routes = []
+    rc, out, _ = run(["wg", "show", "wg-pcs", "allowed-ips"], timeout=4)
+    if rc == 0:
+        for line in out.splitlines():
+            fields = line.split()
+            allowed_routes.extend(fields[1:])
+
+    received = 0
+    sent = 0
+    rc, out, _ = run(["wg", "show", "wg-pcs", "transfer"], timeout=4)
+    if rc == 0:
+        for line in out.splitlines():
+            fields = line.split()
+            if len(fields) >= 3 and fields[-2].isdigit() and fields[-1].isdigit():
+                received += int(fields[-2])
+                sent += int(fields[-1])
+
+    return {
+        "configured": configured,
+        "service_active": service_active,
+        "service_enabled": service_enabled,
+        "firewall_active": firewall_active,
+        "firewall_enabled": firewall_enabled,
+        "refresh_active": refresh_active,
+        "refresh_enabled": refresh_enabled,
+        "address": address,
+        "handshake_age": handshake_age,
+        "allowed_routes": allowed_routes,
+        "received": received,
+        "sent": sent,
+    }
+
+def byte_count_label(value):
+    amount = float(value or 0)
+    for suffix in ("B", "KiB", "MiB", "GiB"):
+        if amount < 1024 or suffix == "GiB":
+            return f"{amount:.0f} {suffix}" if suffix == "B" else f"{amount:.1f} {suffix}"
+        amount /= 1024
+
 def port_listening(port):
     rc, out, _ = run("ss -H -ltn | awk '{print $4}'", timeout=4)
     if rc != 0:
@@ -2156,6 +2224,40 @@ active_uplink_ok = bool(default_iface) and default_iface not in {"lo"}
 internet_uplink_ok = active_uplink_ok and internet_ok and dns_ok
 offline_mode = not internet_uplink_ok and eth_ok and eth_ip_ok
 
+wireguard = wireguard_runtime()
+wireguard_handshake_current = (
+    wireguard["handshake_age"] is not None
+    and wireguard["handshake_age"] <= 180
+)
+wireguard_core_ok = all((
+    wireguard["service_active"],
+    wireguard["service_enabled"],
+    wireguard["firewall_active"],
+    wireguard["firewall_enabled"],
+    wireguard["refresh_active"],
+    wireguard["refresh_enabled"],
+))
+if not wireguard["configured"]:
+    wireguard_status = "ok"
+    wireguard_summary = "Remote management not selected"
+elif not wireguard["firewall_active"] or not wireguard["service_enabled"]:
+    wireguard_status = "bad"
+    wireguard_summary = "Remote-management isolation or boot service is unavailable"
+elif wireguard_core_ok and (wireguard_handshake_current or offline_mode):
+    wireguard_status = "ok"
+    wireguard_summary = "WireGuard remote management connected" if wireguard_handshake_current else "WireGuard ready; waiting for an internet uplink"
+else:
+    wireguard_status = "warn"
+    wireguard_summary = "WireGuard is configured but awaiting a current handshake"
+wireguard_connection = (
+    "connected"
+    if wireguard_handshake_current
+    else "waiting for uplink"
+    if offline_mode
+    else "handshake stale or not observed"
+)
+wireguard_handshake_label = age_label(wireguard["handshake_age"])
+
 active_uplink_label = (
     "Wi-Fi"
     if default_iface == "wlan0"
@@ -2353,6 +2455,24 @@ else:
     meshtastic_service_label = "not configured"
 
 cards = [
+    {
+        "id": "remote-management",
+        "title": "Remote Management",
+        "status": wireguard_status,
+        "summary": wireguard_summary,
+        "items": [
+            {"label": "Configured", "value": "yes" if wireguard["configured"] else "no"},
+            {"label": "Tunnel", "value": "active" if wireguard["service_active"] else "inactive"},
+            {"label": "Management address", "value": wireguard["address"]},
+            {"label": "Connection", "value": wireguard_connection},
+            {"label": "Latest handshake", "value": wireguard_handshake_label},
+            {"label": "Boot persistence", "value": "enabled" if wireguard["service_enabled"] else "disabled"},
+            {"label": "Isolation firewall", "value": "active" if wireguard["firewall_active"] else "inactive"},
+            {"label": "Endpoint refresh", "value": "active" if wireguard["refresh_active"] else "inactive"},
+            {"label": "Approved routes", "value": ", ".join(wireguard["allowed_routes"]) if wireguard["allowed_routes"] else "none"},
+            {"label": "Tunnel transfer", "value": f"{byte_count_label(wireguard['received'])} received / {byte_count_label(wireguard['sent'])} sent"},
+        ],
+    },
     {
         "id": "uplink-details",
         "title": "Uplink Details",
@@ -2624,6 +2744,7 @@ card_order = [
     "samba",
     "backup-health",
     "network",
+    "remote-management",
     "cellular",
     "uplink-details",
     "client-lan",
@@ -2702,6 +2823,15 @@ if PUBLIC_VIEW:
             "internet_available": internet_ok and dns_ok,
             "uplink_type": active_uplink_label,
             "connected_client_count": len(router_clients),
+        },
+        "remote_management": {
+            "configured": wireguard["configured"],
+            "status": wireguard_status,
+            "connection": wireguard_connection,
+            "management_address": wireguard["address"],
+            "boot_enabled": wireguard["service_enabled"],
+            "firewall_active": wireguard["firewall_active"],
+            "latest_handshake": wireguard_handshake_label,
         },
         "cellular": {
             "status": cellular_status,

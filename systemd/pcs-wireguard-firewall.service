@@ -1,0 +1,16 @@
+[Unit]
+Description=PCS WireGuard management isolation firewall
+Before=wg-quick@wg-pcs.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+Environment=PCS_WIREGUARD_CONFIG=/etc/pcs/wireguard-management.conf
+ExecStart=/usr/local/sbin/pcs-wireguard-firewall --apply
+ExecReload=/usr/local/sbin/pcs-wireguard-firewall --apply
+ExecStop=/usr/local/sbin/pcs-wireguard-firewall --clear
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

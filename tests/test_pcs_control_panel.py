@@ -23,6 +23,7 @@ PUBLIC_DATA = {
     "overall": "ok",
     "system": {"status": "ok", "uptime": "2h", "local_time": "noon", "cpu_temperature": "42 C"},
     "network": {"status": "ok", "lan_gateway": "10.42.0.1", "openwrt_online": True, "internet_available": True, "uplink_type": "Wi-Fi", "connected_client_count": 3},
+    "remote_management": {"configured": True, "status": "ok", "connection": "connected", "management_address": "10.6.0.7/32", "boot_enabled": True, "firewall_active": True, "latest_handshake": "42s ago", "peer_public_key": "must-not-render"},
     "cellular": {"status": "ok", "modem_present": True, "connected": False, "carrier": "Field Carrier", "signal": "Good", "fallback_policy": "Automatic when Wi-Fi is unavailable", "fallback_active": True, "imei": "must-not-render"},
     "time": {"status": "ok", "chrony_active": True, "synchronized": True, "source": "GNSS"},
     "gnss": {"status": "ok", "receiver_active": True, "fix": "3D fix", "satellites": "8 used", "coordinates": "38.123456, -77.123456", "grid_square": "FM18kc"},
@@ -104,6 +105,31 @@ class PublicDataTests(unittest.TestCase):
         self.assertTrue(sanitized["cellular"]["fallback_active"])
         self.assertEqual(sanitized["gnss"]["coordinates"], "38.123456, -77.123456")
         self.assertEqual(sanitized["gnss"]["grid_square"], "FM18kc")
+        self.assertNotIn("peer_public_key", sanitized["remote_management"])
+
+    def test_remote_management_card_is_privacy_safe_on_public_and_detailed_on_admin(self):
+        sanitized = pcs.sanitize_public_dashboard(PUBLIC_DATA)
+        public_page = pcs.render_public_page(sanitized).decode("utf-8")
+        self.assertIn("Remote Management", public_page)
+        self.assertIn("10.6.0.7/32", public_page)
+        self.assertIn("42s ago", public_page)
+        self.assertNotIn("must-not-render", public_page)
+
+        admin = deepcopy(ADMIN_DATA)
+        admin["cards"].append({
+            "id": "remote-management",
+            "title": "Remote Management",
+            "status": "ok",
+            "summary": "WireGuard remote management connected",
+            "items": [{"label": "Approved routes", "value": "10.6.0.1/32, 10.6.0.2/32"}],
+        })
+        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        self.assertIn("WireGuard remote management connected", admin_page)
+        self.assertIn("Approved routes", admin_page)
+
+        collector = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")
+        self.assertIn('"id": "remote-management"', collector)
+        self.assertIn('"latest_handshake": wireguard_handshake_label', collector)
 
     def test_offline_mode_is_warning_card_but_healthy_overall_header(self):
         offline = deepcopy(PUBLIC_DATA)

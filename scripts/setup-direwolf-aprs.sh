@@ -35,6 +35,12 @@ APRS_AUDIO_REFRESH_SERVICE_SRC="${REPO_DIR}/systemd/pcs-aprs-audio-refresh.servi
 APRS_AUDIO_REFRESH_SERVICE_DST="/etc/systemd/system/pcs-aprs-audio-refresh.service"
 APRS_AUDIO_UDEV_RULE_SRC="${REPO_DIR}/udev/99-pcs-aprs-audio.rules"
 APRS_AUDIO_UDEV_RULE_DST="/etc/udev/rules.d/99-pcs-aprs-audio.rules"
+UPLINK_RECOVERY_SRC="${SCRIPT_DIR}/pcs_direwolf_uplink_recovery.py"
+UPLINK_RECOVERY_DST="/usr/local/sbin/pcs-direwolf-uplink-recovery"
+UPLINK_RECOVERY_SERVICE_SRC="${REPO_DIR}/systemd/pcs-direwolf-uplink-recovery.service"
+UPLINK_RECOVERY_SERVICE_DST="/etc/systemd/system/pcs-direwolf-uplink-recovery.service"
+UPLINK_RECOVERY_DISPATCHER_SRC="${REPO_DIR}/networkmanager/91-pcs-direwolf-uplink-recovery"
+UPLINK_RECOVERY_DISPATCHER_DST="/etc/NetworkManager/dispatcher.d/91-pcs-direwolf-uplink-recovery"
 SOFTWARE_TEST="${SCRIPT_DIR}/test-direwolf-aprs-software.sh"
 DIREWOLF_MIN_VERSION="1.8"
 DIREWOLF_SOURCE_VERSION="1.8.1"
@@ -163,6 +169,9 @@ Usage: ./scripts/setup-direwolf-aprs.sh COMMAND [ARGUMENTS]
                          Record validated 10 ms TXDELAY/TXTAIL units. Dire Wolf
                          must be active and values must match its live file.
   --software-test        Run AX.25, FX.25, and timing loopback fixtures.
+  --install-uplink-recovery
+                         Install only the guarded APRS-IS uplink recovery helper.
+                         Does not regenerate config, restart Dire Wolf, or key RF.
   --render-config PROFILE
                          Print a proposed rx or tx configuration. Secrets are
                          replaced by a visible placeholder; nothing is changed.
@@ -1550,6 +1559,32 @@ prompt_aprs_is_passcode() {
     done
 }
 
+install_uplink_recovery_support() {
+    if [[ ! -f "${UPLINK_RECOVERY_SRC}" || ! -f "${UPLINK_RECOVERY_SERVICE_SRC}" \
+        || ! -f "${UPLINK_RECOVERY_DISPATCHER_SRC}" ]]; then
+        echo "ERROR: PCS Dire Wolf uplink recovery files are missing from the repository." >&2
+        return 1
+    fi
+
+    sudo install -o root -g root -m 0755 "${UPLINK_RECOVERY_SRC}" "${UPLINK_RECOVERY_DST}"
+    sudo install -o root -g root -m 0644 "${UPLINK_RECOVERY_SERVICE_SRC}" "${UPLINK_RECOVERY_SERVICE_DST}"
+    sudo install -d -o root -g root -m 0755 "$(dirname "${UPLINK_RECOVERY_DISPATCHER_DST}")"
+    sudo install -o root -g root -m 0755 "${UPLINK_RECOVERY_DISPATCHER_SRC}" "${UPLINK_RECOVERY_DISPATCHER_DST}"
+    sudo systemctl daemon-reload
+    sudo "${UPLINK_RECOVERY_DST}" --record-current
+}
+
+install_uplink_recovery_command() {
+    require_normal_user
+    ensure_sudo
+    if [[ "${PCS_SETUP_APRS}" != "yes" ]] || ! sudo test -s "${DIREWOLF_CONFIG}"; then
+        echo "ERROR: guarded uplink recovery is installed only for an active PCS APRS profile." >&2
+        return 1
+    fi
+    install_uplink_recovery_support
+    echo "Dire Wolf APRS-IS uplink recovery installed without restarting Dire Wolf."
+}
+
 install_runtime_support() {
     local temp_dir="$1"
     local kiss_env="${temp_dir}/kiss-firewall.conf"
@@ -1623,6 +1658,7 @@ EOF
     sudo install -d -o root -g root -m 0755 "$(dirname "${DIREWOLF_OVERRIDE_DST}")"
     sudo install -o root -g root -m 0644 "${direwolf_override}" "${DIREWOLF_OVERRIDE_DST}"
     sudo install -o root -g root -m 0644 "${logrotate_config}" /etc/logrotate.d/pcs-direwolf
+    install_uplink_recovery_support
     sudo systemctl daemon-reload
     sudo udevadm control --reload-rules
     sudo systemctl enable pcs-sa818.service pcs-aprs-audio.service pcs-aprs-kiss-firewall.service
@@ -1843,6 +1879,9 @@ case "${MODE}" in
         ;;
     --software-test)
         bash "${SOFTWARE_TEST}"
+        ;;
+    --install-uplink-recovery)
+        install_uplink_recovery_command
         ;;
     --render-config)
         render_config "${PROFILE}"

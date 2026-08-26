@@ -359,6 +359,18 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn('sset "${PCS_APRS_AGC_CONTROL}"', audio_script)
         self.assertIn('sudo systemctl restart pcs-sa818.service', setup)
 
+    def test_aprs_is_uplink_recovery_is_installable_without_restarting_direwolf(self):
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+        self_test = (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8")
+
+        self.assertIn("--install-uplink-recovery", setup)
+        command = setup[setup.index("install_uplink_recovery_command()"):setup.index("install_runtime_support()")]
+        self.assertIn("install_uplink_recovery_support", command)
+        self.assertNotIn("systemctl restart direwolf.service", command)
+        self.assertIn("91-pcs-direwolf-uplink-recovery", setup)
+        self.assertIn("pcs-direwolf-uplink-recovery --recover", (ROOT / "systemd" / "pcs-direwolf-uplink-recovery.service").read_text(encoding="utf-8"))
+        self.assertIn("guarded uplink recovery integration", self_test)
+
     @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")
     def test_generated_rx_profile_has_no_transmit_directives(self):
         with tempfile.TemporaryDirectory() as temp_dir:

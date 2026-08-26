@@ -16,6 +16,8 @@ The homepage is read-only and does not require authentication. It shows an expli
 
 - Overall health, uptime, local time, temperature, load, memory, and storage use
 - Internet availability, active uplink, OpenWrt status, and client count
+- Sanitized WireGuard remote-management connection, management address,
+  handshake age, boot persistence, and isolation-firewall state when configured
 - Sanitized cellular connection, carrier, access technology, and signal category
 - GNSS fix, satellites, exact coordinates, Maidenhead grid square, and GNSS time
 - Chrony synchronization and current time source
@@ -27,6 +29,11 @@ The homepage is read-only and does not require authentication. It shows an expli
   and power state
 
 Exact coordinates and grid square are intentionally public to clients on site. The public data does not include modem or SIM identifiers, Wi-Fi secrets, detailed client identity or MAC addresses, arbitrary command output, or administrative actions.
+
+The public **Remote Management** card deliberately omits WireGuard keys, the
+home DDNS endpoint, and peer identities. The authenticated card additionally
+shows the approved routes and aggregate tunnel byte counters, but never renders
+private or preshared key material.
 
 The public JSON used by the page is also available read-only at:
 

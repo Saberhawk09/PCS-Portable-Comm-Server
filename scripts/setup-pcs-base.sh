@@ -22,6 +22,7 @@ PCS_CELLULAR_APN_DEFAULT="fast.t-mobile.com"
 PCS_CELLULAR_ROUTE_METRIC_DEFAULT="900"
 PCS_CELLULAR_FALLBACK_MODE_DEFAULT="manual"
 PCS_SAMBA_WORKGROUP_DEFAULT="WORKGROUP"
+PCS_WIREGUARD_PROFILE_DEFAULT="private-config/wg-pcs.conf"
 
 PCS_SETUP_MODE="ASK"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
@@ -36,6 +37,8 @@ PCS_SETUP_USB_DEVICE="${PCS_SETUP_USB_DEVICE:-auto}"
 PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
+PCS_SETUP_WIREGUARD="${PCS_SETUP_WIREGUARD:-ask}"
+PCS_WIREGUARD_PROFILE="${PCS_WIREGUARD_PROFILE:-${PCS_WIREGUARD_PROFILE_DEFAULT}}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
 PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-ask}"
 PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-ask}"
@@ -229,6 +232,8 @@ write_install_config() {
         printf "PCS_SETUP_WWAN_GPS=%q\n" "${PCS_SETUP_WWAN_GPS}"
         printf "PCS_SETUP_GPSD_LAN=%q\n" "${PCS_SETUP_GPSD_LAN}"
         printf "PCS_SETUP_PISTAR=%q\n" "${PCS_SETUP_PISTAR}"
+        printf "PCS_SETUP_WIREGUARD=%q\n" "${PCS_SETUP_WIREGUARD}"
+        printf "PCS_WIREGUARD_PROFILE=%q\n" "${PCS_WIREGUARD_PROFILE}"
         printf "PCS_SETUP_APRS=%q\n" "${PCS_SETUP_APRS}"
         printf "PCS_SETUP_MESHTASTIC=%q\n" "${PCS_SETUP_MESHTASTIC}"
         printf "PCS_SETUP_GPIO_LCD=%q\n" "${PCS_SETUP_GPIO_LCD}"
@@ -366,6 +371,7 @@ collect_install_answers() {
     local gps_default
     local gpsd_lan_default
     local pistar_default
+    local wireguard_default
     local aprs_default
     local meshtastic_default
     local gpio_lcd_default
@@ -390,6 +396,8 @@ collect_install_answers() {
             PCS_SETUP_WWAN_GPS="no"
             PCS_SETUP_GPSD_LAN="no"
             PCS_SETUP_PISTAR="no"
+            PCS_SETUP_WIREGUARD="no"
+            PCS_WIREGUARD_PROFILE="${PCS_WIREGUARD_PROFILE_DEFAULT}"
             PCS_SETUP_APRS="no"
             PCS_SETUP_MESHTASTIC="no"
             PCS_SETUP_GPIO_LCD="no"
@@ -416,6 +424,7 @@ collect_install_answers() {
             gps_default="${PCS_SETUP_WWAN_GPS}"
             gpsd_lan_default="${PCS_SETUP_GPSD_LAN}"
             pistar_default="${PCS_SETUP_PISTAR}"
+            wireguard_default="${PCS_SETUP_WIREGUARD}"
             aprs_default="${PCS_SETUP_APRS}"
             meshtastic_default="${PCS_SETUP_MESHTASTIC}"
             gpio_lcd_default="${PCS_SETUP_GPIO_LCD}"
@@ -426,6 +435,7 @@ collect_install_answers() {
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
             [[ "${gpsd_lan_default}" == "ask" ]] && gpsd_lan_default="no"
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
+            [[ "${wireguard_default}" == "ask" ]] && wireguard_default="no"
             [[ "${aprs_default}" == "ask" ]] && aprs_default="no"
             [[ "${aprs_default}" == "staged" ]] && aprs_default="yes"
             [[ "${meshtastic_default}" == "ask" ]] && meshtastic_default="no"
@@ -443,6 +453,10 @@ collect_install_answers() {
             PCS_SETUP_WWAN_GPS="$(ask_yes_no "Configure WWAN modem NMEA GPS during setup?" "${gps_default}")"
             PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
+            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management from ${PCS_WIREGUARD_PROFILE_DEFAULT}?" "${wireguard_default}")"
+            if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
+                PCS_WIREGUARD_PROFILE="$(ask_value "WireGuard profile path (kept outside Git)" "${PCS_WIREGUARD_PROFILE}")"
+            fi
             PCS_SETUP_APRS="$(ask_yes_no "Stage optional Dire Wolf / APRS software without enabling radio or RF transmit?" "${aprs_default}")"
             PCS_SETUP_MESHTASTIC="$(ask_yes_no "Stage optional Meshtastic USB/Bluetooth support without connecting to or configuring a radio?" "${meshtastic_default}")"
             PCS_SETUP_GPIO_LCD="$(ask_yes_no "Install and start the optional 16x2 HD44780 LCD status display?" "${gpio_lcd_default}")"
@@ -475,6 +489,12 @@ collect_install_answers() {
             pistar_default="${PCS_SETUP_PISTAR}"
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
+            wireguard_default="${PCS_SETUP_WIREGUARD}"
+            [[ "${wireguard_default}" == "ask" ]] && wireguard_default="no"
+            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management from ${PCS_WIREGUARD_PROFILE_DEFAULT}?" "${wireguard_default}")"
+            if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
+                PCS_WIREGUARD_PROFILE="$(ask_value "WireGuard profile path (kept outside Git)" "${PCS_WIREGUARD_PROFILE}")"
+            fi
             ;;
     esac
 
@@ -491,6 +511,8 @@ collect_install_answers() {
     export PCS_SETUP_WWAN_GPS
     export PCS_SETUP_GPSD_LAN
     export PCS_SETUP_PISTAR
+    export PCS_SETUP_WIREGUARD
+    export PCS_WIREGUARD_PROFILE
     export PCS_SETUP_APRS
     export PCS_SETUP_MESHTASTIC
     export PCS_SETUP_GPIO_LCD
@@ -530,6 +552,8 @@ confirm_install_answers() {
     echo "  WWAN GPS policy:    ${PCS_SETUP_WWAN_GPS}"
     echo "  LAN GPSD policy:    ${PCS_SETUP_GPSD_LAN}"
     echo "  Pi-Star monitoring: ${PCS_SETUP_PISTAR}"
+    echo "  WireGuard remote:   ${PCS_SETUP_WIREGUARD}"
+    echo "  WireGuard profile:  ${PCS_WIREGUARD_PROFILE}"
     echo "  Dire Wolf / APRS:   ${PCS_SETUP_APRS}"
     echo "  Meshtastic BLE:      ${PCS_SETUP_MESHTASTIC}"
     echo "  HD44780 LCD:         ${PCS_SETUP_GPIO_LCD}"
@@ -563,6 +587,7 @@ echo "  - Client LAN / AP handoff setup on eth0"
 echo "  - Optional password-assisted Pi-Star coordinated shutdown pairing as soon as the PCS LAN is ready"
 echo "  - RTC setup"
 echo "  - Cellular profile setup with optional automatic Wi-Fi fallback"
+echo "  - Optional handshake-gated WireGuard remote management from a private profile"
 echo "  - Samba bootstrap share setup"
 echo "  - Samba SD-card backup share setup"
 echo "  - Optional USB primary share setup, if USB storage is present"
@@ -653,6 +678,9 @@ ensure_executable "scripts/test-time-source-failover.sh"
 ensure_executable "scripts/setup-rtc.sh"
 ensure_executable "scripts/setup-router-wan-share.sh"
 ensure_executable "scripts/setup-cellular-profile.sh"
+ensure_executable "scripts/setup-wireguard-management.sh"
+ensure_executable "scripts/pcs_wireguard_profile.py"
+ensure_executable "scripts/pcs-wireguard-firewall.sh"
 ensure_executable "scripts/pcs_cellular_fallback.py"
 ensure_executable "scripts/setup-test-samba-share.sh"
 ensure_executable "scripts/setup-samba-backup-share.sh"
@@ -702,6 +730,58 @@ fi
 run_step "Configure RTC" "./scripts/setup-rtc.sh"
 
 run_step "Configure cellular profile and fallback policy" "./scripts/setup-cellular-profile.sh"
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Configure WireGuard remote management"
+echo "============================================================"
+echo
+
+if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
+    WIREGUARD_PROFILE_PATH="${PCS_WIREGUARD_PROFILE}"
+    if [[ "${WIREGUARD_PROFILE_PATH}" != /* ]]; then
+        WIREGUARD_PROFILE_PATH="${REPO_DIR}/${WIREGUARD_PROFILE_PATH}"
+    fi
+
+    echo "Profile: ${WIREGUARD_PROFILE_PATH}"
+    echo "The profile must already match a configured home-hub peer."
+    echo "Activation is accepted only after a real handshake and isolation checks pass."
+
+    WIREGUARD_PREPARED="no"
+    WIREGUARD_SETUP_OK="yes"
+    if ! ./scripts/setup-wireguard-management.sh --validate-profile "${WIREGUARD_PROFILE_PATH}"; then
+        WIREGUARD_SETUP_OK="no"
+    else
+        WIREGUARD_PREPARED="attempted"
+        if ! PCS_WIREGUARD_PREPARE_CONFIRM=yes ./scripts/setup-wireguard-management.sh --prepare; then
+            WIREGUARD_SETUP_OK="no"
+        else
+            WIREGUARD_PREPARED="yes"
+            if ! PCS_WIREGUARD_IMPORT_REPLACE_CONFIRM=yes ./scripts/setup-wireguard-management.sh --import-profile "${WIREGUARD_PROFILE_PATH}"; then
+                WIREGUARD_SETUP_OK="no"
+            elif ! PCS_WIREGUARD_ACTIVATE_CONFIRM=yes ./scripts/setup-wireguard-management.sh --activate; then
+                WIREGUARD_SETUP_OK="no"
+            elif ! ./scripts/setup-wireguard-management.sh --check; then
+                WIREGUARD_SETUP_OK="no"
+            fi
+        fi
+    fi
+
+    if [[ "${WIREGUARD_SETUP_OK}" != "yes" ]]; then
+        if [[ "${WIREGUARD_PREPARED}" != "no" ]]; then
+            if ! PCS_WIREGUARD_ROLLBACK_CONFIRM=yes ./scripts/setup-wireguard-management.sh --rollback; then
+                echo "ERROR: WireGuard rollback did not complete; stopping the base installer." >&2
+                exit 1
+            fi
+        fi
+        echo "WARNING: WireGuard remote management was not accepted as active; feature files and services were rolled back."
+        echo "The base install will continue; correct the private profile or home hub and retry later."
+    else
+        echo "WireGuard remote management is installed, active, and handshake-verified."
+    fi
+else
+    echo "WireGuard remote management is disabled; no WireGuard service will be installed or started."
+fi
 
 echo
 echo "============================================================"

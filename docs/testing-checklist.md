@@ -826,6 +826,22 @@ When the public-map mirror is enabled, also require
 packet. A public-map connection without an accepted packet is not end-to-end
 evidence.
 
+With WireGuard configured, verify the public homepage contains the **Remote
+Management** card and exposes only connection state, `10.6.0.7/32`, handshake
+age, boot state, and firewall state. Confirm `/api/public-status` omits peer
+keys, preshared keys, peer identities, and the home endpoint. After
+authentication, verify the detailed card shows approved routes and aggregate
+transfer counters without secret material.
+
+For APRS-IS uplink recovery, establish Wi-Fi and record an APRS-IS TCP session,
+then perform one supervised Wi-Fi-to-cellular transition. Dire Wolf must be
+given its 45-second native-reconnect window. If it reconnects itself, confirm
+the helper does not restart it. If the original failure is reproduced, confirm
+exactly one guarded restart, a restored APRS-IS session, and no second restart
+inside five minutes. Because restarting the commissioned TX profile schedules
+an RF beacon after 30 seconds, perform this live transition test under the same
+supervised RF conditions used for commissioning.
+
 ## Service Status Test
 
 On the Pi:
