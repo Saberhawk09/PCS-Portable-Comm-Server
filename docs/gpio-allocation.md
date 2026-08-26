@@ -180,13 +180,20 @@ missing, installs `pcs_gpio.py` as `/usr/local/sbin/pcs-gpio`, and enables
 `PCS_SETUP_GPIO_STATS=yes|no` optional choice, so PCS builds without the matrix
 leave it disabled.
 
-## Latched Shutdown State
+## Boot and Shutdown Indicator States
 
 Each LCD, WS2812, or matrix installer also registers that device with the
-shared `pcs-gpio-shutdown.service`. The service is ordered before the normal
-display daemons at startup, which makes systemd stop those daemons first and
-run the final display writes afterward during a normal halt, reboot, or
-poweroff:
+shared `pcs-gpio-startup.service`. At boot the LCD shows `PCS Booting Up` and
+`Stand by...`, the six pixels cycle through the color spectrum, and the matrix
+lights every pixel before checkerboard frames. Boot states remain for at most
+90 seconds while the ordinary health inputs settle. The service hands off
+early when no alerts remain and always hands off on timeout so persistent
+faults stay visible.
+
+The installers also register the device with `pcs-gpio-shutdown.service`. The
+shutdown service is ordered before the startup and normal display daemons,
+which makes systemd stop those daemons first and run the final display writes
+afterward during a normal halt, reboot, or poweroff:
 
 - LCD: `PCS Offline` and `Shutting Down`
 - WS2812: all six pixels blue at the configured 32/255 global brightness
@@ -195,8 +202,9 @@ poweroff:
 The drivers release GPIO, PCM/DMA, and SPI ownership without clearing those
 final frames, so the controllers retain them while PCS remains electrically
 powered. Removing power naturally blanks all three displays. Device markers
-under `/etc/pcs/gpio-shutdown` ensure a build probes only the visual hardware
-installed by its corresponding PCS setup script. This state is informational;
+under `/etc/pcs/gpio-shutdown` are shared by startup and shutdown and ensure a
+build probes only the visual hardware installed by its corresponding PCS setup
+script. The shutdown state is informational;
 it does not replace confirmation that Linux has completed shutdown before
 disconnecting power.
 

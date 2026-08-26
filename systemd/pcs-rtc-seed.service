@@ -1,8 +1,7 @@
 [Unit]
 Description=Seed PCS system clock from hardware RTC
 Documentation=file:/home/pi/Projects/PCS-Portable-Comm-Server/docs/time-sources.md
-After=local-fs.target fake-hwclock.service dev-rtc0.device
-Wants=dev-rtc0.device
+After=local-fs.target fake-hwclock.service
 Before=chrony.service systemd-timesyncd.service
 
 [Service]

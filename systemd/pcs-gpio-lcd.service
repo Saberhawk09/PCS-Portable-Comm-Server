@@ -1,7 +1,7 @@
 [Unit]
 Description=PCS HD44780 live status display
-After=local-fs.target ModemManager.service gpsd.service
-Wants=ModemManager.service gpsd.service
+After=local-fs.target ModemManager.service gpsd.service pcs-gpio-startup.service
+Wants=ModemManager.service gpsd.service pcs-gpio-startup.service
 
 [Service]
 Type=simple

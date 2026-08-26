@@ -486,6 +486,19 @@ else
 fi
 echo
 
+echo "--- GPIO Boot Indicators ---"
+if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" \
+    || "${PCS_SETUP_GPIO_LEDS}" == "yes" \
+    || "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+    echo "Runner:          $([[ -x /usr/local/sbin/pcs-gpio-startup ]] && echo installed || echo missing)"
+    echo "Service active:  $(systemctl is-active pcs-gpio-startup.service 2>/dev/null || true)"
+    echo "Service enabled: $(systemctl is-enabled pcs-gpio-startup.service 2>/dev/null || true)"
+    echo "Grace timeout:   90 seconds maximum; healthy handoff may occur earlier"
+else
+    echo "No visual status hardware is selected."
+fi
+echo
+
 echo "--- Latched GPIO Shutdown Indicators ---"
 if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" \
     || "${PCS_SETUP_GPIO_LEDS}" == "yes" \

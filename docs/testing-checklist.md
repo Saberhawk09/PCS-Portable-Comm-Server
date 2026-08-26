@@ -558,6 +558,90 @@ Expected:
 Pi-Star coordinated shutdown pairing is ready.
 ```
 
+## Temporary XPT2046 Touch Controller Test
+
+This is an accessory bench test, not part of the commissioned PCS hardware.
+The photographed 26-pin board is marked `3.5" RPi Display`, `480*320 Pixel
+16bit`, and `XPT2046 Touch Controller`. Those markings match the LCDWiki
+MPI3501/tft35a profile: an ILI9486-class 480x320 LCD on SPI0 CE0 and an XPT2046
+touch controller on SPI0 CE1. Confirm those markings again before each test:
+
+```bash
+python3 scripts/xpt2046_touch_test.py preflight
+```
+
+The preflight is read-only. Common direct-plug 3.5-inch HATs use SPI0 CE0 for
+the LCD, CE1 for touch, GPIO17 for touch IRQ, and variant-specific GPIOs for
+LCD data/command, reset, or backlight. Those lines overlap the installed PCS
+MAX7219, HD44780 LCD, and possibly GPIO18 fan. Do not plug or unplug a HAT while
+the Pi is powered.
+
+The lifecycle wrapper is inert unless explicitly run. It installs no systemd
+unit, boot overlay, cron entry, or background process. With no action it only
+prints help. For a temporary bare-board test, do this in order:
+
+1. With the XPT2046 screen disconnected and the normal PCS displays connected,
+   snapshot, stop, and disable the six related GPIO units. This includes the
+   boot-indicator and WS2812 units so their dependencies cannot pull shared GPIO
+   handling back in after an accidental reboot. The wrapper
+   stops `pcs-gpio-shutdown.service` last while its normal displays are still
+   connected, and preserves exact enabled/active states in a root-only file:
+
+   ```bash
+   sudo bash scripts/test-xpt2046-display.sh prepare --apply \
+     --confirm-test-screen-disconnected
+   ```
+
+2. Shut the Pi down fully, remove power, disconnect the overlapping PCS display
+   hardware, and only then connect the touchscreen according to its exact
+   manufacturer pinout.
+3. Boot and repeat the preflight. Do not continue while any conflicting service
+   is active. SPI0 CE1 and Python `spidev` must be available.
+4. Display the temporary RGB565 color bars/grid for 60 seconds. This dynamically
+   loads the installed generic `fbtft` ILI9486 overlay and removes it on normal
+   exit, error, Ctrl-C, SIGINT, or SIGTERM. It never edits `/boot/config.txt`:
+
+   ```bash
+   sudo bash scripts/test-xpt2046-display.sh test --seconds 60 --apply \
+     --confirm-pcs-displays-disconnected
+   ```
+
+5. Run the raw-touch sample and press the center plus all four corners:
+
+   The model-specific visual test is preferred for this photographed board. It
+   dynamically loads the kernel ADS7846/XPT2046 input driver on SPI0 CE1 with
+   PENIRQ on GPIO17, shows five yellow targets, and plots contacts as red dots:
+
+   ```bash
+   sudo bash scripts/test-xpt2046-display.sh touch-test --seconds 60 --apply \
+     --confirm-pcs-displays-disconnected
+   ```
+
+   The lower-level raw SPI sampler remains available for diagnosis:
+
+   ```bash
+   python3 scripts/xpt2046_touch_test.py sample --seconds 20 \
+     --hardware --apply --confirm-pcs-displays-disconnected
+   ```
+
+6. Shut down and remove power before disconnecting the test screen. Reconnect
+   the normal PCS hardware and boot. Only after visually confirming that normal
+   hardware is back on the header, restore and verify the saved service states:
+
+   ```bash
+   sudo bash scripts/test-xpt2046-display.sh restore --apply \
+     --confirm-pcs-hardware-restored
+   ./scripts/pcs-self-test.sh
+   ```
+
+The display and touch results are separate. The display test passes only when
+the bars, grid, border, and center cross are visibly correct. The touch test
+passes only when presses produce changing X/Y values and usable Z/pressure
+activity. Neither result derives calibration or authorizes a permanent GPIO
+reassignment. If a manual test was already suspended before `prepare` existed,
+`adopt-suspended-test --apply --confirm-original-services-enabled-active` may be
+used only when all six units were actually verified enabled and active first.
+
 ## MAX7219 LED Matrix Test
 
 These checks apply when `PCS_SETUP_GPIO_STATS=yes` is selected. On builds
@@ -616,7 +700,25 @@ Confirm the physical pixel order against the legend in
 Do not mark the LED chain tested until all six positions and GRB colors have
 been observed on the installed hardware.
 
-## Latched Shutdown Indicator Test
+## Boot Indicator and Latched Shutdown Tests
+
+When any LCD, WS2812, or matrix option is selected, verify the startup service
+and simulate each registered boot plan without writing hardware:
+
+```bash
+systemctl is-enabled pcs-gpio-startup.service
+systemctl is-active pcs-gpio-startup.service
+/usr/local/sbin/pcs-gpio startup-state lcd
+/usr/local/sbin/pcs-gpio startup-state matrix
+/opt/pcs-gpio-leds/bin/python /usr/local/sbin/pcs-gpio startup-state leds
+```
+
+After a supervised reboot, confirm the LCD reads `PCS Booting Up` / `Stand
+by...`, all six pixels continuously cycle at a clearly visible pace through
+red, orange, yellow, green, cyan, blue, violet, magenta, and white until
+handoff, and the matrix lights all 64 pixels before its checkerboard frames.
+Normal health displays must take over within 90 seconds; they may take over
+earlier when no alert condition remains.
 
 When any LCD, WS2812, or matrix option is selected, verify that the shared
 shutdown unit is armed and that each fitted display has a marker:

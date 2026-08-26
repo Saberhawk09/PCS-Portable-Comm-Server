@@ -2,7 +2,7 @@
 Description=PCS latched offline display state during shutdown
 DefaultDependencies=no
 After=local-fs.target
-Before=pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target
+Before=pcs-gpio-startup.service pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target
 Conflicts=shutdown.target
 
 [Service]

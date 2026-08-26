@@ -130,6 +130,62 @@ PTT and SA818 UART are never driven by this tool. See
 [PCS GPIO Allocation](../docs/gpio-allocation.md) for the pin map and hardware
 commissioning commands.
 
+### xpt2046_touch_test.py
+
+Provides a temporary, guarded raw-touch check for an uncommissioned XPT2046
+resistive touch controller. The default preflight does not open SPI or change
+the Pi:
+
+```bash
+python3 scripts/xpt2046_touch_test.py preflight
+```
+
+`XPT2046` identifies the touch controller only. After the photographed board was
+matched to the MPI3501/tft35a family, this helper also gained a guarded
+`pattern` command that writes RGB565 color bars and a grid to an already-created
+16-bit framebuffer. Its `touch-map` command plots kernel ADS7846 input reports
+as red dots using the vendor's 90-degree calibration bounds. It does not load a
+driver or edit boot configuration.
+
+The full temporary swap and restore procedure is in the
+[Testing Checklist](../docs/testing-checklist.md#temporary-xpt2046-touch-controller-test).
+Only after the PCS LCD, matrix, and any overlapping fan/backlight hardware are
+physically disconnected and all listed PCS services are inactive, sample the
+center and four corners:
+
+```bash
+python3 scripts/xpt2046_touch_test.py sample --seconds 20 \
+  --hardware --apply --confirm-pcs-displays-disconnected
+```
+
+Observed raw coordinates establish only that the touch controller responds.
+They do not validate calibration, LCD output, electrical compatibility, or a
+permanent PCS GPIO allocation.
+
+### test-xpt2046-display.sh
+
+Provides the explicit temporary lifecycle around the framebuffer and touch
+helpers. `prepare` records and suspends the related startup, LCD, WS2812, matrix,
+fan, and shared GPIO-shutdown units so dependencies cannot reactivate shared
+GPIO during a test. `test` loads the kernel's generic ILI9486 fbtft
+overlay dynamically and shows a pattern. `touch-test` also loads the generic
+ADS7846 driver on CE1/GPIO17 and plots reported contacts against five targets.
+Both remove every temporary overlay with a trap. `restore` requires confirmation
+that normal PCS hardware is reconnected, then restores and verifies the exact
+saved service states.
+
+```bash
+sudo bash scripts/test-xpt2046-display.sh status
+sudo bash scripts/test-xpt2046-display.sh test --seconds 60 --apply \
+  --confirm-pcs-displays-disconnected
+sudo bash scripts/test-xpt2046-display.sh touch-test --seconds 60 --apply \
+  --confirm-pcs-displays-disconnected
+```
+
+It creates no service, boot hook, or persistent display overlay. See the
+[Testing Checklist](../docs/testing-checklist.md#temporary-xpt2046-touch-controller-test)
+for the power-off swap and restoration sequence.
+
 ### setup-gpio-lcd.sh
 
 Installs or inspects the persistent GPIO-only HD44780 status rotation:
@@ -190,7 +246,16 @@ uplinks; no uplink is amber, while an unreachable OpenWrt AP is red.
 The pinned `rpi-ws281x` package lives in `/opt/pcs-gpio-leds` rather than the
 Raspberry Pi OS system Python environment.
 
-The LCD, WS2812, and matrix installers also install and arm the shared
+The LCD, WS2812, and matrix installers also install and enable the shared
+`pcs-gpio-startup.service`. At boot it writes `PCS Booting Up` / `Stand by...`
+to the LCD, continuously cycles all six WS2812 pixels through a slower dim color
+spectrum with a 0.35-second per-color dwell until handoff, and runs an
+all-pixels/checkerboard MAX7219 self-test.
+It waits up to 90 seconds for the normal indicator health snapshot to become
+alert-free. Healthy systems hand off early. A timeout always hands off to the
+normal daemons so a persistent warning or fault is not hidden.
+
+The same installers install and arm the shared
 `pcs-gpio-shutdown.service`. During a normal halt, reboot, or poweroff, the
 regular display daemons stop first. The shutdown service then leaves
 `PCS Offline` / `Shutting Down` on the LCD, turns all six status pixels blue,
@@ -198,6 +263,14 @@ and latches a dim bed/ZZZ icon on the matrix. Per-device marker files under
 `/etc/pcs/gpio-shutdown` prevent optional hardware that was never installed
 from being probed. The final images remain visible only while display power is
 still present.
+
+### pcs-gpio-startup.sh
+
+Orchestrates the registered boot indicators and bounded readiness grace for
+`pcs-gpio-startup.service`. Registration uses the same per-device marker files
+as shutdown, so optional hardware is never probed merely because the service is
+installed. The installed service uses the 90-second default timeout and always
+stops its background WS2812 animation before releasing the normal daemons.
 
 ### setup-gpio-fan.sh
 

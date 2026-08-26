@@ -45,8 +45,10 @@ class TimeSourceHierarchyTests(unittest.TestCase):
     def test_rtc_seed_retries_transient_boot_read_failures(self):
         self.assertIn('RTC_READ_ATTEMPTS="${PCS_RTC_READ_ATTEMPTS:-10}"', self.rtc_seed)
         self.assertIn('for _attempt in $(seq 1 "${RTC_READ_ATTEMPTS}")', self.rtc_seed)
-        self.assertIn("After=local-fs.target fake-hwclock.service dev-rtc0.device", self.rtc_unit)
-        self.assertIn("Wants=dev-rtc0.device", self.rtc_unit)
+        self.assertIn('RTC_SEED_ATTEMPTS="${PCS_RTC_SEED_ATTEMPTS:-10}"', self.rtc_seed)
+        self.assertIn('for _attempt in $(seq 1 "${RTC_SEED_ATTEMPTS}")', self.rtc_seed)
+        self.assertIn("After=local-fs.target fake-hwclock.service", self.rtc_unit)
+        self.assertNotIn("dev-rtc0.device", self.rtc_unit)
 
     def test_dashboard_uses_selected_reference_for_gnss_label(self):
         self.assertIn('chrony_selected_gps = "(GPS)" in chrony_ref.upper()', self.web_action)

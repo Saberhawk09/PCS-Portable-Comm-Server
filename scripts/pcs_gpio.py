@@ -94,6 +94,29 @@ MAX7219_SPI_HZ = 500_000
 MAX7219_INTENSITY = 3
 SHUTDOWN_MATRIX_INTENSITY = 1
 SHUTDOWN_LCD_LINES = ("PCS Offline", "Shutting Down")
+STARTUP_LCD_LINES = ("PCS Booting Up", "Stand by...")
+STARTUP_MATRIX_INTENSITY = 2
+STARTUP_FRAME_SECONDS = 0.18
+STARTUP_LED_FRAME_SECONDS = 0.35
+STARTUP_LED_SEQUENCE = (
+    (255, 0, 0),
+    (255, 96, 0),
+    (255, 255, 0),
+    (0, 255, 0),
+    (0, 255, 255),
+    (0, 0, 255),
+    (96, 0, 255),
+    (255, 0, 255),
+    (255, 255, 255),
+)
+STARTUP_LED_LATCH = (0, 0, 96)
+STARTUP_MATRIX_FRAMES = (
+    (0xFF,) * 8,
+    (0x00,) * 8,
+    (0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55),
+    (0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA),
+)
+STARTUP_MATRIX_LATCH = (0x18, 0x3C, 0x7E, 0xDB, 0x18, 0x18, 0x18, 0x00)
 # Three compact Z glyphs above a bed/headboard. The final frame remains
 # latched in the MAX7219 after Linux releases SPI during shutdown.
 BED_ZZZ_ICON = (0xDB, 0x49, 0xDB, 0x00, 0xC0, 0xFF, 0x81, 0x81)
@@ -533,6 +556,38 @@ def run_demo(
         pause(max(0.0, duration))
     finally:
         backend.close()
+
+
+def run_startup_leds(
+    leds: LedDisplay,
+    *,
+    repeat: bool = False,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> None:
+    """Cycle the startup spectrum once or continuously until interrupted."""
+
+    while True:
+        for color in STARTUP_LED_SEQUENCE:
+            leds.colors((color,) * WS2812_COUNT)
+            sleeper(STARTUP_LED_FRAME_SECONDS)
+        if not repeat:
+            break
+    leds.colors((STARTUP_LED_LATCH,) * WS2812_COUNT)
+
+
+def run_startup_matrix(
+    matrix: MatrixDisplay,
+    *,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> None:
+    """Exercise every MAX7219 pixel, then latch a low-intensity boot glyph."""
+
+    matrix.intensity(STARTUP_MATRIX_INTENSITY)
+    for frame in STARTUP_MATRIX_FRAMES:
+        matrix.rows(frame)
+        sleeper(STARTUP_FRAME_SECONDS)
+    matrix.intensity(1)
+    matrix.rows(STARTUP_MATRIX_LATCH)
 
 
 def render_two_digits(value: int | None) -> tuple[int, ...]:
@@ -1444,6 +1499,71 @@ def shutdown_marker_path(
     return (marker_dir or GPIO_SHUTDOWN_MARKER_DIR) / marker
 
 
+def startup_state_plan(
+    target: str,
+    marker_dir: Path | None = None,
+) -> dict[str, object]:
+    registered = shutdown_marker_path(target, marker_dir).is_file()
+    plan: dict[str, object] = {"target": target, "registered": registered}
+    if target == "lcd":
+        plan["lines"] = list(normalize_lcd_lines(STARTUP_LCD_LINES))
+    elif target == "leds":
+        plan["sequence"] = [list(color) for color in STARTUP_LED_SEQUENCE]
+        plan["frame_seconds"] = STARTUP_LED_FRAME_SECONDS
+        plan["latched_colors"] = [list(STARTUP_LED_LATCH)] * WS2812_COUNT
+    elif target == "matrix":
+        plan["frames"] = [list(frame) for frame in STARTUP_MATRIX_FRAMES]
+        plan["latched_rows"] = list(STARTUP_MATRIX_LATCH)
+    else:
+        raise ValueError(f"unknown startup display target: {target}")
+    return plan
+
+
+def startup_readiness(
+    snapshot: MatrixHealthSnapshot,
+) -> dict[str, object]:
+    alerts = matrix_alerts(snapshot)
+    return {
+        "ready": not alerts,
+        "health": snapshot.as_dict(),
+        "alerts": [alert.as_dict() for alert in alerts],
+    }
+
+
+def apply_startup_state(target: str, *, repeat_leds: bool = False) -> None:
+    if target == "lcd":
+        lcd: HD44780 | None = None
+        try:
+            lcd = HD44780()
+            lcd.text(STARTUP_LCD_LINES)
+        finally:
+            if lcd is not None:
+                lcd.close(clear=False)
+        return
+
+    if target == "leds":
+        leds: Ws2812 | None = None
+        try:
+            leds = Ws2812()
+            run_startup_leds(leds, repeat=repeat_leds)
+        finally:
+            if leds is not None:
+                leds.close(clear=False)
+        return
+
+    if target == "matrix":
+        matrix: Max7219 | None = None
+        try:
+            matrix = Max7219()
+            run_startup_matrix(matrix)
+        finally:
+            if matrix is not None:
+                matrix.close(clear=False)
+        return
+
+    raise ValueError(f"unknown startup display target: {target}")
+
+
 def shutdown_state_plan(
     target: str,
     marker_dir: Path | None = None,
@@ -1571,6 +1691,24 @@ def build_parser() -> argparse.ArgumentParser:
     shutdown_state.add_argument("target", choices=tuple(GPIO_SHUTDOWN_MARKERS))
     shutdown_state.add_argument("--hardware", action="store_true", help="select the real display hardware")
     shutdown_state.add_argument("--apply", action="store_true", help="confirm that final display writes are intended")
+
+    startup_state = subparsers.add_parser(
+        "startup-state",
+        help="show one registered display's PCS boot state and self-test",
+    )
+    startup_state.add_argument("target", choices=tuple(GPIO_SHUTDOWN_MARKERS))
+    startup_state.add_argument("--hardware", action="store_true", help="select the real display hardware")
+    startup_state.add_argument("--apply", action="store_true", help="confirm that startup display writes are intended")
+    startup_state.add_argument(
+        "--repeat",
+        action="store_true",
+        help="repeat the LED spectrum until interrupted (LED target only)",
+    )
+
+    subparsers.add_parser(
+        "startup-ready",
+        help="return success when the normal indicator health snapshot has no alerts",
+    )
     return parser
 
 
@@ -1598,6 +1736,11 @@ def main(argv: Iterable[str] | None = None) -> int:
             print("GPIO writes:    none")
         return 0
 
+    if args.command == "startup-ready":
+        readiness = startup_readiness(collect_matrix_health())
+        print(json.dumps(readiness, indent=2))
+        return 0 if readiness["ready"] else 1
+
     if args.hardware and not args.apply:
         raise SystemExit("ERROR: real GPIO operation requires both --hardware and --apply")
     if args.apply and not args.hardware:
@@ -1618,6 +1761,32 @@ def main(argv: Iterable[str] | None = None) -> int:
             return 0
         try:
             apply_shutdown_state(args.target)
+        except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
+            raise SystemExit(f"ERROR: {error}") from error
+        plan["backend"] = "hardware"
+        plan["writes_performed"] = True
+        print(json.dumps(plan, indent=2))
+        return 0
+
+    if args.command == "startup-state":
+        if args.repeat and args.target != "leds":
+            raise SystemExit("ERROR: --repeat is valid only for the startup LED target")
+        plan = startup_state_plan(args.target)
+        if args.target == "leds":
+            plan["repeat"] = bool(args.repeat)
+        if not args.hardware:
+            plan["backend"] = "simulation"
+            plan["writes_performed"] = False
+            print(json.dumps(plan, indent=2))
+            return 0
+        if not plan["registered"]:
+            plan["backend"] = "hardware"
+            plan["skipped"] = "display is not registered by its PCS installer"
+            plan["writes_performed"] = False
+            print(json.dumps(plan, indent=2))
+            return 0
+        try:
+            apply_startup_state(args.target, repeat_leds=args.repeat)
         except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
             raise SystemExit(f"ERROR: {error}") from error
         plan["backend"] = "hardware"

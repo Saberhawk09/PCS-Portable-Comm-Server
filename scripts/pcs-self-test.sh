@@ -1049,11 +1049,38 @@ else
     skip "MAX7219 LED matrix is not selected in the install configuration"
 fi
 
+section "GPIO Boot Indicators"
+
+if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" \
+    || "${PCS_SETUP_GPIO_LEDS}" == "yes" \
+    || "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+    if [[ -x /usr/local/sbin/pcs-gpio-startup ]]; then
+        pass "PCS GPIO startup indicator runner is installed"
+    else
+        fail "GPIO displays are selected but /usr/local/sbin/pcs-gpio-startup is missing"
+    fi
+
+    if service_enabled pcs-gpio-startup.service; then
+        pass "pcs-gpio-startup.service is enabled"
+    else
+        fail "GPIO displays are selected but pcs-gpio-startup.service is disabled"
+    fi
+
+    if service_active pcs-gpio-startup.service; then
+        pass "pcs-gpio-startup.service completed its bounded boot handoff"
+    else
+        fail "GPIO displays are selected but pcs-gpio-startup.service did not complete"
+    fi
+else
+    skip "No LCD, WS2812 indicators, or matrix is selected for boot indication"
+fi
+
 section "Latched GPIO Shutdown Indicators"
 
 if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" \
     || "${PCS_SETUP_GPIO_LEDS}" == "yes" \
     || "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then
+
     if service_enabled pcs-gpio-shutdown.service; then
         pass "pcs-gpio-shutdown.service is enabled"
     else
