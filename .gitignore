@@ -35,3 +35,9 @@ notes/system-snapshots/
 config/local-client-names.tsv
 config/pcs-install.conf
 config/pcs-wireguard-management.conf
+
+# Android / PCS Companion local build state
+android/pcs-companion/.gradle/
+android/pcs-companion/local.properties
+android/pcs-companion/**/build/
+android/pcs-companion/.kotlin/

@@ -4,6 +4,19 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- local native PCS Companion Android foundation with ordered home-LAN,
+  PCS-LAN, and WireGuard discovery; explicit certificate enrollment and exact
+  pinning; public/authenticated status with timestamped offline cache;
+  Keystore-encrypted device tokens; dynamic administrative actions with
+  device authentication and one-time challenges; password rotation; and local
+  trust/token recovery controls
+- Android JVM coverage for endpoint policy, API parsing, TLS certificate and
+  hostname rejection, and bounded responses, plus clean Android lint, debug
+  APK assembly, and minified unsigned release assembly; real-phone and live PCS
+  validation remain pending
+
 ## [1.4] - 2026-08-27
 
 ### Added

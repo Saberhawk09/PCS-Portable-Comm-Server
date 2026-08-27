@@ -108,7 +108,9 @@ installed-hash, firewall/TLS, Linux-native, and full PCS self-tests. A live
 operator-approved full-scope pairing and non-mutating administrative acceptance
 test also passed on 2026-08-27; its temporary credential was revoked and proved
 unusable. These changes form v1.4 and establish the server-side contract for
-Android app development. See
+Android app development. A native Android client is now under local development
+in [android/pcs-companion](android/pcs-companion/README.md); it has not yet been
+installed on or validated with a real phone. See
 [WireGuard Remote Management](docs/wireguard-remote-management.md),
 [PCS Stats API](docs/pcs-stats-api.md), and the
 [Android Client Bootstrap Contract](docs/pcs-android-client-bootstrap.md), and
@@ -225,6 +227,7 @@ For additional documentation, start here:
 - [Network Design](docs/network-design.md)
 - [WireGuard Remote Management](docs/wireguard-remote-management.md) - commissioned outbound management tunnel
 - [Remote Management, PCS API, and Android Companion Roadmap](docs/remote-management-api-android-roadmap.md)
+- [PCS Companion for Android](android/pcs-companion/README.md) - local app source, build, security, and device-test status
 - [Raspberry Pi Setup](docs/raspberry-pi-setup.md)
 - [Full-Stack Reinstall Runbook](docs/full-stack-reinstall.md)
 - [WWAN Card Setup](docs/wwan-card-setup.md)

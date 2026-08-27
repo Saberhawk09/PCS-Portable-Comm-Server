@@ -58,9 +58,10 @@ Wi-Fi, and WireGuard source rules. The complete action/password expansion was
 deployed under a guarded rollback boundary on 2026-08-27 and passed its public,
 TLS/firewall, installed-hash, Linux-native, and full-appliance gates. Live
 operator-approved full-scope pairing and non-mutating administrative acceptance
-also passed on 2026-08-27, including verified revocation. Repository release
-integration remains. The current PCS-local certificate still requires an
-Android trust/pinning UX.
+also passed on 2026-08-27, including verified revocation. The implementation is
+released in PCS v1.4. The first local Android client now provides explicit
+certificate import, fingerprint/SAN review, exact-certificate trust, and normal
+hostname verification; its real-device gates remain open.
 See [PCS Stats API](pcs-stats-api.md).
 
 ```text
@@ -98,8 +99,16 @@ API requirements:
 ## Phase 3: Android read-only companion
 
 Build a native Kotlin application using Jetpack Compose, coroutines/Flow,
-OkHttp/Retrofit, and Material 3. The app tries the local PCS API first, then the
-WireGuard address, and clearly shows `LOCAL`, `REMOTE`, or `OFFLINE`.
+OkHttp, and Material 3. The app tries the home-LAN address, PCS local LAN, then
+the WireGuard address, and clearly shows `LOCAL`, `REMOTE`, or `OFFLINE`.
+
+The initial implementation exists locally under `android/pcs-companion`. It
+builds public and authenticated status views, visibly timestamped offline
+cache, strict TLS onboarding, Android-Keystore token storage, endpoint editing,
+and dynamic rendering of the server action catalog. Local JVM tests, Android
+lint, debug assembly, and minified unsigned release assembly pass. It is not
+yet installed or validated on a real Android device and is therefore not
+field-ready.
 
 The first overview should answer whether PCS is healthy without pretending
 that planned sensors exist. It can show only currently measured data:
@@ -117,12 +126,12 @@ must be visibly timestamped rather than presented as current.
 ## Phase 4: enrolled administration
 
 Revocable per-device credentials, one-time authenticated pairing, and the
-fixed control-panel action API are implemented in the local backend candidate.
+fixed control-panel action API are deployed in PCS v1.4.
 The Android app must store the credential in
 hardware-backed Keystore when available and must not store the web
 administrator password.
 
-The local backend candidate exposes the complete existing control-panel action allowlist:
+The deployed backend exposes the complete existing control-panel action allowlist:
 network and cellular controls, storage/backup operations, Meshtastic and
 service/time/GPS restarts, self-test/status tools, restart logs, and carefully
 gated reboot/shutdown. Future actions such as diagnostic bundles remain
@@ -135,7 +144,7 @@ Every action needs:
 - request identifier and audit record
 - bounded execution and a structured result
 - confirmation proportional to impact
-- Android biometric confirmation for reboot/shutdown and comparable actions
+- Android biometric or device-credential confirmation for every state-changing action
 - tests proving that read-only tokens cannot invoke it
 
 ## Phase 5: telemetry, power, and alerts

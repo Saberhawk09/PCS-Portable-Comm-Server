@@ -25,6 +25,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [PCS Stats API](pcs-stats-api.md) - deployed HTTPS status, pairing, and guarded administration backend
 - [PCS Stats API v1 OpenAPI](pcs-stats-api-v1.openapi.json) - machine-readable Android/client contract
 - [PCS Android Client Bootstrap Contract](pcs-android-client-bootstrap.md) - discovery, TLS trust, pairing, token storage, and recovery behavior
+- [PCS Companion for Android](../android/pcs-companion/README.md) - local native client, build instructions, security boundary, and device-test gates
 - [Cockpit Service Button](cockpit-service-button.md)
 - [Testing Checklist](testing-checklist.md)
 - [Release Checklist](release-checklist.md)
