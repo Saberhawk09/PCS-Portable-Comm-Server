@@ -40,6 +40,13 @@ PCS_CONTROL_SUDOERS_FILE="/etc/sudoers.d/pcs-control-panel"
 PCS_DASHBOARD_REDIRECT_SERVICE="pcs-dashboard-redirect.service"
 PCS_DASHBOARD_REDIRECT_PORT="8080"
 PCS_DASHBOARD_REDIRECT_HEALTH_URL="http://127.0.0.1:8080/health"
+PCS_STATS_API_CONFIG="/etc/pcs-stats-api/policy.conf"
+PCS_STATS_API_TOKEN_FILE="/etc/pcs-stats-api/api-read-tokens.json"
+PCS_STATS_API_CERT_FILE="/etc/pcs-stats-api/tls/server.crt"
+PCS_STATS_API_KEY_FILE="/etc/pcs-stats-api/tls/server.key"
+PCS_STATS_API_FIREWALL="/usr/local/sbin/pcs-stats-api-firewall"
+PCS_STATS_API_PORT="9443"
+PCS_STATS_API_URL="https://127.0.0.1:${PCS_STATS_API_PORT}/api/v1/status"
 
 REPO_DIR="/home/pi/Projects/PCS-Portable-Comm-Server"
 INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
@@ -713,6 +720,63 @@ if [[ "$(sudo -n stat -c '%U:%G %a' "${PCS_CONTROL_SUDOERS_FILE}" 2>/dev/null ||
     pass "PCS control-panel sudoers allowlist is valid and includes the password helper"
 else
     fail "PCS control-panel sudoers allowlist is missing, invalid, or has unsafe permissions"
+fi
+
+section "PCS Stats API"
+
+if ! sudo -n test -f "${PCS_STATS_API_CONFIG}" 2>/dev/null; then
+    skip "PCS Stats API has no imported deployment policy"
+else
+    if service_enabled pcs-stats-api-firewall.service \
+        && service_active pcs-stats-api-firewall.service; then
+        pass "PCS Stats API source firewall is enabled and active"
+    else
+        fail "Configured PCS Stats API requires an enabled, active source firewall"
+    fi
+
+    if service_enabled pcs-stats-api.service \
+        && service_active pcs-stats-api.service; then
+        pass "PCS Stats API service is enabled and active"
+    else
+        fail "Configured PCS Stats API service is not enabled and active"
+    fi
+
+    if port_listening_tcp "${PCS_STATS_API_PORT}"; then
+        pass "PCS Stats API TLS port ${PCS_STATS_API_PORT} is listening"
+    else
+        fail "PCS Stats API TLS port ${PCS_STATS_API_PORT} is not listening"
+    fi
+
+    if [[ -x "${PCS_STATS_API_FIREWALL}" ]] \
+        && sudo -n env PCS_STATS_API_CONFIG="${PCS_STATS_API_CONFIG}" \
+            "${PCS_STATS_API_FIREWALL}" --check >/dev/null 2>&1; then
+        pass "PCS Stats API source firewall passes inspection"
+    else
+        fail "PCS Stats API source firewall inspection failed"
+    fi
+
+    if [[ "$(sudo -n stat -c '%U:%G %a' "${PCS_STATS_API_TOKEN_FILE}" 2>/dev/null || true)" == "root:pcs-api 640" ]]; then
+        pass "PCS Stats API token digests have restricted ownership and mode"
+    else
+        fail "PCS Stats API token store is missing or has unsafe ownership/mode"
+    fi
+
+    if [[ "$(sudo -n stat -c '%U:%G %a' "${PCS_STATS_API_CERT_FILE}" 2>/dev/null || true)" == "root:pcs-api 644" ]] \
+        && [[ "$(sudo -n stat -c '%U:%G %a' "${PCS_STATS_API_KEY_FILE}" 2>/dev/null || true)" == "root:pcs-api 640" ]]; then
+        pass "PCS Stats API TLS material has the expected ownership and modes"
+    else
+        fail "PCS Stats API TLS material is missing or has unsafe ownership/mode"
+    fi
+
+    if command_exists curl && command_exists python3 \
+        && curl --insecure --fail --silent --show-error --max-time 10 \
+            "${PCS_STATS_API_URL}" \
+        | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data["access"] == "public"; assert data["details"] is None; serialized=json.dumps(data).lower(); assert all(term not in serialized for term in ("password", "private key", "preshared key", "access token", "coordinates"))' \
+            >/dev/null 2>&1; then
+        pass "PCS Stats API public response passes the local redaction check"
+    else
+        fail "PCS Stats API public response failed the local redaction check"
+    fi
 fi
 
 section "PCS Legacy Admin Redirect"

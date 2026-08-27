@@ -46,6 +46,34 @@ Do not commit:
 
 Example configs should use placeholder values only.
 
+The local PCS Stats API source is default-disabled and requires TLS before its
+standalone server starts. Unauthenticated responses use an independent strict
+allowlist. Authenticated `stats:read` responses may add existing admin-visible
+status details, but authentication never authorizes private or preshared keys,
+passcodes, raw logs, arbitrary dispatcher actions, or other credential material.
+The separate `admin:actions` scope authorizes only the fixed action names
+documented by the API; `admin:password` authorizes only the exact password
+change route. Neither scope authorizes arbitrary dispatcher arguments or shell
+commands. API tokens are random bearer credentials; only their
+SHA-256 digests belong in the root-controlled runtime token store, and neither
+raw tokens nor that runtime store belong in Git.
+
+`POST /api/v1/pair` is the only credential-exchange route. It accepts the
+existing administrator password only over TLS, applies a separate five-attempt
+per-source/five-minute limit, sends the exact request to a fixed root helper
+over standard input, and returns a `stats:read` + `admin:actions` +
+`admin:password` token once. The local candidate's
+`POST /api/v1/admin/password` route separately sends the current and new
+password to the fixed root-owned password helper; it does not return either
+value. The API account's sudo rule cannot select another helper command, token path, or
+system action. Administrative actions require that scope, a separate rate
+limit, a one-time 60-second challenge for every state-changing button, a fixed
+dispatcher action name, bounded output, and a journal audit record. A
+`stats:read`-only token cannot invoke them.
+Clients must validate/pin the PCS certificate, erase the administrator password
+after enrollment, store the bearer token in platform-protected storage, and
+never log either value.
+
 For base setup, the expected secret client export is
 `private-config/wg-pcs.conf`, which is ignored by Git. It must be a normal
 user-owned, non-symlink file with mode `0600` or `0400`. The importer accepts

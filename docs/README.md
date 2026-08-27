@@ -9,7 +9,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Project Overview](project-overview.md)
 - [Network Topology](network-topology.md)
 - [Network Design](network-design.md)
-- [WireGuard Remote Management](wireguard-remote-management.md) - local implementation; not deployed
+- [WireGuard Remote Management](wireguard-remote-management.md) - commissioned split-tunnel and trusted-home access
 - [Remote Management, PCS API, and Android Companion Roadmap](remote-management-api-android-roadmap.md)
 - [Raspberry Pi Setup](raspberry-pi-setup.md)
 - [Full-Stack Reinstall Runbook](full-stack-reinstall.md)
@@ -22,6 +22,9 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Linksys EA4500 OpenWrt AP Setup](linksys-ea4500-ap.md)
 - [Samba File Share](samba-file-share.md)
 - [PCS Control Panel](pcs-control-panel.md)
+- [PCS Stats API](pcs-stats-api.md) - deployed HTTPS status, pairing, and guarded administration backend
+- [PCS Stats API v1 OpenAPI](pcs-stats-api-v1.openapi.json) - machine-readable Android/client contract
+- [PCS Android Client Bootstrap Contract](pcs-android-client-bootstrap.md) - discovery, TLS trust, pairing, token storage, and recovery behavior
 - [Cockpit Service Button](cockpit-service-button.md)
 - [Testing Checklist](testing-checklist.md)
 - [Release Checklist](release-checklist.md)

@@ -99,9 +99,20 @@ also unfinished.
 The outbound WireGuard remote-management plane was commissioned on PCS on
 2026-08-26. It is an explicit, default-off base-installer choice using an
 ignored private profile and individually authorized management-peer `/32`s.
-The PCS API and Android companion remain paused local roadmap work and are not
-deployed. See [WireGuard Remote Management](docs/wireguard-remote-management.md)
-and the [Remote Management/API/Android Roadmap](docs/remote-management-api-android-roadmap.md).
+Direct management from the explicitly trusted home Wi-Fi subnet is also
+commissioned without requiring a VPN. The PCS Stats API is deployed as a
+supervised HTTPS service with public/authenticated status and per-device
+pairing. The complete administrative action/password expansion was deployed
+under a guarded rollback boundary on 2026-08-27 and passed trusted-LAN smoke,
+installed-hash, firewall/TLS, Linux-native, and full PCS self-tests. A live
+operator-approved full-scope pairing and non-mutating administrative acceptance
+test also passed on 2026-08-27; its temporary credential was revoked and proved
+unusable. These changes form v1.4 and establish the server-side contract for
+Android app development. See
+[WireGuard Remote Management](docs/wireguard-remote-management.md),
+[PCS Stats API](docs/pcs-stats-api.md), and the
+[Android Client Bootstrap Contract](docs/pcs-android-client-bootstrap.md), and
+[Remote Management/API/Android Roadmap](docs/remote-management-api-android-roadmap.md).
 
 ## Hardware Setup
 

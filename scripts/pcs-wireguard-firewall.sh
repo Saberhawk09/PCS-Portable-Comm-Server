@@ -26,6 +26,8 @@ LAN_NETWORK="${PCS_WG_LAN_NETWORK:-10.42.0.0/24}"
 WG_ADDRESS="${PCS_WG_ADDRESS:-}"
 WG_ALLOWED_IPS="${PCS_WG_ALLOWED_IPS:-}"
 WG_ADMIN_SOURCES="${PCS_WG_ADMIN_SOURCES:-}"
+HOME_INTERFACE="${PCS_WG_HOME_INTERFACE:-}"
+HOME_NETWORK="${PCS_WG_HOME_NETWORK:-}"
 PROTECTED_TCP_PORTS="${PCS_WG_PROTECTED_TCP_PORTS:-22,80,139,443,445,8080,9090}"
 PCS_TABLE="pcs_wireguard"
 NM_TABLE="nm-shared-${LAN_INTERFACE}"
@@ -60,11 +62,13 @@ validate_config() {
         "${WG_ADDRESS}" \
         "${WG_ALLOWED_IPS}" \
         "${WG_ADMIN_SOURCES}" \
+        "${HOME_INTERFACE}" \
+        "${HOME_NETWORK}" \
         "${PROTECTED_TCP_PORTS}" <<'PY'
 import ipaddress
 import sys
 
-lan_text, address_text, allowed_text, admin_text, ports_text = sys.argv[1:]
+lan_text, address_text, allowed_text, admin_text, home_interface, home_text, ports_text = sys.argv[1:]
 
 try:
     lan = ipaddress.ip_network(lan_text, strict=True)
@@ -106,6 +110,20 @@ allowed = parse_host_routes("PCS_WG_ALLOWED_IPS", allowed_text)
 admins = parse_host_routes("PCS_WG_ADMIN_SOURCES", admin_text)
 if not set(admins).issubset(allowed):
     raise SystemExit("ERROR: every admin source must also appear in PCS_WG_ALLOWED_IPS")
+
+if bool(home_interface) != bool(home_text):
+    raise SystemExit("ERROR: trusted home interface and network must be configured together")
+if home_interface:
+    if home_interface != "wlan0":
+        raise SystemExit("ERROR: trusted home management is permitted only on wlan0")
+    try:
+        home = ipaddress.ip_network(home_text, strict=True)
+    except ValueError as exc:
+        raise SystemExit(f"ERROR: invalid trusted home network: {exc}")
+    if home.version != 4 or not home.is_private or home.prefixlen < 16:
+        raise SystemExit("ERROR: trusted home network must be a private IPv4 /16 or narrower")
+    if home.overlaps(lan) or home.overlaps(management_supernet):
+        raise SystemExit("ERROR: trusted home network must not overlap PCS LAN or WireGuard management")
 
 ports = []
 for raw in ports_text.split(","):
@@ -170,10 +188,15 @@ clear_rules() {
 
 apply_rules() {
     local admin_elements
+    local home_input_rule=""
     local port_elements
 
     admin_elements="${WG_ADMIN_SOURCES//,/ , }"
     port_elements="${PROTECTED_TCP_PORTS//,/ , }"
+    if [[ -n "${HOME_INTERFACE}" && -n "${HOME_NETWORK}" ]]; then
+        validate_interface_name "trusted home" "${HOME_INTERFACE}"
+        home_input_rule="tcp dport @protected_tcp_ports iifname \"${HOME_INTERFACE}\" ip saddr ${HOME_NETWORK} accept comment \"pcs-wg-home-management\""
+    fi
 
     nft delete table inet "${PCS_TABLE}" 2>/dev/null || true
     nft -f - <<EOF
@@ -193,6 +216,7 @@ table inet ${PCS_TABLE} {
         type filter hook input priority -20; policy accept;
         tcp dport @protected_tcp_ports iifname "lo" accept
         tcp dport @protected_tcp_ports iifname "${LAN_INTERFACE}" ip saddr ${LAN_NETWORK} accept
+        ${home_input_rule}
         tcp dport @protected_tcp_ports iifname "${WG_INTERFACE}" ip saddr @admin_sources accept
         tcp dport @protected_tcp_ports drop
     }
@@ -223,6 +247,11 @@ check_rules() {
     grep -Fq "iifname \"${LAN_INTERFACE}\" oifname \"${WG_INTERFACE}\" drop" <<<"${rules}"
     grep -Fq "iifname \"${WG_INTERFACE}\" drop" <<<"${rules}"
     grep -Fq 'tcp dport @protected_tcp_ports drop' <<<"${rules}"
+    if [[ -n "${HOME_INTERFACE}" && -n "${HOME_NETWORK}" ]]; then
+        grep -F "iifname \"${HOME_INTERFACE}\"" <<<"${rules}" \
+            | grep -F "ip saddr ${HOME_NETWORK}" \
+            | grep -Fq 'comment "pcs-wg-home-management"'
+    fi
 
     if nft list chain ip "${NM_TABLE}" filter_forward >/dev/null 2>&1; then
         nm_rules="$(nft list chain ip "${NM_TABLE}" filter_forward)"

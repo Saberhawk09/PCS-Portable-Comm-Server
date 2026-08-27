@@ -1,0 +1,377 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PCS Stats API",
+    "version": "1.1.0",
+    "description": "Portable Comm Server status, enrollment, and fixed administrative actions. Public status uses a strict allowlist. Paired device tokens add admin-visible status and may invoke only the existing control-panel action allowlist; no arbitrary command endpoint exists."
+  },
+  "servers": [
+    {
+      "url": "https://10.42.0.1:9443",
+      "description": "PCS LAN example; deployed certificates and trusted addresses are operator-specific"
+    }
+  ],
+  "tags": [
+    {"name": "Discovery"},
+    {"name": "Pairing"},
+    {"name": "Actions"},
+    {"name": "Administration"},
+    {"name": "Stats"}
+  ],
+  "paths": {
+    "/api/v1": {
+      "get": {
+        "operationId": "getDiscovery",
+        "tags": ["Discovery"],
+        "summary": "Discover version 1 resources and access modes",
+        "security": [{}, {"bearerAuth": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/DiscoveryResponse"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/v1/pair": {
+      "post": {
+        "operationId": "pairDevice",
+        "tags": ["Pairing"],
+        "summary": "Exchange the PCS administrator password for one revocable device token",
+        "description": "Send the administrator password only during enrollment. The password is verified by the existing PCS credential store, is never persisted by the API, and the new stats:read + admin:actions + admin:password token is returned only in this response.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["admin_password", "device_id"],
+                "properties": {
+                  "admin_password": {"type": "string", "format": "password", "minLength": 1, "maxLength": 1024, "writeOnly": true},
+                  "device_id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$"}
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"$ref": "#/components/responses/PairingResponse"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/PairingUnauthorized"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "503": {"$ref": "#/components/responses/PairingUnavailable"}
+        }
+      }
+    },
+    "/api/v1/actions": {
+      "get": {
+        "operationId": "getActionCatalog",
+        "tags": ["Actions"],
+        "summary": "List the fixed PCS control-panel actions and confirmation requirements",
+        "security": [{"adminBearerAuth": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/ActionCatalogResponse"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/v1/actions/{action}": {
+      "post": {
+        "operationId": "executeAction",
+        "tags": ["Actions"],
+        "summary": "Execute one fixed PCS control-panel action",
+        "description": "Read-only actions require an empty JSON object. Every state-changing action requires the exact action name and a fresh one-time challenge. Actions are serialized and output is bounded.",
+        "security": [{"adminBearerAuth": []}],
+        "parameters": [{"$ref": "#/components/parameters/ActionName"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"oneOf": [
+          {"type": "object", "maxProperties": 0, "additionalProperties": false},
+          {"$ref": "#/components/schemas/ConfirmedActionRequest"}
+        ]}}}},
+        "responses": {
+          "200": {"$ref": "#/components/responses/ActionResultResponse"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "503": {"$ref": "#/components/responses/ActionUnavailable"},
+          "504": {"$ref": "#/components/responses/ActionTimeout"}
+        }
+      }
+    },
+    "/api/v1/actions/{action}/challenge": {
+      "post": {
+        "operationId": "createActionChallenge",
+        "tags": ["Actions"],
+        "summary": "Create a one-time 60-second challenge for a state-changing action",
+        "security": [{"adminBearerAuth": []}],
+        "parameters": [{"$ref": "#/components/parameters/ActionName"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "maxProperties": 0, "additionalProperties": false}}}},
+        "responses": {
+          "201": {"$ref": "#/components/responses/ActionChallengeResponse"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/api/v1/admin/password": {
+      "post": {
+        "operationId": "changeAdminPassword",
+        "tags": ["Administration"],
+        "summary": "Change the PCS web administrator password",
+        "description": "Requires the admin:password scope and the current administrator password. The new password is passed only to the fixed root-owned password helper and is never logged or returned.",
+        "security": [{"adminBearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/PasswordChangeRequest"}
+            }
+          }
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/PasswordChangeResponse"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/PasswordChangeUnauthorized"},
+          "403": {"$ref": "#/components/responses/PasswordChangeForbidden"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "503": {"$ref": "#/components/responses/PasswordChangeUnavailable"}
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "operationId": "getStatus",
+        "tags": ["Stats"],
+        "summary": "Get the complete version 1 status snapshot",
+        "x-pcs-resource": "status",
+        "security": [{}, {"bearerAuth": []}],
+        "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}
+      }
+    },
+    "/api/v1/network": {"get": {"operationId": "getNetwork", "tags": ["Stats"], "x-pcs-resource": "network", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/cellular": {"get": {"operationId": "getCellular", "tags": ["Stats"], "x-pcs-resource": "cellular", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/time": {"get": {"operationId": "getTime", "tags": ["Stats"], "x-pcs-resource": "time", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/gps": {"get": {"operationId": "getGps", "tags": ["Stats"], "x-pcs-resource": "gps", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/aprs": {"get": {"operationId": "getAprs", "tags": ["Stats"], "x-pcs-resource": "aprs", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/meshtastic": {"get": {"operationId": "getMeshtastic", "tags": ["Stats"], "x-pcs-resource": "meshtastic", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/pistar": {"get": {"operationId": "getPistar", "tags": ["Stats"], "x-pcs-resource": "pistar", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/storage": {"get": {"operationId": "getStorage", "tags": ["Stats"], "x-pcs-resource": "storage", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/services": {"get": {"operationId": "getServices", "tags": ["Stats"], "x-pcs-resource": "services", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}}
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "PCS device token",
+        "description": "Optional. Omit Authorization for public data; supply a valid token for admin-visible details."
+      },
+      "adminBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "PCS admin-scoped device token",
+        "description": "Required for the action catalog, challenges, execution, and password management. The token must carry the endpoint's required admin scope; a stats:read-only token receives 403."
+      }
+    },
+    "parameters": {
+      "ActionName": {
+        "name": "action",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/ActionName"}
+      }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["severity"],
+        "properties": {
+          "severity": {"type": "string", "enum": ["ok", "warn", "bad"]},
+          "offline": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      },
+      "StatsEnvelope": {
+        "type": "object",
+        "required": ["api_version", "schema_version", "resource", "generated_at", "health", "access", "data", "details"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "schema_version": {"const": "1.0"},
+          "resource": {"type": "string", "enum": ["status", "network", "cellular", "time", "gps", "aprs", "meshtastic", "pistar", "storage", "services"]},
+          "generated_at": {"type": ["string", "null"], "format": "date-time"},
+          "health": {"$ref": "#/components/schemas/Health"},
+          "access": {"type": "string", "enum": ["public", "authenticated"]},
+          "data": {"type": "object"},
+          "details": {"type": ["object", "null"]}
+        },
+        "additionalProperties": false
+      },
+      "Discovery": {
+        "type": "object",
+        "required": ["api_version", "schema_version", "resource", "access", "content_type", "authentication", "resources", "pairing", "actions", "password", "methods", "write_actions"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "schema_version": {"const": "1.0"},
+          "resource": {"const": "discovery"},
+          "access": {"type": "string", "enum": ["public", "authenticated"]},
+          "content_type": {"const": "application/vnd.pcs.v1+json"},
+          "authentication": {"type": "object"},
+          "resources": {"type": "object", "additionalProperties": {"type": "string"}},
+          "pairing": {"const": "/api/v1/pair"},
+          "actions": {"const": "/api/v1/actions"},
+          "password": {"const": "/api/v1/admin/password"},
+          "methods": {"type": "array", "items": {"type": "string", "enum": ["GET", "HEAD"]}},
+          "write_actions": {"type": "boolean", "description": "True only when the supplied token has admin:actions scope."}
+        },
+        "additionalProperties": false
+      },
+      "PairingEnvelope": {
+        "type": "object",
+        "required": ["api_version", "schema_version", "resource", "access", "device_id", "token_type", "token", "scopes"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "schema_version": {"const": "1.0"},
+          "resource": {"const": "pairing"},
+          "access": {"const": "authenticated"},
+          "device_id": {"type": "string"},
+          "token_type": {"const": "Bearer"},
+          "token": {"type": "string", "description": "Returned once; store in Android Keystore and never log it."},
+          "scopes": {"type": "array", "prefixItems": [{"const": "stats:read"}, {"const": "admin:actions"}, {"const": "admin:password"}], "minItems": 3, "maxItems": 3}
+        },
+        "additionalProperties": false
+      },
+      "ActionName": {
+        "type": "string",
+        "enum": ["status", "self-test", "storage-status", "restart-logs", "wifi-status", "wifi-connect", "wifi-disconnect", "cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test", "meshtastic-status", "restart-meshtastic", "sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb", "restart-services", "restart-samba", "restart-modemmanager", "sync-time", "restart-chrony", "restart-gpsd", "reboot-system", "shutdown-system"]
+      },
+      "ConfirmedActionRequest": {
+        "type": "object",
+        "required": ["confirmation", "challenge"],
+        "properties": {
+          "confirmation": {"$ref": "#/components/schemas/ActionName"},
+          "challenge": {"type": "string", "minLength": 32, "maxLength": 128}
+        },
+        "additionalProperties": false
+      },
+      "ActionCatalog": {
+        "type": "object",
+        "required": ["api_version", "schema_version", "resource", "access", "required_scope", "actions"],
+        "properties": {
+          "api_version": {"const": "v1"}, "schema_version": {"const": "1.0"},
+          "resource": {"const": "actions"}, "access": {"const": "authenticated"},
+          "required_scope": {"const": "admin:actions"},
+          "actions": {"type": "array", "items": {"$ref": "#/components/schemas/ActionMetadata"}}
+        },
+        "additionalProperties": false
+      },
+      "ActionMetadata": {
+        "type": "object",
+        "required": ["name", "label", "description", "group", "dangerous", "challenge_required", "execute_path", "challenge_path"],
+        "properties": {
+          "name": {"$ref": "#/components/schemas/ActionName"},
+          "label": {"type": "string"},
+          "description": {"type": "string"},
+          "group": {"type": "string"},
+          "dangerous": {"type": "boolean"},
+          "challenge_required": {"type": "boolean"},
+          "execute_path": {"type": "string"},
+          "challenge_path": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      },
+      "ActionChallenge": {
+        "type": "object",
+        "required": ["api_version", "schema_version", "resource", "action", "challenge", "expires_in", "confirmation"],
+        "properties": {
+          "api_version": {"const": "v1"}, "schema_version": {"const": "1.0"},
+          "resource": {"const": "action-challenge"}, "action": {"$ref": "#/components/schemas/ActionName"},
+          "challenge": {"type": "string"}, "expires_in": {"const": 60},
+          "confirmation": {"$ref": "#/components/schemas/ActionName"}
+        },
+        "additionalProperties": false
+      },
+      "ActionResult": {
+        "type": "object",
+        "required": ["api_version", "schema_version", "resource", "action", "request_id", "completed_at", "exit_code", "ok", "output", "output_truncated", "duration_ms"],
+        "properties": {
+          "api_version": {"const": "v1"}, "schema_version": {"const": "1.0"},
+          "resource": {"const": "action-result"}, "action": {"$ref": "#/components/schemas/ActionName"},
+          "request_id": {"type": "string"}, "completed_at": {"type": "string", "format": "date-time"},
+          "exit_code": {"type": "integer"}, "ok": {"type": "boolean"}, "output": {"type": "string"},
+          "output_truncated": {"type": "boolean"}, "duration_ms": {"type": "integer", "minimum": 0}
+        },
+        "additionalProperties": false
+      },
+      "PasswordChangeRequest": {
+        "type": "object",
+        "required": ["current_password", "new_password"],
+        "properties": {
+          "current_password": {"type": "string", "format": "password", "minLength": 1, "maxLength": 1024, "writeOnly": true},
+          "new_password": {"type": "string", "format": "password", "minLength": 12, "maxLength": 1024, "writeOnly": true}
+        },
+        "additionalProperties": false
+      },
+      "PasswordChangeResponse": {
+        "type": "object",
+        "required": ["api_version", "schema_version", "resource", "changed"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "schema_version": {"const": "1.0"},
+          "resource": {"const": "password-change"},
+          "changed": {"const": true}
+        },
+        "additionalProperties": false
+      },
+      "Problem": {
+        "type": "object",
+        "required": ["type", "title", "status", "code", "request_id"],
+        "properties": {
+          "type": {"type": "string"},
+          "title": {"type": "string"},
+          "status": {"type": "integer", "minimum": 400, "maximum": 599},
+          "code": {"type": "string"},
+          "request_id": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "DiscoveryResponse": {"description": "Version 1 discovery", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/Discovery"}}}},
+      "StatsResponse": {"description": "Public or authenticated status", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/StatsEnvelope"}}}},
+      "PairingResponse": {"description": "Device enrolled; the bearer token is returned once", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/PairingEnvelope"}}}},
+      "ActionCatalogResponse": {"description": "Fixed control-panel action catalog", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/ActionCatalog"}}}},
+      "ActionChallengeResponse": {"description": "One-time action challenge", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/ActionChallenge"}}}},
+      "ActionResultResponse": {"description": "Bounded administrative action result", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/ActionResult"}}}},
+      "BadRequest": {"description": "Malformed JSON request", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "Unauthorized": {"description": "A supplied bearer token was invalid or revoked", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "Forbidden": {"description": "The token lacks admin:actions scope", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "NotFound": {"description": "Unknown fixed action", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "PairingUnauthorized": {"description": "The administrator password was not accepted", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "Conflict": {"description": "The device ID already exists; revoke it before re-enrollment", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "UnsupportedMediaType": {"description": "The endpoint accepts only application/json", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "RateLimited": {"description": "Request rate exceeded", "headers": {"Retry-After": {"schema": {"type": "integer"}}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "PairingUnavailable": {"description": "The bounded pairing helper failed or timed out", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "ActionUnavailable": {"description": "The fixed dispatcher was unavailable or another action is running", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "ActionTimeout": {"description": "The fixed administrative action exceeded its bounded timeout", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "PasswordChangeResponse": {"description": "Administrator password changed", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/PasswordChangeResponse"}}}},
+      "PasswordChangeUnauthorized": {"description": "The current administrator password was not accepted", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "PasswordChangeForbidden": {"description": "The token lacks admin:password scope", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "PasswordChangeUnavailable": {"description": "The fixed password helper was unavailable or failed", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "CollectorUnavailable": {"description": "Bounded PCS status collection failed", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
+      "CollectorTimeout": {"description": "Bounded PCS status collection timed out", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}}
+    }
+  }
+}

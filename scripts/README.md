@@ -727,6 +727,63 @@ Warning: this is a mirror-style sync. Files deleted from the USB primary share m
 
 ## PCS Control Panel
 
+`pcs_api_token.py` issues and revokes Stats API bearer tokens. It
+also performs the fixed password-verifying `pair-from-stdin` operation used by
+the HTTPS pairing endpoint. It prints a new token once and stores only its
+SHA-256 digest. The deployed store and raw-token handling remain outside Git
+with restricted permissions.
+
+`setup-pcs-stats-api.sh` provides the default-disabled runtime workflow used
+for the supervised PCS canary:
+
+- `--prepare` installs inactive components and exact collector/pairing/action sudoers scopes; it requires the root-owned password helper from `setup-pcs-control-panel.sh`
+- `--validate-policy FILE` validates fixed paths and explicit interface/source networks
+- `--import-policy FILE` imports deployment-local policy without starting services
+- `--validate-tls CERT KEY [POLICY]` checks expiry, key matching, and configured SAN identities
+- `--import-tls CERT KEY` imports the certificate and restricted private key
+- `--issue-token TOKEN_ID` prints a new read-only token once and stores only its digest
+- `--revoke-token TOKEN_ID` disables one issued token
+- `--activate` applies the source firewall first, starts TLS, checks, then enables boot
+- `--check` verifies policy, TLS, permissions, services, firewall, and public redaction
+- `--deactivate` disables API and firewall while preserving data
+- `--rollback` removes runtime integration while preserving policy, TLS, and token data
+- `--help` prints the command reference
+
+Preparation installs the recovery-capable command as
+`/usr/local/sbin/pcs-stats-api-setup`; it remains available independently of
+the staging directory for checks, deactivation, and rollback.
+
+### pcs-api-smoke-test.py
+
+Runs safe, non-mutating checks from a PCS client or maintenance workstation.
+It validates the HTTPS origin, v1 discovery document, public redaction, and
+unauthenticated write protection. An optional admin token can be supplied only
+through an environment variable to add authenticated status and action-catalog
+checks; the token is never printed.
+
+```bash
+python3 scripts/pcs-api-smoke-test.py \
+  --base-url https://192.168.50.236:9443 \
+  --ca-cert /path/to/pcs-api-ca-or-certificate.pem
+
+PCS_API_SMOKE_TOKEN='pcs_ro_...' \
+python3 scripts/pcs-api-smoke-test.py \
+  --base-url https://192.168.50.236:9443 \
+  --ca-cert /path/to/pcs-api-ca-or-certificate.pem \
+  --token-env PCS_API_SMOKE_TOKEN
+```
+
+The utility refuses HTTP, URL credentials, URL paths, and untrusted
+certificates. It never requests an action challenge, changes a password, or
+uses `--insecure` behavior.
+
+None of these API commands is called by `setup-pcs-base.sh` yet. The
+administrative action/password expansion was deployed under a guarded rollback
+boundary on 2026-08-27. Its operator-approved full-scope pairing and
+non-mutating authenticated administrative acceptance passed the same day,
+including revocation and subsequent `401` denial; repository source still
+requires review and release integration.
+
 ### setup-pcs-control-panel.sh
 
 Installs the PCS public homepage, Admin Login, authenticated operator controls, local password hash, and systemd services.

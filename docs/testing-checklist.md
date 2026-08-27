@@ -842,6 +842,34 @@ inside five minutes. Because restarting the commissioned TX profile schedules
 an RF beacon after 30 seconds, perform this live transition test under the same
 supervised RF conditions used for commissioning.
 
+For PCS Stats API development, run `tests.test_pcs_stats_api` and
+`tests.test_pcs_stats_api_setup`. Confirm an unauthenticated request receives
+only the public contract, a valid `stats:read` token adds admin-visible
+details, an invalid supplied token returns `401`, and non-pairing write methods
+return `405`. Verify `POST /api/v1/pair` accepts only the exact JSON schema,
+rejects a wrong administrator password without creating a token, returns a
+revocable `stats:read` + `admin:actions` + `admin:password` token once, rejects
+duplicate device IDs, and applies its separate rate limit. For the local
+administrative expansion, verify the exact control-panel action catalog,
+admin-scope enforcement, one-time challenge consumption, bounded output, and
+`POST /api/v1/admin/password` schema/error handling. Validate that policy rejects `wwan0`, public/default networks, and broad
+WireGuard sources; TLS validation must prove expiry, key matching, and every
+configured SAN identity. The supervised 2026-08-26 canary passed those checks
+on PCS. The action/password expansion passed its guarded 2026-08-27 deployment,
+trusted home-LAN smoke, Linux-native tests, and full PCS self-test. Its final
+live full-scope pairing and non-mutating authenticated administrative acceptance
+gate passed on 2026-08-27, including revocation and subsequent `401` denial.
+Future deployed
+changes must repeat the guarded activation, external LAN tests, authenticated
+redaction checks, and full PCS self-test before being retained.
+
+After a supervised API activation, run the non-mutating client smoke test from
+each intended network path. Use the deployment certificate as `--ca-cert` and
+confirm discovery, public redaction, and unauthenticated action/password
+protection. If an admin token is available for the test, pass it through a
+temporary environment variable with `--token-env`; never place it in the
+command line, shell history, or a test log.
+
 ## Service Status Test
 
 On the Pi:
