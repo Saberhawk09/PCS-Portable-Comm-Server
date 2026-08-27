@@ -170,6 +170,7 @@ validate_tls_pair() {
     local temp_dir
     local identity
     local value
+    local validation_output
     local -a openssl_command
 
     if [[ "${runtime_identity}" == "yes" ]]; then
@@ -217,13 +218,17 @@ validate_tls_pair() {
         value="${identity#*:}"
         case "${identity}" in
             IP:*)
-                if ! "${openssl_command[@]}" x509 -in "${certificate}" -noout -checkip "${value}" >/dev/null; then
+                # Some OpenSSL builds print a mismatch but still exit zero.
+                if ! validation_output="$(LC_ALL=C "${openssl_command[@]}" x509 -in "${certificate}" -noout -checkip "${value}" 2>&1)" \
+                    || [[ "${validation_output}" != *"does match certificate"* ]]; then
                     echo "ERROR: TLS certificate SAN is missing required IP identity: ${value}" >&2
                     return 1
                 fi
                 ;;
             DNS:*)
-                if ! "${openssl_command[@]}" x509 -in "${certificate}" -noout -checkhost "${value}" >/dev/null; then
+                # Require the explicit positive result as well as command success.
+                if ! validation_output="$(LC_ALL=C "${openssl_command[@]}" x509 -in "${certificate}" -noout -checkhost "${value}" 2>&1)" \
+                    || [[ "${validation_output}" != *"does match certificate"* ]]; then
                     echo "ERROR: TLS certificate SAN is missing required DNS identity: ${value}" >&2
                     return 1
                 fi

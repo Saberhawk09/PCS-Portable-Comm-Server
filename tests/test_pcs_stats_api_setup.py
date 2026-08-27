@@ -223,7 +223,7 @@ class StatsApiSetupTests(unittest.TestCase):
             subprocess.run([
                 "openssl", "req", "-x509", "-key", str(key), "-days", "2",
                 "-subj", "/CN=wrong.local",
-                "-addext", "subjectAltName=DNS:wrong.local",
+                "-addext", "subjectAltName=DNS:wrong.local,IP:10.42.0.1",
                 "-out", str(invalid_cert),
             ], check=True, capture_output=True, text=True)
 
