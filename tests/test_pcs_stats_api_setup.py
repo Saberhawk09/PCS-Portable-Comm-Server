@@ -240,6 +240,7 @@ class StatsApiSetupTests(unittest.TestCase):
                 cwd=ROOT, env=env, text=True, capture_output=True, check=False,
             )
             self.assertNotEqual(missing_san.returncode, 0)
+            self.assertIn("missing required DNS identity: pcs.local", missing_san.stderr)
 
 
 if __name__ == "__main__":

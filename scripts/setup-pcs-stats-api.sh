@@ -216,8 +216,18 @@ validate_tls_pair() {
         identity="${identity//[[:space:]]/}"
         value="${identity#*:}"
         case "${identity}" in
-            IP:*) "${openssl_command[@]}" x509 -in "${certificate}" -noout -checkip "${value}" >/dev/null ;;
-            DNS:*) "${openssl_command[@]}" x509 -in "${certificate}" -noout -checkhost "${value}" >/dev/null ;;
+            IP:*)
+                if ! "${openssl_command[@]}" x509 -in "${certificate}" -noout -checkip "${value}" >/dev/null; then
+                    echo "ERROR: TLS certificate SAN is missing required IP identity: ${value}" >&2
+                    return 1
+                fi
+                ;;
+            DNS:*)
+                if ! "${openssl_command[@]}" x509 -in "${certificate}" -noout -checkhost "${value}" >/dev/null; then
+                    echo "ERROR: TLS certificate SAN is missing required DNS identity: ${value}" >&2
+                    return 1
+                fi
+                ;;
             *)
                 echo "ERROR: certificate identities must use IP:value or DNS:value." >&2
                 return 1
