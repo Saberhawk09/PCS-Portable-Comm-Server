@@ -189,6 +189,10 @@ def write_import_files(
         "PCS_WG_INTERFACE": "wg-pcs",
         "PCS_WG_LAN_INTERFACE": "eth0",
         "PCS_WG_LAN_NETWORK": "10.42.0.0/24",
+        # Home-Wi-Fi trust is deployment-local and cannot be inferred safely
+        # from a WireGuard export. It remains fail-closed until configured.
+        "PCS_WG_HOME_INTERFACE": "",
+        "PCS_WG_HOME_NETWORK": "",
         "PCS_WG_PROTECTED_TCP_PORTS": "22,80,139,443,445,8080,9090",
         "PCS_WG_PRIVATE_KEY_FILE": "/etc/pcs/wireguard/private.key",
         "PCS_WG_USE_PRESHARED_KEY": use_preshared_key,

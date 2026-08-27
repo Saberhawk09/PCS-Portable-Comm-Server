@@ -4,7 +4,38 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.4] - 2026-08-27
+
 ### Added
+
+- default-disabled PCS Stats API packaging with versioned
+  read-only resources, separate public/authenticated response views, hashed
+  revocable tokens, HTTPS-only startup, fixed command allowlists, request
+  limits, structured errors, collector-free discovery, an OpenAPI 3.1 client
+  contract, contract/security tests, guarded activation/rollback, and a
+  supervised HTTPS canary deployment on PCS
+- administrator-approved API device pairing through a fixed, rate-limited TLS
+  route, one-time revocable `stats:read` + `admin:actions` + `admin:password` bearer tokens, exact sudo isolation,
+  OpenAPI coverage, an Android bootstrap/trust contract, and supervised PCS
+  deployment/reboot validation
+- expansion of the API contract to the complete current control-panel
+  action catalog, one-time challenge-gated execution, bounded output/audit
+  records, and a dedicated authenticated administrator-password route,
+  deployed under a guarded rollback boundary on PCS on 2026-08-27
+- safe external `pcs-api-smoke-test.py` checks for HTTPS trust, discovery,
+  public redaction, unauthenticated write protection, and optional
+  environment-supplied authenticated status/action-catalog validation
+- quiet handling of expected TLS client disconnects so certificate rejection
+  does not leave misleading API traceback noise in the service journal
+- narrow systemd write access for the API's root-isolated pairing and password
+  helpers, permitting only `/etc/pcs-stats-api` and `/etc/pcs-control-panel`,
+  with live full-scope pairing, non-mutating administration, revocation, and
+  revoked-token denial acceptance on PCS
+
+- explicit trusted-home-Wi-Fi management access, allowing the protected PCS
+  host services directly from one configured private `wlan0` subnet while
+  retaining the cellular/unknown-interface deny policy and WireGuard `/32`
+  restrictions
 
 - sanitized WireGuard remote-management cards for the public homepage and
   authenticated admin dashboard, including boot, firewall, handshake, route,
@@ -262,7 +293,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4...HEAD
+[1.4]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.2...v1.4
 [1.3.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3...v1.3.1
 [1.3]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.2...v1.3

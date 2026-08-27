@@ -43,6 +43,26 @@ Extract status collection from the current web control panel into a shared
 service layer, then expose versioned JSON without duplicating shell-command
 logic. Initial endpoints:
 
+Development and a supervised canary deployment began on 2026-08-26. The
+current source implements the versioned status contract as a separate,
+default-disabled, TLS-only process. It also provides a rate-limited one-time
+pairing exchange that verifies the existing administrator password and returns
+a per-device `stats:read` + `admin:actions` + `admin:password` token without storing the password. Android trust,
+discovery, and enrollment behavior is fixed in the
+[Android Client Bootstrap Contract](pcs-android-client-bootstrap.md).
+Unauthenticated requests receive only an explicit public allowlist; valid
+revocable `stats:read` tokens add administrative status details without ever
+returning credentials or private keys. The previously validated status/pairing
+canary is installed and enabled on PCS behind explicit PCS-LAN, trusted-home-
+Wi-Fi, and WireGuard source rules. The complete action/password expansion was
+deployed under a guarded rollback boundary on 2026-08-27 and passed its public,
+TLS/firewall, installed-hash, Linux-native, and full-appliance gates. Live
+operator-approved full-scope pairing and non-mutating administrative acceptance
+also passed on 2026-08-27, including verified revocation. Repository release
+integration remains. The current PCS-local certificate still requires an
+Android trust/pinning UX.
+See [PCS Stats API](pcs-stats-api.md).
+
 ```text
 GET /api/v1/status
 GET /api/v1/network
@@ -54,6 +74,11 @@ GET /api/v1/meshtastic
 GET /api/v1/pistar
 GET /api/v1/storage
 GET /api/v1/services
+POST /api/v1/pair
+GET /api/v1/actions
+POST /api/v1/actions/{action}/challenge
+POST /api/v1/actions/{action}
+POST /api/v1/admin/password
 ```
 
 API requirements:
@@ -65,7 +90,7 @@ API requirements:
 - no passwords, private keys, APRS-IS credentials, private MQTT details, raw
   modem identity, or unrestricted logs
 - structured health severity distinct from human display text
-- read-only authentication designed before administrative endpoints
+- scoped authentication and replay-resistant confirmation before administrative endpoints
 - HTTPS appropriate for Android clients; WireGuard is defense in depth, not a
   reason to normalize cleartext credentials
 - contract, authorization, timeout, and redaction tests
@@ -91,13 +116,17 @@ must be visibly timestamped rather than presented as current.
 
 ## Phase 4: enrolled administration
 
-Add revocable per-device credentials issued through a one-time authenticated
-pairing flow. Store the Android credential in hardware-backed Keystore when
-available. Do not store the web administrator password.
+Revocable per-device credentials, one-time authenticated pairing, and the
+fixed control-panel action API are implemented in the local backend candidate.
+The Android app must store the credential in
+hardware-backed Keystore when available and must not store the web
+administrator password.
 
-Allowlisted API actions may include cellular connect/disconnect, APRS or
-Meshtastic restart, self-test, diagnostic bundle creation, and carefully gated
-system/Pi-Star power actions. There will be no arbitrary shell endpoint.
+The local backend candidate exposes the complete existing control-panel action allowlist:
+network and cellular controls, storage/backup operations, Meshtastic and
+service/time/GPS restarts, self-test/status tools, restart logs, and carefully
+gated reboot/shutdown. Future actions such as diagnostic bundles remain
+separate additions. There will be no arbitrary shell endpoint.
 
 Every action needs:
 

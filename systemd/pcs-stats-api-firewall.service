@@ -1,0 +1,16 @@
+[Unit]
+Description=PCS Stats API source firewall
+Before=pcs-stats-api.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+Environment=PCS_STATS_API_CONFIG=/etc/pcs-stats-api/policy.conf
+ExecStart=/usr/local/sbin/pcs-stats-api-firewall --apply
+ExecReload=/usr/local/sbin/pcs-stats-api-firewall --apply
+ExecStop=/usr/local/sbin/pcs-stats-api-firewall --clear
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

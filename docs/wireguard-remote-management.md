@@ -28,8 +28,9 @@ The design enforces these invariants:
 - WireGuard cannot forward remote clients to a PCS WAN interface or turn PCS
   into an exit node.
 - SSH, HTTP/HTTPS, Samba, the legacy admin redirect, and Cockpit are accepted
-  from the local PCS LAN and trusted WireGuard sources, then dropped on other
-  ingress interfaces while the feature firewall is active.
+  from the local PCS LAN, an explicitly configured private home-Wi-Fi subnet,
+  and trusted WireGuard sources, then dropped on cellular and other ingress
+  interfaces while the feature firewall is active.
 - A tunnel activation without an authenticated home-hub handshake is rolled
   back automatically.
 - WireGuard does not start cellular or alter the selected manual/automatic
@@ -59,6 +60,15 @@ PCS wg-pcs (example 10.77.0.20/32)
 
 PCS LAN 10.42.0.0/24 --X--> wg-pcs/home network
 ```
+
+When PCS is connected to the operator's home Wi-Fi, direct management does not
+require WireGuard. Set `PCS_WG_HOME_INTERFACE=wlan0` and the exact private home
+subnet, such as `PCS_WG_HOME_NETWORK=192.168.50.0/24`, in the deployment-local
+runtime policy. Both values are empty after profile import because a VPN export
+cannot safely identify the operator's home LAN. This exception opens only the
+protected host-management ports from that subnet; it does not trust cellular,
+install a home-LAN route through WireGuard, or permit PCS-LAN clients to exit
+through the tunnel.
 
 WireGuard cryptographic `AllowedIPs`, PCS nftables policy, and the home-hub
 firewall are separate controls. All three are required.

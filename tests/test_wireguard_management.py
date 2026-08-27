@@ -53,6 +53,8 @@ PCS_WG_ADMIN_SOURCES="10.77.0.1/32"
 PCS_WG_INTERFACE="wg-pcs"
 PCS_WG_LAN_INTERFACE="eth0"
 PCS_WG_LAN_NETWORK="10.42.0.0/24"
+PCS_WG_HOME_INTERFACE=""
+PCS_WG_HOME_NETWORK=""
 PCS_WG_PROTECTED_TCP_PORTS="22,80,139,443,445,8080,9090"
 """
 
@@ -101,6 +103,8 @@ class WireGuardManagementTests(unittest.TestCase):
             self.assertIn("PCS_WG_ADDRESS=10.77.0.20/32", policy)
             self.assertIn("PCS_WG_ALLOWED_IPS=10.77.0.1/32", policy)
             self.assertIn("PCS_WG_ADMIN_SOURCES=10.77.0.1/32", policy)
+            self.assertIn("PCS_WG_HOME_INTERFACE=''", policy)
+            self.assertIn("PCS_WG_HOME_NETWORK=''", policy)
             self.assertIn("PCS_WG_USE_PRESHARED_KEY=yes", policy)
             self.assertIn(
                 "PCS_WG_PRESHARED_KEY_FILE=/etc/pcs/wireguard/preshared.key", policy
@@ -192,7 +196,20 @@ class WireGuardManagementTests(unittest.TestCase):
         self.assertIn('oifname "${WG_INTERFACE}" drop', firewall)
         self.assertIn('ip saddr @admin_sources ip daddr ${LAN_NETWORK}', firewall)
         self.assertIn('tcp dport @protected_tcp_ports drop', firewall)
+        self.assertIn('home_input_rule="tcp dport @protected_tcp_ports iifname', firewall)
+        self.assertIn('comment \\"pcs-wg-home-management\\"', firewall)
         self.assertIn("139,443,445", firewall)
+
+    def test_home_wifi_management_is_explicit_and_cellular_remains_excluded(self):
+        firewall = FIREWALL.read_text(encoding="utf-8")
+        example = EXAMPLE.read_text(encoding="utf-8")
+        self.assertIn('HOME_INTERFACE="${PCS_WG_HOME_INTERFACE:-}"', firewall)
+        self.assertIn('HOME_NETWORK="${PCS_WG_HOME_NETWORK:-}"', firewall)
+        self.assertIn('home_interface != "wlan0"', firewall)
+        self.assertIn("private IPv4 /16 or narrower", firewall)
+        self.assertIn('PCS_WG_HOME_INTERFACE=""', example)
+        self.assertIn('PCS_WG_HOME_NETWORK=""', example)
+        self.assertNotIn("wwan0", example)
 
     def test_networkmanager_compatibility_is_idempotent_and_refreshed(self):
         firewall = FIREWALL.read_text(encoding="utf-8")
@@ -372,6 +389,26 @@ class WireGuardManagementTests(unittest.TestCase):
         result = self._run_firewall_validator(config)
         self.assertNotEqual(0, result.returncode)
         self.assertIn("management /24", result.stderr)
+
+    @unittest.skipIf(os.name == "nt", "Bash validator execution runs in Linux CI")
+    def test_validator_accepts_narrow_home_wifi_and_rejects_unsafe_home_sources(self):
+        valid = VALID_FIREWALL_CONFIG.replace(
+            'PCS_WG_HOME_INTERFACE=""\nPCS_WG_HOME_NETWORK=""',
+            'PCS_WG_HOME_INTERFACE="wlan0"\nPCS_WG_HOME_NETWORK="192.168.50.0/24"',
+        )
+        result = self._run_firewall_validator(valid)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+        invalid_configs = {
+            "cellular interface": valid.replace('PCS_WG_HOME_INTERFACE="wlan0"', 'PCS_WG_HOME_INTERFACE="wwan0"'),
+            "public network": valid.replace('PCS_WG_HOME_NETWORK="192.168.50.0/24"', 'PCS_WG_HOME_NETWORK="8.8.8.0/24"'),
+            "broad network": valid.replace('PCS_WG_HOME_NETWORK="192.168.50.0/24"', 'PCS_WG_HOME_NETWORK="10.0.0.0/8"'),
+            "missing pair": valid.replace('PCS_WG_HOME_NETWORK="192.168.50.0/24"', 'PCS_WG_HOME_NETWORK=""'),
+        }
+        for label, config in invalid_configs.items():
+            with self.subTest(label=label):
+                rejected = self._run_firewall_validator(config)
+                self.assertNotEqual(0, rejected.returncode)
 
     @staticmethod
     def _run_firewall_validator(config_text):

@@ -1,0 +1,28 @@
+[Unit]
+Description=PCS HTTPS Stats and Administration API
+After=network-online.target pcs-stats-api-firewall.service
+Wants=network-online.target
+Requires=pcs-stats-api-firewall.service
+
+[Service]
+Type=simple
+User=pcs-api
+Group=pcs-api
+EnvironmentFile=/etc/pcs-stats-api/runtime.env
+ExecStart=/usr/bin/python3 /usr/local/lib/pcs-stats-api/pcs_stats_api.py --cert-file ${PCS_API_CERT_FILE} --key-file ${PCS_API_KEY_FILE}
+Restart=on-failure
+RestartSec=3
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/etc/pcs-stats-api /etc/pcs-control-panel
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
