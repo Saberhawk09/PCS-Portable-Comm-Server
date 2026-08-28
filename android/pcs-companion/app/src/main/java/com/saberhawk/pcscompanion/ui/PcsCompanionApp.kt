@@ -85,12 +85,22 @@ private enum class AppTab(val label: String, val symbol: String) {
 @Composable
 fun PcsCompanionApp(
     authenticateAction: (String, () -> Unit, (String) -> Unit) -> Unit,
+    requestLocalNetworkAccess: ((() -> Unit), (String) -> Unit) -> Unit,
     viewModel: MainViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedTab by remember { mutableStateOf(AppTab.OVERVIEW) }
     var localMessage by remember { mutableStateOf<String?>(null) }
+    val withLocalNetworkAccess: (() -> Unit) -> Unit = { action ->
+        requestLocalNetworkAccess(action) { localMessage = it }
+    }
+
+    LaunchedEffect(state.certificateInfo) {
+        if (state.certificateInfo != null) {
+            withLocalNetworkAccess(viewModel::refresh)
+        }
+    }
 
     val message = state.error ?: state.notice ?: localMessage
     LaunchedEffect(message) {
@@ -131,7 +141,9 @@ fun PcsCompanionApp(
                             strokeWidth = 2.dp,
                         )
                     } else {
-                        TextButton(onClick = viewModel::refresh) { Text("Refresh") }
+                        TextButton(onClick = { withLocalNetworkAccess(viewModel::refresh) }) {
+                            Text("Refresh")
+                        }
                     }
                 },
             )
@@ -155,11 +167,11 @@ fun PcsCompanionApp(
             AppTab.ACTIONS -> ActionsScreen(
                 state = state,
                 modifier = Modifier.padding(padding),
-                onLoadActions = viewModel::loadActions,
+                onLoadActions = { withLocalNetworkAccess(viewModel::loadActions) },
                 onRunAction = { action ->
                     authenticateAction(
                         action.label,
-                        { viewModel.runAction(action) },
+                        { withLocalNetworkAccess { viewModel.runAction(action) } },
                         { localMessage = it },
                     )
                 },
@@ -172,11 +184,17 @@ fun PcsCompanionApp(
                 onInspectCertificate = viewModel::inspectCertificate,
                 onTrustCertificate = viewModel::trustPendingCertificate,
                 onDiscardCertificate = viewModel::discardPendingCertificate,
-                onPair = viewModel::pair,
+                onPair = { deviceId, password ->
+                    withLocalNetworkAccess { viewModel.pair(deviceId, password) }
+                },
                 onChangePassword = { currentPassword, newPassword ->
                     authenticateAction(
                         "Change PCS administrator password",
-                        { viewModel.changePassword(currentPassword, newPassword) },
+                        {
+                            withLocalNetworkAccess {
+                                viewModel.changePassword(currentPassword, newPassword)
+                            }
+                        },
                         { localMessage = it },
                     )
                 },

@@ -32,6 +32,18 @@ class AndroidCompanionTests(unittest.TestCase):
         self.assertIn('parsed.scheme.equals("https"', source)
         self.assertNotIn('http://', source)
 
+    def test_android_17_local_network_permission_gates_private_endpoints(self):
+        manifest = (ANDROID / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
+        activity = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "MainActivity.kt").read_text(encoding="utf-8")
+        ui = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "ui" / "PcsCompanionApp.kt").read_text(encoding="utf-8")
+
+        self.assertIn("android.permission.ACCESS_LOCAL_NETWORK", manifest)
+        self.assertIn("ActivityResultContracts.RequestPermission()", activity)
+        self.assertIn("Build.VERSION.SDK_INT < 37", activity)
+        self.assertIn("Manifest.permission.ACCESS_LOCAL_NETWORK", activity)
+        self.assertIn("withLocalNetworkAccess(viewModel::refresh)", ui)
+        self.assertIn("withLocalNetworkAccess { viewModel.pair", ui)
+
     def test_app_never_enables_cleartext_or_logs_credentials(self):
         manifest = (ANDROID / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
         all_kotlin = "\n".join(

@@ -44,10 +44,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<AppUiState> = mutableState.asStateFlow()
     private var pendingCertificateBytes: ByteArray? = null
 
-    init {
-        if (mutableState.value.certificateInfo != null) refresh()
-    }
-
     fun inspectCertificate(bytes: ByteArray) {
         pendingCertificateBytes?.fill(0)
         pendingCertificateBytes = null
@@ -91,7 +87,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         error = null,
                     )
                 }
-                refresh()
             }
             .onFailure { error -> showError(error) }
     }
@@ -105,7 +100,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             mutableState.update {
                 it.copy(endpoints = validated, notice = "Endpoint order saved.", error = null)
             }
-            if (mutableState.value.certificateInfo != null) refresh()
         }.onFailure { error -> showError(error) }
     }
 

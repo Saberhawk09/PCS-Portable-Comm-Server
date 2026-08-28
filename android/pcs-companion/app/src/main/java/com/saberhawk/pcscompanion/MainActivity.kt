@@ -1,5 +1,6 @@
 package com.saberhawk.pcscompanion
 
+import android.Manifest
 import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
@@ -16,6 +17,23 @@ import com.saberhawk.pcscompanion.ui.PcsCompanionApp
 import com.saberhawk.pcscompanion.ui.PcsCompanionTheme
 
 class MainActivity : FragmentActivity() {
+    private var localNetworkGranted: (() -> Unit)? = null
+    private var localNetworkDenied: ((String) -> Unit)? = null
+    private val localNetworkPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val onGranted = localNetworkGranted
+        val onDenied = localNetworkDenied
+        localNetworkGranted = null
+        localNetworkDenied = null
+        if (granted) {
+            onGranted?.invoke()
+        } else {
+            onDenied?.invoke(
+                "PCS Companion needs Local network access to reach private PCS LAN and WireGuard addresses.",
+            )
+        }
+    }
     private var credentialSuccess: (() -> Unit)? = null
     private var credentialError: ((String) -> Unit)? = null
     private val credentialLauncher = registerForActivityResult(
@@ -39,9 +57,31 @@ class MainActivity : FragmentActivity() {
             PcsCompanionTheme {
                 PcsCompanionApp(
                     authenticateAction = ::authenticateAction,
+                    requestLocalNetworkAccess = ::requestLocalNetworkAccess,
                 )
             }
         }
+    }
+
+    private fun requestLocalNetworkAccess(
+        onGranted: () -> Unit,
+        onDenied: (String) -> Unit,
+    ) {
+        if (Build.VERSION.SDK_INT < 37 || ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_LOCAL_NETWORK,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            onGranted()
+            return
+        }
+        if (localNetworkGranted != null) {
+            onDenied("A Local network permission request is already active.")
+            return
+        }
+        localNetworkGranted = onGranted
+        localNetworkDenied = onDenied
+        localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
     }
 
     private fun authenticateAction(
