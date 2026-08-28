@@ -71,8 +71,13 @@ certificate equality, hostname validation, rejection of a different
 certificate, and the response-size ceiling. Android lint currently reports no
 issues, and both debug and minified unsigned release builds complete.
 
-Before calling the Android client field-ready, validate the debug APK on a real
-phone across all three network paths, exercise both modern and pre-Android-11
-biometric/device-credential paths as applicable, confirm Keystore-backed token
-recovery after process death and reboot, revoke the test device on PCS, and
-verify the revoked token returns the app to public/unpaired mode.
+Operator acceptance on 2026-08-28 confirmed the debug APK on a real phone over
+the trusted home LAN, direct PCS LAN, and cellular/WireGuard routes. Pairing,
+authenticated status, backup synchronization, and challenge-protected shutdown
+also completed successfully.
+
+Before calling the Android client production-ready, exercise both modern and
+pre-Android-11 biometric/device-credential paths as applicable, confirm
+Keystore-backed token recovery after process death and reboot, revoke the test
+device on PCS, verify the revoked token returns the app to public/unpaired
+mode, and produce a properly signed release APK.

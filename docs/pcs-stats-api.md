@@ -234,10 +234,16 @@ requests through `192.168.50.236`, `10.42.0.1`, and `10.6.0.7`, and a full PCS
 self-test with 153 passes, no warnings, failures, or skips. Remaining product
 gates are:
 
-- implement the Android certificate trust/pinning and renewal UX around the
-  current deployment-local certificate;
-- an independent client test of TCP 9443 through each intended WireGuard peer;
-- keep the live PCS checkout synchronized to the exact v1.4 release commit.
+- complete certificate renewal UX around the current deployment-local
+  certificate;
+- complete production signing and credential lifecycle tests for the Android
+  client;
+- synchronize the post-v1.4 live fixes with the repository release history.
+
+Operator acceptance on 2026-08-28 confirmed PCS Companion access over the
+trusted home LAN, direct PCS LAN, and cellular/WireGuard routes. The corrected
+sandboxed `sync-backup` action and challenge-protected shutdown also completed
+successfully from the Android client.
 
 The operator-approved live full-scope pairing acceptance passed on 2026-08-27.
 It verified authenticated status and action discovery, the read-only

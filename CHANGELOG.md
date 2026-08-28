@@ -29,12 +29,17 @@ All notable user-facing PCS changes are recorded here.
   a working internet uplink is not falsely reported as `Offline`/`bad`; normal
   backup-sync attention remains a `warn` condition, and authenticated status
   uses that administrative overall severity in the Companion headline
+- grant the sandboxed API action runner write access only to the fixed
+  `/srv/pcs-share-backup` destination so the allowlisted `sync-backup` action
+  can update the SD mirror without weakening the rest of `ProtectSystem=strict`
+- record operator acceptance of PCS Companion over home LAN, direct PCS LAN,
+  and cellular/WireGuard, plus successful backup synchronization and
+  challenge-protected shutdown on 2026-08-28
 - added Android 17 `ACCESS_LOCAL_NETWORK` declaration, runtime prompt, denial
   handling, and request gating so API 37 devices can reach private PCS addresses
 - Android JVM coverage for endpoint policy, API parsing, TLS certificate and
   hostname rejection, and bounded responses, plus clean Android lint, debug
-  APK assembly, and minified unsigned release assembly; real-phone and live PCS
-  validation remain pending
+  APK assembly, and minified unsigned release assembly
 
 ## [1.4] - 2026-08-27
 

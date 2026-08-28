@@ -41,9 +41,11 @@ class StatsApiSetupTests(unittest.TestCase):
             service,
         )
         self.assertIn(
-            "ReadWritePaths=/etc/pcs-stats-api /etc/pcs-control-panel",
+            "ReadWritePaths=/etc/pcs-stats-api /etc/pcs-control-panel /srv/pcs-share-backup",
             service,
         )
+        self.assertNotIn("ReadWritePaths=/srv\n", service)
+        self.assertNotIn("ReadWritePaths=/mnt\n", service)
         self.assertNotIn("ReadWritePaths=/etc\n", service)
         self.assertIn("Before=pcs-stats-api.service", firewall_service)
         self.assertIn("RemainAfterExit=yes", firewall_service)
