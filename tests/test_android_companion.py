@@ -57,11 +57,14 @@ class AndroidCompanionTests(unittest.TestCase):
             "no_route",
             "connection_timeout",
             "connection_refused",
+            "connection_protocol_failed",
         ):
             self.assertIn(f'code = "{code}"', api)
         self.assertNotIn("error.message", api)
         self.assertIn('code = "all_endpoints_failed"', repository)
         self.assertIn('failures += "${candidate.kind.displayName}: ${error.code}"', repository)
+        self.assertIn('.header("Connection", "close")', api)
+        self.assertIn("ConnectionPool(0, 1, TimeUnit.NANOSECONDS)", api)
 
     def test_app_never_enables_cleartext_or_logs_credentials(self):
         manifest = (ANDROID / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")

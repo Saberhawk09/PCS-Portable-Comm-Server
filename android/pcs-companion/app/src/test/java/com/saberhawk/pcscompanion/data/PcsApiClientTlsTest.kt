@@ -9,6 +9,7 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.tls.HandshakeCertificates
 import okhttp3.tls.HeldCertificate
+import okhttp3.Protocol
 
 class PcsApiClientTlsTest {
     @Test
@@ -25,6 +26,23 @@ class PcsApiClientTlsTest {
             assertEquals("v1", discovery.apiVersion)
             assertEquals("public", discovery.access)
             assertEquals("/api/v1", server.takeRequest().url.encodedPath)
+        }
+    }
+
+    @Test
+    fun discoveryAndStatusUseIndependentClosedConnections() = runBlocking {
+        val certificate = serverCertificate("localhost")
+        withHttpsServer(certificate) { server ->
+            server.enqueue(discoveryResponse())
+            server.enqueue(statusResponse())
+            val client = PcsApiClient(certificate.certificate)
+
+            client.discovery(endpoint(server), token = null)
+            val status = client.status(endpoint(server), token = null)
+
+            assertEquals("status", status.resource)
+            assertEquals("close", server.takeRequest().headers["Connection"])
+            assertEquals("close", server.takeRequest().headers["Connection"])
         }
     }
 
@@ -97,6 +115,7 @@ class PcsApiClientTlsTest {
             .heldCertificate(certificate)
             .build()
         val server = MockWebServer()
+        server.protocols = listOf(Protocol.HTTP_1_1)
         server.useHttps(serverCertificates.sslSocketFactory())
         server.start()
         try {
@@ -131,6 +150,25 @@ class PcsApiClientTlsTest {
               "password":"/api/v1/admin/password",
               "methods":["GET","POST"],
               "write_actions":true
+            }
+            """.trimIndent(),
+        )
+        .build()
+
+    private fun statusResponse() = MockResponse.Builder()
+        .code(200)
+        .addHeader("Content-Type", "application/vnd.pcs.v1+json")
+        .body(
+            """
+            {
+              "api_version":"v1",
+              "schema_version":"1.0",
+              "resource":"status",
+              "generated_at":"2026-08-28T00:00:00Z",
+              "health":{"severity":"ok","offline":false},
+              "access":"public",
+              "data":{},
+              "details":null
             }
             """.trimIndent(),
         )

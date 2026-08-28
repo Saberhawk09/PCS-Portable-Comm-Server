@@ -22,6 +22,9 @@ All notable user-facing PCS changes are recorded here.
   endpoint-specific permission, routing, timeout, hostname, certificate, and
   TLS diagnostics for every configured route without weakening
   exact-certificate trust
+- disabled Android HTTP connection reuse for the PCS API, whose HTTP/1.0
+  responses close each TLS session, so discovery cannot leave a stale socket
+  for the immediately following status request
 - added Android 17 `ACCESS_LOCAL_NETWORK` declaration, runtime prompt, denial
   handling, and request gating so API 37 devices can reach private PCS addresses
 - Android JVM coverage for endpoint policy, API parsing, TLS certificate and

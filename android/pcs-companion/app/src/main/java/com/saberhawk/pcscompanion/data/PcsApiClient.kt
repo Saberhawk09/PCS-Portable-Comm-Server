@@ -1,8 +1,10 @@
 package com.saberhawk.pcscompanion.data
 
 import com.saberhawk.pcscompanion.security.ExactCertificateTrustManager
+import java.io.EOFException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
+import java.net.ProtocolException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.security.SecureRandom
@@ -21,6 +23,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationStrategy
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
@@ -44,6 +47,7 @@ class PcsApiClient(trustedCertificate: X509Certificate) {
         }
         client = OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, trustManager)
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.NANOSECONDS))
             .connectTimeout(4, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(10, TimeUnit.SECONDS)
@@ -165,6 +169,7 @@ class PcsApiClient(trustedCertificate: X509Certificate) {
         val request = Request.Builder()
             .url(safeEndpoint.baseUrl + path)
             .header("Accept", PCS_MEDIA_TYPE.toString())
+            .header("Connection", "close")
             .method(method, body)
             .apply {
                 if (token != null) header("Authorization", "Bearer $token")
@@ -249,6 +254,10 @@ class PcsApiClient(trustedCertificate: X509Certificate) {
             causes.any { it is ConnectException } -> {
                 code = "connection_refused"
                 message = "$endpointName could not open the PCS API connection at $host."
+            }
+            causes.any { it is ProtocolException || it is EOFException } -> {
+                code = "connection_protocol_failed"
+                message = "PCS closed the HTTPS connection at $host before the response completed."
             }
             causes.any { it is SSLException } -> {
                 code = "tls_connection_failed"
