@@ -1,6 +1,7 @@
 package com.saberhawk.pcscompanion.ui
 
 import android.net.Uri
+import com.saberhawk.pcscompanion.BuildConfig
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -483,6 +484,10 @@ private fun SettingsScreen(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
+        Text(
+            "PCS Companion ${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.labelMedium,
+        )
         EndpointEditor(state.endpoints, onSaveEndpoints)
         CertificatePanel(
             current = state.certificateInfo,

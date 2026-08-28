@@ -39,7 +39,7 @@ class PcsApiClientTlsTest {
                 PcsApiClient(importedCertificate.certificate).discovery(endpoint(server), null)
             }
 
-            assertEquals("connection_failed", error.code)
+            assertEquals("certificate_rejected", error.code)
             assertEquals(null, error.httpStatus)
         }
     }
@@ -54,7 +54,7 @@ class PcsApiClientTlsTest {
                 PcsApiClient(certificate.certificate).discovery(endpoint(server), null)
             }
 
-            assertEquals("connection_failed", error.code)
+            assertEquals("hostname_mismatch", error.code)
             assertEquals(null, error.httpStatus)
         }
     }

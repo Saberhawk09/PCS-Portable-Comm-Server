@@ -43,6 +43,25 @@ class AndroidCompanionTests(unittest.TestCase):
         self.assertIn("Manifest.permission.ACCESS_LOCAL_NETWORK", activity)
         self.assertIn("withLocalNetworkAccess(viewModel::refresh)", ui)
         self.assertIn("withLocalNetworkAccess { viewModel.pair", ui)
+        self.assertIn("BuildConfig.VERSION_NAME", ui)
+
+    def test_connection_failures_are_safe_and_actionable(self):
+        api = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "data" / "PcsApiClient.kt").read_text(encoding="utf-8")
+        repository = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "data" / "PcsRepository.kt").read_text(encoding="utf-8")
+
+        for code in (
+            "local_network_denied",
+            "hostname_mismatch",
+            "certificate_rejected",
+            "tls_handshake_failed",
+            "no_route",
+            "connection_timeout",
+            "connection_refused",
+        ):
+            self.assertIn(f'code = "{code}"', api)
+        self.assertNotIn("error.message", api)
+        self.assertIn('code = "all_endpoints_failed"', repository)
+        self.assertIn('failures += "${candidate.kind.displayName}: ${error.code}"', repository)
 
     def test_app_never_enables_cleartext_or_logs_credentials(self):
         manifest = (ANDROID / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")

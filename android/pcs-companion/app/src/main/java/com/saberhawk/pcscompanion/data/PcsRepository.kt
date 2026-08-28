@@ -173,7 +173,7 @@ class PcsRepository(context: Context) {
     }
 
     private suspend fun findEndpoint(client: PcsApiClient, token: String?): EndpointCandidate {
-        var lastError: Exception? = null
+        val failures = mutableListOf<String>()
         for (candidate in endpoints()) {
             try {
                 val endpoint = candidate.validated()
@@ -190,12 +190,17 @@ class PcsRepository(context: Context) {
                 return endpoint
             } catch (error: PcsApiException) {
                 if (error.httpStatus == 401) throw error
-                lastError = error
+                failures += "${candidate.kind.displayName}: ${error.code}"
             } catch (error: Exception) {
-                lastError = error
+                failures += "${candidate.kind.displayName}: endpoint_validation_failed"
             }
         }
-        throw lastError ?: IllegalStateException("No PCS endpoint is configured.")
+        if (failures.isEmpty()) throw IllegalStateException("No PCS endpoint is configured.")
+        throw PcsApiException(
+            httpStatus = null,
+            code = "all_endpoints_failed",
+            message = "No PCS endpoint connected (${failures.joinToString("; ")}).",
+        )
     }
 
     private fun cachedResult(): RefreshResult? = preferences.cachedStatus()?.let { (status, kind) ->

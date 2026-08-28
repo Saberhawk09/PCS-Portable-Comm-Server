@@ -1,10 +1,21 @@
 package com.saberhawk.pcscompanion.data
 
 import com.saberhawk.pcscompanion.security.ExactCertificateTrustManager
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.security.SecureRandom
+import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
+import java.util.ArrayDeque
+import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLException
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.DeserializationStrategy
@@ -196,13 +207,78 @@ class PcsApiClient(trustedCertificate: X509Certificate) {
         } catch (error: PcsApiException) {
             throw error
         } catch (error: Exception) {
-            throw PcsApiException(
-                httpStatus = null,
-                code = "connection_failed",
-                message = "Unable to establish a trusted PCS HTTPS connection.",
-                cause = error,
-            )
+            throw classifyConnectionFailure(safeEndpoint, error)
         }
+    }
+
+    private fun classifyConnectionFailure(endpoint: EndpointCandidate, error: Exception): PcsApiException {
+        val causes = throwableGraph(error)
+        val host = runCatching { java.net.URI(endpoint.baseUrl).host }.getOrNull() ?: "configured address"
+        val endpointName = endpoint.kind.displayName
+        val code: String
+        val message: String
+        when {
+            causes.any { it is SecurityException } -> {
+                code = "local_network_denied"
+                message = "Android blocked Local network access for $endpointName. Allow the permission in app settings."
+            }
+            causes.any { it is SSLPeerUnverifiedException } -> {
+                code = "hostname_mismatch"
+                message = "The PCS certificate does not authorize $host for $endpointName."
+            }
+            causes.any { it is CertificateException } -> {
+                code = "certificate_rejected"
+                message = "PCS presented a certificate different from the one trusted by the app at $host."
+            }
+            causes.any { it is SSLHandshakeException } -> {
+                code = "tls_handshake_failed"
+                message = "The trusted TLS handshake with PCS failed at $host."
+            }
+            causes.any { it is NoRouteToHostException } -> {
+                code = "no_route"
+                message = "Android has no network or VPN route to $host for $endpointName."
+            }
+            causes.any { it is UnknownHostException } -> {
+                code = "unknown_host"
+                message = "Android could not resolve the PCS address $host."
+            }
+            causes.any { it is SocketTimeoutException } -> {
+                code = "connection_timeout"
+                message = "$endpointName timed out while connecting to PCS at $host."
+            }
+            causes.any { it is ConnectException } -> {
+                code = "connection_refused"
+                message = "$endpointName could not open the PCS API connection at $host."
+            }
+            causes.any { it is SSLException } -> {
+                code = "tls_connection_failed"
+                message = "The TLS connection to PCS failed at $host."
+            }
+            else -> {
+                code = "connection_failed"
+                message = "$endpointName could not establish the PCS HTTPS connection at $host."
+            }
+        }
+        return PcsApiException(
+            httpStatus = null,
+            code = code,
+            message = message,
+            cause = error,
+        )
+    }
+
+    private fun throwableGraph(root: Throwable): List<Throwable> {
+        val pending = ArrayDeque<Throwable>().apply { add(root) }
+        val seen = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
+        val result = mutableListOf<Throwable>()
+        while (pending.isNotEmpty() && result.size < MAX_CAUSE_DEPTH) {
+            val current = pending.removeFirst()
+            if (!seen.add(current)) continue
+            result += current
+            current.cause?.let(pending::addLast)
+            current.suppressed.forEach(pending::addLast)
+        }
+        return result
     }
 
     private fun readBounded(body: okhttp3.ResponseBody): String {
@@ -220,6 +296,7 @@ class PcsApiClient(trustedCertificate: X509Certificate) {
 
     private companion object {
         const val MAX_RESPONSE_BYTES = 256 * 1024
+        const val MAX_CAUSE_DEPTH = 12
         val PCS_MEDIA_TYPE = "application/vnd.pcs.v1+json".toMediaType()
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
         val EMPTY_JSON_BODY = "{}".toRequestBody(JSON_MEDIA_TYPE)

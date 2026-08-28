@@ -18,6 +18,10 @@ All notable user-facing PCS changes are recorded here.
   one stalled cellular connection cannot block PCS-LAN or WireGuard clients
 - fixed the PCS WireGuard MTU at a cellular-safe 1280 bytes and added live and
   self-test verification to prevent TLS/SSH black holes on constrained uplinks
+- replaced the Android app's generic HTTPS connection failure with safe,
+  endpoint-specific permission, routing, timeout, hostname, certificate, and
+  TLS diagnostics for every configured route without weakening
+  exact-certificate trust
 - added Android 17 `ACCESS_LOCAL_NETWORK` declaration, runtime prompt, denial
   handling, and request gating so API 37 devices can reach private PCS addresses
 - Android JVM coverage for endpoint policy, API parsing, TLS certificate and
