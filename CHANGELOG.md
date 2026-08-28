@@ -6,6 +6,9 @@ All notable user-facing PCS changes are recorded here.
 
 ### Fixed
 
+- collect public and authenticated dashboard status through the real PCS host
+  mount namespace so the companion app cannot report stale USB/Samba failures
+  while the web panel correctly reports healthy host storage
 - run only the three fixed USB mount/unmount actions through a transient
   PID-1-managed service so Android/API storage actions change the real PCS host
   instead of the API service's private `ProtectSystem=strict` mount namespace
