@@ -4,6 +4,46 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-28
+
+### Added
+
+- local native PCS Companion Android foundation with ordered home-LAN,
+  PCS-LAN, and WireGuard discovery; explicit certificate enrollment and exact
+  pinning; public/authenticated status with timestamped offline cache;
+  Keystore-encrypted device tokens; dynamic administrative actions with
+  device authentication and one-time challenges; password rotation; and local
+  trust/token recovery controls
+- corrected strict discovery decoding for the live v1 `authentication` object
+  and bound server-provided action paths/challenges to the fixed API namespace
+- moved TLS handshakes off the API accept loop with bounded client timeouts so
+  one stalled cellular connection cannot block PCS-LAN or WireGuard clients
+- fixed the PCS WireGuard MTU at a cellular-safe 1280 bytes and added live and
+  self-test verification to prevent TLS/SSH black holes on constrained uplinks
+- replaced the Android app's generic HTTPS connection failure with safe,
+  endpoint-specific permission, routing, timeout, hostname, certificate, and
+  TLS diagnostics for every configured route without weakening
+  exact-certificate trust
+- disabled Android HTTP connection reuse for the PCS API, whose HTTP/1.0
+  responses close each TLS session, so discovery cannot leave a stale socket
+  for the immediately following status request
+- allow the sandboxed PCS API collector read-only Netlink route inspection so
+  a working internet uplink is not falsely reported as `Offline`/`bad`; normal
+  backup-sync attention remains a `warn` condition, and authenticated status
+  uses that administrative overall severity in the Companion headline
+- grant the sandboxed API action runner write access only to the fixed
+  `/srv/pcs-share-backup` destination so the allowlisted `sync-backup` action
+  can update the SD mirror without weakening the rest of `ProtectSystem=strict`
+- record operator acceptance of PCS Companion over home LAN, direct PCS LAN,
+  and cellular/WireGuard, plus successful backup synchronization and
+  challenge-protected shutdown on 2026-08-28
+- added Android 17 `ACCESS_LOCAL_NETWORK` declaration, runtime prompt, denial
+  handling, and request gating so API 37 devices can reach private PCS addresses
+- Android JVM coverage for endpoint policy, API parsing, TLS certificate and
+  hostname rejection, and bounded responses, plus clean Android lint, debug
+  APK assembly, and a minified production-signed PCS Companion v0.1.5 APK
+  bundled with the v1.4.1 release
+
 ## [1.4] - 2026-08-27
 
 ### Added
@@ -293,7 +333,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4...v1.4.1
 [1.4]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.2...v1.4
 [1.3.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3...v1.3.1

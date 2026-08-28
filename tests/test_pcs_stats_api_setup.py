@@ -37,9 +37,15 @@ class StatsApiSetupTests(unittest.TestCase):
         self.assertIn("--key-file ${PCS_API_KEY_FILE}", service)
         self.assertIn("ProtectSystem=strict", service)
         self.assertIn(
-            "ReadWritePaths=/etc/pcs-stats-api /etc/pcs-control-panel",
+            "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK",
             service,
         )
+        self.assertIn(
+            "ReadWritePaths=/etc/pcs-stats-api /etc/pcs-control-panel /srv/pcs-share-backup",
+            service,
+        )
+        self.assertNotIn("ReadWritePaths=/srv\n", service)
+        self.assertNotIn("ReadWritePaths=/mnt\n", service)
         self.assertNotIn("ReadWritePaths=/etc\n", service)
         self.assertIn("Before=pcs-stats-api.service", firewall_service)
         self.assertIn("RemainAfterExit=yes", firewall_service)

@@ -79,6 +79,61 @@ ADMIN_DASHBOARD = {
 
 
 class ContractTests(unittest.TestCase):
+    def test_tls_handshakes_are_deferred_to_bounded_worker_threads(self):
+        self.assertTrue(api.ReusableThreadingHTTPServer.daemon_threads)
+        self.assertGreaterEqual(api.ReusableThreadingHTTPServer.request_queue_size, 16)
+
+        server = object.__new__(api.ReusableThreadingHTTPServer)
+        raw_socket = mock.Mock()
+        wrapped_socket = mock.Mock(spec=api.ssl.SSLSocket)
+        context = mock.Mock()
+        context.wrap_socket.return_value = wrapped_socket
+        server.tls_context = context
+        with mock.patch.object(
+            api.ThreadingHTTPServer,
+            "get_request",
+            return_value=(raw_socket, ("127.0.0.1", 12345)),
+        ):
+            request, address = server.get_request()
+
+        self.assertIs(request, wrapped_socket)
+        self.assertEqual(address, ("127.0.0.1", 12345))
+        raw_socket.settimeout.assert_called_once_with(10)
+        context.wrap_socket.assert_called_once_with(
+            raw_socket,
+            server_side=True,
+            do_handshake_on_connect=False,
+        )
+        wrapped_socket.do_handshake.assert_not_called()
+
+    def test_tls_worker_completes_handshake_before_http_handler(self):
+        server = object.__new__(api.ReusableThreadingHTTPServer)
+        request = mock.Mock(spec=api.ssl.SSLSocket)
+        client = ("127.0.0.1", 12345)
+        with mock.patch.object(
+            api.ThreadingHTTPServer,
+            "process_request_thread",
+        ) as parent:
+            server.process_request_thread(request, client)
+
+        request.do_handshake.assert_called_once_with()
+        request.settimeout.assert_called_once_with(30)
+        parent.assert_called_once_with(request, client)
+
+    def test_stalled_tls_handshake_is_closed_without_entering_http_handler(self):
+        server = object.__new__(api.ReusableThreadingHTTPServer)
+        request = mock.Mock(spec=api.ssl.SSLSocket)
+        request.do_handshake.side_effect = TimeoutError()
+        client = ("127.0.0.1", 12345)
+        with mock.patch.object(server, "shutdown_request") as shutdown, mock.patch.object(
+            api.ThreadingHTTPServer,
+            "process_request_thread",
+        ) as parent:
+            server.process_request_thread(request, client)
+
+        shutdown.assert_called_once_with(request)
+        parent.assert_not_called()
+
     def test_server_suppresses_expected_tls_disconnect_tracebacks(self):
         server = object.__new__(api.ReusableThreadingHTTPServer)
         with mock.patch.object(
@@ -156,6 +211,21 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("api key", serialized)
         self.assertNotIn("private_key", serialized)
         self.assertNotIn("must-not-render", serialized)
+
+    def test_authenticated_status_uses_admin_overall_warning(self):
+        public = dict(PUBLIC_DASHBOARD)
+        public["overall"] = "ok"
+        admin = dict(ADMIN_DASHBOARD)
+        admin["overall"] = "warn"
+
+        document = api.add_authenticated_details(
+            api.api_document("status", public),
+            "status",
+            admin,
+        )
+
+        self.assertEqual(document["health"]["severity"], "warn")
+        self.assertFalse(document["health"]["offline"])
 
     def test_authenticated_resource_gets_only_related_admin_cards(self):
         network = api.add_authenticated_details(

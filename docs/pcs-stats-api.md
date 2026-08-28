@@ -124,6 +124,11 @@ bounded timeouts; successful snapshots are cached briefly; public,
 failed-authentication, authenticated, pairing, and action requests have
 separate fixed-window limits.
 
+TLS handshakes run in daemon worker threads with a 10-second handshake timeout;
+accepted HTTP clients receive a 30-second socket timeout and the listener keeps
+a 32-connection queue. A client that opens TCP and never completes TLS therefore
+cannot block the API accept loop or starve PCS-LAN and WireGuard callers.
+
 ## Token management
 
 The helper issues a random token once and stores only its SHA-256 digest:
@@ -229,10 +234,16 @@ requests through `192.168.50.236`, `10.42.0.1`, and `10.6.0.7`, and a full PCS
 self-test with 153 passes, no warnings, failures, or skips. Remaining product
 gates are:
 
-- implement the Android certificate trust/pinning and renewal UX around the
-  current deployment-local certificate;
-- an independent client test of TCP 9443 through each intended WireGuard peer;
-- keep the live PCS checkout synchronized to the exact v1.4 release commit.
+- complete certificate renewal UX around the current deployment-local
+  certificate;
+- complete credential lifecycle and wider biometric compatibility tests for
+  the production-signed Android client;
+- carry the post-v1.4 live fixes in the v1.4.1 repository release history.
+
+Operator acceptance on 2026-08-28 confirmed PCS Companion access over the
+trusted home LAN, direct PCS LAN, and cellular/WireGuard routes. The corrected
+sandboxed `sync-backup` action and challenge-protected shutdown also completed
+successfully from the Android client.
 
 The operator-approved live full-scope pairing acceptance passed on 2026-08-27.
 It verified authenticated status and action discovery, the read-only

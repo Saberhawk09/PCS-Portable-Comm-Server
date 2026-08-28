@@ -15,13 +15,13 @@ RestartSec=3
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/etc/pcs-stats-api /etc/pcs-control-panel
+ReadWritePaths=/etc/pcs-stats-api /etc/pcs-control-panel /srv/pcs-share-backup
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 SystemCallArchitectures=native
 
 [Install]

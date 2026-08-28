@@ -459,6 +459,9 @@ def add_authenticated_details(document: dict, resource: str, dashboard: dict) ->
         details["client_info"] = sanitized_client_info
     document["details"] = details
     document["access"] = "authenticated"
+    if resource == "status":
+        document["health"]["severity"] = severity(dashboard.get("overall"))
+        document["health"]["offline"] = bool(dashboard.get("offline", False))
     return document
 
 
@@ -658,10 +661,39 @@ ACTION_CHALLENGES = ActionChallenges(ttl=60)
 
 class ReusableThreadingHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
+    daemon_threads = True
+    request_queue_size = 32
+    tls_context: ssl.SSLContext | None = None
+
+    def get_request(self):
+        request, client_address = super().get_request()
+        if self.tls_context is None:
+            return request, client_address
+        try:
+            request.settimeout(10)
+            request = self.tls_context.wrap_socket(
+                request,
+                server_side=True,
+                do_handshake_on_connect=False,
+            )
+        except Exception:
+            request.close()
+            raise
+        return request, client_address
+
+    def process_request_thread(self, request, client_address) -> None:
+        if isinstance(request, ssl.SSLSocket):
+            try:
+                request.do_handshake()
+                request.settimeout(30)
+            except (TimeoutError, OSError, ssl.SSLError):
+                self.shutdown_request(request)
+                return
+        super().process_request_thread(request, client_address)
 
     def handle_error(self, request, client_address) -> None:
         error = sys.exc_info()[1]
-        if isinstance(error, (BrokenPipeError, ConnectionResetError, ssl.SSLEOFError)):
+        if isinstance(error, (BrokenPipeError, ConnectionResetError, TimeoutError, ssl.SSLEOFError)):
             return
         super().handle_error(request, client_address)
 
@@ -1045,7 +1077,7 @@ def main() -> int:
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(args.cert_file, args.key_file)
     server = ReusableThreadingHTTPServer((HOST, PORT), Handler)
-    server.socket = context.wrap_socket(server.socket, server_side=True)
+    server.tls_context = context
     mode = "public and authenticated" if TOKENS.configured() else "public-only"
     print(f"PCS Stats API listening with TLS on {HOST}:{PORT} ({mode})")
     try:
