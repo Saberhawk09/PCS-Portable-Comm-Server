@@ -17,6 +17,7 @@ data class Discovery(
     val resource: String,
     val access: String,
     @SerialName("content_type") val contentType: String,
+    val authentication: JsonObject,
     val resources: Map<String, String>,
     val pairing: String,
     val actions: String,

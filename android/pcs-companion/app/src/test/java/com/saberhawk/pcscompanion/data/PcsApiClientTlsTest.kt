@@ -121,6 +121,10 @@ class PcsApiClientTlsTest {
               "resource":"discovery",
               "access":"public",
               "content_type":"application/vnd.pcs.v1+json",
+              "authentication":{
+                "public":"Omit Authorization for public status.",
+                "authenticated":"Use a bearer token for administrative details."
+              },
               "resources":{"status":"/api/v1/status"},
               "pairing":"/api/v1/pair",
               "actions":"/api/v1/actions",

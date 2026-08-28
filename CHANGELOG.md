@@ -12,6 +12,8 @@ All notable user-facing PCS changes are recorded here.
   Keystore-encrypted device tokens; dynamic administrative actions with
   device authentication and one-time challenges; password rotation; and local
   trust/token recovery controls
+- corrected strict discovery decoding for the live v1 `authentication` object
+  and bound server-provided action paths/challenges to the fixed API namespace
 - Android JVM coverage for endpoint policy, API parsing, TLS certificate and
   hostname rejection, and bounded responses, plus clean Android lint, debug
   APK assembly, and minified unsigned release assembly; real-phone and live PCS

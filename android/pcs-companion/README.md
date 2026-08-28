@@ -4,6 +4,11 @@ PCS Companion is the native Android client for the PCS HTTPS API released in
 PCS v1.4. It is intentionally a management client, not a WireGuard client: the
 existing Android WireGuard app remains responsible for the tunnel.
 
+The current local source version is `0.1.1`. An older `0.1.0` APK can show
+`invalid_response` immediately after connecting because it predates the live
+discovery contract's required `authentication` object; update to the rebuilt
+`0.1.1` APK when available.
+
 The first development slice provides:
 
 - strict HTTPS-only endpoint selection in home-LAN, PCS-LAN, then WireGuard order;

@@ -7,6 +7,31 @@ import kotlin.test.assertNull
 
 class PcsModelsTest {
     @Test
+    fun parsesEveryRequiredDiscoveryFieldFromTheOpenApiContract() {
+        val discovery = PcsJson.format.decodeFromString<Discovery>(
+            """
+            {
+              "api_version":"v1",
+              "schema_version":"1.0",
+              "resource":"discovery",
+              "access":"public",
+              "content_type":"application/vnd.pcs.v1+json",
+              "authentication":{"public":"Omit Authorization.","authenticated":"Use a bearer token."},
+              "resources":{"status":"/api/v1/status"},
+              "pairing":"/api/v1/pair",
+              "actions":"/api/v1/actions",
+              "password":"/api/v1/admin/password",
+              "methods":["GET","HEAD"],
+              "write_actions":false
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals("Omit Authorization.", discovery.authentication["public"]?.toString()?.trim('"'))
+        assertEquals(listOf("GET", "HEAD"), discovery.methods)
+    }
+
+    @Test
     fun parsesTheStrictPublicStatusEnvelope() {
         val status = PcsJson.format.decodeFromString<StatsEnvelope>(
             """

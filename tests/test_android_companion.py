@@ -18,6 +18,7 @@ class AndroidCompanionTests(unittest.TestCase):
         self.assertEqual(contract["info"]["version"], "1.1.0")
         self.assertIn('@SerialName("api_version")', models)
         self.assertIn('val apiVersion: String', models)
+        self.assertIn('val authentication: JsonObject', models)
 
     def test_bootstrap_endpoint_order_is_exact_and_https_only(self):
         source = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "data" / "EndpointCandidate.kt").read_text(encoding="utf-8")
@@ -66,6 +67,9 @@ class AndroidCompanionTests(unittest.TestCase):
 
         self.assertIn("catalog.actions", repository)
         self.assertIn("challenge.confirmation", api)
+        self.assertIn("validateActionMetadata", repository)
+        self.assertIn('action.executePath == "/api/v1/actions/${action.name}"', repository)
+        self.assertIn('action.challengePath == expectedChallengePath', repository)
         self.assertIn("action.challengeRequired", ui)
         self.assertIn("authenticateAction", ui)
         self.assertNotIn("/bin/sh", api)
