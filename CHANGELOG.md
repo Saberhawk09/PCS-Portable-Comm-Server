@@ -4,6 +4,12 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- run only the three fixed USB mount/unmount actions through a transient
+  PID-1-managed service so Android/API storage actions change the real PCS host
+  instead of the API service's private `ProtectSystem=strict` mount namespace
+
 ## [1.4.1] - 2026-08-28
 
 ### Added

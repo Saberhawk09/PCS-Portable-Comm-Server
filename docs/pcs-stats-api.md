@@ -112,6 +112,15 @@ shutdown. There is no arbitrary action name, shell argument, or API-selected
 command path. Query parameters are rejected in version 1. Other unsupported
 `POST`, `PUT`, `PATCH`, and `DELETE` requests return `405`.
 
+The API service's `ProtectSystem=strict` sandbox intentionally uses a private
+mount namespace. The three fixed USB topology actions (`mount-usb`,
+`mount-new-usb`, and `safe-unmount-usb`) therefore re-enter the host namespace
+only through a short-lived PID-1-managed systemd service. The dispatcher passes
+only its own absolute path and the already allowlisted action name; it exposes
+no user-selected unit, executable, shell, environment, or argument. This keeps
+ordinary API collection/actions sandboxed while ensuring a successful mount or
+unmount changes the real PCS host rather than a stale service-local view.
+
 Errors use `application/problem+json` with a stable `code` and a generated
 request identifier.
 

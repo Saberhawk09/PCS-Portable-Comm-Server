@@ -16,6 +16,7 @@ FIREWALL_SERVICE = ROOT / "systemd" / "pcs-stats-api-firewall.service"
 DOC = ROOT / "docs" / "pcs-stats-api.md"
 SCRIPT_DOC = ROOT / "scripts" / "README.md"
 BASE_INSTALLER = ROOT / "scripts" / "setup-pcs-base.sh"
+DISPATCHER = ROOT / "scripts" / "pcs-web-action.sh"
 
 
 class StatsApiSetupTests(unittest.TestCase):
@@ -49,6 +50,30 @@ class StatsApiSetupTests(unittest.TestCase):
         self.assertNotIn("ReadWritePaths=/etc\n", service)
         self.assertIn("Before=pcs-stats-api.service", firewall_service)
         self.assertIn("RemainAfterExit=yes", firewall_service)
+
+    def test_mount_actions_escape_only_through_fixed_host_services(self):
+        dispatcher = DISPATCHER.read_text(encoding="utf-8")
+        function_start = dispatcher.index("dispatch_host_storage_action()")
+        function_end = dispatcher.index("\n}\n", function_start) + 3
+        function = dispatcher[function_start:function_end]
+
+        self.assertIn("mount-usb|mount-new-usb|safe-unmount-usb", function)
+        self.assertIn('"${PCS_HOST_STORAGE_ACTION:-0}" == "1"', function)
+        self.assertIn("/usr/bin/systemd-run", function)
+        self.assertIn("--wait", function)
+        self.assertIn("--pipe", function)
+        self.assertIn("--collect", function)
+        self.assertIn("--service-type=exec", function)
+        self.assertIn(
+            '/usr/bin/env PCS_HOST_STORAGE_ACTION=1 "${dispatcher}" "${ACTION}"',
+            function,
+        )
+        self.assertLess(
+            dispatcher.index("dispatch_host_storage_action\n"),
+            dispatcher.rindex('case "${ACTION}" in'),
+        )
+        self.assertNotIn("eval", function)
+        self.assertNotIn("sh -c", function)
 
     def test_sudoers_scope_contains_only_collectors_pairing_and_fixed_panel_actions(self):
         setup = SETUP.read_text(encoding="utf-8")
