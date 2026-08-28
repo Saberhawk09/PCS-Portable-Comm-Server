@@ -445,6 +445,7 @@ if ! sudo -n test -f "${PCS_WIREGUARD_RUNTIME_CONFIG}" 2>/dev/null; then
 else
     PCS_WG_USE_PRESHARED_KEY="no"
     PCS_WG_PRESHARED_KEY_FILE="/etc/pcs/wireguard/preshared.key"
+    PCS_WG_MTU="1280"
     if [[ -r "${PCS_WIREGUARD_CONFIG}" ]]; then
         # shellcheck source=/dev/null
         source "${PCS_WIREGUARD_CONFIG}"
@@ -491,6 +492,12 @@ else
         && ip link show dev "${PCS_WIREGUARD_INTERFACE}" >/dev/null 2>&1; then
         pass "WireGuard management interface is active"
         WG_INTERFACE_ACTIVE="yes"
+        WG_LIVE_MTU="$(cat "/sys/class/net/${PCS_WIREGUARD_INTERFACE}/mtu" 2>/dev/null || true)"
+        if [[ "${WG_LIVE_MTU}" == "${PCS_WG_MTU}" ]]; then
+            pass "WireGuard MTU is the cellular-safe ${PCS_WG_MTU} bytes"
+        else
+            fail "WireGuard MTU ${WG_LIVE_MTU:-unknown} differs from required ${PCS_WG_MTU}"
+        fi
     else
         warn "WireGuard interface is inactive; an offline hostname endpoint will retry when an uplink becomes available"
         WG_INTERFACE_ACTIVE="no"

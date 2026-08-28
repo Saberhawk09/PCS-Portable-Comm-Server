@@ -14,6 +14,10 @@ All notable user-facing PCS changes are recorded here.
   trust/token recovery controls
 - corrected strict discovery decoding for the live v1 `authentication` object
   and bound server-provided action paths/challenges to the fixed API namespace
+- moved TLS handshakes off the API accept loop with bounded client timeouts so
+  one stalled cellular connection cannot block PCS-LAN or WireGuard clients
+- fixed the PCS WireGuard MTU at a cellular-safe 1280 bytes and added live and
+  self-test verification to prevent TLS/SSH black holes on constrained uplinks
 - Android JVM coverage for endpoint policy, API parsing, TLS certificate and
   hostname rejection, and bounded responses, plus clean Android lint, debug
   APK assembly, and minified unsigned release assembly; real-phone and live PCS

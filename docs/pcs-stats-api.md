@@ -124,6 +124,11 @@ bounded timeouts; successful snapshots are cached briefly; public,
 failed-authentication, authenticated, pairing, and action requests have
 separate fixed-window limits.
 
+TLS handshakes run in daemon worker threads with a 10-second handshake timeout;
+accepted HTTP clients receive a 30-second socket timeout and the listener keeps
+a 32-connection queue. A client that opens TCP and never completes TLS therefore
+cannot block the API accept loop or starve PCS-LAN and WireGuard callers.
+
 ## Token management
 
 The helper issues a random token once and stores only its SHA-256 digest:

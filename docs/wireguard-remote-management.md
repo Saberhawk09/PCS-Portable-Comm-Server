@@ -191,14 +191,16 @@ PCS_WG_ADMIN_SOURCES       subset of PCS_WG_ALLOWED_IPS
 PCS_WG_INTERFACE           wg-pcs
 PCS_WG_LAN_INTERFACE       eth0
 PCS_WG_LAN_NETWORK         10.42.0.0/24
+PCS_WG_MTU                 1280, fixed for reliable cellular-path TLS and SSH
 PCS_WG_PRIVATE_KEY_FILE    root-only file outside Git
 PCS_WG_USE_PRESHARED_KEY   yes only when the imported peer supplies one
 PCS_WG_PRESHARED_KEY_FILE  separate root-only file outside Git
 ```
 
 The setup tool rejects broad prefixes, default routes, PCS-LAN overlap,
-management peers outside the tunnel `/24`, unapproved interfaces, weakened
-protected-port sets, and malformed public keys/endpoints.
+management peers outside the tunnel `/24`, unapproved interfaces, MTU values
+other than the cellular-safe 1280-byte setting, weakened protected-port sets,
+and malformed public keys/endpoints.
 
 ## Home-hub peer requirements
 

@@ -189,6 +189,7 @@ def write_import_files(
         "PCS_WG_INTERFACE": "wg-pcs",
         "PCS_WG_LAN_INTERFACE": "eth0",
         "PCS_WG_LAN_NETWORK": "10.42.0.0/24",
+        "PCS_WG_MTU": "1280",
         # Home-Wi-Fi trust is deployment-local and cannot be inferred safely
         # from a WireGuard export. It remains fail-closed until configured.
         "PCS_WG_HOME_INTERFACE": "",

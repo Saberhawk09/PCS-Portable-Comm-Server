@@ -105,6 +105,7 @@ class WireGuardManagementTests(unittest.TestCase):
             self.assertIn("PCS_WG_ADMIN_SOURCES=10.77.0.1/32", policy)
             self.assertIn("PCS_WG_HOME_INTERFACE=''", policy)
             self.assertIn("PCS_WG_HOME_NETWORK=''", policy)
+            self.assertIn("PCS_WG_MTU=1280", policy)
             self.assertIn("PCS_WG_USE_PRESHARED_KEY=yes", policy)
             self.assertIn(
                 "PCS_WG_PRESHARED_KEY_FILE=/etc/pcs/wireguard/preshared.key", policy
@@ -178,6 +179,7 @@ class WireGuardManagementTests(unittest.TestCase):
         self.assertIn('PCS_WG_ALLOWED_IPS="10.77.0.1/32"', example)
         self.assertIn('PCS_WG_ADMIN_SOURCES="10.77.0.1/32"', example)
         self.assertIn('PCS_WG_PERSISTENT_KEEPALIVE="25"', example)
+        self.assertIn('PCS_WG_MTU="1280"', example)
         self.assertIn('PCS_WG_HUB_PUBLIC_KEY="CHANGE_ME"', example)
         self.assertNotIn("PCS_WG_PRIVATE_KEY=", example)
         self.assertNotIn("0.0.0.0/0", example)
@@ -298,6 +300,16 @@ class WireGuardManagementTests(unittest.TestCase):
         self.assertNotIn("nmcli connection up", setup)
         self.assertNotIn("setup-cellular-profile", setup)
 
+    def test_cellular_safe_mtu_is_rendered_and_verified(self):
+        setup = SETUP.read_text(encoding="utf-8")
+        example = EXAMPLE.read_text(encoding="utf-8")
+
+        self.assertIn('PCS_WG_MTU="${PCS_WG_MTU:-1280}"', setup)
+        self.assertIn('if mtu != "1280"', setup)
+        self.assertIn("MTU = ${PCS_WG_MTU}", setup)
+        self.assertIn('cat "/sys/class/net/${WG_INTERFACE}/mtu"', setup)
+        self.assertIn('PCS_WG_MTU="1280"', example)
+
     def test_every_setup_command_is_documented(self):
         setup = SETUP.read_text(encoding="utf-8")
         script_doc = SCRIPT_DOC.read_text(encoding="utf-8")
@@ -345,6 +357,7 @@ class WireGuardManagementTests(unittest.TestCase):
         self.assertIn("WireGuard pre-shared key is present with root-only permissions", self_test)
         self.assertIn("WireGuard IPv4 DDNS endpoint refresh is installed, enabled, and active", self_test)
         self.assertIn("WireGuard peer endpoint is resolved over IPv4", self_test)
+        self.assertIn("WireGuard MTU is the cellular-safe ${PCS_WG_MTU} bytes", self_test)
         self.assertIn('WIREGUARD_STATUS="not configured"', status)
         self.assertIn('WIREGUARD_STATUS="active split tunnel"', status)
         self.assertIn('WIREGUARD_STATUS="SAFETY ERROR: default route installed"', status)

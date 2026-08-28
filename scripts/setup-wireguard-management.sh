@@ -100,6 +100,7 @@ load_config() {
     PCS_WG_INTERFACE="${PCS_WG_INTERFACE:-wg-pcs}"
     PCS_WG_LAN_INTERFACE="${PCS_WG_LAN_INTERFACE:-eth0}"
     PCS_WG_LAN_NETWORK="${PCS_WG_LAN_NETWORK:-10.42.0.0/24}"
+    PCS_WG_MTU="${PCS_WG_MTU:-1280}"
     PCS_WG_PERSISTENT_KEEPALIVE="${PCS_WG_PERSISTENT_KEEPALIVE:-25}"
     PCS_WG_PRIVATE_KEY_FILE="${PCS_WG_PRIVATE_KEY_FILE:-/etc/pcs/wireguard/private.key}"
     PCS_WG_USE_PRESHARED_KEY="${PCS_WG_USE_PRESHARED_KEY:-no}"
@@ -128,6 +129,7 @@ validate_config() {
         "${PCS_WG_INTERFACE}" \
         "${PCS_WG_LAN_INTERFACE}" \
         "${PCS_WG_LAN_NETWORK}" \
+        "${PCS_WG_MTU}" \
         "${PCS_WG_PRIVATE_KEY_FILE}" \
         "${PCS_WG_USE_PRESHARED_KEY}" \
         "${PCS_WG_PRESHARED_KEY_FILE}" <<'PY'
@@ -142,6 +144,7 @@ import sys
     wg_interface,
     lan_interface,
     lan_network,
+    mtu,
     private_key_file,
     use_preshared_key,
     preshared_key_file,
@@ -168,6 +171,8 @@ if wg_interface != "wg-pcs":
     raise SystemExit("ERROR: PCS management uses the fixed wg-pcs interface")
 if lan_interface != "eth0" or lan_network != "10.42.0.0/24":
     raise SystemExit("ERROR: WireGuard config does not match the commissioned PCS LAN topology")
+if mtu != "1280":
+    raise SystemExit("ERROR: PCS WireGuard MTU must remain fixed at 1280 for cellular-path reliability")
 if private_key_file != "/etc/pcs/wireguard/private.key":
     raise SystemExit("ERROR: PCS WireGuard private key must use the fixed root-only path")
 if use_preshared_key not in {"yes", "no"}:
@@ -459,6 +464,7 @@ configure_feature() {
     cat >"${config_temp}" <<EOF
 [Interface]
 Address = ${PCS_WG_ADDRESS}
+MTU = ${PCS_WG_MTU}
 PrivateKey = ${private_key}
 Table = auto
 
@@ -599,6 +605,7 @@ check_feature() {
     local config_mode
     local allowed_live
     local allowed_expected
+    local mtu_live
 
     require_normal_user
     validate_config
@@ -624,6 +631,13 @@ check_feature() {
     sudo env PCS_WIREGUARD_CONFIG="${CONFIG_FILE}" "${FIREWALL_DEST}" --check
     sudo wg show "${WG_INTERFACE}" >/dev/null
     check_no_default_route
+
+    mtu_live="$(cat "/sys/class/net/${WG_INTERFACE}/mtu")"
+    if [[ "${mtu_live}" != "${PCS_WG_MTU}" ]]; then
+        echo "ERROR: live WireGuard MTU ${mtu_live} differs from required ${PCS_WG_MTU}." >&2
+        exit 1
+    fi
+    echo "WireGuard MTU is the cellular-safe ${mtu_live} bytes."
 
     allowed_live="$(sudo wg show "${WG_INTERFACE}" allowed-ips | awk '{$1=""; sub(/^ /, ""); print}' | tr ' ' ',' | tr -d '\n')"
     allowed_expected="${PCS_WG_ALLOWED_IPS//[[:space:]]/}"
