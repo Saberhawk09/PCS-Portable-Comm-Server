@@ -42,23 +42,25 @@ require_root() {
     fi
 }
 
-dispatch_host_storage_action() {
+dispatch_host_namespace_action() {
     local dispatcher
 
     case "${ACTION}" in
-        mount-usb|mount-new-usb|safe-unmount-usb) ;;
+        dashboard-public-json|dashboard-json|mount-usb|mount-new-usb|safe-unmount-usb) ;;
         *) return 0 ;;
     esac
 
     # ProtectSystem=strict gives the API service a private mount namespace.
     # Mount operations performed there can succeed without changing the real
-    # PCS host. Re-enter only these three fixed storage actions through PID 1;
-    # the marker prevents recursion in the transient host service.
-    if [[ "${PCS_HOST_STORAGE_ACTION:-0}" == "1" ]]; then
+    # PCS host, and status collectors can consequently report stale mounts.
+    # Re-enter only the two fixed dashboard collectors and three fixed storage
+    # actions through PID 1; the marker prevents recursion in the transient
+    # host service.
+    if [[ "${PCS_HOST_NAMESPACE_ACTION:-0}" == "1" ]]; then
         return 0
     fi
     if [[ ! -x /usr/bin/systemd-run ]]; then
-        echo "ERROR: systemd-run is required for host storage actions." >&2
+        echo "ERROR: systemd-run is required for host namespace actions." >&2
         exit 1
     fi
 
@@ -69,7 +71,7 @@ dispatch_host_storage_action() {
         --collect \
         --quiet \
         --service-type=exec \
-        /usr/bin/env PCS_HOST_STORAGE_ACTION=1 "${dispatcher}" "${ACTION}"
+        /usr/bin/env PCS_HOST_NAMESPACE_ACTION=1 "${dispatcher}" "${ACTION}"
 }
 
 request_pistar_poweroff() {
@@ -3034,7 +3036,7 @@ restart_meshtastic_action() {
 
 require_root
 ensure_repo
-dispatch_host_storage_action
+dispatch_host_namespace_action
 
 cellular_data_iface() {
     local gsm_dev
