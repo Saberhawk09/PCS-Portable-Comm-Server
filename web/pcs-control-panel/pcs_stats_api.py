@@ -459,6 +459,9 @@ def add_authenticated_details(document: dict, resource: str, dashboard: dict) ->
         details["client_info"] = sanitized_client_info
     document["details"] = details
     document["access"] = "authenticated"
+    if resource == "status":
+        document["health"]["severity"] = severity(dashboard.get("overall"))
+        document["health"]["offline"] = bool(dashboard.get("offline", False))
     return document
 
 

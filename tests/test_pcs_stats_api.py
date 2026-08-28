@@ -212,6 +212,21 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("private_key", serialized)
         self.assertNotIn("must-not-render", serialized)
 
+    def test_authenticated_status_uses_admin_overall_warning(self):
+        public = dict(PUBLIC_DASHBOARD)
+        public["overall"] = "ok"
+        admin = dict(ADMIN_DASHBOARD)
+        admin["overall"] = "warn"
+
+        document = api.add_authenticated_details(
+            api.api_document("status", public),
+            "status",
+            admin,
+        )
+
+        self.assertEqual(document["health"]["severity"], "warn")
+        self.assertFalse(document["health"]["offline"])
+
     def test_authenticated_resource_gets_only_related_admin_cards(self):
         network = api.add_authenticated_details(
             api.api_document("network", PUBLIC_DASHBOARD),

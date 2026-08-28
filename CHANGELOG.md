@@ -25,6 +25,10 @@ All notable user-facing PCS changes are recorded here.
 - disabled Android HTTP connection reuse for the PCS API, whose HTTP/1.0
   responses close each TLS session, so discovery cannot leave a stale socket
   for the immediately following status request
+- allow the sandboxed PCS API collector read-only Netlink route inspection so
+  a working internet uplink is not falsely reported as `Offline`/`bad`; normal
+  backup-sync attention remains a `warn` condition, and authenticated status
+  uses that administrative overall severity in the Companion headline
 - added Android 17 `ACCESS_LOCAL_NETWORK` declaration, runtime prompt, denial
   handling, and request gating so API 37 devices can reach private PCS addresses
 - Android JVM coverage for endpoint policy, API parsing, TLS certificate and
