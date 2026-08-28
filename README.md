@@ -108,9 +108,10 @@ installed-hash, firewall/TLS, Linux-native, and full PCS self-tests. A live
 operator-approved full-scope pairing and non-mutating administrative acceptance
 test also passed on 2026-08-27; its temporary credential was revoked and proved
 unusable. These changes form v1.4 and establish the server-side contract for
-Android app development. A native Android client is now under local development
-in [android/pcs-companion](android/pcs-companion/README.md); it has not yet been
-installed on or validated with a real phone. See
+Android app development. PCS Companion has since passed real-phone acceptance
+over trusted home LAN, direct PCS LAN, and cellular/WireGuard, including backup
+synchronization and challenge-protected shutdown. PCS v1.4.1 bundles the first
+production-signed Android APK (app v0.1.5). See
 [WireGuard Remote Management](docs/wireguard-remote-management.md),
 [PCS Stats API](docs/pcs-stats-api.md), and the
 [Android Client Bootstrap Contract](docs/pcs-android-client-bootstrap.md), and

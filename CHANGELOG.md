@@ -4,6 +4,8 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-28
+
 ### Added
 
 - local native PCS Companion Android foundation with ordered home-LAN,
@@ -39,7 +41,8 @@ All notable user-facing PCS changes are recorded here.
   handling, and request gating so API 37 devices can reach private PCS addresses
 - Android JVM coverage for endpoint policy, API parsing, TLS certificate and
   hostname rejection, and bounded responses, plus clean Android lint, debug
-  APK assembly, and minified unsigned release assembly
+  APK assembly, and a minified production-signed PCS Companion v0.1.5 APK
+  bundled with the v1.4.1 release
 
 ## [1.4] - 2026-08-27
 
@@ -330,7 +333,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4...v1.4.1
 [1.4]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.2...v1.4
 [1.3.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3...v1.3.1

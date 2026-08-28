@@ -1,8 +1,27 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+val releaseSigningPropertiesFile = providers.gradleProperty("pcsSigningPropertiesFile")
+    .orNull
+    ?.let(rootProject::file)
+val releaseSigningProperties = Properties()
+
+if (releaseSigningPropertiesFile != null) {
+    require(releaseSigningPropertiesFile.isFile) {
+        "PCS signing properties file does not exist: $releaseSigningPropertiesFile"
+    }
+    releaseSigningPropertiesFile.inputStream().use(releaseSigningProperties::load)
+}
+
+fun requiredSigningProperty(name: String): String =
+    requireNotNull(releaseSigningProperties.getProperty(name)?.takeIf(String::isNotBlank)) {
+        "Missing Android release signing property: $name"
+    }
 
 android {
     namespace = "com.saberhawk.pcscompanion"
@@ -12,16 +31,28 @@ android {
         applicationId = "com.saberhawk.pcscompanion"
         minSdk = 26
         targetSdk = 37
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        if (releaseSigningPropertiesFile != null) {
+            create("pcsRelease") {
+                storeFile = rootProject.file(requiredSigningProperty("storeFile"))
+                storePassword = requiredSigningProperty("storePassword")
+                keyAlias = requiredSigningProperty("keyAlias")
+                keyPassword = requiredSigningProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.findByName("pcsRelease")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

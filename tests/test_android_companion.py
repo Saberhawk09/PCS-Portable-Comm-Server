@@ -15,6 +15,8 @@ class AndroidCompanionTests(unittest.TestCase):
 
         self.assertIn('id("org.jetbrains.kotlin.plugin.compose")', build)
         self.assertIn('implementation("androidx.compose.material3:material3")', build)
+        self.assertIn('versionCode = 6', build)
+        self.assertIn('versionName = "0.1.5"', build)
         self.assertEqual(contract["info"]["version"], "1.1.0")
         self.assertIn('@SerialName("api_version")', models)
         self.assertIn('val apiVersion: String', models)
@@ -79,6 +81,21 @@ class AndroidCompanionTests(unittest.TestCase):
         self.assertNotIn("logging-interceptor", build)
         self.assertNotIn("HttpLoggingInterceptor", all_kotlin)
         self.assertNotIn("hostnameVerifier", all_kotlin)
+
+    def test_release_signing_uses_external_ignored_credentials(self):
+        build = (ANDROID / "app" / "build.gradle.kts").read_text(encoding="utf-8")
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        initializer = (ROOT / "scripts" / "initialize-android-signing.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('gradleProperty("pcsSigningPropertiesFile")', build)
+        self.assertIn('create("pcsRelease")', build)
+        self.assertIn('signingConfig = signingConfigs.findByName("pcsRelease")', build)
+        self.assertIn("private-config/", ignore)
+        self.assertNotIn("storePassword = \"", build)
+        self.assertNotIn("keyPassword = \"", build)
+        self.assertIn("refusing to replace the release identity", initializer)
+        self.assertIn("RandomNumberGenerator", initializer)
+        self.assertNotIn("storePassword=REDACTED", initializer)
 
     def test_certificate_and_token_paths_preserve_bootstrap_security(self):
         security_dir = ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "security"

@@ -236,9 +236,9 @@ gates are:
 
 - complete certificate renewal UX around the current deployment-local
   certificate;
-- complete production signing and credential lifecycle tests for the Android
-  client;
-- synchronize the post-v1.4 live fixes with the repository release history.
+- complete credential lifecycle and wider biometric compatibility tests for
+  the production-signed Android client;
+- carry the post-v1.4 live fixes in the v1.4.1 repository release history.
 
 Operator acceptance on 2026-08-28 confirmed PCS Companion access over the
 trusted home LAN, direct PCS LAN, and cellular/WireGuard routes. The corrected

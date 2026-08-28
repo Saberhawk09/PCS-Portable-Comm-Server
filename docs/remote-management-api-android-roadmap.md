@@ -106,12 +106,12 @@ The initial implementation exists locally under `android/pcs-companion`. It
 builds public and authenticated status views, visibly timestamped offline
 cache, strict TLS onboarding, Android-Keystore token storage, endpoint editing,
 and dynamic rendering of the server action catalog. Local JVM tests, Android
-lint, debug assembly, and minified unsigned release assembly pass. Operator
+lint, debug assembly, and minified release assembly pass. Operator
 acceptance on 2026-08-28 confirmed the debug APK on a real Android device over
 the trusted home LAN, direct PCS LAN, and cellular/WireGuard routes, including
-successful backup synchronization and challenge-protected shutdown.
-Production signing, credential persistence/revocation testing, and broader
-device-version coverage remain open.
+successful backup synchronization and challenge-protected shutdown. PCS v1.4.1
+bundles the first production-signed Companion APK (app v0.1.5). Credential
+persistence/revocation testing and broader device-version coverage remain open.
 
 The first overview should answer whether PCS is healthy without pretending
 that planned sensors exist. It can show only currently measured data:

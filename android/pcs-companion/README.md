@@ -4,7 +4,7 @@ PCS Companion is the native Android client for the PCS HTTPS API released in
 PCS v1.4. It is intentionally a management client, not a WireGuard client: the
 existing Android WireGuard app remains responsible for the tunnel.
 
-The current local source version is `0.1.4`. Version `0.1.0` predates the live
+The current release version is `0.1.5`. Version `0.1.0` predates the live
 discovery contract's required `authentication` object. Version `0.1.1` targets
 Android 17 but does not request its new Local network runtime permission, so
 Android blocks private PCS LAN and WireGuard addresses before connection.
@@ -17,6 +17,9 @@ Version `0.1.4` uses a fresh, explicitly closed TLS connection for each API
 request. PCS serves HTTP/1.0 and closes every response; disabling Android HTTP
 connection pooling prevents discovery's closed socket from being reused for
 the following status request.
+
+Version `0.1.5` is the first production-signed APK. It is bundled with the PCS
+v1.4.1 GitHub Release and retains the live-accepted v0.1.4 behavior.
 
 The first development slice provides:
 
@@ -49,8 +52,28 @@ Set-Location android\pcs-companion
 ```
 
 Build output is local and ignored by Git. `assembleDebug` creates an installable
-debug APK; `assembleRelease` verifies shrinking but remains unsigned. Neither
-command installs or publishes an APK.
+debug APK. Without signing properties, `assembleRelease` verifies shrinking and
+creates an unsigned APK. For a signed release, keep a durable private keystore
+outside Git and provide an ignored Java properties file:
+
+```properties
+storeFile=C:/secure/path/pcs-companion-release.jks
+storePassword=REDACTED
+keyAlias=pcs-companion-release
+keyPassword=REDACTED
+```
+
+```powershell
+.\gradlew.bat clean testDebugUnitTest lintDebug assembleRelease `
+  -PpcsSigningPropertiesFile=C:\secure\pcs-companion-signing.properties
+```
+
+The signing property file is required to contain all four values. A first-time
+maintainer can create both ignored files with
+`scripts/initialize-android-signing.ps1`; the script refuses to replace an
+existing signing identity. The keystore and its passwords are release
+credentials: back them up securely and never commit or attach them to a
+release. Future APK updates must use the same key.
 
 ## Certificate enrollment
 
@@ -69,7 +92,7 @@ The certificate is public; the PCS private key must never leave
 The local JVM suite verifies endpoint validation, strict response parsing,
 certificate equality, hostname validation, rejection of a different
 certificate, and the response-size ceiling. Android lint currently reports no
-issues, and both debug and minified unsigned release builds complete.
+issues, and both debug and minified release builds complete.
 
 Operator acceptance on 2026-08-28 confirmed the debug APK on a real phone over
 the trusted home LAN, direct PCS LAN, and cellular/WireGuard routes. Pairing,
@@ -80,4 +103,5 @@ Before calling the Android client production-ready, exercise both modern and
 pre-Android-11 biometric/device-credential paths as applicable, confirm
 Keystore-backed token recovery after process death and reboot, revoke the test
 device on PCS, verify the revoked token returns the app to public/unpaired
-mode, and produce a properly signed release APK.
+mode. The v0.1.5 APK is production-signed; biometric compatibility and token
+lifecycle checks remain post-release hardening work rather than signing gates.
