@@ -472,7 +472,23 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(status, 405)
         self.assertEqual(headers.get("Allow"), "GET, HEAD")
         self.assertEqual(json.loads(body)["code"], "method_not_allowed")
-        self.assertEqual(self.request("PUT", "/api/v1/pair")[0], 405)
+        status, headers, body = self.request("PUT", "/api/v1/pair")
+        self.assertEqual(status, 405)
+        self.assertEqual(headers.get("Allow"), "POST")
+        self.assertEqual(json.loads(body)["code"], "method_not_allowed")
+
+        for method in ("OPTIONS", "TRACE", "CONNECT"):
+            with self.subTest(method=method):
+                status, headers, body = self.request(method, "/api/v1/status")
+                self.assertEqual(status, 405)
+                self.assertEqual(headers.get("Allow"), "GET, HEAD")
+                self.assertEqual(headers.get("Content-Type"), api.PROBLEM_CONTENT_TYPE)
+                self.assertEqual(json.loads(body)["code"], "method_not_allowed")
+
+    def test_server_header_does_not_disclose_python_version(self):
+        status, headers, _ = self.request("GET", "/api/v1")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("Server"), "PCSStatsAPI/1")
 
     def test_pairing_returns_one_admin_scoped_device_token(self):
         paired = {

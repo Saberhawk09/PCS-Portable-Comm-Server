@@ -57,7 +57,7 @@ class StatsApiSetupTests(unittest.TestCase):
         function_end = dispatcher.index("\n}\n", function_start) + 3
         function = dispatcher[function_start:function_end]
 
-        self.assertIn("dashboard-public-json|dashboard-json", function)
+        self.assertIn("dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup", function)
         self.assertIn("mount-usb|mount-new-usb|safe-unmount-usb", function)
         self.assertIn('"${PCS_HOST_NAMESPACE_ACTION:-0}" == "1"', function)
         self.assertIn("/usr/bin/systemd-run", function)
@@ -75,6 +75,20 @@ class StatsApiSetupTests(unittest.TestCase):
         )
         self.assertNotIn("eval", function)
         self.assertNotIn("sh -c", function)
+
+    def test_disconnected_raspberry_pi_connect_is_optional(self):
+        self_test = (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8")
+        start = self_test.index('section "Raspberry Pi Connect"')
+        end = self_test.index('section "Dire Wolf / APRS"', start)
+        connect_block = self_test[start:end]
+
+        self.assertIn(
+            'skip "Raspberry Pi Connect is not connected; Wayland compositor is not required"',
+            connect_block,
+        )
+        disconnected_branch = connect_block.index('if printf \'%s\\n\' "${CONNECT_STATUS_OUTPUT}"')
+        compositor_failure = connect_block.index('fail "Raspberry Pi Connect does not see Wayland compositor"')
+        self.assertLess(disconnected_branch, compositor_failure)
 
     def test_sudoers_scope_contains_only_collectors_pairing_and_fixed_panel_actions(self):
         setup = SETUP.read_text(encoding="utf-8")
