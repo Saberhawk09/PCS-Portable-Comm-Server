@@ -6,6 +6,12 @@ All notable user-facing PCS changes are recorded here.
 
 ### Fixed
 
+- run status, self-test, storage status, and backup synchronization through the
+  real PCS host mount namespace so API actions cannot inspect stale USB state
+- treat Raspberry Pi Connect's compositor as optional when the account/service
+  is intentionally disconnected, preventing false self-test failures
+- return versioned JSON problem responses for unsupported HTTP methods and stop
+  disclosing the host Python version in the API `Server` header
 - collect public and authenticated dashboard status through the real PCS host
   mount namespace so the companion app cannot report stale USB/Samba failures
   while the web panel correctly reports healthy host storage

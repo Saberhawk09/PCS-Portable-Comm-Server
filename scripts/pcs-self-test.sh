@@ -823,18 +823,21 @@ if command_exists rpi-connect; then
     CONNECT_STATUS_OUTPUT="$(rpi-connect status 2>&1 || true)"
     echo "${CONNECT_DOCTOR_OUTPUT}"
 
-    if printf '%s\n' "${CONNECT_DOCTOR_OUTPUT}" | grep -Eq "Wayland compositor available$"; then
-        pass "Raspberry Pi Connect sees Wayland compositor"
-    else
-        fail "Raspberry Pi Connect does not see Wayland compositor"
-    fi
-
     if printf '%s\n' "${CONNECT_STATUS_OUTPUT}" | grep -Eiq "not running|not signed in|signed out|not connected|no account|run rpi-connect on|run rpi-connect signin"; then
+        skip "Raspberry Pi Connect is not connected; Wayland compositor is not required"
         pass "Raspberry Pi Connect account is not connected; screen sharing is not expected"
-    elif printf '%s\n' "${CONNECT_DOCTOR_OUTPUT}" | grep -Eq "Screen sharing services enabled and active$"; then
-        pass "Raspberry Pi Connect screen sharing services are active"
     else
-        fail "Raspberry Pi Connect screen sharing services are not active"
+        if printf '%s\n' "${CONNECT_DOCTOR_OUTPUT}" | grep -Eq "Wayland compositor available$"; then
+            pass "Raspberry Pi Connect sees Wayland compositor"
+        else
+            fail "Raspberry Pi Connect does not see Wayland compositor"
+        fi
+
+        if printf '%s\n' "${CONNECT_DOCTOR_OUTPUT}" | grep -Eq "Screen sharing services enabled and active$"; then
+            pass "Raspberry Pi Connect screen sharing services are active"
+        else
+            fail "Raspberry Pi Connect screen sharing services are not active"
+        fi
     fi
 else
     skip "rpi-connect command not found"

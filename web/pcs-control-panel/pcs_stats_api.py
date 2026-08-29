@@ -701,6 +701,9 @@ class ReusableThreadingHTTPServer(ThreadingHTTPServer):
 class Handler(BaseHTTPRequestHandler):
     server_version = "PCSStatsAPI/1"
 
+    def version_string(self) -> str:
+        return self.server_version
+
     def common_headers(self) -> None:
         self.send_header("Cache-Control", "no-store, max-age=0")
         self.send_header("Pragma", "no-cache")
@@ -1052,12 +1055,28 @@ class Handler(BaseHTTPRequestHandler):
             **result,
         })
 
-    def reject_write_method(self):
-        self.problem(405, "method_not_allowed", "The stats API has no write action at this route.", {"Allow": "GET, HEAD"})
+    def allowed_methods(self) -> str:
+        path = urlsplit(self.path).path.rstrip("/")
+        if path in {"/api/v1/pair", "/api/v1/admin/password"}:
+            return "POST"
+        if path.startswith("/api/v1/actions/"):
+            return "POST"
+        return "GET, HEAD"
 
-    do_PUT = reject_write_method
-    do_PATCH = reject_write_method
-    do_DELETE = reject_write_method
+    def reject_unsupported_method(self):
+        self.problem(
+            405,
+            "method_not_allowed",
+            "This API route does not accept that HTTP method.",
+            {"Allow": self.allowed_methods()},
+        )
+
+    do_PUT = reject_unsupported_method
+    do_PATCH = reject_unsupported_method
+    do_DELETE = reject_unsupported_method
+    do_OPTIONS = reject_unsupported_method
+    do_TRACE = reject_unsupported_method
+    do_CONNECT = reject_unsupported_method
 
     def log_message(self, fmt, *args):
         print(f"{self.client_address[0]} - {fmt % args}")
