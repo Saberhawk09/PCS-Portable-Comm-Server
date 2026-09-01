@@ -578,7 +578,7 @@ esac
 echo
 
 echo "--- Key Services ---"
-for service in NetworkManager ModemManager avahi-daemon smbd gpsd chrony cockpit.socket pcs-control-panel.service pcs-dashboard-redirect.service; do
+for service in NetworkManager ModemManager avahi-daemon smbd pcs-wsdd gpsd chrony cockpit.socket pcs-control-panel.service pcs-dashboard-redirect.service; do
     echo
     echo "[$service]"
     echo -n "enabled: "

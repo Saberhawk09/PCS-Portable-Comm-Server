@@ -590,6 +590,8 @@ echo "  - Cellular profile setup with optional automatic Wi-Fi fallback"
 echo "  - Optional handshake-gated WireGuard remote management from a private profile"
 echo "  - Samba bootstrap share setup"
 echo "  - Samba SD-card backup share setup"
+echo "  - Configurable automatic USB-to-SD backup scheduling"
+echo "  - LAN-only Windows and Avahi file-share discovery"
 echo "  - Optional USB primary share setup, if USB storage is present"
 echo "  - Chrony LAN NTP setup"
 echo "  - Optional WWAN modem NMEA GPS setup, if WWAN GPS hardware is present"
@@ -684,6 +686,12 @@ ensure_executable "scripts/pcs-wireguard-firewall.sh"
 ensure_executable "scripts/pcs_cellular_fallback.py"
 ensure_executable "scripts/setup-test-samba-share.sh"
 ensure_executable "scripts/setup-samba-backup-share.sh"
+ensure_executable "scripts/setup-pcs-share-discovery.sh"
+ensure_executable "scripts/pcs-wsdd.sh"
+ensure_executable "scripts/pcs-wsdd-firewall.sh"
+ensure_executable "scripts/setup-pcs-backup.sh"
+ensure_executable "scripts/pcs_backup_config.py"
+ensure_executable "scripts/pcs_auto_backup.py"
 ensure_executable "scripts/setup-usb-primary-share.sh"
 ensure_executable "scripts/setup-chrony-lan-ntp.sh"
 ensure_executable "scripts/restart-pcs-services.sh"
@@ -928,6 +936,10 @@ else
     echo "You can run this later with a specific device, for example:"
     echo "  ./scripts/setup-usb-primary-share.sh /dev/sda1"
 fi
+
+run_step "Configure automatic PCS backups" "./scripts/setup-pcs-backup.sh"
+
+run_step "Configure LAN file-share discovery" "./scripts/setup-pcs-share-discovery.sh"
 
 run_step "Configure Chrony LAN NTP" "./scripts/setup-chrony-lan-ntp.sh"
 

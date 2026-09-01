@@ -39,6 +39,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,6 +56,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -62,6 +65,7 @@ import com.saberhawk.pcscompanion.AppUiState
 import com.saberhawk.pcscompanion.MainViewModel
 import com.saberhawk.pcscompanion.data.ActionMetadata
 import com.saberhawk.pcscompanion.data.ActionResult
+import com.saberhawk.pcscompanion.data.BackupSettingsData
 import com.saberhawk.pcscompanion.data.ConnectionKind
 import com.saberhawk.pcscompanion.data.EndpointCandidate
 import com.saberhawk.pcscompanion.data.StatsEnvelope
@@ -81,6 +85,8 @@ private enum class AppTab(val label: String, val symbol: String) {
     ACTIONS("Actions", "⚙"),
     SETTINGS("Settings", "≡"),
 }
+
+private data class StatusAlert(val severity: String, val component: String, val message: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,6 +205,20 @@ fun PcsCompanionApp(
                         { localMessage = it },
                     )
                 },
+                onLoadBackupSettings = {
+                    withLocalNetworkAccess(viewModel::loadBackupSettings)
+                },
+                onUpdateBackupSettings = { enabled, intervalMinutes, keepHistory ->
+                    authenticateAction(
+                        "Change automatic backup settings",
+                        {
+                            withLocalNetworkAccess {
+                                viewModel.updateBackupSettings(enabled, intervalMinutes, keepHistory)
+                            }
+                        },
+                        { localMessage = it },
+                    )
+                },
                 onForget = viewModel::forgetPcs,
                 onLocalError = { localMessage = it },
             )
@@ -214,8 +234,15 @@ private fun ConnectionLine(state: AppUiState) {
         else -> "CONNECTING"
     }
     val access = state.status?.access?.uppercase() ?: if (state.paired) "PAIRED" else "PUBLIC"
+    val severity = state.status?.health?.severity?.uppercase()
+    val firstAlert = statusAlerts(state.status).firstOrNull()
+    val health = when {
+        severity == null -> ""
+        firstAlert != null -> " · PCS $severity · ${firstAlert.component}: ${firstAlert.message}"
+        else -> " · PCS $severity"
+    }
     Text(
-        text = "$label · $access",
+        text = "$label · $access$health",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -298,6 +325,7 @@ private fun SummaryCard(status: StatsEnvelope?, fromCache: Boolean) {
         "bad" -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val alerts = statusAlerts(status)
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -308,6 +336,14 @@ private fun SummaryCard(status: StatsEnvelope?, fromCache: Boolean) {
                     fontWeight = FontWeight.Bold,
                 )
             }
+            alerts.take(3).forEach { alert ->
+                Text(
+                    "${alert.component}: ${alert.message}",
+                    color = if (alert.severity == "bad") MaterialTheme.colorScheme.error else Color(0xFFD39B2A),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            if (alerts.size > 3) Text("+${alerts.size - 3} more warnings or faults")
             Text("Generated: ${status?.generatedAt ?: "not available"}")
             if (fromCache) {
                 Text(
@@ -476,10 +512,15 @@ private fun SettingsScreen(
     onDiscardCertificate: () -> Unit,
     onPair: (String, String) -> Unit,
     onChangePassword: (String, String) -> Unit,
+    onLoadBackupSettings: () -> Unit,
+    onUpdateBackupSettings: (Boolean, Int, Boolean) -> Unit,
     onForget: () -> Unit,
     onLocalError: (String) -> Unit,
 ) {
     var showForgetDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(state.paired, state.activeEndpoint) {
+        if (state.paired && state.activeEndpoint != null) onLoadBackupSettings()
+    }
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -498,6 +539,15 @@ private fun SettingsScreen(
             onLocalError = onLocalError,
         )
         PairingPanel(state.paired, state.loading, onPair)
+        if (state.paired) {
+            BackupSettingsPanel(
+                settings = state.backupSettings,
+                loading = state.backupSettingsLoading,
+                onReload = onLoadBackupSettings,
+                onSave = onUpdateBackupSettings,
+                onLocalError = onLocalError,
+            )
+        }
         if (state.paired) PasswordPanel(state.loading, onChangePassword, onLocalError)
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -519,6 +569,91 @@ private fun SettingsScreen(
                 }) { Text("Delete local data") }
             },
             dismissButton = { TextButton(onClick = { showForgetDialog = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun BackupSettingsPanel(
+    settings: BackupSettingsData?,
+    loading: Boolean,
+    onReload: () -> Unit,
+    onSave: (Boolean, Int, Boolean) -> Unit,
+    onLocalError: (String) -> Unit,
+) {
+    var showDialog by remember { mutableStateOf(false) }
+    var enabled by remember(settings) { mutableStateOf(settings?.enabled ?: false) }
+    var interval by remember(settings) { mutableStateOf((settings?.intervalMinutes ?: 10).toString()) }
+    var keepHistory by remember(settings) { mutableStateOf(settings?.keepHistory ?: false) }
+    Card {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Backup settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(if (settings?.enabled == true) "Automatic every ${settings.intervalMinutes} minutes" else "Automatic backups disabled")
+            Text(if (settings?.keepHistory == true) "Every dated snapshot is retained" else "Additive rolling backup only")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = !loading && settings != null,
+                    onClick = { showDialog = true },
+                ) { Text("Configure") }
+                OutlinedButton(enabled = !loading, onClick = onReload) { Text("Reload") }
+            }
+            if (loading) Text("Loading backup settings…")
+            if (!loading && settings == null) Text("Backup settings are unavailable. Use Reload after checking the connection.")
+        }
+    }
+    if (showDialog && settings != null) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Backup settings") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Enable automatic backups")
+                        Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = !loading)
+                    }
+                    OutlinedTextField(
+                        value = interval,
+                        onValueChange = { value -> interval = value.filter(Char::isDigit).take(5) },
+                        label = { Text("Interval in minutes · 1–43,200") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        enabled = !loading,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Keep every prior snapshot", modifier = Modifier.weight(1f))
+                        Switch(checked = keepHistory, onCheckedChange = { keepHistory = it }, enabled = !loading)
+                    }
+                    Text(
+                        "The rolling backup never deletes destination files. Retained snapshots are never pruned, so storage use will grow.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !loading,
+                    onClick = {
+                        val minutes = interval.toIntOrNull()
+                        if (minutes == null || minutes !in 1..43_200) {
+                            onLocalError("Backup interval must be a whole number from 1 through 43,200 minutes.")
+                        } else {
+                            showDialog = false
+                            onSave(enabled, minutes, keepHistory)
+                        }
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showDialog = false }) { Text("Cancel") } },
         )
     }
 }
@@ -658,7 +793,7 @@ private fun PasswordPanel(
     Card {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Administrator password", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Passwords are kept only long enough to submit this pinned-TLS request.")
+            Text("This also updates the pcs-admin login for PCS-Backup. Passwords are kept only long enough to submit this pinned-TLS request.")
             OutlinedTextField(current, { current = it }, label = { Text("Current password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(replacement, { replacement = it }, label = { Text("New password · 12+ characters") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Confirm new password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -695,8 +830,21 @@ private fun orderedStatusSections(data: JsonObject): List<Pair<String, JsonEleme
     )
     val ranks = order.withIndex().associate { it.value to it.index }
     return data.entries
+        .filter { it.key != "alerts" }
         .sortedWith(compareBy({ ranks[it.key] ?: Int.MAX_VALUE }, { it.key }))
         .map { it.key to it.value }
+}
+
+private fun statusAlerts(status: StatsEnvelope?): List<StatusAlert> {
+    val entries = status?.data?.get("alerts") as? JsonArray ?: return emptyList()
+    return entries.mapNotNull { entry ->
+        val value = entry as? JsonObject ?: return@mapNotNull null
+        val severity = (value["severity"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+        val component = (value["component"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+        val message = (value["message"] as? JsonPrimitive)?.contentOrNull ?: return@mapNotNull null
+        if (severity !in setOf("warn", "bad")) return@mapNotNull null
+        StatusAlert(severity, component.take(80), message.take(240))
+    }.take(32)
 }
 
 private fun humanize(value: String): String = value

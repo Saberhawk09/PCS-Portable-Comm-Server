@@ -1,0 +1,25 @@
+[Unit]
+Description=PCS LAN-only Windows file-share discovery
+After=network.target smbd.service
+Wants=smbd.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/local/sbin/pcs-wsdd-firewall apply
+ExecStart=/usr/local/sbin/pcs-wsdd
+ExecStopPost=/usr/local/sbin/pcs-wsdd-firewall remove
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

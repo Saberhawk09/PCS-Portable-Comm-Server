@@ -10,6 +10,11 @@ Cockpit:          https://10.42.0.1:9090
 
 The public homepage contains a visible **Admin Login** button and administration panel. Operators do not need to enter the legacy port manually.
 
+The sticky header always places the overall `OK`, `WARN`, or `BAD` indicator
+beside public-safe summaries for every active warning or fault. The same alert
+list feeds the Android status header, so a degraded condition is identified by
+component and message instead of requiring the operator to search every card.
+
 ## Public Homepage
 
 The homepage is read-only and does not require authentication. It shows an explicitly limited status data set:
@@ -74,6 +79,21 @@ The `/admin/` area contains the detailed dashboard and all operator action group
 - Time / GPS
 - Power
 
+The authenticated header menu contains a **Backup Settings** pop-up. An
+operator can enable or disable automatic backups, select a whole-minute
+interval from 1 to 43,200 minutes, and choose whether every dated snapshot is
+retained. Manual **Sync USB to SD Backup** actions remain available regardless
+of the automatic setting. All rolling syncs are additive and never propagate
+source deletions; retained snapshots are never pruned automatically.
+
+The backup policy is a non-secret, root-owned JSON file at
+`/etc/pcs-backup/config.json`. The web process can only call the fixed
+`pcs-backup-config show` and `set-from-stdin` helper operations. The helper
+validates the exact fields, atomically writes the policy, and synchronizes the
+fixed `pcs-backup.timer`. A failed runtime change restores the previous policy.
+The timer checks every minute; the policy interval determines whether a backup
+is actually due.
+
 Unauthenticated requests are redirected to the Admin Login page. Administrative POST requests require both a valid session and CSRF token. Direct unauthenticated POST requests are rejected before the dispatcher is called.
 
 Dangerous operations retain confirmation prompts. Privileged work continues to use the allowlisted dispatcher:
@@ -99,7 +119,7 @@ The local password is processed with PBKDF2-HMAC-SHA256 and a random salt. Only 
 /etc/pcs-control-panel/session.key
 ```
 
-These files are kept outside the repository and restricted to `root` and the web-service group. Password changes are written atomically by the root-owned `/usr/local/sbin/pcs-admin-password-helper`; plaintext passwords are passed only through local stdin and are not placed in process arguments or logs.
+These files are kept outside the repository and restricted to `root` and the web-service group. Password changes are written atomically by the root-owned `/usr/local/sbin/pcs-admin-password-helper`; plaintext passwords are passed only through local stdin and are not placed in process arguments or logs. The same helper synchronizes the dedicated `pcs-admin` Samba credential used by `PCS-Backup`. If the Samba update fails, the web credential is restored so the two passwords cannot silently diverge.
 
 Sessions expire after 30 minutes by default. Session cookies are signed, HTTP-only, and restricted to `/admin` with `SameSite=Strict`. Logout invalidates the server-side session immediately.
 

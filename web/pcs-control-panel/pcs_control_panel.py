@@ -23,6 +23,10 @@ PASSWORD_HELPER = os.environ.get(
     "PCS_ADMIN_PASSWORD_HELPER",
     "/usr/local/sbin/pcs-admin-password-helper",
 )
+BACKUP_CONFIG_HELPER = os.environ.get(
+    "PCS_BACKUP_CONFIG_HELPER",
+    "/usr/local/sbin/pcs-backup-config",
+)
 CREDENTIAL_FILE = os.environ.get(
     "PCS_ADMIN_CREDENTIAL_FILE",
     "/etc/pcs-control-panel/admin.json",
@@ -36,6 +40,8 @@ COOKIE_SECURE = os.environ.get("PCS_COOKIE_SECURE", "no").lower() == "yes"
 PASSWORD_ITERATIONS = 310_000
 MAX_FORM_BYTES = 64 * 1024
 MAX_PASSWORD_LENGTH = 1024
+MIN_BACKUP_INTERVAL_MINUTES = 1
+MAX_BACKUP_INTERVAL_MINUTES = 43_200
 
 ACTIONS = [
     ("status", "View PCS Status", "Show the full PCS status report."),
@@ -315,7 +321,12 @@ PUBLIC_FIELDS = {
     "cellular": {"status", "modem_present", "connected", "carrier", "access_technology", "signal", "fallback_policy", "fallback_active"},
     "time": {"status", "chrony_active", "synchronized", "source", "reference"},
     "gnss": {"status", "receiver_active", "fix", "satellites", "coordinates", "grid_square", "utc_time"},
-    "storage": {"status", "usb_mounted", "primary_share_available", "backup_share_available", "usb_free_gb", "backup_free_gb"},
+    "storage": {
+        "status", "usb_mounted", "primary_share_available", "backup_share_available",
+        "usb_free_gb", "backup_free_gb", "backup_status", "last_backup_age",
+        "automatic_backup_enabled", "backup_interval_minutes",
+        "keep_backup_history", "backup_history_count",
+    },
     "services": {"status", "homepage_available", "file_sharing_available", "cockpit_available", "gpsd_lan_enabled"},
     "pistar": {"configured", "online", "url"},
     "aprs": {
@@ -371,12 +382,60 @@ def change_admin_password(current_password: str, new_password: str) -> tuple[boo
     return True, "Password updated. Sign in again with the new password."
 
 
+def load_backup_settings() -> tuple[dict, str]:
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", BACKUP_CONFIG_HELPER, "show"],
+            text=True,
+            capture_output=True,
+            timeout=10,
+        )
+        value = json.loads(result.stdout) if result.returncode == 0 else None
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"version", "enabled", "interval_minutes", "keep_history"}
+            or value.get("version") != 2
+            or not isinstance(value.get("enabled"), bool)
+            or isinstance(value.get("interval_minutes"), bool)
+            or not isinstance(value.get("interval_minutes"), int)
+            or not MIN_BACKUP_INTERVAL_MINUTES <= value["interval_minutes"] <= MAX_BACKUP_INTERVAL_MINUTES
+            or not isinstance(value.get("keep_history"), bool)
+        ):
+            raise ValueError("invalid helper response")
+        return value, ""
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
+        return {"version": 2, "enabled": False, "interval_minutes": 10, "keep_history": False}, "Automatic backup settings are unavailable."
+
+
+def update_backup_settings(enabled: bool, interval_minutes: int, keep_history: bool) -> tuple[bool, str]:
+    payload = json.dumps({
+        "enabled": enabled,
+        "interval_minutes": interval_minutes,
+        "keep_history": keep_history,
+    })
+    try:
+        result = subprocess.run(
+            ["sudo", "-n", BACKUP_CONFIG_HELPER, "set-from-stdin"],
+            input=payload,
+            text=True,
+            capture_output=True,
+            timeout=45,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False, "Automatic backup settings helper was unavailable."
+    if result.returncode != 0:
+        return False, "Automatic backup settings were rejected; the previous configuration was preserved."
+    PUBLIC_CACHE.set(None)
+    return True, "Automatic backup settings updated."
+
+
 def dashboard_error(message: str, public: bool) -> dict:
     if public:
         return {
             "generated_at": "unknown",
             "overall": "bad",
             "offline": False,
+            "alerts": [{"severity": "bad", "component": "Dashboard", "message": message}],
             "error": message,
             "system": {"status": "bad"},
             "network": {"status": "warn", "lan_gateway": "10.42.0.1"},
@@ -394,6 +453,7 @@ def dashboard_error(message: str, public: bool) -> dict:
         "generated_at": "unknown",
         "overall": "bad",
         "offline": False,
+        "alerts": [{"severity": "bad", "component": "Dashboard", "message": message}],
         "cards": [{
             "id": "dashboard",
             "title": "Dashboard",
@@ -410,6 +470,7 @@ def sanitize_public_dashboard(data: dict) -> dict:
         "generated_at": data.get("generated_at", "unknown"),
         "overall": status_value(data.get("overall", "warn")),
         "offline": bool(data.get("offline", False)),
+        "alerts": sanitize_alerts(data.get("alerts", [])),
     }
     if data.get("error"):
         sanitized["error"] = str(data["error"])
@@ -423,6 +484,20 @@ def sanitize_public_dashboard(data: dict) -> dict:
             if key in source
         }
     return sanitized
+
+
+def sanitize_alerts(value) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    alerts = []
+    for entry in value[:32]:
+        if not isinstance(entry, dict):
+            continue
+        severity = status_value(entry.get("severity"))
+        component = str(entry.get("component", "System"))[:80]
+        message = str(entry.get("message", "Needs attention"))[:240]
+        alerts.append({"severity": severity, "component": component, "message": message})
+    return alerts
 
 
 def load_dashboard(action: str, public: bool, timeout: int = 75) -> dict:
@@ -461,22 +536,22 @@ BASE_CSS = """
 :root{color-scheme:dark;--bg:#0b1015;--panel:#141b22;--panel2:#1b2530;--line:#2b3947;--text:#eef5fa;--muted:#a8b5c0;--accent:#68b7ff;--ok:#61d69b;--warn:#f2c55c;--bad:#f17777}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#162536 0,#0b1015 34rem);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.45}
 a{color:var(--accent)}header{position:sticky;top:0;z-index:10;background:rgba(11,16,21,.94);border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
-.nav{max-width:1450px;margin:auto;padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}.brand{font-weight:850;letter-spacing:.02em}.navlinks{display:flex;gap:.55rem;align-items:center}
+.nav{max-width:1450px;margin:auto;padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}.brand-group{display:flex;align-items:center;gap:.7rem;min-width:0}.brand{font-weight:850;letter-spacing:.02em;white-space:nowrap}.header-health{display:flex;align-items:center;gap:.45rem;min-width:0}.header-alerts{display:flex;align-items:center;gap:.4rem;min-width:0;overflow:hidden}.header-alert{font-size:.78rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34rem}.header-alert.warn{color:var(--warn)}.header-alert.bad{color:var(--bad)}.navlinks{display:flex;gap:.55rem;align-items:center}
 main{max-width:1450px;margin:auto;padding:1.2rem}.admin-main{max-width:1600px}.hero{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(260px,.65fr);gap:1rem;margin-bottom:1rem}
 .hero-main,.admin-entry,.overview,.card,.action-group,.output,.login-panel{background:rgba(20,27,34,.96);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.14)}
 .hero-main{padding:1.5rem}.eyebrow{margin:0 0 .35rem;color:var(--accent);font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.hero h1{font-size:clamp(1.8rem,5vw,3.3rem);line-height:1.05;margin:.1rem 0 .7rem}.hero p{color:var(--muted);max-width:62ch}
 .admin-entry{padding:1.25rem;display:flex;flex-direction:column;justify-content:center}.admin-entry h2{margin:0 0 .45rem}.admin-entry p{margin:.1rem 0 1rem;color:var(--muted)}
-.button,button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:var(--accent);color:#06121c;padding:.72rem .95rem;font:inherit;font-weight:850;text-decoration:none;cursor:pointer}.button.secondary{background:var(--panel2);border:1px solid var(--line);color:var(--text)}button.danger{background:var(--bad);color:#240707}.button:hover,button:hover{filter:brightness(1.08)}
+.button,button{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:9px;background:var(--accent);color:#06121c;padding:.72rem .95rem;font:inherit;font-weight:850;text-decoration:none;cursor:pointer}.button.secondary,button.secondary{background:var(--panel2);border:1px solid var(--line);color:var(--text)}button.danger{background:var(--bad);color:#240707}.button:hover,button:hover{filter:brightness(1.08)}
 .overview{padding:1rem 1.1rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1rem}.overview h2{margin:0}.overview p{margin:.25rem 0 0;color:var(--muted)}
 .badge{display:inline-flex;align-items:center;justify-content:center;min-width:4.2rem;padding:.42rem .65rem;border-radius:999px;font-size:.78rem;font-weight:900}.badge.ok{background:rgba(97,214,155,.14);color:var(--ok)}.badge.warn{background:rgba(242,197,92,.15);color:var(--warn)}.badge.bad{background:rgba(241,119,119,.15);color:var(--bad)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:.85rem}.admin-grid{grid-template-columns:repeat(auto-fit,minmax(250px,1fr));margin-bottom:1.25rem}.card{padding:1rem}.card-top{display:flex;align-items:center;justify-content:space-between;gap:.7rem}.card h2,.card h3{margin:0;font-size:1.05rem}.summary{color:var(--muted);margin:.55rem 0 .7rem}.item{display:flex;justify-content:space-between;gap:1rem;border-top:1px solid rgba(255,255,255,.07);padding:.48rem 0}.item span:first-child{color:var(--muted)}.item span:last-child{text-align:right;overflow-wrap:anywhere}.item code{overflow-wrap:anywhere}.metric{margin:.65rem 0}.metric-row{display:flex;justify-content:space-between;color:var(--muted);font-size:.9rem}.bar{height:.55rem;border-radius:99px;background:#090d11;overflow:hidden;margin-top:.25rem}.bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--ok))}
 .section-title{margin:1.5rem 0 .75rem}.service-grid{margin-top:.85rem}.service-card a{display:block;margin-top:.7rem}.notice{border-left:4px solid var(--warn);padding:.75rem 1rem;background:rgba(242,197,92,.08);margin:1rem 0;border-radius:7px}.error{border-left-color:var(--bad);background:rgba(241,119,119,.08)}.success{border-left-color:var(--ok);background:rgba(97,214,155,.08)}.password-card{display:flex;align-items:center;justify-content:space-between;gap:1rem}.password-card h2{margin:0 0 .35rem}.password-card p{margin:0;color:var(--muted);max-width:78ch}.password-card .button{flex:none}
 .action-group{padding:1rem;margin-bottom:.85rem}.action-group h3{margin:0 0 .7rem;color:var(--muted);font-size:.86rem;text-transform:uppercase;letter-spacing:.09em}.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem}.action-card{border:1px solid var(--line);background:rgba(255,255,255,.025);padding:.8rem;border-radius:10px}.action-card button{width:100%}.action-card p{color:var(--muted);margin:.6rem 0 0;font-size:.9rem}
-.output{padding:1rem;margin-top:1rem}.output pre{background:#080c10;border-radius:9px;padding:1rem;white-space:pre-wrap;word-break:break-word;max-height:52vh;overflow:auto}.login-wrap{max-width:500px;margin:7vh auto}.login-panel{padding:1.4rem}.login-panel label{display:block;margin:.9rem 0 .35rem}.login-panel input{width:100%;padding:.75rem;background:#090e13;color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}.login-panel button{width:100%;margin-top:1rem}.small{font-size:.86rem;color:var(--muted)}
+.output{padding:1rem;margin-top:1rem}.output pre{background:#080c10;border-radius:9px;padding:1rem;white-space:pre-wrap;word-break:break-word;max-height:52vh;overflow:auto}.login-wrap{max-width:500px;margin:7vh auto}.login-panel{padding:1.4rem}.login-panel label{display:block;margin:.9rem 0 .35rem}.login-panel input{width:100%;padding:.75rem;background:#090e13;color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}.login-panel button{width:100%;margin-top:1rem}.settings-form{display:grid;grid-template-columns:1fr 1fr;align-items:end;gap:1rem}.settings-form label{display:grid;gap:.4rem;color:var(--muted)}.settings-form input[type=number]{padding:.68rem;background:#090e13;color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}.check-line{display:flex!important;justify-content:flex-start;align-items:center;gap:.55rem}.check-line input{width:1.15rem;height:1.15rem}.small{font-size:.86rem;color:var(--muted)}dialog{width:min(680px,calc(100vw - 2rem));color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1.25rem;box-shadow:0 24px 80px rgba(0,0,0,.65)}dialog::backdrop{background:rgba(0,0,0,.72);backdrop-filter:blur(3px)}.dialog-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}.dialog-head h2{margin:0}
 .logout{display:inline}.logout button{padding:.5rem .7rem;background:transparent;border:1px solid var(--line);color:var(--text)}footer{padding:2rem 1rem;text-align:center;color:var(--muted)}
 @media(min-width:1300px){.public-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(min-width:1500px){.admin-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
-@media(max-width:760px){.hero{grid-template-columns:1fr}.nav{align-items:flex-start}.navlinks{flex-wrap:wrap;justify-content:flex-end}main{padding:.85rem}.item{display:grid;gap:.2rem}.item span:last-child{text-align:left}.password-card{align-items:stretch;flex-direction:column}}
+@media(max-width:760px){.hero{grid-template-columns:1fr}.nav{align-items:flex-start}.brand-group{align-items:flex-start;flex-direction:column;gap:.35rem}.header-health{align-items:flex-start}.header-alerts{display:block;max-width:52vw}.header-alert{display:block}.navlinks{flex-wrap:wrap;justify-content:flex-end}main{padding:.85rem}.item{display:grid;gap:.2rem}.item span:last-child{text-align:left}.password-card{align-items:stretch;flex-direction:column}.settings-form{grid-template-columns:1fr}}
 """
 
 
@@ -499,6 +574,18 @@ def overall_badge(data: dict) -> str:
     if data.get("offline") and overall != "bad":
         label = f"{label} - Offline"
     return badge(overall, label)
+
+
+def header_health(data: dict) -> str:
+    alerts = sanitize_alerts(data.get("alerts", []))
+    shown = alerts[:3]
+    alert_html = "".join(
+        f'<span class="header-alert {entry["severity"]}">{esc(entry["component"])}: {esc(entry["message"])}</span>'
+        for entry in shown
+    )
+    if len(alerts) > len(shown):
+        alert_html += f'<span class="header-alert warn">+{len(alerts) - len(shown)} more</span>'
+    return f'<div class="header-health">{overall_badge(data)}<div class="header-alerts">{alert_html}</div></div>'
 
 
 def item(label: str, value) -> str:
@@ -568,6 +655,12 @@ def render_public_page(data: dict) -> bytes:
             ("USB mounted", "usb_mounted", False), ("PCS-Share available", "primary_share_available", False),
             ("PCS-Backup available", "backup_share_available", False), ("USB free", "usb_free_gb", "unknown"),
             ("Backup free", "backup_free_gb", "unknown"),
+            ("Backup health", "backup_status", "unknown"),
+            ("Last backup", "last_backup_age", "unknown"),
+            ("Automatic backups", "automatic_backup_enabled", False),
+            ("Backup interval (minutes)", "backup_interval_minutes", "unknown"),
+            ("Retain every snapshot", "keep_backup_history", False),
+            ("Retained snapshots", "backup_history_count", 0),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),
     ])
 
@@ -620,13 +713,13 @@ def render_public_page(data: dict) -> bytes:
     gpsd_line = item("GPSD", "10.42.0.1:2947" if services.get("gpsd_lan_enabled") else "not enabled")
     service_directory = f"""
     <h2 class="section-title">Field Access</h2><section class="grid service-grid">
-      <article class="card service-card"><h3>File shares</h3>{item('Primary share', r'\\10.42.0.1\PCS-Share')}{item('Backup share', r'\\10.42.0.1\PCS-Backup')}<p class="small">Windows: enter the share path in File Explorer. Linux: connect with SMB/CIFS.</p></article>
+      <article class="card service-card"><h3>File shares</h3>{item('Windows discovery', 'PCS-FILE-SHARE')}{item('Primary share', r'\\10.42.0.1\PCS-Share')}{item('Backup share', r'\\10.42.0.1\PCS-Backup')}<p class="small">Windows: open Network or enter the share path in File Explorer. Linux: connect with SMB/CIFS.</p></article>
       <article class="card service-card"><h3>Network services</h3>{item('LAN NTP server', '10.42.0.1')}{gpsd_line}{item('Cockpit', 'https://10.42.0.1:9090')}<a href="https://10.42.0.1:9090">Open Cockpit</a></article>
       <article class="card service-card"><h3>Local devices</h3>{item('OpenWrt', 'http://10.42.0.2/')}{item('PCS administration', 'Authentication required')}<a href="http://10.42.0.2/">Open OpenWrt</a></article>
     </section>"""
 
     body = f"""
-    <header><div class="nav"><div class="brand">PCS Field Network</div><nav class="navlinks"><a class="button secondary" href="/">Refresh</a><a class="button" href="/admin/">Admin Login</a></nav></div></header>
+    <header><div class="nav"><div class="brand-group"><div class="brand">PCS Field Network</div>{header_health(data)}</div><nav class="navlinks"><a class="button secondary" href="/">Refresh</a><a class="button" href="/admin/">Admin Login</a></nav></div></header>
     <main><section class="hero"><div class="hero-main"><p class="eyebrow">Portable Communication Server</p><h1>Field Network Status</h1><p>Local services, communications, position, time, and storage information for devices connected on site.</p></div>
     <aside class="admin-entry"><h2>PCS Administration</h2><p>Authorized operators can manage network, cellular, storage, services, time, and power.</p><a class="button" href="/admin/">Admin Login</a></aside></section>
     {error_html}<section class="overview"><div><h2>Overall system health</h2><p>Last refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
@@ -650,7 +743,7 @@ def render_admin_card(card: dict) -> str:
     return f'<article class="card"><div class="card-top"><h2>{esc(card.get("title", "Status"))}</h2>{badge(card.get("status", "warn"))}</div><p class="summary">{esc(card.get("summary", ""))}</p>{metrics}{rows}</article>'
 
 
-def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str = "", return_code: int | None = None, nonce: str = "") -> bytes:
+def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str = "", return_code: int | None = None, nonce: str = "", backup_settings: dict | None = None, settings_notice: str = "", settings_error: str = "") -> bytes:
     action_groups = []
     for title, action_names in ACTION_GROUPS:
         forms = []
@@ -670,19 +763,37 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
     info = data.get("client_info", {})
     access_rows = [
         item("PCS-Share", r"\\10.42.0.1\PCS-Share"), item("PCS-Backup", r"\\10.42.0.1\PCS-Backup"),
+        item("Windows discovery", "PCS-FILE-SHARE"), item("PCS-Backup login", "pcs-admin / current admin password"),
         item("WAN/public IP", info.get("wan_public_ip", "unavailable")), item("Uplink interface", info.get("uplink_interface", "unknown")),
     ]
     for client in info.get("router_side_clients", []):
         access_rows.append(item(client.get("name", "unknown"), f"{client.get('ip', 'unknown')} / {client.get('mac', 'unknown')} / {client.get('state', 'unknown')}"))
 
+    backup_settings = backup_settings or {"enabled": False, "interval_minutes": 10, "keep_history": False}
+    checked = " checked" if backup_settings.get("enabled") else ""
+    history_checked = " checked" if backup_settings.get("keep_history") else ""
+    settings_notice_html = f'<div class="notice success">{esc(settings_notice)}</div>' if settings_notice else ""
+    settings_error_html = f'<div class="notice error">{esc(settings_error)}</div>' if settings_error else ""
+    open_dialog = "true" if settings_notice or settings_error else "false"
+    backup_settings_html = f"""{settings_notice_html}{settings_error_html}
+    <dialog id="backup-settings-dialog" data-open="{open_dialog}"><div class="dialog-head"><h2>Backup settings</h2><button class="secondary" type="button" id="close-backup-settings" aria-label="Close backup settings">Close</button></div>
+    <form class="settings-form" method="POST" action="/admin/backup-settings">
+      <input type="hidden" name="csrf" value="{esc(csrf)}">
+      <label class="check-line"><input type="checkbox" name="enabled" value="yes"{checked}> Enable automatic backups</label>
+      <label>Interval in minutes (1–43,200)<input type="number" name="interval_minutes" min="1" max="43200" step="1" required value="{esc(backup_settings.get('interval_minutes', 10))}"></label>
+      <label class="check-line"><input type="checkbox" name="keep_history" value="yes"{history_checked}> Keep every prior backup snapshot</label>
+      <button type="submit">Save backup settings</button>
+    </form><p class="small">The rolling backup is additive: files removed from PCS-Share remain on PCS-Backup. Snapshot history preserves each dated version and is never pruned automatically, so storage use will grow.</p></dialog>"""
+
     body = f"""
-    <header><div class="nav"><div class="brand">PCS Administration</div><nav class="navlinks"><a class="button secondary" href="/">Public Homepage</a><a class="button secondary" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
+    <header><div class="nav"><div class="brand-group"><div class="brand">PCS Administration</div>{header_health(data)}</div><nav class="navlinks"><button class="secondary" type="button" id="open-backup-settings">Backup Settings</button><a class="button secondary" href="/">Public Homepage</a><a class="button secondary" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
     <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
     <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}</section>
     <h2 class="section-title">Detailed field access</h2><section class="card">{''.join(access_rows)}</section>
+    {backup_settings_html}
     <h2 class="section-title">Administrator access</h2><section class="card password-card"><div><h2>Admin panel password</h2><p>Change it here while the current password is known. A forgotten password cannot be recovered in the browser; rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from the Pi terminal.</p></div><a class="button" href="/admin/password">Change Admin Password</a></section>
     <h2 class="section-title">Operator commands</h2>{''.join(action_groups)}{result_html}</main>"""
-    script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});"""
+    script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});var backupDialog=document.getElementById('backup-settings-dialog');document.getElementById('open-backup-settings').addEventListener('click',function(){backupDialog.showModal();});document.getElementById('close-backup-settings').addEventListener('click',function(){backupDialog.close();});backupDialog.addEventListener('click',function(event){if(event.target===backupDialog){backupDialog.close();}});if(backupDialog.dataset.open==='true'){backupDialog.showModal();}"""
     return document("PCS Administration", body, script=script, nonce=nonce)
 
 
@@ -701,8 +812,8 @@ def render_password_page(csrf: str, error: str = "") -> bytes:
     error_html = f'<div class="notice error">{esc(error)}</div>' if error else ""
     body = f"""
     <header><div class="nav"><div class="brand">Change Admin Password</div><nav class="navlinks"><a class="button secondary" href="/admin/">Back to Administration</a></nav></div></header>
-    <main class="login-wrap"><section class="login-panel"><p class="eyebrow">Administrator security</p><h1>Change Admin Password</h1><div class="notice"><strong>Forgotten passwords cannot be changed here.</strong> Rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from an interactive Pi terminal.</div>{error_html}
-    <form method="POST" action="/admin/password"><input type="hidden" name="csrf" value="{esc(csrf)}"><label for="current-password">Current password</label><input id="current-password" name="current_password" type="password" required autocomplete="current-password"><label for="new-password">New password</label><input id="new-password" name="new_password" type="password" required minlength="12" autocomplete="new-password"><label for="confirm-password">Confirm new password</label><input id="confirm-password" name="confirm_password" type="password" required minlength="12" autocomplete="new-password"><button type="submit">Update Admin Password</button></form></section></main>"""
+    <main class="login-wrap"><section class="login-panel"><p class="eyebrow">Administrator security</p><h1>Change Admin Password</h1><div class="notice"><strong>Forgotten passwords cannot be changed here.</strong> Rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from an interactive Pi terminal.</div><p class="small">This also updates the <code>pcs-admin</code> login for <code>PCS-Backup</code>.</p>{error_html}
+    <form method="POST" action="/admin/password"><input type="hidden" name="csrf" value="{esc(csrf)}"><label for="current-password">Current password</label><input id="current-password" name="current_password" type="password" required autocomplete="current-password"><label for="new-password">New password</label><input id="new-password" name="new_password" type="password" required minlength="12" autocomplete="new-password"><label for="confirm-password">Confirm new password</label><input id="confirm-password" name="confirm_password" type="password" required minlength="12" autocomplete="new-password"><button type="submit">Update Admin and Backup Password</button></form></section></main>"""
     return document("Change PCS Admin Password", body)
 
 
@@ -840,7 +951,11 @@ class Handler(BaseHTTPRequestHandler):
             if not session:
                 return
             nonce = secrets.token_urlsafe(18)
-            body = render_admin_page(get_admin_dashboard(), session["csrf"], nonce=nonce)
+            backup_settings, settings_error = load_backup_settings()
+            body = render_admin_page(
+                get_admin_dashboard(), session["csrf"], nonce=nonce,
+                backup_settings=backup_settings, settings_error=settings_error,
+            )
             self.send_body(200, body, "text/html; charset=utf-8", nonce=nonce)
             return
         if path == "/admin/password":
@@ -936,6 +1051,41 @@ class Handler(BaseHTTPRequestHandler):
             self.redirect("/admin/login?changed=1", cookies=[expired])
             return
 
+        if path == "/admin/backup-settings":
+            _, session = self.require_session()
+            if not session:
+                return
+            if not self.csrf_valid(form, session):
+                self.send_body(403, b"CSRF validation failed\n", "text/plain; charset=utf-8")
+                return
+            try:
+                interval_minutes = int(form.get("interval_minutes", ""))
+            except ValueError:
+                interval_minutes = 0
+            enabled_value = form.get("enabled", "")
+            history_value = form.get("keep_history", "")
+            valid = (
+                enabled_value in {"", "yes"}
+                and history_value in {"", "yes"}
+                and MIN_BACKUP_INTERVAL_MINUTES <= interval_minutes <= MAX_BACKUP_INTERVAL_MINUTES
+            )
+            if not valid:
+                updated, message = False, "Backup interval must be a whole number from 1 through 43,200 minutes."
+            else:
+                updated, message = update_backup_settings(
+                    enabled_value == "yes", interval_minutes, history_value == "yes"
+                )
+            backup_settings, load_error = load_backup_settings()
+            nonce = secrets.token_urlsafe(18)
+            body = render_admin_page(
+                get_admin_dashboard(), session["csrf"], nonce=nonce,
+                backup_settings=backup_settings,
+                settings_notice=message if updated else "",
+                settings_error=load_error or ("" if updated else message),
+            )
+            self.send_body(200 if updated else 400, body, "text/html; charset=utf-8", nonce=nonce)
+            return
+
         if path == "/admin/run":
             _, session = self.require_session()
             if not session:
@@ -949,7 +1099,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             code, output = run_action(action)
             nonce = secrets.token_urlsafe(18)
-            body = render_admin_page(get_admin_dashboard(), session["csrf"], output, ACTION_MAP[action][0], code, nonce)
+            backup_settings, settings_error = load_backup_settings()
+            body = render_admin_page(
+                get_admin_dashboard(), session["csrf"], output, ACTION_MAP[action][0], code, nonce,
+                backup_settings=backup_settings, settings_error=settings_error,
+            )
             self.send_body(200, body, "text/html; charset=utf-8", nonce=nonce)
             return
 

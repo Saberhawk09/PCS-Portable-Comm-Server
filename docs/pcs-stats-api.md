@@ -10,6 +10,11 @@ three certificate identities, and the full PCS self-test passed. The legacy
 desktop token remains intentionally limited to `stats:read`; it was not
 silently elevated during deployment.
 
+The warning-summary and automatic-backup settings additions in this document
+are the next local candidate. They are not evidence that those additions have
+already been deployed to PCS; deployment and device acceptance remain a
+separate guarded step.
+
 ## Access model
 
 Every version 1 endpoint supports two response views:
@@ -58,6 +63,8 @@ GET /api/v1/actions
 POST /api/v1/actions/{action}/challenge
 POST /api/v1/actions/{action}
 POST /api/v1/admin/password
+GET /api/v1/settings/backup
+PUT /api/v1/settings/backup
 ```
 
 Responses use `application/vnd.pcs.v1+json`, UTC timestamps, explicit `null`
@@ -65,6 +72,11 @@ for known unavailable values, and separate machine-readable health severity.
 Public responses set `access` to `public` and `details` to `null`.
 Authenticated responses set `access` to `authenticated` and populate
 `details` from the existing administrative dashboard model.
+
+The status resource's `data.alerts` array contains every active public-safe
+warning or fault as `severity`, `component`, and `message`. It is intentionally
+inside the flexible `data` object so this additive feature remains compatible
+with the already released strict v1 Android envelope.
 
 `GET /api/v1` returns a collector-free discovery document listing these
 resources, pairing, action-catalog URL, supported methods, content type, and
@@ -105,6 +117,21 @@ returned. The replacement password must be 12-1024 characters. A wrong
 current password returns `401`; a rejected new password returns `409`;
 malformed input returns `400`.
 
+The helper also updates the dedicated `pcs-admin` Samba credential for
+`PCS-Backup`. A Samba failure restores the prior web credential and returns a
+failed password-change response, preventing silent credential divergence.
+
+`GET /api/v1/settings/backup` requires a paired token and returns automatic
+backup enablement, retained-history policy, and the configured interval and its
+1-43,200 minute bounds.
+`PUT /api/v1/settings/backup` additionally requires `admin:actions` and accepts
+exactly `{"enabled":true|false,"interval_minutes":1..43200,"keep_history":true|false}`.
+The rolling backup is additive and never propagates source deletions. When
+history is enabled, every dated snapshot is retained without automatic pruning.
+The request is
+passed through stdin to a root-owned fixed helper. No API-selected file, unit,
+command, or free-form argument is accepted.
+
 The action dispatcher is still a fixed allowlist matching the web panel: status,
 self-test, Wi-Fi/cellular controls and tests, storage and backup operations,
 Meshtastic restart, service/time/GPS restarts, restart logs, reboot, and
@@ -122,6 +149,12 @@ no user-selected unit, executable, shell, environment, or argument. This keeps
 unrelated API actions sandboxed, keeps API status aligned with the web panel's
 host view, and ensures backup and mount operations act on the current PCS host
 USB state rather than a stale service-local view.
+
+Backup-policy changes use the same boundary: after strict JSON validation, the
+fixed helper re-enters the host through a transient PID-1-managed service with
+only two booleans and a bounded integer. It atomically updates
+`/etc/pcs-backup/config.json`, enables or disables the fixed timer, and restores
+the prior policy if the runtime change fails.
 
 Errors use `application/problem+json` with a stable `code` and a generated
 request identifier.

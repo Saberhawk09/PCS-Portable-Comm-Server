@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "PCS Stats API",
-    "version": "1.1.0",
-    "description": "Portable Comm Server status, enrollment, and fixed administrative actions. Public status uses a strict allowlist. Paired device tokens add admin-visible status and may invoke only the existing control-panel action allowlist; no arbitrary command endpoint exists."
+    "version": "1.2.0",
+    "description": "Portable Comm Server status, safe health alerts, enrollment, automatic-backup settings, and fixed administrative actions. Public status uses a strict allowlist. Paired device tokens add admin-visible status and may invoke only bounded settings and the existing control-panel action allowlist; no arbitrary command endpoint exists."
   },
   "servers": [
     {
@@ -16,6 +16,7 @@
     {"name": "Pairing"},
     {"name": "Actions"},
     {"name": "Administration"},
+    {"name": "Settings"},
     {"name": "Stats"}
   ],
   "paths": {
@@ -129,8 +130,8 @@
       "post": {
         "operationId": "changeAdminPassword",
         "tags": ["Administration"],
-        "summary": "Change the PCS web administrator password",
-        "description": "Requires the admin:password scope and the current administrator password. The new password is passed only to the fixed root-owned password helper and is never logged or returned.",
+        "summary": "Change the PCS web administrator and PCS-Backup password",
+        "description": "Requires the admin:password scope and the current administrator password. The new password is passed only to the fixed root-owned password helper, synchronized to the dedicated pcs-admin Samba account, and never logged or returned. A Samba failure restores the prior web credential.",
         "security": [{"adminBearerAuth": []}],
         "requestBody": {
           "required": true,
@@ -148,6 +149,41 @@
           "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
           "429": {"$ref": "#/components/responses/RateLimited"},
           "503": {"$ref": "#/components/responses/PasswordChangeUnavailable"}
+        }
+      }
+    },
+    "/api/v1/settings/backup": {
+      "get": {
+        "operationId": "getBackupSettings",
+        "tags": ["Settings"],
+        "summary": "Read the automatic-backup policy",
+        "description": "Requires any paired PCS device token. The policy is non-secret and contains only enablement and a bounded interval.",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {"$ref": "#/components/responses/BackupSettingsResponse"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "503": {"$ref": "#/components/responses/BackupSettingsUnavailable"}
+        }
+      },
+      "put": {
+        "operationId": "updateBackupSettings",
+        "tags": ["Settings"],
+        "summary": "Enable or disable automatic backups and set their interval",
+        "description": "Requires admin:actions. The fixed helper validates the exact JSON shape, atomically preserves or replaces the root-owned policy, and synchronizes the fixed systemd timer through the host namespace.",
+        "security": [{"adminBearerAuth": []}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/BackupSettingsRequest"}}}
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/BackupSettingsResponse"},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "503": {"$ref": "#/components/responses/BackupSettingsUnavailable"}
         }
       }
     },
@@ -214,7 +250,7 @@
           "generated_at": {"type": ["string", "null"], "format": "date-time"},
           "health": {"$ref": "#/components/schemas/Health"},
           "access": {"type": "string", "enum": ["public", "authenticated"]},
-          "data": {"type": "object"},
+          "data": {"type": "object", "description": "Status sections. The status resource also contains an alerts array of public-safe component, severity, and message summaries."},
           "details": {"type": ["object", "null"]}
         },
         "additionalProperties": false
@@ -335,6 +371,42 @@
         },
         "additionalProperties": false
       },
+      "BackupSettingsRequest": {
+        "type": "object",
+        "required": ["enabled", "interval_minutes", "keep_history"],
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "interval_minutes": {"type": "integer", "minimum": 1, "maximum": 43200},
+          "keep_history": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      },
+      "BackupSettingsData": {
+        "type": "object",
+        "required": ["enabled", "interval_minutes", "keep_history", "minimum_interval_minutes", "maximum_interval_minutes", "non_destructive"],
+        "properties": {
+          "enabled": {"type": "boolean"},
+          "interval_minutes": {"type": "integer", "minimum": 1, "maximum": 43200},
+          "keep_history": {"type": "boolean"},
+          "minimum_interval_minutes": {"const": 1},
+          "maximum_interval_minutes": {"const": 43200},
+          "non_destructive": {"const": true}
+        },
+        "additionalProperties": false
+      },
+      "BackupSettingsEnvelope": {
+        "type": "object",
+        "required": ["api_version", "schema_version", "resource", "access", "data"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "schema_version": {"const": "1.0"},
+          "resource": {"const": "backup-settings"},
+          "access": {"const": "authenticated"},
+          "data": {"$ref": "#/components/schemas/BackupSettingsData"},
+          "request_id": {"type": "string", "description": "Present after a successful update."}
+        },
+        "additionalProperties": false
+      },
       "Problem": {
         "type": "object",
         "required": ["type", "title", "status", "code", "request_id"],
@@ -367,6 +439,8 @@
       "ActionUnavailable": {"description": "The fixed dispatcher was unavailable or another action is running", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
       "ActionTimeout": {"description": "The fixed administrative action exceeded its bounded timeout", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
       "PasswordChangeResponse": {"description": "Administrator password changed", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/PasswordChangeResponse"}}}},
+      "BackupSettingsResponse": {"description": "Current automatic-backup policy", "content": {"application/vnd.pcs.v1+json": {"schema": {"$ref": "#/components/schemas/BackupSettingsEnvelope"}}}},
+      "BackupSettingsUnavailable": {"description": "The fixed host backup-policy helper was unavailable or failed", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
       "PasswordChangeUnauthorized": {"description": "The current administrator password was not accepted", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
       "PasswordChangeForbidden": {"description": "The token lacks admin:password scope", "headers": {"WWW-Authenticate": {"schema": {"type": "string"}}}, "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},
       "PasswordChangeUnavailable": {"description": "The fixed password helper was unavailable or failed", "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}},

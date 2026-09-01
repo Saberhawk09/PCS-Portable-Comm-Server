@@ -4,6 +4,35 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.5] - 2026-08-31
+
+### Added
+
+- show the active warning or fault summary beside the main PCS health indicator
+  in both the web dashboard header and the Android application's top status bar
+- configurable automatic additive backups with administrator controls in the
+  web panel, authenticated API, and PCS Companion app for enablement, a
+  1-43,200 minute interval, and optional retention of every dated snapshot;
+  fresh installations default to enabled every 10 minutes
+- repeatable LAN-only Windows discovery for the clickable `PCS-FILE-SHARE`
+  server identity using one WSD/LLMNR responder, an Avahi `PCS File Share`
+  service, and interface-restricted firewall rules
+- a dedicated `pcs-admin` Samba identity for `PCS-Backup`, transactionally
+  synchronized with the current PCS web-administrator password while leaving
+  the existing `PCS-Share` credentials unchanged
+- production-signed PCS Companion v0.2.0 APK bundled with the PCS v1.5 GitHub
+  Release
+
+### Changed
+
+- make backup synchronization additive: files removed from the USB primary are
+  retained in the rolling SD backup, while optional snapshots preserve prior
+  versions without pruning existing history
+- preserve an appliance's saved automatic-backup policy across installer reruns
+  and live acceptance tests instead of silently replacing operator settings
+- classify disabled, not-yet-due, and unchanged automatic backups as normal
+  states rather than making the overall PCS headline report `BAD`
+
 ### Fixed
 
 - run status, self-test, storage status, and backup synchronization through the
@@ -348,7 +377,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.5...HEAD
+[1.5]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4.1...v1.5
 [1.4.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4...v1.4.1
 [1.4]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.2...v1.4
 [1.3.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.1...v1.3.2

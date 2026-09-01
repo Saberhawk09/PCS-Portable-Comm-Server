@@ -20,6 +20,10 @@ PCS-Share   -> /mnt/pcs-usb/PCS-Share
 PCS-Backup  -> /srv/pcs-share-backup
 ```
 
+On Windows and compatible network browsers, PCS advertises itself as
+**PCS-FILE-SHARE**. The managed SMB host alias is also `PCS-FILE-SHARE`, while
+`pcs-pi.local` and direct IP paths remain supported.
+
 ## Share Roles
 
 ### `PCS-Share`
@@ -114,6 +118,16 @@ and exposes it as:
 \\10.42.0.1\PCS-Backup
 ```
 
+`PCS-Backup` uses the dedicated Samba username `pcs-admin` and the current PCS
+web administrator password. The password helper updates both credentials as one
+operation when the password changes through the web panel, Stats API/Android
+app, or the interactive control-panel installer. `PCS-Share` retains its
+existing Samba username and password.
+
+On an upgraded PCS, the installer asks for the current admin password once to
+initialize the dedicated backup account. It is sent only over local standard
+input and is never stored as plaintext or placed in a process argument.
+
 ## Manual Backup Sync
 
 Run:
@@ -128,11 +142,39 @@ Sync direction:
 /mnt/pcs-usb/PCS-Share -> /srv/pcs-share-backup
 ```
 
-Warning: this is mirror-style sync.
+Backup sync is additive. If files are deleted from the USB primary share, the
+matching files remain on the SD backup.
 
-If files are deleted from the USB primary share, the matching files may also be removed from the backup mirror during sync.
+## Automatic Backup Sync
+
+The base installer installs `pcs-backup.timer` and enables automatic backups
+with a 10-minute default interval. The timer wakes every minute, but
+`pcs-auto-backup` calls the existing fixed sync action only after the configured
+interval is due. Manual and automatic dispatcher syncs share a non-blocking
+lock, so they cannot copy the tree concurrently.
+
+Open **Backup Settings** in the authenticated web menu, or **Configure** in a
+paired PCS Companion app, to change enablement, the 1-43,200 minute interval,
+or retained snapshot history. The root-owned policy is stored at
+`/etc/pcs-backup/config.json`; do not edit it by hand while the timer is active.
+
+```bash
+systemctl status pcs-backup.timer --no-pager
+sudo /usr/local/sbin/pcs-backup-config show
+```
+
+Automatic and manual syncs never delete destination files. When **Keep every
+prior backup snapshot** is enabled, dated snapshots are stored under
+`PCS-Backup-History`; unchanged files are space-efficient hard links, every
+snapshot remains independently browsable, and no snapshots are pruned
+automatically. Monitor SD-card free space when using history.
 
 ## Windows Client Access
+
+With Windows Network Discovery enabled on a **Private** network, open
+**Network** in File Explorer and select **PCS-FILE-SHARE**. PCS advertises only
+on `eth0` and `wlan0`; it does not multicast discovery over cellular or
+WireGuard. Direct paths continue to work when discovery is unavailable.
 
 From Windows File Explorer:
 
@@ -146,7 +188,33 @@ Backup share:
 \\10.42.0.1\PCS-Backup
 ```
 
-If Windows prompts for credentials, use the PCS Samba credentials configured during setup.
+For `PCS-Share`, use the existing PCS Samba credentials configured during
+setup. For `PCS-Backup`, use username `pcs-admin` and the current PCS web-admin
+password.
+
+Windows normally permits only one credential set per server name at a time. If
+`PCS-Share` is already connected under its existing account, use the IP path for
+that share and `\\PCS-FILE-SHARE\PCS-Backup` for the backup, or disconnect the
+old session before authenticating as `pcs-admin`.
+
+## Repeatable Discovery Setup
+
+The base installer installs `wsdd2`, keeps its unrestricted vendor service
+masked, and installs `pcs-wsdd.service`. The PCS service runs one WSD responder
+so UDP discovery packets cannot be lost between competing processes. Its
+dedicated nftables guard exposes WSD (TCP/UDP 3702) and LLMNR name resolution
+(TCP/UDP 5355) only through `eth0` and `wlan0`, and drops both protocols on
+WireGuard, cellular, and other interfaces. Avahi also
+advertises `_smb._tcp` as **PCS File Share** for compatible non-Windows clients.
+
+To reapply just this configuration:
+
+```bash
+./scripts/setup-pcs-share-discovery.sh
+```
+
+The script validates Samba before restarting it, verifies all three services,
+and records a rollback snapshot under `/var/backups/pcs-share-discovery-*`.
 
 ## Windows Client Testing
 
@@ -186,7 +254,7 @@ Recommended practice:
 
 - create a folder per event
 - keep the active log file in that event folder
-- periodically run backup sync from PCS Control Panel or SSH
+- confirm automatic backup health or run a manual final sync before teardown
 - confirm backup share contains updated files before teardown
 
 Example:

@@ -241,6 +241,29 @@ Cockpit login page loads
 
 ## Samba Share Test
 
+On a Windows client whose network profile is **Private**, enable Network
+Discovery, open File Explorer **Network**, and refresh. Expected:
+
+```text
+PCS-FILE-SHARE
+```
+
+On PCS, verify the managed discovery processes and isolation:
+
+```bash
+systemctl is-enabled pcs-wsdd.service
+systemctl is-active pcs-wsdd.service
+systemctl is-enabled wsdd2.service
+pgrep -af /usr/sbin/wsdd2
+sudo /usr/local/sbin/pcs-wsdd-firewall check
+avahi-browse -rt _smb._tcp 2>/dev/null || true
+```
+
+Expected: `pcs-wsdd.service` is enabled and active, the vendor `wsdd2.service`
+is masked, exactly one `wsdd2` process is running, its dedicated firewall check
+passes, and Avahi reports **PCS File Share**. The firewall must expose WSD and
+LLMNR only through `eth0` and `wlan0`.
+
 From Windows File Explorer:
 
 ```text
@@ -264,6 +287,12 @@ Expected:
 ```text
 Backup share opens
 ```
+
+Authenticate to `PCS-Backup` as `pcs-admin` using the current PCS web-admin
+password. Confirm the original `PCS-Share` credentials still work. Change the
+administrator password once through an authenticated client, verify the old
+password no longer opens either the admin panel or `PCS-Backup`, and verify the
+new password opens both. Restore the intended production password afterward.
 
 Command Prompt:
 
@@ -320,6 +349,17 @@ Expected:
 ```text
 The test file appears in PCS-Backup
 ```
+
+Also verify the authenticated web panel and paired Android app show the same
+automatic-backup enablement and interval. Change the interval in one client,
+reload the other, and confirm the value agrees. Disable automation and verify
+`pcs-backup.timer` is disabled and inactive; re-enable it and verify the timer
+is enabled and active. Leave the intended production interval selected after
+the test. The manual sync button must continue to work in both states.
+
+When any dashboard card is forced into a safe test warning, confirm its
+component and summary appear beside the main status in both the sticky web
+header and Android top status line.
 
 ## Chrony / NTP Test
 
@@ -911,6 +951,11 @@ Before using PCS for an event:
 - [ ] Client can open `PCS-Share`
 - [ ] Client can write to `PCS-Share`
 - [ ] Backup sync works
+- [ ] Automatic backup enablement, minute interval, and history policy agree in web and Android pop-ups
+- [ ] Automatic backup timer state follows enablement and manual sync still works
+- [ ] Removing a disposable source test file does not remove its rolling SD backup copy
+- [ ] With history enabled, consecutive dated snapshots remain browsable and older snapshots are not pruned
+- [ ] Active warning/fault summaries appear in both web and Android status headers
 - [ ] Client can access `PCS-Backup`
 - [ ] Windows NTP test works
 - [ ] GPS source appears in Chrony when antenna has sky view

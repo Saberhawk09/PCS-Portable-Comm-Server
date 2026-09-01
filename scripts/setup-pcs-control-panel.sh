@@ -9,6 +9,8 @@ DISPATCHER_SRC="${REPO_DIR}/scripts/pcs-web-action.sh"
 DISPATCHER_DST="/usr/local/sbin/pcs-web-action"
 PASSWORD_HELPER_SRC="${REPO_DIR}/scripts/pcs-admin-password-helper.py"
 PASSWORD_HELPER_DST="/usr/local/sbin/pcs-admin-password-helper"
+BACKUP_CONFIG_HELPER_SRC="${REPO_DIR}/scripts/pcs_backup_config.py"
+BACKUP_CONFIG_HELPER_DST="/usr/local/sbin/pcs-backup-config"
 APRS_TELEMETRY_SRC="${REPO_DIR}/scripts/pcs_aprs_telemetry.py"
 APRS_TELEMETRY_DST="/usr/local/sbin/pcs-aprs-telemetry"
 SERVICE_SRC="${REPO_DIR}/systemd/pcs-control-panel.service"
@@ -18,6 +20,7 @@ REDIRECT_SERVICE_DST="/etc/systemd/system/pcs-dashboard-redirect.service"
 AUTH_DIR="/etc/pcs-control-panel"
 ADMIN_FILE="${AUTH_DIR}/admin.json"
 SESSION_KEY_FILE="${AUTH_DIR}/session.key"
+BACKUP_ADMIN_USER="pcs-admin"
 REMOVED_STANDBY_DIR="/opt/pcs-control-panel-standby"
 REMOVED_STANDBY_SERVICE="/etc/systemd/system/pcs-control-panel-standby.service"
 SUDOERS_FILE="/etc/sudoers.d/pcs-control-panel"
@@ -68,6 +71,7 @@ for required_file in \
     "${REDIRECT_SRC}" \
     "${DISPATCHER_SRC}" \
     "${PASSWORD_HELPER_SRC}" \
+    "${BACKUP_CONFIG_HELPER_SRC}" \
     "${SERVICE_SRC}" \
     "${REDIRECT_SERVICE_SRC}"; do
     if [[ ! -f "${required_file}" ]]; then
@@ -86,6 +90,7 @@ sudo install -o root -g root -m 0755 "${DISPATCHER_SRC}" "${DISPATCHER_DST}"
 
 echo "Installing root-owned PCS admin password helper..."
 sudo install -o root -g root -m 0755 "${PASSWORD_HELPER_SRC}" "${PASSWORD_HELPER_DST}"
+sudo install -o root -g root -m 0755 "${BACKUP_CONFIG_HELPER_SRC}" "${BACKUP_CONFIG_HELPER_DST}"
 sudo install -o root -g root -m 0755 "${APRS_TELEMETRY_SRC}" "${APRS_TELEMETRY_DST}"
 
 echo "Installing sudoers allowlist..."
@@ -94,6 +99,7 @@ cat >"${SUDOERS_TEMP}" <<EOF
 # Allow the PCS web application to invoke only its fixed dispatcher actions.
 pi ALL=(root) NOPASSWD: ${DISPATCHER_DST} dashboard-public-json, ${DISPATCHER_DST} dashboard-json, ${DISPATCHER_DST} status, ${DISPATCHER_DST} self-test, ${DISPATCHER_DST} meshtastic-status, ${DISPATCHER_DST} restart-meshtastic, ${DISPATCHER_DST} storage-status, ${DISPATCHER_DST} wifi-status, ${DISPATCHER_DST} wifi-connect, ${DISPATCHER_DST} wifi-disconnect, ${DISPATCHER_DST} cellular-status, ${DISPATCHER_DST} cellular-connect, ${DISPATCHER_DST} cellular-disconnect, ${DISPATCHER_DST} cellular-test, ${DISPATCHER_DST} sync-backup, ${DISPATCHER_DST} mount-usb, ${DISPATCHER_DST} mount-new-usb, ${DISPATCHER_DST} safe-unmount-usb, ${DISPATCHER_DST} restart-services, ${DISPATCHER_DST} restart-samba, ${DISPATCHER_DST} restart-modemmanager, ${DISPATCHER_DST} sync-time, ${DISPATCHER_DST} restart-chrony, ${DISPATCHER_DST} restart-gpsd, ${DISPATCHER_DST} restart-logs, ${DISPATCHER_DST} reboot-system, ${DISPATCHER_DST} shutdown-system
 pi ALL=(root) NOPASSWD: ${PASSWORD_HELPER_DST} --change-from-stdin
+pi ALL=(root) NOPASSWD: ${BACKUP_CONFIG_HELPER_DST} show, ${BACKUP_CONFIG_HELPER_DST} set-from-stdin
 EOF
 chmod 0600 "${SUDOERS_TEMP}"
 sudo visudo -cf "${SUDOERS_TEMP}"
@@ -102,6 +108,9 @@ rm -f -- "${SUDOERS_TEMP}"
 SUDOERS_TEMP=""
 
 echo "Preparing local authentication files..."
+if ! getent passwd "${BACKUP_ADMIN_USER}" >/dev/null; then
+    sudo useradd --system --no-create-home --shell /usr/sbin/nologin "${BACKUP_ADMIN_USER}"
+fi
 sudo install -d -o root -g pi -m 0750 "${AUTH_DIR}"
 if ! sudo test -s "${SESSION_KEY_FILE}"; then
     SESSION_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
@@ -137,6 +146,18 @@ if [[ "${CONFIGURE_ADMIN_PASSWORD}" -eq 1 ]]; then
         echo "Configure it later with:"
         echo "  ./scripts/setup-pcs-control-panel.sh --reset-admin-password"
     fi
+fi
+
+if sudo test -s "${ADMIN_FILE}" \
+    && ! sudo pdbedit -L 2>/dev/null | cut -d: -f1 | grep -Fxq "${BACKUP_ADMIN_USER}"; then
+    if [[ ! -t 0 ]]; then
+        echo "ERROR: PCS-Backup has not yet been synchronized with the PCS admin password." >&2
+        echo "Rerun this installer interactively to initialize its dedicated Samba credential." >&2
+        exit 1
+    fi
+    echo
+    echo "Enter the current PCS admin password once to initialize PCS-Backup access."
+    sudo "${PASSWORD_HELPER_DST}" --sync-samba-password
 fi
 
 if sudo test -s "${ADMIN_FILE}"; then

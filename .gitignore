@@ -9,10 +9,12 @@ Thumbs.db
 *.tmp
 *.bak
 *.swp
+.codex-remote-attachments/
 
 # Python / scripts
 __pycache__/
 *.pyc
+.pytest_cache/
 .venv/
 venv/
 

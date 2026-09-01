@@ -25,6 +25,7 @@ This installs/configures:
 - Optional Pi-Star coordinated-shutdown pairing at the first usable PCS-LAN point
 - RTC
 - Samba shares
+- Automatic USB-primary to SD-backup scheduling with a configurable policy
 - Chrony LAN NTP
 - Optional WWAN GNSS and LAN-only GPSD sharing
 - Optional Pi-Star monitoring and local-access links
@@ -675,6 +676,28 @@ Creates the SD-card backup share:
 \\10.42.0.1\PCS-Backup -> /srv/pcs-share-backup
 ```
 
+The share is restricted to the dedicated `pcs-admin` Samba account. Its
+password is synchronized with the PCS web-admin password while the existing
+`PCS-Share` account remains unchanged. Upgrades perform a one-time interactive
+sync before changing the live share ACL.
+
+### setup-pcs-share-discovery.sh
+
+Installs the repeatable LAN-only discovery layer. Windows WSD advertises the
+clickable name **PCS-FILE-SHARE**, Avahi advertises **PCS File Share**, and Samba
+uses the same valid `PCS-FILE-SHARE` host alias. The managed service uses one
+WSD/LLMNR process plus a dedicated nftables guard that exposes TCP/UDP 3702 and
+5355 only through `eth0` and `wlan0`. The vendor all-interface
+`wsdd2.service` stays masked. The installer validates Samba, the firewall, and
+active services and retains a rollback snapshot.
+
+```bash
+./scripts/setup-pcs-share-discovery.sh
+```
+
+`pcs-wsdd.sh`, `pcs-wsdd-firewall.sh`, and `pcs-wsdd.service` are installed
+automatically by this step.
+
 ### setup-usb-primary-share.sh
 
 Configures removable USB storage as the primary Samba share:
@@ -709,6 +732,17 @@ exfat
 ext4
 ```
 
+### setup-pcs-backup.sh
+
+Installs the root-owned automatic-backup policy helper, fixed timer/service,
+and due-check runner. New installs default to enabled every 10 minutes; existing
+`/etc/pcs-backup/config.json` is preserved. Version 1 hourly policies are
+migrated to the equivalent version 2 minute interval. The timer checks every minute
+and runs the additive backup action only when due. Web and Android settings are
+validated to 1-43,200 whole minutes and can retain every dated snapshot.
+Disabling automation leaves every manual sync
+button available.
+
 ### sync-pcs-share-to-backup.sh
 
 Mirrors the USB primary share to the SD-card backup share.
@@ -723,7 +757,8 @@ Sync direction:
 /mnt/pcs-usb/PCS-Share -> /srv/pcs-share-backup
 ```
 
-Warning: this is a mirror-style sync. Files deleted from the USB primary share may also be deleted from the backup mirror.
+Sync is additive. Files deleted from the USB primary share remain on the SD
+backup. Optional dated snapshots are never automatically pruned.
 
 ## PCS Control Panel
 

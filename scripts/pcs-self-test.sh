@@ -27,6 +27,11 @@ PCS_SAMBA_PATH="/mnt/pcs-usb/PCS-Share"
 
 PCS_BACKUP_SHARE="PCS-Backup"
 PCS_BACKUP_PATH="/srv/pcs-share-backup"
+PCS_BACKUP_CONFIG_HELPER="/usr/local/sbin/pcs-backup-config"
+PCS_BACKUP_ADMIN_USER="pcs-admin"
+PCS_SAMBA_SERVER_ALIAS="PCS-FILE-SHARE"
+PCS_SAMBA_SERVER_DESCRIPTION="Portable Comm Server"
+PCS_WSDD_SERVICE="pcs-wsdd.service"
 
 PCS_CONTROL_SERVICE="pcs-control-panel.service"
 PCS_CONTROL_PORT="80"
@@ -593,10 +598,93 @@ else
     fail "Samba backup share path missing: ${PCS_BACKUP_PATH}"
 fi
 
+section "Automatic Backup"
+
+if [[ ! -x "${PCS_BACKUP_CONFIG_HELPER}" ]]; then
+    fail "PCS automatic backup configuration helper is missing"
+else
+    BACKUP_CONFIG_JSON="$(sudo -n "${PCS_BACKUP_CONFIG_HELPER}" show 2>/dev/null || true)"
+    if printf '%s' "${BACKUP_CONFIG_JSON}" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert set(d) == {"version","enabled","interval_minutes","keep_history"}; assert d["version"] == 2; assert isinstance(d["enabled"], bool); assert isinstance(d["keep_history"], bool); assert isinstance(d["interval_minutes"], int) and not isinstance(d["interval_minutes"], bool); assert 1 <= d["interval_minutes"] <= 43200' 2>/dev/null; then
+        pass "PCS automatic backup configuration is valid"
+    else
+        fail "PCS automatic backup configuration is invalid"
+    fi
+
+    if printf '%s' "${BACKUP_CONFIG_JSON}" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("enabled") else 1)' 2>/dev/null; then
+        if service_enabled pcs-backup.timer && service_active pcs-backup.timer; then
+            pass "PCS automatic backup timer is enabled and active"
+        else
+            fail "Enabled PCS automatic backups require an enabled, active timer"
+        fi
+    else
+        if ! service_enabled pcs-backup.timer && ! service_active pcs-backup.timer; then
+            pass "Disabled PCS automatic backups have no active timer"
+        else
+            fail "Disabled PCS automatic backups still have an enabled or active timer"
+        fi
+    fi
+fi
+
 if testparm -s 2>/dev/null | grep -q "^\[${PCS_BACKUP_SHARE}\]"; then
     pass "Samba config contains [${PCS_BACKUP_SHARE}]"
 else
     fail "Samba config does not contain [${PCS_BACKUP_SHARE}]"
+fi
+
+SAMBA_BACKUP_USERS="$(testparm -s --section-name="${PCS_BACKUP_SHARE}" --parameter-name='valid users' 2>/dev/null || true)"
+if [[ "${SAMBA_BACKUP_USERS}" == "${PCS_BACKUP_ADMIN_USER}" ]]; then
+    pass "PCS-Backup is restricted to its dedicated administrator account"
+else
+    fail "PCS-Backup valid users must be exactly ${PCS_BACKUP_ADMIN_USER}"
+fi
+
+if sudo -n pdbedit -L 2>/dev/null | cut -d: -f1 | grep -Fxq "${PCS_BACKUP_ADMIN_USER}"; then
+    pass "PCS-Backup administrator account exists in the Samba password database"
+else
+    fail "PCS-Backup administrator account is missing from the Samba password database"
+fi
+
+if [[ "$(testparm -s --parameter-name='netbios name' 2>/dev/null || true)" == "${PCS_SAMBA_SERVER_ALIAS}" ]] \
+    && [[ "$(testparm -s --parameter-name='server string' 2>/dev/null || true)" == "${PCS_SAMBA_SERVER_DESCRIPTION}" ]]; then
+    pass "Samba advertises the managed PCS file-server identity"
+else
+    fail "Samba file-server identity is not configured as ${PCS_SAMBA_SERVER_ALIAS}"
+fi
+
+if service_enabled "${PCS_WSDD_SERVICE}" && service_active "${PCS_WSDD_SERVICE}"; then
+    pass "PCS Windows file-share discovery is enabled and active"
+else
+    fail "PCS Windows file-share discovery is not enabled and active"
+fi
+
+if [[ "$(systemctl is-enabled wsdd2.service 2>/dev/null || true)" == "masked" ]]; then
+    pass "The unrestricted vendor wsdd2 service is masked"
+else
+    fail "The unrestricted vendor wsdd2 service must remain masked"
+fi
+
+WSDD_ARGS="$(pgrep -af '^/usr/sbin/wsdd2 ' 2>/dev/null || true)"
+if [[ "$(printf '%s\n' "${WSDD_ARGS}" | grep -c . || true)" == "1" ]] \
+    && ! printf '%s\n' "${WSDD_ARGS}" | grep -Fq -- ' -i ' \
+    && ! printf '%s\n' "${WSDD_ARGS}" | grep -Fq -- ' -w ' \
+    && printf '%s\n' "${WSDD_ARGS}" | grep -Fq -- '-H pcs-file-share' \
+    && printf '%s\n' "${WSDD_ARGS}" | grep -Fq -- '-N PCS-FILE-SHARE'; then
+    pass "PCS discovery uses one non-conflicting WSD responder"
+else
+    fail "PCS discovery must use one WSD/LLMNR responder with the PCS-FILE-SHARE identity"
+fi
+
+if sudo -n /usr/local/sbin/pcs-wsdd-firewall check >/dev/null 2>&1; then
+    pass "PCS discovery and name resolution are restricted to Ethernet and Wi-Fi"
+else
+    fail "PCS discovery firewall must expose WSD and LLMNR only on eth0 and wlan0"
+fi
+
+if grep -Fq '<name replace-wildcards="no">PCS File Share</name>' /etc/avahi/services/pcs-smb.service 2>/dev/null \
+    && grep -Fq '<type>_smb._tcp</type>' /etc/avahi/services/pcs-smb.service 2>/dev/null; then
+    pass "Avahi advertises PCS File Share over SMB"
+else
+    fail "PCS Avahi SMB advertisement is missing or invalid"
 fi
 
 if [[ -f "${PCS_BACKUP_PATH}/LAST_SYNC.txt" ]]; then

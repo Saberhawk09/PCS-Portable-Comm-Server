@@ -283,7 +283,16 @@ usb_fstab_source_present() {
 }
 
 sync_backup() {
+    local backup_lock_fd history_enabled history_root snapshot_name snapshot_path previous_snapshot
+    local -a snapshot_args
+
     header "Sync USB Primary to SD Backup"
+
+    exec {backup_lock_fd}>/run/lock/pcs-backup.lock
+    if ! flock -n "${backup_lock_fd}"; then
+        echo "ERROR: another PCS backup is already running."
+        return 75
+    fi
 
     ensure_usb_mounted
 
@@ -301,15 +310,48 @@ sync_backup() {
     echo "Backup:  ${BACKUP_SHARE}"
     echo
 
-    rsync -rtvh --delete \
+    rsync -rtvh \
         --modify-window=2 \
         --exclude "LAST_SYNC.txt" \
+        --exclude "PCS-Backup-History/" \
+        --chown "${PCS_USER}:${PCS_USER}" \
+        --chmod 'D2775,F0660' \
         "${PRIMARY_SHARE}/" \
         "${BACKUP_SHARE}/"
 
-    chown -R "${PCS_USER}:${PCS_USER}" "${BACKUP_SHARE}"
-    chmod -R u+rwX,g+rwX,o-rwx "${BACKUP_SHARE}"
-    find "${BACKUP_SHARE}" -type d -exec chmod 2775 {} \;
+    history_enabled="$(python3 - <<'PY'
+import json
+try:
+    with open('/etc/pcs-backup/config.json', encoding='utf-8') as source:
+        value = json.load(source)
+    print('yes' if value.get('version') == 2 and value.get('keep_history') is True else 'no')
+except Exception:
+    print('no')
+PY
+)"
+
+    if [[ "${history_enabled}" == "yes" ]]; then
+        history_root="${BACKUP_SHARE}/PCS-Backup-History"
+        install -d -o "${PCS_USER}" -g "${PCS_USER}" -m 2775 "${history_root}"
+        snapshot_name="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+        snapshot_path="${history_root}/.incomplete-${snapshot_name}"
+        previous_snapshot="$(find "${history_root}" -mindepth 1 -maxdepth 1 -type d ! -name '.incomplete-*' -printf '%p\n' | LC_ALL=C sort | tail -n 1)"
+
+        snapshot_args=(-rtvh --modify-window=2 --exclude "PCS-Backup-History/" --chown "${PCS_USER}:${PCS_USER}" --chmod 'D2775,F0660')
+        if [[ -n "${previous_snapshot}" ]]; then
+            snapshot_args+=(--link-dest "${previous_snapshot}")
+        fi
+        if ! rsync "${snapshot_args[@]}" "${PRIMARY_SHARE}/" "${snapshot_path}/"; then
+            rm -rf -- "${snapshot_path}"
+            echo "ERROR: retained backup snapshot failed."
+            return 1
+        fi
+        mv "${snapshot_path}" "${history_root}/${snapshot_name}"
+        echo "Retained snapshot: ${history_root}/${snapshot_name}"
+    fi
+
+    chown "${PCS_USER}:${PCS_USER}" "${BACKUP_SHARE}"
+    chmod 2775 "${BACKUP_SHARE}"
 
     date | tee "${BACKUP_SHARE}/LAST_SYNC.txt" >/dev/null
     chown "${PCS_USER}:${PCS_USER}" "${BACKUP_SHARE}/LAST_SYNC.txt"
@@ -961,13 +1003,15 @@ def nm_connection_method(connection_name):
         return out.strip()
     return "unknown"
 
-def count_files(path):
+def count_files(path, excluded_top_level=None):
     if not os.path.isdir(path):
         return 0
 
     total = 0
     try:
-        for _, _, files in os.walk(path):
+        for root, directories, files in os.walk(path):
+            if root == path and excluded_top_level:
+                directories[:] = [name for name in directories if name != excluded_top_level]
             total += len(files)
     except Exception:
         return 0
@@ -989,16 +1033,52 @@ def human_age(seconds):
         return f"{hours}h {minutes}m ago"
     return f"{minutes}m ago"
 
+def backup_policy():
+    path = "/etc/pcs-backup/config.json"
+    default = {"configured": False, "enabled": True, "interval_minutes": 10, "keep_history": False}
+    try:
+        with open(path, "r", encoding="utf-8") as source:
+            value = json.load(source)
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"version", "enabled", "interval_minutes", "keep_history"}
+            or value.get("version") != 2
+            or not isinstance(value.get("enabled"), bool)
+            or isinstance(value.get("interval_minutes"), bool)
+            or not isinstance(value.get("interval_minutes"), int)
+            or not 1 <= value["interval_minutes"] <= 43200
+            or not isinstance(value.get("keep_history"), bool)
+        ):
+            return {**default, "error": "invalid configuration"}
+        return {
+            "configured": True,
+            "enabled": value["enabled"],
+            "interval_minutes": value["interval_minutes"],
+            "keep_history": value["keep_history"],
+        }
+    except FileNotFoundError:
+        return default
+    except Exception:
+        return {**default, "error": "unreadable configuration"}
+
 def backup_health():
     primary = "/mnt/pcs-usb/PCS-Share"
     backup = "/srv/pcs-share-backup"
+    history_root = os.path.join(backup, "PCS-Backup-History")
     last_sync = os.path.join(backup, "LAST_SYNC.txt")
 
     primary_present = os.path.isdir(primary)
     backup_present = os.path.isdir(backup)
 
     primary_files = count_files(primary)
-    backup_files = count_files(backup)
+    backup_files = count_files(backup, "PCS-Backup-History")
+    try:
+        snapshots = sorted(
+            entry.name for entry in os.scandir(history_root)
+            if entry.is_dir(follow_symlinks=False) and not entry.name.startswith(".incomplete-")
+        )
+    except OSError:
+        snapshots = []
 
     last_sync_text = "missing"
     last_sync_age = None
@@ -1007,24 +1087,52 @@ def backup_health():
         try:
             with open(last_sync, "r", encoding="utf-8", errors="replace") as f:
                 last_sync_text = f.read().strip() or "present"
-            last_sync_age = time.time() - os.path.getmtime(last_sync)
+            last_sync_age = max(0, time.time() - os.path.getmtime(last_sync))
         except Exception:
             last_sync_text = "unreadable"
 
-    stale = last_sync_age is None or last_sync_age > 86400
+    policy = backup_policy()
+    timer_active = active("pcs-backup.timer")
+    timer_enabled = enabled("pcs-backup.timer")
+    due_after = policy["interval_minutes"] * 60
+    overdue = last_sync_age is None or last_sync_age > due_after + 120
 
-    status = "ok"
-    if not primary_present or not backup_present or stale:
+    if not primary_present or not backup_present:
         status = "warn"
+        summary = "Backup storage is unavailable"
+    elif policy.get("error") or not policy["configured"]:
+        status = "warn"
+        summary = "Automatic backup configuration needs attention"
+    elif policy["enabled"] and (not timer_active or not timer_enabled):
+        status = "warn"
+        summary = "Automatic backup timer is not running"
+    elif policy["enabled"] and overdue:
+        status = "warn"
+        summary = "Automatic backup is overdue"
+    elif policy["enabled"]:
+        status = "ok"
+        summary = "Automatic backup is scheduled and current"
+    else:
+        status = "ok"
+        summary = "Automatic backups disabled; manual sync remains available"
 
     return {
         "status": status,
+        "summary": summary,
         "primary_present": primary_present,
         "backup_present": backup_present,
         "primary_files": primary_files,
         "backup_files": backup_files,
         "last_sync_text": last_sync_text,
         "last_sync_age": human_age(last_sync_age),
+        "automatic_enabled": policy["enabled"],
+        "interval_minutes": policy["interval_minutes"],
+        "keep_history": policy["keep_history"],
+        "history_count": len(snapshots),
+        "latest_snapshot": snapshots[-1] if snapshots else "none",
+        "timer_active": timer_active,
+        "timer_enabled": timer_enabled,
+        "configured": policy["configured"],
     }
 
 def tcp_port_listening(port):
@@ -2021,6 +2129,7 @@ chrony_selected_gps = "(GPS)" in chrony_ref.upper()
 rtc_seed_active = active("pcs-rtc-seed.service")
 
 smbd_active = active("smbd")
+wsdd_active = active("pcs-wsdd.service")
 primary_share_ok = dir_exists(PRIMARY_SHARE) and has_samba_share("PCS-Share")
 backup_share_ok = dir_exists(BACKUP_SHARE) and has_samba_share("PCS-Backup")
 last_sync = file_text(os.path.join(BACKUP_SHARE, "LAST_SYNC.txt"))
@@ -2212,9 +2321,10 @@ chrony_gps_source_present = any(term in chrony_sources_out.upper() for term in [
     "NMEA",
 ])
 
-storage_status = "ok" if usb_mount and primary_share_ok and backup_share_ok and last_sync else "warn"
+storage_status = "ok" if usb_mount and primary_share_ok and backup_share_ok else "warn"
 time_status = "ok" if chrony_active and clock_sync == "yes" and not chrony_local_fallback else "warn"
-samba_status = "ok" if smbd_active and primary_share_ok and backup_share_ok else "bad"
+samba_base_ok = smbd_active and primary_share_ok and backup_share_ok
+samba_status = "ok" if samba_base_ok and wsdd_active else "warn" if samba_base_ok else "bad"
 services_status = "ok" if all(core_services.values()) else "warn"
 cellular_registered = cell_info.get("registration") in {"home", "roaming"}
 cellular_connected = cell_nm.get("state") == "connected"
@@ -2535,8 +2645,13 @@ cards = [
         "id": "backup-health",
         "title": "Backup Health",
         "status": backup_info["status"],
-        "summary": "Backup mirror recently updated" if backup_info["status"] == "ok" else "Backup mirror needs attention",
+        "summary": backup_info["summary"],
         "items": [
+            {"label": "Automatic backups", "value": "enabled" if backup_info["automatic_enabled"] else "disabled"},
+            {"label": "Backup interval", "value": f"{backup_info['interval_minutes']} minutes"},
+            {"label": "Retain every snapshot", "value": "enabled" if backup_info["keep_history"] else "disabled"},
+            {"label": "Retained snapshots", "value": str(backup_info["history_count"])},
+            {"label": "Scheduler", "value": "active" if backup_info["timer_active"] else "inactive"},
             {"label": "Primary share", "value": "present" if backup_info["primary_present"] else "missing"},
             {"label": "Backup share", "value": "present" if backup_info["backup_present"] else "missing"},
             {"label": "Primary file count", "value": str(backup_info["primary_files"])},
@@ -2626,11 +2741,12 @@ cards = [
         "id": "samba",
         "title": "Samba",
         "status": samba_status,
-        "summary": "Primary and backup shares active" if samba_status == "ok" else "Samba needs attention",
+        "summary": "Primary and backup shares automatically advertised" if samba_status == "ok" else "Shares active; discovery needs attention" if samba_status == "warn" else "Samba needs attention",
         "items": [
             {"label": "smbd", "value": "active" if smbd_active else "inactive"},
             {"label": "PCS-Share", "value": "present" if primary_share_ok else "missing"},
             {"label": "PCS-Backup", "value": "present" if backup_share_ok else "missing"},
+            {"label": "Windows discovery", "value": "PCS-FILE-SHARE" if wsdd_active else "inactive"},
             {"label": "Port 445", "value": "listening" if port_listening("445") else "not visible"},
         ],
     },
@@ -2806,6 +2922,16 @@ if any(card["status"] == "bad" for card in overall_cards):
 elif any(card["status"] == "warn" for card in overall_cards):
     overall = "warn"
 
+alerts = [
+    {
+        "severity": card["status"],
+        "component": card["title"],
+        "message": card["summary"],
+    }
+    for card in overall_cards
+    if card.get("status") in {"warn", "bad"}
+]
+
 client_info = {
     "router_ip": "10.42.0.1",
     "openwrt_url": "http://10.42.0.2/",
@@ -2825,6 +2951,7 @@ data = {
     "generated_at": datetime.now().isoformat(timespec="seconds"),
     "overall": overall,
     "offline": offline_mode,
+    "alerts": alerts,
     "client_info": client_info,
     "cards": cards,
 }
@@ -2908,6 +3035,12 @@ if PUBLIC_VIEW:
             "backup_share_available": backup_share_ok,
             "usb_free_gb": f"{usb_usage.get('free_gb')} GB" if usb_usage else "unavailable",
             "backup_free_gb": f"{backup_usage.get('free_gb')} GB" if backup_usage else "unavailable",
+            "backup_status": backup_info["status"],
+            "last_backup_age": backup_info["last_sync_age"],
+            "automatic_backup_enabled": backup_info["automatic_enabled"],
+            "backup_interval_minutes": backup_info["interval_minutes"],
+            "keep_backup_history": backup_info["keep_history"],
+            "backup_history_count": backup_info["history_count"],
         },
         "services": {
             "status": "ok" if smbd_active and web_admin["control_panel_active"] else "warn",
@@ -2967,23 +3100,16 @@ if PUBLIC_VIEW:
     }
 
     public_overall = "ok"
-    public_statuses = [
-        section.get("status")
-        for section_name, section in public_sections.items()
-        if isinstance(section, dict)
-        and section.get("status")
-        and not (section_name in {"aprs", "meshtastic"} and not section.get("configured"))
-        and not (offline_mode and section_name == "network" and openwrt_online)
-    ]
-    if "bad" in public_statuses:
+    if any(alert["severity"] == "bad" for alert in alerts):
         public_overall = "bad"
-    elif "warn" in public_statuses:
+    elif alerts:
         public_overall = "warn"
 
     data = {
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "overall": public_overall,
         "offline": offline_mode,
+        "alerts": alerts,
         **public_sections,
     }
 
@@ -3900,7 +4026,8 @@ case "${ACTION}" in
     restart-samba)
         header "Restart Samba"
         systemctl restart smbd
-        systemctl status smbd --no-pager -l || true
+        systemctl restart pcs-wsdd.service
+        systemctl status smbd pcs-wsdd.service --no-pager -l || true
         ;;
 
     restart-modemmanager)
