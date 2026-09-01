@@ -236,11 +236,10 @@ class DireWolfAprsTests(unittest.TestCase):
         base_setup = BASE_SETUP_SCRIPT.read_text(encoding="utf-8")
         uart_command = "./scripts/setup-direwolf-aprs.sh --prepare-uart"
         uart_index = base_setup.index(uart_command)
-        prepare_index = base_setup.index(
-            "./scripts/setup-direwolf-aprs.sh --prepare", uart_index + len(uart_command)
-        )
+        prepare_index = base_setup.index('if "${aprs_setup_script}" --prepare; then')
 
         self.assertLess(uart_index, prepare_index)
+        self.assertIn('aprs_setup_script="./scripts/setup-${PCS_APRS_ENGINE}-aprs.sh"', base_setup)
         self.assertIn('PCS_APRS_KISS_LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"', base_setup)
         self.assertIn('printf "PCS_APRS_ACTIVE_MODE=%q\\n"', base_setup)
 
@@ -268,7 +267,8 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn('ip saddr ${LAN_NETWORK} accept', script)
         self.assertIn('AGW_PORT="${PCS_APRS_AGW_PORT:-0}"', script)
         self.assertIn('PCS_APRS_FIREWALL_CONFIG:-/etc/pcs/aprs/kiss-firewall.conf', script)
-        self.assertIn('port_expression="{ ${AGW_PORT}, ${KISS_PORT} }"', script)
+        self.assertIn('GRAYWOLF_HTTP_PORT="${PCS_APRS_GRAYWOLF_HTTP_PORT:-0}"', script)
+        self.assertIn('check_port_rules "${rules}" "Graywolf HTTP" "${GRAYWOLF_HTTP_PORT}"', script)
         self.assertIn('tcp dport ${port_expression} drop', script)
         self.assertIn("Before=direwolf.service", service)
         self.assertIn("ExecStart=/usr/local/sbin/pcs-aprs-kiss-firewall --apply", service)

@@ -10,11 +10,12 @@ fi
 
 AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
+GRAYWOLF_HTTP_PORT="${PCS_APRS_GRAYWOLF_HTTP_PORT:-0}"
 LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"
 LAN_NETWORK="${PCS_APRS_KISS_LAN_NETWORK:-10.42.0.0/24}"
 MODE="${1:---apply}"
 
-for port_name in AGW_PORT KISS_PORT; do
+for port_name in AGW_PORT KISS_PORT GRAYWOLF_HTTP_PORT; do
     port_value="${!port_name}"
     if [[ ! "${port_value}" =~ ^[0-9]+$ ]] \
         || (( port_value < 0 || port_value > 65535 )); then
@@ -44,19 +45,28 @@ clear_rules() {
 
 apply_rules() {
     local port_expression=""
+    local joined=""
+    local port
+    local -a ports=()
+    local -A seen=()
 
     clear_rules
-    if (( AGW_PORT == 0 && KISS_PORT == 0 )); then
-        echo "PCS APRS AGW and KISS listeners are disabled; no firewall table installed."
+    if (( AGW_PORT == 0 && KISS_PORT == 0 && GRAYWOLF_HTTP_PORT == 0 )); then
+        echo "PCS APRS AGW, KISS, and Graywolf HTTP listeners are disabled; no firewall table installed."
         return 0
     fi
 
-    if (( AGW_PORT > 0 && KISS_PORT > 0 && AGW_PORT != KISS_PORT )); then
-        port_expression="{ ${AGW_PORT}, ${KISS_PORT} }"
-    elif (( AGW_PORT > 0 )); then
-        port_expression="${AGW_PORT}"
+    for port in "${AGW_PORT}" "${KISS_PORT}" "${GRAYWOLF_HTTP_PORT}"; do
+        if (( port > 0 )) && [[ -z "${seen[${port}]:-}" ]]; then
+            ports+=("${port}")
+            seen[${port}]=1
+        fi
+    done
+    if (( ${#ports[@]} == 1 )); then
+        port_expression="${ports[0]}"
     else
-        port_expression="${KISS_PORT}"
+        printf -v joined ', %s' "${ports[@]}"
+        port_expression="{ ${joined:2} }"
     fi
 
     nft -f - <<EOF
@@ -69,7 +79,7 @@ table inet pcs_aprs {
     }
 }
 EOF
-    echo "PCS APRS AGW tcp/${AGW_PORT} and KISS tcp/${KISS_PORT} are limited to ${LAN_NETWORK} on ${LAN_INTERFACE}."
+    echo "PCS APRS AGW tcp/${AGW_PORT}, KISS tcp/${KISS_PORT}, and Graywolf HTTP tcp/${GRAYWOLF_HTTP_PORT} are limited to ${LAN_NETWORK} on ${LAN_INTERFACE}."
 }
 
 check_port_rules() {
@@ -95,7 +105,7 @@ case "${MODE}" in
         clear_rules
         ;;
     --check)
-        if (( AGW_PORT == 0 && KISS_PORT == 0 )); then
+        if (( AGW_PORT == 0 && KISS_PORT == 0 && GRAYWOLF_HTTP_PORT == 0 )); then
             if nft list table inet pcs_aprs >/dev/null 2>&1; then
                 echo "ERROR: PCS APRS firewall table exists while AGW and KISS are disabled." >&2
                 exit 1
@@ -105,6 +115,7 @@ case "${MODE}" in
             rules="$(nft list table inet pcs_aprs)"
             check_port_rules "${rules}" AGW "${AGW_PORT}"
             check_port_rules "${rules}" KISS "${KISS_PORT}"
+            check_port_rules "${rules}" "Graywolf HTTP" "${GRAYWOLF_HTTP_PORT}"
         fi
         ;;
     -h|--help)

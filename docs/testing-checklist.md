@@ -778,14 +778,29 @@ confirm that the LCD reads `PCS Offline` / `Shutting Down`, all six status
 pixels are blue, and the matrix shows the bed/ZZZ icon while PCS remains
 powered. A full removal of power blanks the displays by design.
 
-## Dire Wolf / APRS Safety Test
+## APRS Engine Safety Test
 
-These checks apply when Dire Wolf / APRS is selected during setup. Repository
-tests validate software and policy; only the operator's recorded commissioning
-evidence establishes audio, PTT, deviation, receiver, digipeating, and on-air
-behavior for the installed hardware.
+These checks apply when APRS is selected during setup. Repository tests validate
+software and policy; only the operator's recorded commissioning evidence
+establishes audio, PTT, deviation, receiver, digipeating, and on-air behavior
+for the installed hardware.
 
-From PCS:
+For a staged Graywolf selection, run:
+
+```bash
+./scripts/setup-graywolf-aprs.sh --check
+./scripts/setup-graywolf-aprs.sh --capabilities
+systemctl is-enabled graywolf || true
+systemctl is-active graywolf || true
+systemctl is-active direwolf || true
+```
+
+Expected: both APRS engines are inactive, Graywolf is disabled, the staged
+marker is present, and its management endpoint is not TCP 8080. Stop there;
+PCS does not yet support a Graywolf RX or TX activation workflow. See
+[Graywolf APRS Staging](graywolf-aprs.md).
+
+For a Dire Wolf selection, run:
 
 ```bash
 ./scripts/setup-direwolf-aprs.sh --check
@@ -795,7 +810,7 @@ From PCS:
 ./scripts/setup-direwolf-aprs.sh --validate-config tx
 ```
 
-For a software-staged installation, confirm:
+For a software-staged Dire Wolf installation, confirm:
 
 ```bash
 systemctl is-enabled direwolf || true

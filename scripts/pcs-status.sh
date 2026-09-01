@@ -40,6 +40,9 @@ PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
 PCS_CELLULAR_FALLBACK_MODE="${PCS_CELLULAR_FALLBACK_MODE:-manual}"
 PCS_CELLULAR_FALLBACK_MARKER="/run/pcs-cellular-fallback-owned"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
+PCS_GRAYWOLF_HTTP_ADDRESS="${PCS_GRAYWOLF_HTTP_ADDRESS:-10.42.0.1}"
+PCS_GRAYWOLF_HTTP_PORT="${PCS_GRAYWOLF_HTTP_PORT:-8070}"
 PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-no}"
 PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-no}"
 PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-no}"
@@ -54,6 +57,19 @@ PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
 PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
 PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
+
+case "${PCS_APRS_ENGINE}" in
+    graywolf)
+        PCS_APRS_ENGINE_LABEL="Graywolf"
+        PCS_APRS_ENGINE_COMMAND="graywolf"
+        PCS_APRS_ENGINE_SERVICE="graywolf.service"
+        ;;
+    *)
+        PCS_APRS_ENGINE_LABEL="Dire Wolf"
+        PCS_APRS_ENGINE_COMMAND="direwolf"
+        PCS_APRS_ENGINE_SERVICE="direwolf.service"
+        ;;
+esac
 
 pcs_cellular_profile_name() {
     local configured="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
@@ -419,17 +435,25 @@ for path in "${PCS_SHARE_PATH}" "${PCS_BACKUP_SHARE_PATH}"; do
 done
 echo
 
-echo "--- Dire Wolf / APRS ---"
+echo "--- ${PCS_APRS_ENGINE_LABEL} / APRS ---"
 echo "PCS state: ${PCS_SETUP_APRS}"
+echo "APRS engine: ${PCS_APRS_ENGINE}"
 case "${PCS_SETUP_APRS}" in
     staged|yes)
-        if command -v direwolf >/dev/null 2>&1; then
-            echo "Dire Wolf: installed ($(direwolf -t 0 -h 2>&1 | sed -n '1p' || true))"
+        if command -v "${PCS_APRS_ENGINE_COMMAND}" >/dev/null 2>&1; then
+            if [[ "${PCS_APRS_ENGINE}" == "graywolf" ]]; then
+                echo "Graywolf: installed ($(graywolf version 2>/dev/null || true))"
+            else
+                echo "Dire Wolf: installed ($(direwolf -t 0 -h 2>&1 | sed -n '1p' || true))"
+            fi
         else
-            echo "Dire Wolf: missing"
+            echo "${PCS_APRS_ENGINE_LABEL}: missing"
         fi
-        echo "Service active:  $(systemctl is-active direwolf.service 2>/dev/null || true)"
-        echo "Service enabled: $(systemctl is-enabled direwolf.service 2>/dev/null || true)"
+        echo "Service active:  $(systemctl is-active "${PCS_APRS_ENGINE_SERVICE}" 2>/dev/null || true)"
+        echo "Service enabled: $(systemctl is-enabled "${PCS_APRS_ENGINE_SERVICE}" 2>/dev/null || true)"
+        if [[ "${PCS_APRS_ENGINE}" == "graywolf" ]]; then
+            echo "Management UI:   http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}/"
+        fi
         echo "Active profile:  ${PCS_APRS_ACTIVE_MODE}"
         echo "Audio capture:   ${PCS_APRS_AUDIO_INPUT}"
         echo "Audio playback:  ${PCS_APRS_AUDIO_OUTPUT}"
@@ -440,10 +464,16 @@ case "${PCS_SETUP_APRS}" in
         echo "Radio init:      $(systemctl is-active pcs-sa818.service 2>/dev/null || true)"
         echo "Audio profile:   $(systemctl is-active pcs-aprs-audio.service 2>/dev/null || true)"
         echo "Client firewall: $(systemctl is-active pcs-aprs-kiss-firewall.service 2>/dev/null || true)"
-        if [[ -x /usr/local/sbin/pcs-aprs-telemetry ]]; then
+        if [[ "${PCS_APRS_ENGINE}" == "direwolf" && -x /usr/local/sbin/pcs-aprs-telemetry ]]; then
             /usr/local/sbin/pcs-aprs-telemetry || true
+        elif [[ "${PCS_APRS_ENGINE}" == "graywolf" && "${PCS_SETUP_APRS}" == "yes" ]]; then
+            if curl -fsS --max-time 3 "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}/api/health" >/dev/null 2>&1; then
+                echo "Packet telemetry: Graywolf API healthy; metrics at /metrics"
+            else
+                echo "Packet telemetry: Graywolf API unavailable"
+            fi
         else
-            echo "Packet telemetry: helper not installed"
+            echo "Packet telemetry: unavailable during staging"
         fi
         if [[ "${PCS_SETUP_APRS}" == "staged" ]]; then
             echo "RF TX:           disabled during software staging"
@@ -722,16 +752,16 @@ fi
 
 case "${PCS_SETUP_APRS}" in
     staged)
-        if command -v direwolf >/dev/null 2>&1 \
-            && ! systemctl is-active --quiet direwolf.service \
-            && ! systemctl is-enabled --quiet direwolf.service 2>/dev/null; then
+        if command -v "${PCS_APRS_ENGINE_COMMAND}" >/dev/null 2>&1 \
+            && ! systemctl is-active --quiet "${PCS_APRS_ENGINE_SERVICE}" \
+            && ! systemctl is-enabled --quiet "${PCS_APRS_ENGINE_SERVICE}" 2>/dev/null; then
             APRS_STATUS="software staged / RF disabled"
         else
             APRS_STATUS="staging needs attention"
         fi
         ;;
     yes)
-        if systemctl is-active --quiet direwolf.service; then
+        if systemctl is-active --quiet "${PCS_APRS_ENGINE_SERVICE}"; then
             APRS_STATUS="active"
         else
             APRS_STATUS="configured / inactive"

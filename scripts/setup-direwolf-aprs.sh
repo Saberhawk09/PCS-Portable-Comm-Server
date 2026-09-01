@@ -60,6 +60,7 @@ if [[ -f "${INSTALL_CONFIG}" ]]; then
 fi
 
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
 PCS_APRS_CONFIG_VERSION="${PCS_APRS_CONFIG_VERSION:-0}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
@@ -1832,7 +1833,9 @@ prepare() {
         echo "Keeping Dire Wolf stopped and disabled until hardware activation."
         sudo systemctl disable --now direwolf.service >/dev/null 2>&1 || true
         set_install_config_value "PCS_SETUP_APRS" "staged"
+        set_install_config_value "PCS_APRS_ENGINE" "direwolf"
         PCS_SETUP_APRS="staged"
+        PCS_APRS_ENGINE="direwolf"
     fi
 
     show_check

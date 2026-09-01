@@ -79,7 +79,7 @@ class StatsApiSetupTests(unittest.TestCase):
     def test_disconnected_raspberry_pi_connect_is_optional(self):
         self_test = (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8")
         start = self_test.index('section "Raspberry Pi Connect"')
-        end = self_test.index('section "Dire Wolf / APRS"', start)
+        end = self_test.index('section "APRS (${PCS_APRS_ENGINE})"', start)
         connect_block = self_test[start:end]
 
         self.assertIn(

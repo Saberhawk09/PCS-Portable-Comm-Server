@@ -71,6 +71,9 @@ PCS_CELLULAR_FALLBACK_MARKER="/run/pcs-cellular-fallback-owned"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-auto}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-no}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
+PCS_GRAYWOLF_HTTP_ADDRESS="${PCS_GRAYWOLF_HTTP_ADDRESS:-10.42.0.1}"
+PCS_GRAYWOLF_HTTP_PORT="${PCS_GRAYWOLF_HTTP_PORT:-8070}"
 PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-no}"
 PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-no}"
 PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-no}"
@@ -931,10 +934,47 @@ else
     skip "rpi-connect command not found"
 fi
 
-section "Dire Wolf / APRS"
+section "APRS (${PCS_APRS_ENGINE})"
 
 case "${PCS_SETUP_APRS}" in
     staged)
+        if [[ "${PCS_APRS_ENGINE}" == "graywolf" ]]; then
+            if command_exists graywolf && command_exists graywolf-modem; then
+                pass "Graywolf binaries are installed for APRS staging"
+            else
+                fail "Graywolf staging selected but one or both binaries are missing"
+            fi
+            if systemctl list-unit-files graywolf.service --no-legend 2>/dev/null | grep -q '^graywolf[.]service'; then
+                pass "graywolf.service is installed"
+            else
+                fail "graywolf.service is missing"
+            fi
+            if service_active graywolf.service; then
+                fail "Staged graywolf.service is unexpectedly active"
+            else
+                pass "Staged graywolf.service is inactive"
+            fi
+            if service_enabled graywolf.service; then
+                fail "Staged graywolf.service is unexpectedly enabled"
+            else
+                pass "Staged graywolf.service is disabled"
+            fi
+            if service_active direwolf.service; then
+                fail "Dire Wolf is active while Graywolf is the selected staged engine"
+            else
+                pass "Alternate Dire Wolf engine is inactive"
+            fi
+            if sudo -n test -s /etc/pcs/aprs/graywolf-staged; then
+                pass "PCS Graywolf staged marker is present"
+            else
+                fail "PCS Graywolf staged marker is missing"
+            fi
+            if [[ "${PCS_GRAYWOLF_HTTP_PORT}" == "8080" ]]; then
+                fail "Graywolf is configured on PCS-reserved tcp/8080"
+            else
+                pass "Graywolf avoids the PCS tcp/8080 compatibility redirect"
+            fi
+        elif [[ "${PCS_APRS_ENGINE}" == "direwolf" ]]; then
         if command_exists direwolf; then
             pass "Dire Wolf is installed for APRS staging"
         else
@@ -979,8 +1019,49 @@ case "${PCS_SETUP_APRS}" in
         else
             pass "No live Dire Wolf configuration is installed during staging"
         fi
+        else
+            fail "Unknown PCS_APRS_ENGINE: ${PCS_APRS_ENGINE}"
+        fi
         ;;
     yes)
+        if [[ "${PCS_APRS_ENGINE}" == "graywolf" ]]; then
+            if command_exists graywolf && command_exists graywolf-modem; then
+                pass "Graywolf binaries are installed"
+            else
+                fail "Active Graywolf APRS requires both binaries"
+            fi
+            if service_active graywolf.service; then
+                pass "graywolf.service is active"
+            else
+                fail "Graywolf APRS is configured but graywolf.service is inactive"
+            fi
+            if service_enabled graywolf.service; then
+                pass "graywolf.service is enabled"
+            else
+                fail "Graywolf APRS is configured but graywolf.service is disabled"
+            fi
+            if service_active direwolf.service; then
+                fail "Both APRS engines are active; sound, PTT, ports, and APRS-IS must have one owner"
+            else
+                pass "Alternate Dire Wolf engine is inactive"
+            fi
+            if sudo -n test -s /var/lib/graywolf/graywolf.db; then
+                pass "Graywolf configuration database is present"
+            else
+                fail "Active Graywolf APRS configuration database is missing"
+            fi
+            if curl -fsS --max-time 5 "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}/api/health" >/dev/null 2>&1; then
+                pass "Graywolf health API responds on the PCS endpoint"
+            else
+                fail "Graywolf health API is unavailable on the PCS endpoint"
+            fi
+            if [[ "${PCS_GRAYWOLF_HTTP_PORT}" == "8080" ]]; then
+                fail "Graywolf conflicts with the PCS tcp/8080 compatibility redirect"
+            else
+                pass "Graywolf management endpoint avoids PCS-reserved tcp/8080"
+            fi
+            warn "Graywolf active-profile policy details require API-backed validation before PCS TX activation is supported"
+        elif [[ "${PCS_APRS_ENGINE}" == "direwolf" ]]; then
         if command_exists direwolf; then
             pass "Dire Wolf is installed"
         else
@@ -1111,9 +1192,12 @@ case "${PCS_SETUP_APRS}" in
                 fail "PCS_APRS_ACTIVE_MODE must be rx or tx when APRS is active"
                 ;;
         esac
+        else
+            fail "Unknown PCS_APRS_ENGINE: ${PCS_APRS_ENGINE}"
+        fi
         ;;
     *)
-        skip "Dire Wolf / APRS is not selected in the install configuration"
+        skip "APRS software is not selected in the install configuration"
         ;;
 esac
 

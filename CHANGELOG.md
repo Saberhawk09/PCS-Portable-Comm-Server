@@ -4,6 +4,13 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- a hardware-safe APRS engine selector with checksum-pinned Graywolf 0.14.13
+  staging, Dire Wolf/Graywolf systemd mutual exclusion, a non-conflicting
+  LAN management endpoint, engine-aware status/self-test foundations, and no
+  supported Graywolf radio or RF activation path yet
+
 ## [1.5] - 2026-08-31
 
 ### Added
