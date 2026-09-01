@@ -6,12 +6,15 @@ SHARE_NAME="PCS-Backup"
 SHARE_PATH="/srv/pcs-share-backup"
 SAMBA_CONFIG="/etc/samba/smb.conf"
 PCS_USER="${PCS_SAMBA_USER:-${SUDO_USER:-$USER}}"
+BACKUP_ADMIN_USER="pcs-admin"
+ADMIN_FILE="/etc/pcs-control-panel/admin.json"
+PASSWORD_HELPER_SRC="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/pcs-admin-password-helper.py"
 
 echo
 echo "=== PCS Samba Backup Share Setup ==="
 echo
 
-if ! command -v smbd >/dev/null 2>&1; then
+if [[ ! -x /usr/sbin/smbd ]]; then
     echo "ERROR: Samba does not appear to be installed."
     echo "Run ./scripts/install-dependencies.sh first."
     exit 1
@@ -27,7 +30,28 @@ fi
 echo "Using local user: ${PCS_USER}"
 echo "Backup share name: ${SHARE_NAME}"
 echo "Backup share path: ${SHARE_PATH}"
+echo "Backup login user: ${BACKUP_ADMIN_USER}"
 echo
+
+echo "Preparing the dedicated PCS-Backup login..."
+if ! getent passwd "${BACKUP_ADMIN_USER}" >/dev/null; then
+    ${SUDO} useradd --system --no-create-home --shell /usr/sbin/nologin "${BACKUP_ADMIN_USER}"
+fi
+
+# An upgrade may already have a web-admin credential but no dedicated Samba
+# account. Synchronize it before changing the live share ACL so a rerun cannot
+# accidentally lock PCS-Backup.
+if ${SUDO} test -s "${ADMIN_FILE}" \
+    && ! ${SUDO} pdbedit -L 2>/dev/null | cut -d: -f1 | grep -Fxq "${BACKUP_ADMIN_USER}"; then
+    if [[ ! -t 0 ]]; then
+        echo "ERROR: PCS-Backup needs a one-time administrator-password synchronization." >&2
+        echo "Rerun this setup interactively; the password will not be logged or stored as plaintext." >&2
+        exit 1
+    fi
+    echo
+    echo "A PCS web-admin password already exists. Enter it once to initialize PCS-Backup access."
+    ${SUDO} python3 "${PASSWORD_HELPER_SRC}" --sync-samba-password
+fi
 
 echo "Creating backup share directory..."
 ${SUDO} mkdir -p "${SHARE_PATH}"
@@ -41,7 +65,7 @@ PCS backup share.
 This share is intended to hold a mirror copy of the primary PCS file share.
 
 Primary share:
-  /srv/pcs-share
+  /mnt/pcs-usb/PCS-Share
 
 Backup share:
   /srv/pcs-share-backup
@@ -73,7 +97,7 @@ cat <<EOF | ${SUDO} tee -a "${SAMBA_CONFIG}" >/dev/null
    browseable = yes
    read only = no
    guest ok = no
-   valid users = ${PCS_USER}
+   valid users = ${BACKUP_ADMIN_USER}
    force user = ${PCS_USER}
    create mask = 0664
    directory mask = 2775
@@ -96,7 +120,10 @@ echo "From Windows, try:"
 echo "  \\\\10.42.0.1\\${SHARE_NAME}"
 echo
 echo "Username:"
-echo "  ${PCS_USER}"
+echo "  ${BACKUP_ADMIN_USER}"
 echo "or:"
-echo "  pcs-pi\\${PCS_USER}"
+echo "  PCS-FILE-SHARE\\${BACKUP_ADMIN_USER}"
+echo
+echo "Password:"
+echo "  The current PCS web administrator password"
 echo

@@ -151,6 +151,30 @@ class PcsRepository(context: Context) {
         }
     }
 
+    suspend fun backupSettings(endpoint: EndpointCandidate): BackupSettingsData {
+        val result = PcsApiClient(trustedCertificate()).backupSettings(endpoint, requireToken())
+        return validateBackupSettings(result)
+    }
+
+    suspend fun updateBackupSettings(
+        endpoint: EndpointCandidate,
+        enabled: Boolean,
+        intervalMinutes: Int,
+        keepHistory: Boolean,
+    ): BackupSettingsData {
+        require(intervalMinutes in MIN_BACKUP_INTERVAL_MINUTES..MAX_BACKUP_INTERVAL_MINUTES) {
+            "Backup interval must be between 1 and 43,200 minutes."
+        }
+        val result = PcsApiClient(trustedCertificate()).updateBackupSettings(
+            endpoint = endpoint,
+            token = requireToken(),
+            enabled = enabled,
+            intervalMinutes = intervalMinutes,
+            keepHistory = keepHistory,
+        )
+        return validateBackupSettings(result)
+    }
+
     fun forget() {
         tokenStore.clear(deleteKey = true)
         preferences.clearAll()
@@ -240,6 +264,18 @@ class PcsRepository(context: Context) {
         }
     }
 
+    private fun validateBackupSettings(result: BackupSettingsEnvelope): BackupSettingsData {
+        require(
+            result.apiVersion == "v1" && result.schemaVersion == "1.0" &&
+                result.resource == "backup-settings" && result.access == "authenticated" &&
+                result.data.minimumIntervalMinutes == MIN_BACKUP_INTERVAL_MINUTES &&
+                result.data.maximumIntervalMinutes == MAX_BACKUP_INTERVAL_MINUTES &&
+                result.data.intervalMinutes in MIN_BACKUP_INTERVAL_MINUTES..MAX_BACKUP_INTERVAL_MINUTES &&
+                result.data.nonDestructive,
+        ) { "Backup settings response is outside the PCS v1 contract." }
+        return result.data
+    }
+
     private companion object {
         val DEVICE_ID = Regex("^[A-Za-z0-9._-]{1,64}$")
         val ACTION_NAME = Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -248,5 +284,7 @@ class PcsRepository(context: Context) {
         const val MAX_ACTION_TEXT_LENGTH = 256
         const val MIN_CHALLENGE_LENGTH = 32
         const val MAX_CHALLENGE_LENGTH = 128
+        const val MIN_BACKUP_INTERVAL_MINUTES = 1
+        const val MAX_BACKUP_INTERVAL_MINUTES = 43_200
     }
 }

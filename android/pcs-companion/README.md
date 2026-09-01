@@ -4,7 +4,8 @@ PCS Companion is the native Android client for the PCS HTTPS API released in
 PCS v1.4. It is intentionally a management client, not a WireGuard client: the
 existing Android WireGuard app remains responsible for the tunnel.
 
-The current release version is `0.1.5`. Version `0.1.0` predates the live
+The latest released version is `0.2.0`, bundled with PCS v1.5. Version `0.1.0`
+predates the live
 discovery contract's required `authentication` object. Version `0.1.1` targets
 Android 17 but does not request its new Local network runtime permission, so
 Android blocks private PCS LAN and WireGuard addresses before connection.
@@ -21,6 +22,10 @@ the following status request.
 Version `0.1.5` is the first production-signed APK. It is bundled with the PCS
 v1.4.1 GitHub Release and retains the live-accepted v0.1.4 behavior.
 
+Version `0.2.0` adds warning/fault summaries in the top status line and paired
+automatic-backup settings. The matching web, API, timer, discovery, and app
+changes were deployed and accepted together before the PCS v1.5 release.
+
 The first development slice provides:
 
 - strict HTTPS-only endpoint selection in home-LAN, PCS-LAN, then WireGuard order;
@@ -32,6 +37,10 @@ The first development slice provides:
 - the server-provided fixed action catalog and one-time challenge execution;
 - biometric or device-credential confirmation before every state-changing action;
 - administrator-password rotation without persisting either password; and
+- warning and fault summaries beside the status in the top application bar;
+- an authenticated backup-settings pop-up for automatic enablement, a
+  1-43,200 minute interval, and retained snapshot history,
+  while retaining the server-provided manual backup action; and
 - a destructive local “forget PCS” flow that never claims to revoke the server token.
 
 The app never accepts cleartext HTTP, silently accepts a changed certificate,
@@ -103,5 +112,5 @@ Before calling the Android client production-ready, exercise both modern and
 pre-Android-11 biometric/device-credential paths as applicable, confirm
 Keystore-backed token recovery after process death and reboot, revoke the test
 device on PCS, verify the revoked token returns the app to public/unpaired
-mode. The v0.1.5 APK is production-signed; biometric compatibility and token
+mode. The v0.2.0 APK is production-signed; biometric compatibility and token
 lifecycle checks remain post-release hardening work rather than signing gates.

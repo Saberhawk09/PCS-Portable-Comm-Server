@@ -12,6 +12,7 @@ SERVICES=(
     chrony
     ModemManager
     avahi-daemon
+    pcs-wsdd
 )
 
 for service in "${SERVICES[@]}"; do
@@ -47,7 +48,7 @@ sleep 10
 
 echo
 echo "--- PCS quick service status ---"
-for service in smbd chrony ModemManager avahi-daemon cockpit.socket; do
+for service in smbd chrony ModemManager avahi-daemon pcs-wsdd cockpit.socket; do
     echo -n "${service}: "
     systemctl is-active "${service}" 2>/dev/null || true
 done

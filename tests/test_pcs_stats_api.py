@@ -34,6 +34,9 @@ PUBLIC_DASHBOARD = {
     "generated_at": "2026-08-26T18:30:00-04:00",
     "overall": "warn",
     "offline": False,
+    "alerts": [
+        {"severity": "warn", "component": "Backup Health", "message": "Automatic backup is overdue", "private": "blocked"},
+    ],
     "system": {"status": "ok", "uptime": "2h", "cpu_temperature": "42 C", "local_time": "private-local-time"},
     "network": {"status": "ok", "internet_available": True, "uplink_type": "Cellular / WWAN", "openwrt_url": "must-not-render"},
     "remote_management": {"configured": True, "status": "ok", "connection": "connected", "management_address": "10.99.0.7/32", "endpoint": "must-not-render"},
@@ -188,6 +191,11 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("passcode", serialized)
         self.assertNotIn("broker", serialized)
         self.assertNotIn("must-not-render", serialized)
+        self.assertEqual(document["data"]["alerts"], [{
+            "severity": "warn",
+            "component": "Backup Health",
+            "message": "Automatic backup is overdue",
+        }])
 
     def test_each_document_has_stable_resource_shape(self):
         for resource in api.RESOURCE_SECTIONS:
@@ -570,6 +578,67 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertEqual(json.loads(body)["code"], "insufficient_scope")
 
+    def test_backup_settings_require_pairing_and_admin_scope_for_writes(self):
+        settings = {"version": 2, "enabled": True, "interval_minutes": 10, "keep_history": False}
+        admin_headers = {"Authorization": f"Bearer {self.raw_token}"}
+        readonly_headers = {"Authorization": "Bearer " + "pcs_ro_" + "d" * 43}
+        with mock.patch.object(api, "run_backup_settings_helper", return_value=settings) as helper:
+            status, _, body = self.request("GET", "/api/v1/settings/backup", admin_headers)
+            self.assertEqual(status, 200)
+            payload = json.loads(body)
+            self.assertEqual(payload["resource"], "backup-settings")
+            self.assertEqual(payload["data"]["interval_minutes"], 10)
+            self.assertTrue(payload["data"]["non_destructive"])
+            helper.assert_called_once_with("show")
+
+            helper.reset_mock()
+            status, _, body = self.request("GET", "/api/v1/settings/backup", readonly_headers)
+            self.assertEqual(status, 200)
+            helper.assert_called_once_with("show")
+
+            status, _, body = self.request("GET", "/api/v1/settings/backup")
+            self.assertEqual(status, 401)
+            self.assertEqual(json.loads(body)["code"], "authentication_required")
+
+            put_headers = {**admin_headers, "Content-Type": "application/json"}
+            helper.reset_mock()
+            status, headers, body = self.request(
+                "PUT", "/api/v1/settings/backup", put_headers,
+                json.dumps({"enabled": False, "interval_minutes": 6, "keep_history": True}),
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(headers.get("Content-Type"), api.API_CONTENT_TYPE)
+            helper.assert_called_once_with(
+                "set-from-stdin", {"enabled": False, "interval_minutes": 6, "keep_history": True}
+            )
+
+            readonly_put = {**readonly_headers, "Content-Type": "application/json"}
+            status, _, body = self.request(
+                "PUT", "/api/v1/settings/backup", readonly_put,
+                json.dumps({"enabled": True, "interval_minutes": 10, "keep_history": False}),
+            )
+            self.assertEqual(status, 403)
+            self.assertEqual(json.loads(body)["code"], "insufficient_scope")
+
+    def test_backup_settings_reject_unknown_fields_and_out_of_range_intervals(self):
+        headers = {
+            "Authorization": f"Bearer {self.raw_token}",
+            "Content-Type": "application/json",
+        }
+        for body in (
+            {"enabled": True, "interval_minutes": 0, "keep_history": False},
+            {"enabled": True, "interval_minutes": 43_201, "keep_history": False},
+            {"enabled": 1, "interval_minutes": 10, "keep_history": False},
+            {"enabled": True, "interval_minutes": 10, "keep_history": 1},
+            {"enabled": True, "interval_minutes": 10, "keep_history": False, "extra": True},
+        ):
+            with self.subTest(body=body):
+                status, _, response = self.request(
+                    "PUT", "/api/v1/settings/backup", headers, json.dumps(body),
+                )
+                self.assertEqual(status, 400)
+                self.assertEqual(json.loads(response)["code"], "invalid_backup_settings_request")
+
     def test_head_action_catalog_preserves_head_semantics(self):
         status, _, body = self.request(
             "HEAD", "/api/v1/actions", {"Authorization": f"Bearer {self.raw_token}"}
@@ -829,7 +898,7 @@ class OpenApiConformanceTests(unittest.TestCase):
         expected_paths = {
             "/api/v1", "/api/v1/pair", "/api/v1/actions",
             "/api/v1/actions/{action}", "/api/v1/actions/{action}/challenge",
-            "/api/v1/admin/password",
+            "/api/v1/admin/password", "/api/v1/settings/backup",
             *api.RESOURCE_PATHS.values(),
         }
         self.assertEqual(set(self.specification["paths"]), expected_paths)
@@ -851,7 +920,13 @@ class OpenApiConformanceTests(unittest.TestCase):
                 continue
             with self.subTest(path=path):
                 operation = path_item["get"]
-                expected_security = [{"adminBearerAuth": []}] if path == "/api/v1/actions" else [{}, {"bearerAuth": []}]
+                expected_security = (
+                    [{"adminBearerAuth": []}]
+                    if path == "/api/v1/actions"
+                    else [{"bearerAuth": []}]
+                    if path == "/api/v1/settings/backup"
+                    else [{}, {"bearerAuth": []}]
+                )
                 self.assertEqual(operation["security"], expected_security)
                 self.assertIn("200", operation["responses"])
                 self.assertIn("401", operation["responses"])
@@ -902,6 +977,16 @@ class OpenApiConformanceTests(unittest.TestCase):
         self.assertIn("401", operation["responses"])
         self.assertIn("403", operation["responses"])
         self.assertIn("503", operation["responses"])
+
+    def test_backup_settings_contract_is_bounded_and_admin_scoped_for_updates(self):
+        path = self.specification["paths"]["/api/v1/settings/backup"]
+        self.assertEqual(path["get"]["security"], [{"bearerAuth": []}])
+        self.assertEqual(path["put"]["security"], [{"adminBearerAuth": []}])
+        request = self.specification["components"]["schemas"]["BackupSettingsRequest"]
+        self.assertEqual(set(request["required"]), {"enabled", "interval_minutes", "keep_history"})
+        self.assertFalse(request["additionalProperties"])
+        self.assertEqual(request["properties"]["interval_minutes"]["minimum"], 1)
+        self.assertEqual(request["properties"]["interval_minutes"]["maximum"], 43200)
 
     def test_runtime_documents_match_envelope_required_fields(self):
         schema = self.specification["components"]["schemas"]["StatsEnvelope"]

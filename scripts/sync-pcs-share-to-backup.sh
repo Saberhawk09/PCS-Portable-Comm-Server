@@ -49,8 +49,7 @@ echo
 echo "Sync mode:"
 echo "  USB Primary → SD Backup"
 echo
-echo "WARNING:"
-echo "  Files deleted from the USB primary share will also be deleted from the SD backup mirror."
+echo "This is an additive backup. Files missing from the USB primary are retained on SD."
 echo
 
 read -r -p "Continue with sync? [Y/N] " answer
@@ -64,11 +63,21 @@ case "${answer}" in
         ;;
 esac
 
+if [[ -x /usr/local/sbin/pcs-web-action ]]; then
+    echo
+    echo "Using the installed serialized PCS backup action..."
+    ${SUDO} /usr/local/sbin/pcs-web-action sync-backup
+    exit $?
+fi
+
 echo
 echo "Running rsync..."
-${SUDO} rsync -rtvh --delete \
+${SUDO} rsync -rtvh \
     --modify-window=2 \
     --exclude "LAST_SYNC.txt" \
+    --exclude "PCS-Backup-History/" \
+    --chown "${PCS_USER}:${PCS_USER}" \
+    --chmod 'D2775,F0660' \
     "${PRIMARY_SHARE}/" \
     "${BACKUP_SHARE}/"
 

@@ -1,0 +1,14 @@
+[Unit]
+Description=PCS automatic USB primary to SD backup check
+After=local-fs.target
+ConditionPathExists=/etc/pcs-backup/config.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-auto-backup
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target

@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PcsModelsTest {
     @Test
@@ -42,7 +43,10 @@ class PcsModelsTest {
               "generated_at":"2026-08-27T20:30:48Z",
               "health":{"severity":"warn","offline":false},
               "access":"public",
-              "data":{"system":{"uptime":"5h 25m"}},
+              "data":{
+                "system":{"uptime":"5h 25m"},
+                "alerts":[{"severity":"warn","component":"Backup Health","message":"Automatic backup is overdue"}]
+              },
               "details":null
             }
             """.trimIndent(),
@@ -82,6 +86,35 @@ class PcsModelsTest {
         assertEquals("admin:actions", catalog.requiredScope)
         assertEquals("reboot-system", catalog.actions.single().name)
         assertEquals(true, catalog.actions.single().challengeRequired)
+    }
+
+    @Test
+    fun parsesAuthenticatedBackupSettingsContract() {
+        val settings = PcsJson.format.decodeFromString<BackupSettingsEnvelope>(
+            """
+            {
+              "api_version":"v1",
+              "schema_version":"1.0",
+              "resource":"backup-settings",
+              "access":"authenticated",
+              "data":{
+                "enabled":true,
+                "interval_minutes":10,
+                "keep_history":true,
+                "minimum_interval_minutes":1,
+                "maximum_interval_minutes":43200,
+                "non_destructive":true
+              }
+            }
+            """.trimIndent(),
+        )
+
+        assertTrue(settings.data.enabled)
+        assertEquals(10, settings.data.intervalMinutes)
+        assertEquals(43_200, settings.data.maximumIntervalMinutes)
+        assertTrue(settings.data.keepHistory)
+        assertTrue(settings.data.nonDestructive)
+        assertNull(settings.requestId)
     }
 
     private fun displayTestValue(raw: String): String = Regex("\"uptime\":\"([^\"]+)\"")

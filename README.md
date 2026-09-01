@@ -110,8 +110,9 @@ test also passed on 2026-08-27; its temporary credential was revoked and proved
 unusable. These changes form v1.4 and establish the server-side contract for
 Android app development. PCS Companion has since passed real-phone acceptance
 over trusted home LAN, direct PCS LAN, and cellular/WireGuard, including backup
-synchronization and challenge-protected shutdown. PCS v1.4.1 bundles the first
-production-signed Android APK (app v0.1.5). See
+synchronization and challenge-protected shutdown. PCS v1.5 bundles the
+production-signed PCS Companion v0.2.0 APK, automatic additive-backup controls,
+status alert summaries, and LAN-only clickable file-share discovery. See
 [WireGuard Remote Management](docs/wireguard-remote-management.md),
 [PCS Stats API](docs/pcs-stats-api.md), and the
 [Android Client Bootstrap Contract](docs/pcs-android-client-bootstrap.md), and
@@ -317,6 +318,18 @@ For more detail, see [PCS Control Panel](docs/pcs-control-panel.md) and [Samba F
 
 `PCS-Backup` is the SD-card backup mirror.
 
+Windows Network Discovery advertises the clickable server name
+**PCS-FILE-SHARE** on the wired PCS LAN and Wi-Fi only. `PCS-Share` keeps its existing Samba credentials;
+`PCS-Backup` uses username `pcs-admin` with the current PCS web-admin password.
+The base installer configures and verifies this behavior repeatably.
+
+Automatic additive backups are enabled by default on new installs with a
+10-minute interval. An administrator can enable or disable them, select a
+1-43,200 minute interval, and optionally retain every dated backup snapshot
+from the web panel or a paired PCS Companion app. The fixed systemd timer
+checks every minute and runs a sync only when the configured interval
+is due. Manual sync remains available.
+
 Manual sync:
 
 ```bash
@@ -332,6 +345,7 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 - [`scripts/pcs-status.sh`](scripts/pcs-status.sh) - Detailed system status output
 - [`scripts/setup-usb-primary-share.sh`](scripts/setup-usb-primary-share.sh) - Configure USB storage as `PCS-Share`
 - [`scripts/sync-pcs-share-to-backup.sh`](scripts/sync-pcs-share-to-backup.sh) - Mirror USB primary share to SD backup
+- [`scripts/setup-pcs-backup.sh`](scripts/setup-pcs-backup.sh) - Install the validated automatic-backup policy and timer
 - [`scripts/setup-pcs-control-panel.sh`](scripts/setup-pcs-control-panel.sh) - Install the public homepage and authenticated control panel
 - [`scripts/setup-dashboard-redirect.sh`](scripts/setup-dashboard-redirect.sh) - Install the legacy port 8080 redirect to `/admin/`
 - [`scripts/setup-gpsd-lan-proxy.sh`](scripts/setup-gpsd-lan-proxy.sh) - Publish GPSD only on the trusted PCS LAN

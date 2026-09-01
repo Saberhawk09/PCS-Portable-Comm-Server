@@ -38,6 +38,10 @@ PASSWORD_HELPER = os.environ.get(
     "PCS_ADMIN_PASSWORD_HELPER",
     "/usr/local/sbin/pcs-admin-password-helper",
 )
+BACKUP_CONFIG_HELPER = os.environ.get(
+    "PCS_BACKUP_CONFIG_HELPER",
+    "/usr/local/sbin/pcs-backup-config",
+)
 API_ENABLED = os.environ.get("PCS_API_ENABLED", "no").lower() == "yes"
 COLLECT_TIMEOUT = int(os.environ.get("PCS_API_COLLECT_TIMEOUT", "30"))
 MAX_TOKEN_FILE_BYTES = 64 * 1024
@@ -47,6 +51,9 @@ MIN_ADMIN_PASSWORD_LENGTH = 12
 MAX_ACTION_BODY_BYTES = 4096
 MAX_ACTION_OUTPUT_BYTES = 128 * 1024
 MAX_PASSWORD_CHANGE_BODY_BYTES = 4096
+MAX_BACKUP_SETTINGS_BODY_BYTES = 4096
+MIN_BACKUP_INTERVAL_MINUTES = 1
+MAX_BACKUP_INTERVAL_MINUTES = 43_200
 DEVICE_ID_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}")
 API_CONTENT_TYPE = "application/vnd.pcs.v1+json; charset=utf-8"
 PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8"
@@ -166,6 +173,8 @@ API_FIELDS = {
     "storage": {
         "status", "usb_mounted", "primary_share_available",
         "backup_share_available", "usb_free_gb", "backup_free_gb",
+        "backup_status", "last_backup_age", "automatic_backup_enabled",
+        "backup_interval_minutes", "keep_backup_history", "backup_history_count",
     },
     "services": {
         "status", "homepage_available", "file_sharing_available",
@@ -235,6 +244,21 @@ def severity(value) -> str:
     return candidate if candidate in {"ok", "warn", "bad"} else "warn"
 
 
+def sanitize_alerts(value) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    alerts = []
+    for entry in value[:32]:
+        if not isinstance(entry, dict):
+            continue
+        alerts.append({
+            "severity": severity(entry.get("severity")),
+            "component": str(entry.get("component", "System"))[:80],
+            "message": str(entry.get("message", "Needs attention"))[:240],
+        })
+    return alerts
+
+
 def sanitize_sections(dashboard: dict) -> dict:
     sections = {}
     for section_name, allowed in API_FIELDS.items():
@@ -262,7 +286,7 @@ def api_document(resource: str, dashboard: dict) -> dict:
                 "severity": severity(dashboard.get("overall")),
                 "offline": bool(dashboard.get("offline", False)),
             },
-            "data": sections,
+            "data": {**sections, "alerts": sanitize_alerts(dashboard.get("alerts", []))},
             "details": None,
             "access": "public",
         }
@@ -391,6 +415,63 @@ def change_admin_password(current_password: str, new_password: str) -> None:
         raise PairingError("password_change_failed", "PCS password change failed.")
 
 
+def validated_backup_settings(value: object) -> dict:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"version", "enabled", "interval_minutes", "keep_history"}
+        or value.get("version") != 2
+        or not isinstance(value.get("enabled"), bool)
+        or isinstance(value.get("interval_minutes"), bool)
+        or not isinstance(value.get("interval_minutes"), int)
+        or not MIN_BACKUP_INTERVAL_MINUTES <= value["interval_minutes"] <= MAX_BACKUP_INTERVAL_MINUTES
+        or not isinstance(value.get("keep_history"), bool)
+    ):
+        raise ActionError("backup_settings_invalid", "PCS backup settings are invalid.")
+    return value
+
+
+def backup_settings_document(value: dict) -> dict:
+    validated = validated_backup_settings(value)
+    return {
+        "api_version": "v1",
+        "schema_version": "1.0",
+        "resource": "backup-settings",
+        "access": "authenticated",
+        "data": {
+            "enabled": validated["enabled"],
+            "interval_minutes": validated["interval_minutes"],
+            "keep_history": validated["keep_history"],
+            "minimum_interval_minutes": MIN_BACKUP_INTERVAL_MINUTES,
+            "maximum_interval_minutes": MAX_BACKUP_INTERVAL_MINUTES,
+            "non_destructive": True,
+        },
+    }
+
+
+def run_backup_settings_helper(command: str, request: dict | None = None) -> dict:
+    if command not in {"show", "set-from-stdin"}:
+        raise ValueError("unsupported backup settings command")
+    arguments = ["sudo", "-n", BACKUP_CONFIG_HELPER, command]
+    payload = None if request is None else json.dumps(request, separators=(",", ":"))
+    try:
+        result = subprocess.run(
+            arguments,
+            input=payload,
+            text=True,
+            capture_output=True,
+            timeout=45,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ActionError("backup_settings_unavailable", "PCS backup settings are unavailable.") from exc
+    if result.returncode != 0:
+        raise ActionError("backup_settings_failed", "PCS backup settings could not be applied.")
+    try:
+        value = json.loads(result.stdout)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ActionError("backup_settings_invalid", "PCS backup settings returned an invalid response.") from exc
+    return validated_backup_settings(value)
+
+
 BLOCKED_ADMIN_LABELS = {
     "password", "passcode", "private key", "preshared key", "pre-shared key",
     "secret", "credential", "api key", "access token",
@@ -505,6 +586,11 @@ class StatusCollector:
             self.cached[action] = dashboard
             self.cached_at[action] = time.monotonic()
             return dashboard
+
+    def invalidate(self) -> None:
+        with self.lock:
+            self.cached.clear()
+            self.cached_at.clear()
 
 
 class ActionRunner:
@@ -853,6 +939,29 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json(200, action_catalog_document(), head_only=head_only)
             return
+        if parsed.path in {"/api/v1/settings/backup", "/api/v1/settings/backup/"}:
+            authorized, principal = self.access_context(head_only=head_only)
+            if not authorized:
+                return
+            if principal is None:
+                self.problem(
+                    401,
+                    "authentication_required",
+                    "A paired PCS device token is required for backup settings.",
+                    {"WWW-Authenticate": 'Bearer realm="PCS Stats API", scope="stats:read"'},
+                    head_only=head_only,
+                )
+                return
+            if head_only:
+                self.send_json(200, {}, head_only=True)
+                return
+            try:
+                document = backup_settings_document(run_backup_settings_helper("show"))
+            except ActionError as exc:
+                self.problem(503, exc.code, str(exc))
+                return
+            self.send_json(200, document)
+            return
         prefix = "/api/v1/"
         if not parsed.path.startswith(prefix):
             self.problem(404, "not_found", "Not found.", head_only=head_only)
@@ -948,6 +1057,55 @@ class Handler(BaseHTTPRequestHandler):
                 "scopes": pairing["scopes"],
             },
         )
+
+    def do_PUT(self):
+        parsed = urlsplit(self.path)
+        if not API_ENABLED:
+            self.problem(404, "not_found", "Not found.")
+            return
+        if parsed.query:
+            self.problem(400, "query_not_supported", "Query parameters are not supported.")
+            return
+        if parsed.path.rstrip("/") != "/api/v1/settings/backup":
+            self.reject_unsupported_method()
+            return
+        authorized, principal = self.action_context()
+        if not authorized:
+            return
+        payload = self.read_json_body(MAX_BACKUP_SETTINGS_BODY_BYTES, "invalid_backup_settings_request")
+        if payload is None:
+            return
+        if set(payload) != {"enabled", "interval_minutes", "keep_history"}:
+            self.problem(400, "invalid_backup_settings_request", "enabled, interval_minutes, and keep_history are required.")
+            return
+        enabled = payload.get("enabled")
+        interval = payload.get("interval_minutes")
+        keep_history = payload.get("keep_history")
+        if (
+            not isinstance(enabled, bool)
+            or isinstance(interval, bool)
+            or not isinstance(interval, int)
+            or not MIN_BACKUP_INTERVAL_MINUTES <= interval <= MAX_BACKUP_INTERVAL_MINUTES
+            or not isinstance(keep_history, bool)
+        ):
+            self.problem(400, "invalid_backup_settings_request", "Backup settings are outside the supported range.")
+            return
+        request_id = secrets.token_urlsafe(12)
+        print(f"AUDIT setting=backup principal={principal['id']} request_id={request_id} state=started", flush=True)
+        try:
+            value = run_backup_settings_helper(
+                "set-from-stdin",
+                {"enabled": enabled, "interval_minutes": interval, "keep_history": keep_history},
+            )
+        except ActionError as exc:
+            print(f"AUDIT setting=backup principal={principal['id']} request_id={request_id} state=failed code={exc.code}", flush=True)
+            self.problem(503, exc.code, str(exc))
+            return
+        COLLECTOR.invalidate()
+        print(f"AUDIT setting=backup principal={principal['id']} request_id={request_id} state=completed", flush=True)
+        document = backup_settings_document(value)
+        document["request_id"] = request_id
+        self.send_json(200, document)
 
     def handle_password_change(self) -> None:
         authorized, principal = self.password_context()
@@ -1057,6 +1215,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def allowed_methods(self) -> str:
         path = urlsplit(self.path).path.rstrip("/")
+        if path == "/api/v1/settings/backup":
+            return "GET, HEAD, PUT"
         if path in {"/api/v1/pair", "/api/v1/admin/password"}:
             return "POST"
         if path.startswith("/api/v1/actions/"):
@@ -1071,7 +1231,6 @@ class Handler(BaseHTTPRequestHandler):
             {"Allow": self.allowed_methods()},
         )
 
-    do_PUT = reject_unsupported_method
     do_PATCH = reject_unsupported_method
     do_DELETE = reject_unsupported_method
     do_OPTIONS = reject_unsupported_method

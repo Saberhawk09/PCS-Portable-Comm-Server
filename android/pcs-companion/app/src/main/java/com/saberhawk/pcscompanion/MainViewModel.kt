@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.saberhawk.pcscompanion.data.ActionMetadata
 import com.saberhawk.pcscompanion.data.ActionResult
+import com.saberhawk.pcscompanion.data.BackupSettingsData
 import com.saberhawk.pcscompanion.data.EndpointCandidate
 import com.saberhawk.pcscompanion.data.PcsApiException
 import com.saberhawk.pcscompanion.data.PcsRepository
@@ -26,6 +27,8 @@ data class AppUiState(
     val paired: Boolean = false,
     val actions: List<ActionMetadata> = emptyList(),
     val lastActionResult: ActionResult? = null,
+    val backupSettings: BackupSettingsData? = null,
+    val backupSettingsLoading: Boolean = false,
     val loading: Boolean = false,
     val actionRunning: String? = null,
     val notice: String? = null,
@@ -79,6 +82,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         fromCache = false,
                         paired = repository.isPaired(),
                         actions = if (result.identityChanged) emptyList() else it.actions,
+                        backupSettings = if (result.identityChanged) null else it.backupSettings,
                         notice = if (result.identityChanged) {
                             "PCS certificate identity changed. The old device token was deleted; pair again after verifying the new identity."
                         } else {
@@ -116,6 +120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             fromCache = result.fromCache,
                             paired = repository.isPaired(),
                             actions = if (result.tokenRevoked) emptyList() else it.actions,
+                            backupSettings = if (result.tokenRevoked) null else it.backupSettings,
                             loading = false,
                             notice = when {
                                 result.tokenRevoked -> "The PCS token was rejected or revoked. Public mode is active."
@@ -199,10 +204,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             runCatching { repository.changePassword(endpoint, currentPassword, newPassword) }
                 .onSuccess {
                     mutableState.update {
-                        it.copy(loading = false, notice = "PCS administrator password changed.")
+                        it.copy(loading = false, notice = "PCS administrator and PCS-Backup passwords changed.")
                     }
                 }
                 .onFailure { error -> handleAuthenticatedFailure(error) }
+        }
+    }
+
+    fun loadBackupSettings() {
+        val endpoint = mutableState.value.activeEndpoint ?: return
+        if (!mutableState.value.paired || mutableState.value.backupSettingsLoading) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(backupSettingsLoading = true, error = null) }
+            runCatching { repository.backupSettings(endpoint) }
+                .onSuccess { settings ->
+                    mutableState.update { it.copy(backupSettings = settings, backupSettingsLoading = false) }
+                }
+                .onFailure { error ->
+                    mutableState.update { it.copy(backupSettingsLoading = false) }
+                    handleAuthenticatedFailure(error)
+                }
+        }
+    }
+
+    fun updateBackupSettings(enabled: Boolean, intervalMinutes: Int, keepHistory: Boolean) {
+        val endpoint = mutableState.value.activeEndpoint ?: return
+        if (!mutableState.value.paired || mutableState.value.backupSettingsLoading) return
+        viewModelScope.launch {
+            mutableState.update { it.copy(backupSettingsLoading = true, error = null, notice = null) }
+            runCatching {
+                repository.updateBackupSettings(endpoint, enabled, intervalMinutes, keepHistory)
+            }
+                .onSuccess { settings ->
+                    mutableState.update {
+                        it.copy(
+                            backupSettings = settings,
+                            backupSettingsLoading = false,
+                            notice = "Automatic backup settings updated.",
+                        )
+                    }
+                    refresh()
+                }
+                .onFailure { error ->
+                    mutableState.update { it.copy(backupSettingsLoading = false) }
+                    handleAuthenticatedFailure(error)
+                }
         }
     }
 
@@ -230,6 +276,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(
                     paired = false,
                     actions = emptyList(),
+                    backupSettings = null,
+                    backupSettingsLoading = false,
                     actionRunning = actionRunning,
                     loading = false,
                     notice = "The PCS token was rejected or revoked. Public mode is active.",

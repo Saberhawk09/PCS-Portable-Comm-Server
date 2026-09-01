@@ -78,6 +78,7 @@ NETWORK_PACKAGES=(
 SERVER_PACKAGES=(
     samba
     smbclient
+    wsdd2
     gpsd
     gpsd-clients
     pps-tools
@@ -103,6 +104,9 @@ ${SUDO} apt-get update
 
 echo
 echo "Installing packages..."
+# The vendor unit listens on nearly every interface by default. Keep it masked;
+# setup-pcs-share-discovery.sh installs the PCS interface-restricted service.
+${SUDO} systemctl mask wsdd2.service >/dev/null 2>&1 || true
 ${SUDO} env DEBIAN_FRONTEND=noninteractive apt-get install -y "${ALL_PACKAGES[@]}"
 
 echo
@@ -140,6 +144,7 @@ echo "- Base tools"
 echo "- Hardware inspection tools"
 echo "- Network and modem tools"
 echo "- Samba / SMB tools"
+echo "- Windows WSD file-share discovery tools"
 echo "- GPSD tools"
 echo "- Chrony"
 echo "- Cockpit"

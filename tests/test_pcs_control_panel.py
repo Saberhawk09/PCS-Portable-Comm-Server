@@ -21,6 +21,7 @@ SPEC.loader.exec_module(pcs)
 PUBLIC_DATA = {
     "generated_at": "2026-08-06T12:00:00-04:00",
     "overall": "ok",
+    "alerts": [],
     "system": {"status": "ok", "uptime": "2h", "local_time": "noon", "cpu_temperature": "42 C"},
     "network": {"status": "ok", "lan_gateway": "10.42.0.1", "openwrt_online": True, "internet_available": True, "uplink_type": "Wi-Fi", "connected_client_count": 3},
     "remote_management": {"configured": True, "status": "ok", "connection": "connected", "management_address": "10.6.0.7/32", "boot_enabled": True, "firewall_active": True, "latest_handshake": "42s ago", "peer_public_key": "must-not-render"},
@@ -98,6 +99,44 @@ class SessionTests(unittest.TestCase):
 
 
 class PublicDataTests(unittest.TestCase):
+    def test_warning_and_fault_summaries_are_shown_in_both_headers(self):
+        public = deepcopy(PUBLIC_DATA)
+        public["overall"] = "bad"
+        public["alerts"] = [
+            {"severity": "warn", "component": "Backup Health", "message": "Automatic backup is overdue", "private": "blocked"},
+            {"severity": "bad", "component": "Core Services", "message": "One or more services need attention"},
+        ]
+        sanitized = pcs.sanitize_public_dashboard(public)
+        self.assertNotIn("private", sanitized["alerts"][0])
+        public_page = pcs.render_public_page(sanitized).decode("utf-8")
+        self.assertIn("Backup Health: Automatic backup is overdue", public_page)
+        self.assertIn("Core Services: One or more services need attention", public_page)
+
+        admin = deepcopy(ADMIN_DATA)
+        admin["overall"] = "bad"
+        admin["alerts"] = public["alerts"]
+        admin_page = pcs.render_admin_page(
+            admin,
+            "csrf-token",
+            backup_settings={"version": 2, "enabled": True, "interval_minutes": 12, "keep_history": True},
+        ).decode("utf-8")
+        self.assertIn("Core Services: One or more services need attention", admin_page)
+        self.assertIn("Enable automatic backups", admin_page)
+        self.assertIn('value="12"', admin_page)
+        self.assertIn('id="backup-settings-dialog"', admin_page)
+        self.assertIn("Keep every prior backup snapshot", admin_page)
+
+    def test_backup_settings_helper_uses_fixed_stdin_contract(self):
+        completed = mock.Mock(returncode=0, stdout='{"version":2,"enabled":true,"interval_minutes":6,"keep_history":true}', stderr="")
+        with mock.patch.object(pcs.subprocess, "run", return_value=completed) as runner:
+            updated, _ = pcs.update_backup_settings(True, 6, True)
+        self.assertTrue(updated)
+        self.assertEqual(
+            runner.call_args.args[0],
+            ["sudo", "-n", pcs.BACKUP_CONFIG_HELPER, "set-from-stdin"],
+        )
+        self.assertEqual(json.loads(runner.call_args.kwargs["input"]), {"enabled": True, "interval_minutes": 6, "keep_history": True})
+
     def test_public_contract_removes_unapproved_fields(self):
         sanitized = pcs.sanitize_public_dashboard(PUBLIC_DATA)
         self.assertNotIn("imei", sanitized["cellular"])

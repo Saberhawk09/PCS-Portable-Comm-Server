@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import subprocess
 import tempfile
 import unittest
 import os
@@ -26,8 +27,12 @@ class PasswordHelperTests(unittest.TestCase):
         self.original_credential = helper.CREDENTIAL_FILE
         helper.CREDENTIAL_FILE = self.credential
         helper.write_record(self.credential, "correct horse battery staple")
+        self.original_set_samba_password = helper.set_samba_password
+        self.samba_patch = mock.patch.object(helper, "set_samba_password")
+        self.samba_password = self.samba_patch.start()
 
     def tearDown(self):
+        self.samba_patch.stop()
         helper.CREDENTIAL_FILE = self.original_credential
         self.tempdir.cleanup()
 
@@ -80,6 +85,34 @@ class PasswordHelperTests(unittest.TestCase):
         self.assertFalse(helper.verify_password("correct horse battery staple", record))
         self.assertTrue(helper.verify_password("new correct horse battery staple", record))
         self.assertNotIn("new correct horse battery staple", Path(self.credential).read_text(encoding="utf-8"))
+        self.samba_password.assert_called_once_with("new correct horse battery staple")
+
+    def test_samba_failure_restores_existing_web_password(self):
+        self.samba_password.side_effect = RuntimeError("simulated Samba failure")
+        code = self.run_change({
+            "current_password": "correct horse battery staple",
+            "new_password": "new correct horse battery staple",
+        })
+        self.assertEqual(code, 4)
+        record = helper.read_record(self.credential)
+        self.assertTrue(helper.verify_password("correct horse battery staple", record))
+        self.assertFalse(helper.verify_password("new correct horse battery staple", record))
+
+    def test_samba_password_is_sent_over_stdin_not_argv(self):
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(helper.subprocess, "run", return_value=completed) as run:
+            self.original_set_samba_password("secret admin password")
+        args, kwargs = run.call_args
+        self.assertEqual(args[0][0], helper.SYSTEMD_RUN_COMMAND)
+        self.assertIn("--pipe", args[0])
+        self.assertIn("--property=ProtectSystem=full", args[0])
+        self.assertEqual(args[0][-4:], [helper.SMBPASSWD_COMMAND, "-s", "-a", helper.SAMBA_USERNAME])
+        self.assertNotIn("secret admin password", args[0])
+        self.assertEqual(kwargs["input"], "secret admin password\nsecret admin password\n")
+
+    def test_samba_password_rejects_line_breaks(self):
+        with self.assertRaises(ValueError):
+            self.original_set_samba_password("invalid\nadmin password")
 
 
 if __name__ == "__main__":

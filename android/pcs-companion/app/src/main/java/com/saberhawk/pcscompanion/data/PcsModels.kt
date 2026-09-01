@@ -125,6 +125,33 @@ data class PasswordChangeResponse(
 )
 
 @Serializable
+data class BackupSettingsData(
+    val enabled: Boolean,
+    @SerialName("interval_minutes") val intervalMinutes: Int,
+    @SerialName("keep_history") val keepHistory: Boolean,
+    @SerialName("minimum_interval_minutes") val minimumIntervalMinutes: Int,
+    @SerialName("maximum_interval_minutes") val maximumIntervalMinutes: Int,
+    @SerialName("non_destructive") val nonDestructive: Boolean,
+)
+
+@Serializable
+data class BackupSettingsEnvelope(
+    @SerialName("api_version") val apiVersion: String,
+    @SerialName("schema_version") val schemaVersion: String,
+    val resource: String,
+    val access: String,
+    val data: BackupSettingsData,
+    @SerialName("request_id") val requestId: String? = null,
+)
+
+@Serializable
+data class BackupSettingsRequest(
+    val enabled: Boolean,
+    @SerialName("interval_minutes") val intervalMinutes: Int,
+    @SerialName("keep_history") val keepHistory: Boolean,
+)
+
+@Serializable
 data class Problem(
     val type: String,
     val title: String,

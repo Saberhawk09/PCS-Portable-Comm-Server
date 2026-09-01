@@ -27,6 +27,8 @@ TOKEN_HELPER_DST="/usr/local/sbin/pcs-api-token"
 # Installed and owned by setup-pcs-control-panel.sh; the Stats API consumes
 # this exact helper and never removes it during rollback.
 PASSWORD_HELPER_DST="/usr/local/sbin/pcs-admin-password-helper"
+BACKUP_CONFIG_HELPER_SRC="${SCRIPT_DIR}/pcs_backup_config.py"
+BACKUP_CONFIG_HELPER_DST="/usr/local/sbin/pcs-backup-config"
 FIREWALL_SRC="${SCRIPT_DIR}/pcs-stats-api-firewall.sh"
 FIREWALL_DST="/usr/local/sbin/pcs-stats-api-firewall"
 SERVICE_SRC="${REPO_DIR}/systemd/pcs-stats-api.service"
@@ -80,6 +82,7 @@ require_prepared_sources() {
     for path in \
         "${APPLICATION_SRC}" \
         "${TOKEN_HELPER_SRC}" \
+        "${BACKUP_CONFIG_HELPER_SRC}" \
         "${FIREWALL_SRC}" \
         "${SERVICE_SRC}" \
         "${FIREWALL_SERVICE_SRC}"; do
@@ -255,6 +258,7 @@ PCS_API_CERT_FILE=${PCS_API_CERT_FILE}
 PCS_API_KEY_FILE=${PCS_API_KEY_FILE}
 PCS_API_TOKEN_HELPER=${TOKEN_HELPER_DST}
 PCS_ADMIN_PASSWORD_HELPER=${PASSWORD_HELPER_DST}
+PCS_BACKUP_CONFIG_HELPER=${BACKUP_CONFIG_HELPER_DST}
 EOF
     sudo install -o root -g root -m 0644 "${temp}" "${RUNTIME_ENV}"
     rm -f -- "${temp}"
@@ -266,6 +270,8 @@ prepared() {
         && sudo test -f "${PASSWORD_HELPER_DST}" \
         && sudo test -x "${PASSWORD_HELPER_DST}" \
         && sudo test ! -L "${PASSWORD_HELPER_DST}" \
+        && sudo test -x "${BACKUP_CONFIG_HELPER_DST}" \
+        && sudo test ! -L "${BACKUP_CONFIG_HELPER_DST}" \
         && sudo test -x "${FIREWALL_DST}" \
         && sudo test -x "${SETUP_DST}" \
         && sudo test -f "${SERVICE_DST}" \
@@ -311,6 +317,7 @@ prepare_feature() {
     sudo install -o root -g root -m 0755 "${APPLICATION_SRC}" "${APPLICATION_DST}"
     sudo install -o root -g root -m 0755 "${BASH_SOURCE[0]}" "${SETUP_DST}"
     sudo install -o root -g root -m 0755 "${TOKEN_HELPER_SRC}" "${TOKEN_HELPER_DST}"
+    sudo install -o root -g root -m 0755 "${BACKUP_CONFIG_HELPER_SRC}" "${BACKUP_CONFIG_HELPER_DST}"
     sudo install -o root -g root -m 0755 "${FIREWALL_SRC}" "${FIREWALL_DST}"
     sudo install -o root -g root -m 0644 "${SERVICE_SRC}" "${SERVICE_DST}"
     sudo install -o root -g root -m 0644 "${FIREWALL_SERVICE_SRC}" "${FIREWALL_SERVICE_DST}"
@@ -321,6 +328,7 @@ prepare_feature() {
 ${API_USER} ALL=(root) NOPASSWD: /usr/local/sbin/pcs-web-action dashboard-public-json, /usr/local/sbin/pcs-web-action dashboard-json
 ${API_USER} ALL=(root) NOPASSWD: /usr/local/sbin/pcs-api-token --file /etc/pcs-stats-api/api-read-tokens.json pair-from-stdin
 ${API_USER} ALL=(root) NOPASSWD: /usr/local/sbin/pcs-admin-password-helper --change-from-stdin
+${API_USER} ALL=(root) NOPASSWD: ${BACKUP_CONFIG_HELPER_DST} show, ${BACKUP_CONFIG_HELPER_DST} set-from-stdin
 ${API_USER} ALL=(root) NOPASSWD: /usr/local/sbin/pcs-web-action status, /usr/local/sbin/pcs-web-action self-test, /usr/local/sbin/pcs-web-action storage-status, /usr/local/sbin/pcs-web-action wifi-status, /usr/local/sbin/pcs-web-action wifi-connect, /usr/local/sbin/pcs-web-action wifi-disconnect, /usr/local/sbin/pcs-web-action cellular-status, /usr/local/sbin/pcs-web-action cellular-connect, /usr/local/sbin/pcs-web-action cellular-disconnect, /usr/local/sbin/pcs-web-action cellular-test, /usr/local/sbin/pcs-web-action meshtastic-status, /usr/local/sbin/pcs-web-action restart-meshtastic, /usr/local/sbin/pcs-web-action sync-backup, /usr/local/sbin/pcs-web-action mount-usb, /usr/local/sbin/pcs-web-action mount-new-usb, /usr/local/sbin/pcs-web-action safe-unmount-usb, /usr/local/sbin/pcs-web-action restart-services, /usr/local/sbin/pcs-web-action restart-samba, /usr/local/sbin/pcs-web-action restart-modemmanager, /usr/local/sbin/pcs-web-action sync-time, /usr/local/sbin/pcs-web-action restart-chrony, /usr/local/sbin/pcs-web-action restart-gpsd, /usr/local/sbin/pcs-web-action restart-logs, /usr/local/sbin/pcs-web-action reboot-system, /usr/local/sbin/pcs-web-action shutdown-system
 EOF
     chmod 0600 "${SUDOERS_TEMP}"

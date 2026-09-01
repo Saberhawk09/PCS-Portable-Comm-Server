@@ -127,6 +127,14 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('./scripts/setup-gpio-fan.sh --install', self.source)
         self.assertIn('PCS_SETUP_GPIO_FAN="no"', self.source)
 
+    def test_file_share_discovery_is_a_repeatable_base_step(self):
+        backup = self.source.index('run_step "Configure automatic PCS backups"')
+        discovery = self.source.index('run_step "Configure LAN file-share discovery"')
+        control = self.source.index('run_step "Install PCS Control Panel"')
+        self.assertLess(backup, discovery)
+        self.assertLess(discovery, control)
+        self.assertIn('ensure_executable "scripts/setup-pcs-share-discovery.sh"', self.source)
+
 
 if __name__ == "__main__":
     unittest.main()

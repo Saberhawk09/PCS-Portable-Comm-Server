@@ -150,6 +150,38 @@ class PcsApiClient(trustedCertificate: X509Certificate) {
         responseSerializer = PasswordChangeResponse.serializer(),
     )
 
+    suspend fun backupSettings(
+        endpoint: EndpointCandidate,
+        token: String,
+    ): BackupSettingsEnvelope = execute(
+        endpoint = endpoint,
+        path = "/api/v1/settings/backup",
+        token = token,
+        responseSerializer = BackupSettingsEnvelope.serializer(),
+    )
+
+    suspend fun updateBackupSettings(
+        endpoint: EndpointCandidate,
+        token: String,
+        enabled: Boolean,
+        intervalMinutes: Int,
+        keepHistory: Boolean,
+    ): BackupSettingsEnvelope = execute(
+        endpoint = endpoint,
+        path = "/api/v1/settings/backup",
+        method = "PUT",
+        token = token,
+        body = jsonBody(
+            BackupSettingsRequest(
+                enabled = enabled,
+                intervalMinutes = intervalMinutes,
+                keepHistory = keepHistory,
+            ),
+            BackupSettingsRequest.serializer(),
+        ),
+        responseSerializer = BackupSettingsEnvelope.serializer(),
+    )
+
     private fun <T> jsonBody(value: T, serializer: SerializationStrategy<T>): RequestBody =
         PcsJson.format.encodeToString(serializer, value).toRequestBody(JSON_MEDIA_TYPE)
 

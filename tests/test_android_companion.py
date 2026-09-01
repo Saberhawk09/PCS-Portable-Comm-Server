@@ -15,9 +15,9 @@ class AndroidCompanionTests(unittest.TestCase):
 
         self.assertIn('id("org.jetbrains.kotlin.plugin.compose")', build)
         self.assertIn('implementation("androidx.compose.material3:material3")', build)
-        self.assertIn('versionCode = 6', build)
-        self.assertIn('versionName = "0.1.5"', build)
-        self.assertEqual(contract["info"]["version"], "1.1.0")
+        self.assertIn('versionCode = 7', build)
+        self.assertIn('versionName = "0.2.0"', build)
+        self.assertEqual(contract["info"]["version"], "1.2.0")
         self.assertIn('@SerialName("api_version")', models)
         self.assertIn('val apiVersion: String', models)
         self.assertIn('val authentication: JsonObject', models)
@@ -131,8 +131,20 @@ class AndroidCompanionTests(unittest.TestCase):
 
         self.assertIn('authenticateAction(\n                        action.label,', ui)
         self.assertIn('authenticateAction(\n                        "Change PCS administrator password",', ui)
+        self.assertIn('authenticateAction(\n                        "Change automatic backup settings",', ui)
         self.assertIn("BIOMETRIC_STRONG", activity)
         self.assertIn("createConfirmDeviceCredentialIntent", activity)
+
+    def test_alert_header_and_backup_settings_use_the_v1_api(self):
+        ui = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "ui" / "PcsCompanionApp.kt").read_text(encoding="utf-8")
+        api = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "data" / "PcsApiClient.kt").read_text(encoding="utf-8")
+        repository = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "data" / "PcsRepository.kt").read_text(encoding="utf-8")
+        self.assertIn('status?.data?.get("alerts")', ui)
+        self.assertIn('" · PCS $severity · ${firstAlert.component}: ${firstAlert.message}"', ui)
+        self.assertIn('path = "/api/v1/settings/backup"', api)
+        self.assertIn('method = "PUT"', api)
+        self.assertIn("intervalMinutes in MIN_BACKUP_INTERVAL_MINUTES..MAX_BACKUP_INTERVAL_MINUTES", repository)
+        self.assertIn('Text("Keep every prior snapshot"', ui)
 
 
 if __name__ == "__main__":
