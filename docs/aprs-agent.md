@@ -44,13 +44,25 @@ Received `(sender, message ID)` identities and a SHA-256 body digest are retaine
 in SQLite for 24 hours. Duplicate packets are ACKed again but their commands are
 not run again. Reuse of the same sender/ID with a different body inside that
 window is ACKed, logged as a conflict, and not executed. The database stores the
-body only for an accepted `MSG` mailbox entry; other command bodies, status
-responses, GPS coordinates, APRS-IS credentials, and radio settings are not
-retained. The mailbox is capped and removes its oldest entries first.
+body only for an accepted `MSG` mailbox entry. Received command bodies outside
+`MSG`, GPS coordinates, APRS-IS credentials, and radio settings are not retained.
+Outbound reply bodies and delivery state are retained for bounded ACK/retry
+history. The mailbox is capped and removes its oldest entries first.
 
-Status replies receive a persistent four-character outbound message ID. ACK
-tracking and retry of those replies are intentionally deferred to a later
-version.
+Status and mailbox replies receive a persistent four-character outbound message
+ID. Each reply is stored before its first transmission. The agent accepts only
+an exact, unnumbered `ack<ID>` or `rej<ID>` addressed to `W8IJC-10`, and the
+receipt source must match the reply recipient. An unrelated station therefore
+cannot complete another station's queued message. The APRS 1.1 `{new}old`
+reply-ack extension is also recognized: `old` completes the matching prior
+outbound message while the newly numbered command is ACKed and processed.
+
+Pending replies survive an agent restart. By default the first transmission is
+followed after 30, 60, 120, and 240 seconds by at most four retries. A successful
+socket write records an attempt; a failed KISS write leaves the message due so
+it can be sent after reconnect. Exhausted messages are retained as failed, and a
+late matching ACK can still complete them. ACKed, rejected, and failed history
+is retained for seven days. The pending queue is capped at 100 messages.
 
 ## Commands
 
@@ -93,8 +105,11 @@ The Android companion already renders authenticated resource cards and the
 fixed action catalog, so a paired app can read the mailbox under APRS details
 and invoke the challenge-protected mark-read action without an app-specific
 transport. A later dedicated Mailbox screen could add search, per-message read
-state, and notifications. Web/app message composition is intentionally deferred
-until outgoing APRS ACK tracking and retry exist.
+state, and notifications. Web/app message composition remains disabled while the
+outgoing engine is validated. A later operator interface can enqueue through a
+narrow authenticated agent IPC endpoint and display pending, acknowledged,
+rejected, and failed state; the web service must not write the agent's SQLite
+database directly.
 
 The aggregate runtime file `/run/pcs-aprs-agent/status.json` feeds the hardware
 indicators. The 16x2 LCD adds `APRS Stats: Ok` or `APRS Stats: MSG` and a bounded
@@ -116,6 +131,9 @@ generates `/etc/pcs/aprs-agent.conf` from the non-secret PCS install settings:
 | `PCS_APRS_AGENT_MAILBOX_LIMIT` | `100` | Maximum retained mailbox messages. |
 | `PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE` | `12` | Per-sender command/reply ceiling; required ACKs are not dropped. |
 | `PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE` | `60` | Whole-agent command/reply ceiling; required ACKs are not dropped. |
+| `PCS_APRS_AGENT_OUTBOUND_RETRY_SECONDS` | `30,60,120,240` | Nondecreasing retry delays after successful transmissions. |
+| `PCS_APRS_AGENT_OUTBOUND_MAX_PENDING` | `100` | Hard limit for replies awaiting ACK/REJ. |
+| `PCS_APRS_AGENT_OUTBOUND_RETENTION_SECONDS` | `604800` | Retention for completed and exhausted message history. |
 
 ## Local validation and later deployment
 

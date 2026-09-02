@@ -39,14 +39,29 @@ DEFAULT_CONFIG = "/etc/pcs/aprs-agent.conf"
 DEFAULT_STATE_DB = "/var/lib/pcs-aprs-agent/state.sqlite3"
 DEFAULT_STATUS_FILE = "/run/pcs-aprs-agent/status.json"
 CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,6}(?:-(?:[1-9]|1[0-5]))?$")
-MESSAGE_ID_RE = re.compile(r"\{([A-Za-z0-9]{1,5})(?:\}[A-Za-z0-9]{1,5})?$")
+MESSAGE_ID_RE = re.compile(r"\{([A-Za-z0-9]{1,5})(?:\}([A-Za-z0-9]{1,5}))?$")
+RECEIPT_RE = re.compile(r"^(ack|rej)([A-Za-z0-9]{1,5})$", re.IGNORECASE)
 COMMANDS = ("PING", "STATUS", "POWER", "LTE", "GPS", "TEMP", "NET", "UPTIME", "HELP", "MSG")
 COMMAND_ALIASES = {"S": "STATUS", "H": "HELP"}
 MAX_MAILBOX_TEXT = MAX_APRS_MESSAGE_TEXT - len("MSG ")
+DEFAULT_OUTBOUND_RETRY_SECONDS = (30, 60, 120, 240)
 
 
 class ConfigError(ValueError):
     """Raised when the APRS agent configuration is unsafe or invalid."""
+
+
+def parse_retry_seconds(value: str) -> tuple[int, ...]:
+    parts = value.split(",")
+    if any(not item.strip() for item in parts):
+        raise ConfigError("outbound_retry_seconds contains an empty delay")
+    try:
+        retry_seconds = tuple(int(item.strip()) for item in parts)
+    except ValueError as exc:
+        raise ConfigError("outbound_retry_seconds must be a comma-separated list of integers") from exc
+    if not retry_seconds:
+        raise ConfigError("outbound_retry_seconds must contain at least one delay")
+    return retry_seconds
 
 
 @dataclass(frozen=True)
@@ -66,6 +81,9 @@ class AgentConfig:
     sender_rate_per_minute: int = 12
     global_rate_per_minute: int = 60
     reconnect_max_seconds: int = 60
+    outbound_retry_seconds: tuple[int, ...] = DEFAULT_OUTBOUND_RETRY_SECONDS
+    outbound_max_pending: int = 100
+    outbound_retention_seconds: int = 604800
 
     @classmethod
     def load(cls, path: str | Path) -> "AgentConfig":
@@ -90,6 +108,18 @@ class AgentConfig:
                 sender_rate_per_minute=int(section.get("sender_rate_per_minute", cls.sender_rate_per_minute)),
                 global_rate_per_minute=int(section.get("global_rate_per_minute", cls.global_rate_per_minute)),
                 reconnect_max_seconds=int(section.get("reconnect_max_seconds", cls.reconnect_max_seconds)),
+                outbound_retry_seconds=parse_retry_seconds(
+                    str(
+                        section.get(
+                            "outbound_retry_seconds",
+                            ",".join(str(item) for item in DEFAULT_OUTBOUND_RETRY_SECONDS),
+                        )
+                    )
+                ),
+                outbound_max_pending=int(section.get("outbound_max_pending", cls.outbound_max_pending)),
+                outbound_retention_seconds=int(
+                    section.get("outbound_retention_seconds", cls.outbound_retention_seconds)
+                ),
             )
         except (TypeError, ValueError) as exc:
             raise ConfigError(f"configuration contains an invalid number: {exc}") from exc
@@ -127,6 +157,16 @@ class AgentConfig:
             raise ConfigError("global_rate_per_minute must cover one sender and be no greater than 600")
         if not 1 <= self.reconnect_max_seconds <= 300:
             raise ConfigError("reconnect_max_seconds must be between 1 and 300")
+        if len(self.outbound_retry_seconds) > 10 or any(
+            delay < 5 or delay > 3600 for delay in self.outbound_retry_seconds
+        ):
+            raise ConfigError("outbound_retry_seconds must contain 1 through 10 delays from 5 to 3600 seconds")
+        if any(later < earlier for earlier, later in zip(self.outbound_retry_seconds, self.outbound_retry_seconds[1:])):
+            raise ConfigError("outbound_retry_seconds must be nondecreasing")
+        if not 1 <= self.outbound_max_pending <= 1000:
+            raise ConfigError("outbound_max_pending must be between 1 and 1000")
+        if not 3600 <= self.outbound_retention_seconds <= 2_592_000:
+            raise ConfigError("outbound_retention_seconds must be between 3600 and 2592000")
 
 
 class KissDecoder:
@@ -280,6 +320,21 @@ class AprsMessage:
     addressee: str
     body: str
     message_id: str | None
+    reply_ack_id: str | None
+
+
+@dataclass(frozen=True)
+class AprsReceipt:
+    disposition: str
+    message_id: str
+
+
+@dataclass(frozen=True)
+class OutboundMessage:
+    message_id: str
+    recipient: str
+    body: str
+    attempts: int
 
 
 def parse_aprs_message(frame: Ax25Frame) -> AprsMessage | None:
@@ -296,12 +351,24 @@ def parse_aprs_message(frame: Ax25Frame) -> AprsMessage | None:
     wire_body = info[11:]
     match = MESSAGE_ID_RE.search(wire_body)
     message_id = match.group(1) if match else None
+    reply_ack_id = match.group(2) if match else None
     body = wire_body[: match.start()] if match else wire_body
     return AprsMessage(
         sender=frame.source.upper(),
         addressee=addressee,
         body=body,
         message_id=message_id,
+        reply_ack_id=reply_ack_id,
+    )
+
+
+def parse_aprs_receipt(body: str) -> AprsReceipt | None:
+    match = RECEIPT_RE.fullmatch(body)
+    if match is None:
+        return None
+    return AprsReceipt(
+        disposition="acked" if match.group(1).lower() == "ack" else "rejected",
+        message_id=match.group(2),
     )
 
 
@@ -312,14 +379,25 @@ def aprs_ack_information(recipient: str, message_id: str) -> bytes:
     return f":{recipient:<9}:ack{message_id}".encode("ascii")
 
 
-def aprs_reply_information(recipient: str, body: str, message_id: str) -> bytes:
-    split_callsign(recipient)
+def normalize_aprs_reply_body(body: str, message_id: str) -> str:
     body = " ".join(body.strip().split())
+    if not body:
+        raise ValueError("outbound APRS message body is empty")
+    if any(ord(character) < 0x20 or ord(character) > 0x7E for character in body):
+        raise ValueError("outbound APRS message body must contain printable ASCII")
     suffix = f"{{{message_id}"
     maximum_body = MAX_APRS_MESSAGE_TEXT - len(suffix)
     if maximum_body < 1:
         raise ValueError("outbound APRS message ID is too long")
-    body = body[:maximum_body].rstrip()
+    return body[:maximum_body].rstrip()
+
+
+def aprs_reply_information(recipient: str, body: str, message_id: str) -> bytes:
+    split_callsign(recipient)
+    if not re.fullmatch(r"[A-Za-z0-9]{1,5}", message_id):
+        raise ValueError("invalid APRS message ID")
+    body = normalize_aprs_reply_body(body, message_id)
+    suffix = f"{{{message_id}"
     return f":{recipient:<9}:{body}{suffix}".encode("ascii", errors="replace")
 
 
@@ -417,6 +495,24 @@ class DedupStore:
                    read_at REAL
                )"""
         )
+        self.connection.execute(
+            """CREATE TABLE IF NOT EXISTS outbound_messages (
+                   message_id TEXT PRIMARY KEY,
+                   recipient TEXT NOT NULL,
+                   body TEXT NOT NULL,
+                   state TEXT NOT NULL,
+                   attempts INTEGER NOT NULL,
+                   created_at REAL NOT NULL,
+                   updated_at REAL NOT NULL,
+                   next_attempt_at REAL,
+                   last_sent_at REAL,
+                   completed_at REAL
+               )"""
+        )
+        self.connection.execute(
+            "CREATE INDEX IF NOT EXISTS outbound_due_idx "
+            "ON outbound_messages(state, next_attempt_at)"
+        )
         self.connection.commit()
 
     def close(self) -> None:
@@ -440,15 +536,14 @@ class DedupStore:
             )
         return "new"
 
-    def next_outbound_id(self) -> str:
-        with self.connection:
-            row = self.connection.execute("SELECT value FROM state_values WHERE name = 'outbound_id'").fetchone()
-            value = ((int(row[0]) if row else -1) + 1) % (36**4)
-            self.connection.execute(
-                "INSERT INTO state_values(name, value) VALUES ('outbound_id', ?) "
-                "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
-                (value,),
-            )
+    def _next_outbound_id_locked(self) -> str:
+        row = self.connection.execute("SELECT value FROM state_values WHERE name = 'outbound_id'").fetchone()
+        value = ((int(row[0]) if row else -1) + 1) % (36**4)
+        self.connection.execute(
+            "INSERT INTO state_values(name, value) VALUES ('outbound_id', ?) "
+            "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+            (value,),
+        )
         alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         encoded = ""
         remainder = value
@@ -456,6 +551,131 @@ class DedupStore:
             encoded = alphabet[remainder % 36] + encoded
             remainder //= 36
         return encoded
+
+    def next_outbound_id(self) -> str:
+        with self.connection:
+            return self._next_outbound_id_locked()
+
+    def queue_outbound(self, recipient: str, body: str, maximum_pending: int) -> OutboundMessage:
+        split_callsign(recipient)
+        with self.connection:
+            self.connection.execute("BEGIN IMMEDIATE")
+            pending = self.connection.execute(
+                "SELECT COUNT(*) FROM outbound_messages WHERE state = 'pending'"
+            ).fetchone()[0]
+            if int(pending) >= maximum_pending:
+                raise RuntimeError("outbound APRS queue is full")
+            message_id = self._next_outbound_id_locked()
+            normalized = normalize_aprs_reply_body(body, message_id)
+            current = self.now()
+            self.connection.execute(
+                "INSERT INTO outbound_messages"
+                "(message_id, recipient, body, state, attempts, created_at, updated_at, next_attempt_at) "
+                "VALUES (?, ?, ?, 'pending', 0, ?, ?, ?)",
+                (message_id, recipient.upper(), normalized, current, current, current),
+            )
+        return OutboundMessage(message_id, recipient.upper(), normalized, 0)
+
+    def due_outbound(self, limit: int = 10) -> list[OutboundMessage]:
+        rows = self.connection.execute(
+            "SELECT message_id, recipient, body, attempts FROM outbound_messages "
+            "WHERE state = 'pending' AND next_attempt_at <= ? "
+            "ORDER BY next_attempt_at, created_at LIMIT ?",
+            (self.now(), max(1, min(100, int(limit)))),
+        ).fetchall()
+        return [
+            OutboundMessage(str(row[0]), str(row[1]), str(row[2]), int(row[3]))
+            for row in rows
+        ]
+
+    def note_outbound_sent(self, message_id: str, retry_seconds: tuple[int, ...]) -> str:
+        current = self.now()
+        with self.connection:
+            row = self.connection.execute(
+                "SELECT attempts, state FROM outbound_messages WHERE message_id = ?",
+                (message_id,),
+            ).fetchone()
+            if row is None or row[1] != "pending":
+                return "inactive"
+            attempts = int(row[0]) + 1
+            if attempts <= len(retry_seconds):
+                state = "pending"
+                next_attempt_at: float | None = current + retry_seconds[attempts - 1]
+                completed_at: float | None = None
+            else:
+                state = "failed"
+                next_attempt_at = None
+                completed_at = current
+            self.connection.execute(
+                "UPDATE outbound_messages SET state = ?, attempts = ?, updated_at = ?, "
+                "next_attempt_at = ?, last_sent_at = ?, completed_at = ? WHERE message_id = ?",
+                (state, attempts, current, next_attempt_at, current, completed_at, message_id),
+            )
+        return state
+
+    def apply_outbound_receipt(self, sender: str, receipt: AprsReceipt) -> str:
+        current = self.now()
+        with self.connection:
+            row = self.connection.execute(
+                "SELECT state FROM outbound_messages WHERE message_id = ? AND recipient = ?",
+                (receipt.message_id, sender.upper()),
+            ).fetchone()
+            if row is None:
+                return "unmatched"
+            if row[0] in {"acked", "rejected"}:
+                return "duplicate"
+            self.connection.execute(
+                "UPDATE outbound_messages SET state = ?, updated_at = ?, next_attempt_at = NULL, "
+                "completed_at = ? WHERE message_id = ? AND recipient = ?",
+                (receipt.disposition, current, current, receipt.message_id, sender.upper()),
+            )
+        return receipt.disposition
+
+    def outbound_summary(self, *, include_messages: bool = False, limit: int = 20) -> dict[str, object]:
+        counts = {
+            str(state): int(count)
+            for state, count in self.connection.execute(
+                "SELECT state, COUNT(*) FROM outbound_messages GROUP BY state"
+            ).fetchall()
+        }
+        result: dict[str, object] = {
+            "pending": counts.get("pending", 0),
+            "acked": counts.get("acked", 0),
+            "rejected": counts.get("rejected", 0),
+            "failed": counts.get("failed", 0),
+        }
+        if include_messages:
+            rows = self.connection.execute(
+                "SELECT message_id, recipient, body, state, attempts, created_at, updated_at, "
+                "next_attempt_at, last_sent_at, completed_at FROM outbound_messages "
+                "ORDER BY created_at DESC LIMIT ?",
+                (max(1, min(100, int(limit))),),
+            ).fetchall()
+            result["messages"] = [
+                {
+                    "message_id": str(row[0]),
+                    "recipient": str(row[1]),
+                    "body": str(row[2]),
+                    "state": str(row[3]),
+                    "attempts": int(row[4]),
+                    "created_at": float(row[5]),
+                    "updated_at": float(row[6]),
+                    "next_attempt_at": float(row[7]) if row[7] is not None else None,
+                    "last_sent_at": float(row[8]) if row[8] is not None else None,
+                    "completed_at": float(row[9]) if row[9] is not None else None,
+                }
+                for row in rows
+            ]
+        return result
+
+    def purge_outbound_history(self, retention_seconds: int) -> int:
+        cutoff = self.now() - retention_seconds
+        with self.connection:
+            cursor = self.connection.execute(
+                "DELETE FROM outbound_messages WHERE state != 'pending' AND updated_at < ?",
+                (cutoff,),
+            )
+        return max(0, int(cursor.rowcount))
 
     def store_mailbox_message(
         self,
@@ -869,6 +1089,52 @@ class AprsAgent:
         if self.reporter is not None:
             self.reporter.write()
 
+    def _transmit_outbound(
+        self,
+        outbound: OutboundMessage,
+        send_ax25: Callable[[bytes], None],
+    ) -> None:
+        information = aprs_reply_information(
+            outbound.recipient,
+            outbound.body,
+            outbound.message_id,
+        )
+        send_ax25(encode_ax25_ui(self.config.callsign, self.config.tocall, information))
+        state = self.store.note_outbound_sent(
+            outbound.message_id,
+            self.config.outbound_retry_seconds,
+        )
+        LOG.info(
+            "Sent APRS message to %s id=%s attempt=%d state=%s",
+            outbound.recipient,
+            outbound.message_id,
+            outbound.attempts + 1,
+            state,
+        )
+
+    def retry_due(self, send_ax25: Callable[[bytes], None]) -> int:
+        due = self.store.due_outbound()
+        for outbound in due:
+            self._transmit_outbound(outbound, send_ax25)
+        return len(due)
+
+    def _record_receipt(self, sender: str, receipt: AprsReceipt) -> None:
+        result = self.store.apply_outbound_receipt(sender, receipt)
+        if result in {"acked", "rejected"}:
+            LOG.info(
+                "APRS message %s by %s id=%s",
+                result,
+                sender,
+                receipt.message_id,
+            )
+        else:
+            LOG.warning(
+                "Ignored %s APRS receipt from %s id=%s",
+                result,
+                sender,
+                receipt.message_id,
+            )
+
     def process(self, raw_ax25: bytes, send_ax25: Callable[[bytes], None]) -> None:
         try:
             frame = decode_ax25_ui(raw_ax25)
@@ -881,6 +1147,15 @@ class AprsAgent:
             return
         if message.sender == self.config.callsign:
             LOG.warning("Ignored an APRS message claiming the local station as its sender")
+            return
+        if message.reply_ack_id is not None:
+            self._record_receipt(
+                message.sender,
+                AprsReceipt("acked", message.reply_ack_id),
+            )
+        receipt = parse_aprs_receipt(message.body) if message.message_id is None else None
+        if receipt is not None:
+            self._record_receipt(message.sender, receipt)
             return
         if message.message_id is None:
             LOG.info("Ignored unnumbered APRS message from %s", message.sender)
@@ -933,9 +1208,17 @@ class AprsAgent:
             except Exception:
                 LOG.exception("APRS status provider failed")
                 response = "PCS STATUS UNAVAILABLE"
-        outbound_id = self.store.next_outbound_id()
-        reply = aprs_reply_information(message.sender, response, outbound_id)
-        send_ax25(encode_ax25_ui(self.config.callsign, self.config.tocall, reply))
+        try:
+            self.store.purge_outbound_history(self.config.outbound_retention_seconds)
+            outbound = self.store.queue_outbound(
+                message.sender,
+                response,
+                self.config.outbound_max_pending,
+            )
+        except RuntimeError:
+            LOG.error("Outbound APRS queue is full; reply to %s was not queued", message.sender)
+            return
+        self._transmit_outbound(outbound, send_ax25)
 
 
 class AgentRuntime:
@@ -961,6 +1244,7 @@ class AgentRuntime:
             connection.sendall(encode_kiss(self.config.kiss_channel, frame))
 
         while not self.stop_event.is_set():
+            self.agent.retry_due(send_ax25)
             try:
                 chunk = connection.recv(4096)
             except socket.timeout:

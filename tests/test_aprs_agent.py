@@ -125,6 +125,7 @@ class KissAndAx25Tests(unittest.TestCase):
         )
         message = pcs_aprs_agent.parse_aprs_message(pcs_aprs_agent.decode_ax25_ui(reply_ack))
         self.assertEqual("B2", message.message_id)
+        self.assertEqual("A1", message.reply_ack_id)
         self.assertEqual("PING", message.body)
 
     def test_direwolf_ichannel_wrapper_recovers_original_aprs_is_packet(self):
@@ -140,6 +141,15 @@ class KissAndAx25Tests(unittest.TestCase):
         self.assertEqual("W8IJC-10", message.addressee)
         self.assertEqual("PING", message.body)
         self.assertEqual("11", message.message_id)
+
+    def test_aprs_receipt_parser_accepts_only_exact_ack_or_rej_bodies(self):
+        ack = pcs_aprs_agent.parse_aprs_receipt("ack00A1")
+        rejection = pcs_aprs_agent.parse_aprs_receipt("REJ9")
+
+        self.assertEqual(("acked", "00A1"), (ack.disposition, ack.message_id))
+        self.assertEqual(("rejected", "9"), (rejection.disposition, rejection.message_id))
+        for invalid in ("ack", "ack123456", "ack1 extra", " ack1", "xack1", "PING"):
+            self.assertIsNone(pcs_aprs_agent.parse_aprs_receipt(invalid))
 
     def test_direwolf_ichannel_wrapper_rejects_malformed_or_nested_tnc2(self):
         malformed = pcs_aprs_agent.Ax25Frame("X", "X", b"}not-a-packet")
@@ -178,6 +188,108 @@ class StoreAndAgentTests(unittest.TestCase):
         self.assertEqual(b":W8IJC-7  :ack42", sent[0].information)
         self.assertRegex(sent[1].information.decode("ascii"), r"^:W8IJC-7  :RESULT STATUS\{[0-9A-Z]{4}$")
         self.assertEqual(["STATUS"], self.provider.commands)
+        self.assertEqual(1, self.store.outbound_summary()["pending"])
+
+    def test_only_matching_sender_can_ack_an_outbound_message(self):
+        sent = self.process(inbound_frame(body="PING", message_id="42"))
+        outbound_id = sent[1].information.decode("ascii").rsplit("{", 1)[1]
+
+        self.assertEqual([], self.process(inbound_frame("N0CALL", body=f"ack{outbound_id}", message_id=None)))
+        self.assertEqual(1, self.store.outbound_summary()["pending"])
+        self.assertEqual([], self.process(inbound_frame(body=f"ack{outbound_id}", message_id=None)))
+
+        summary = self.store.outbound_summary(include_messages=True)
+        self.assertEqual(0, summary["pending"])
+        self.assertEqual(1, summary["acked"])
+        self.assertEqual("W8IJC-7", summary["messages"][0]["recipient"])
+        self.assertEqual(1, summary["messages"][0]["attempts"])
+
+    def test_rejection_and_duplicate_receipt_are_terminal_without_a_reply(self):
+        sent = self.process(inbound_frame(body="STATUS", message_id="43"))
+        outbound_id = sent[1].information.decode("ascii").rsplit("{", 1)[1]
+
+        self.assertEqual([], self.process(inbound_frame(body=f"rej{outbound_id}", message_id=None)))
+        self.assertEqual([], self.process(inbound_frame(body=f"ack{outbound_id}", message_id=None)))
+
+        summary = self.store.outbound_summary()
+        self.assertEqual(1, summary["rejected"])
+        self.assertEqual(0, summary["acked"])
+
+    def test_reply_ack_extension_completes_prior_message_and_processes_new_command(self):
+        first = self.process(inbound_frame(body="PING", message_id="41"))
+        outbound_id = first[1].information.decode("ascii").rsplit("{", 1)[1]
+        reply_ack = pcs_aprs_agent.encode_ax25_ui(
+            "W8IJC-7",
+            "APRS",
+            f":{'W8IJC-10':<9}:STATUS{{42}}{outbound_id}".encode("ascii"),
+        )
+
+        second = self.process(reply_ack)
+        summary = self.store.outbound_summary()
+
+        self.assertEqual(b":W8IJC-7  :ack42", second[0].information)
+        self.assertEqual(["PING", "STATUS"], self.provider.commands)
+        self.assertEqual(1, summary["acked"])
+        self.assertEqual(1, summary["pending"])
+
+    def test_due_messages_retry_on_schedule_and_fail_after_bounded_attempts(self):
+        clock = [100.0]
+        self.store.close()
+        self.store = pcs_aprs_agent.DedupStore(self.db_path, 3600, now=lambda: clock[0])
+        self.config = pcs_aprs_agent.AgentConfig(
+            state_db=str(self.db_path),
+            outbound_retry_seconds=(5, 10),
+        )
+        self.agent = pcs_aprs_agent.AprsAgent(
+            self.config, self.store, self.provider, self.limiter,
+        )
+        initial = self.process(inbound_frame(body="PING", message_id="44"))
+        outbound_id = initial[1].information.decode("ascii").rsplit("{", 1)[1]
+        retried = []
+
+        clock[0] = 104.0
+        self.assertEqual(0, self.agent.retry_due(retried.append))
+        clock[0] = 105.0
+        self.assertEqual(1, self.agent.retry_due(retried.append))
+        clock[0] = 114.0
+        self.assertEqual(0, self.agent.retry_due(retried.append))
+        clock[0] = 115.0
+        self.assertEqual(1, self.agent.retry_due(retried.append))
+
+        summary = self.store.outbound_summary(include_messages=True)
+        self.assertEqual(2, len(retried))
+        self.assertEqual(3, summary["messages"][0]["attempts"])
+        self.assertEqual(1, summary["failed"])
+
+        self.process(inbound_frame(body=f"ack{outbound_id}", message_id=None))
+        self.assertEqual(1, self.store.outbound_summary()["acked"])
+
+    def test_failed_socket_send_leaves_message_due_without_counting_an_attempt(self):
+        outbound = self.store.queue_outbound("W8IJC-7", "TEST", 100)
+
+        with self.assertRaisesRegex(OSError, "send failed"):
+            self.agent._transmit_outbound(
+                outbound,
+                mock.Mock(side_effect=OSError("send failed")),
+            )
+
+        summary = self.store.outbound_summary(include_messages=True)
+        self.assertEqual(0, summary["messages"][0]["attempts"])
+        self.assertEqual(1, summary["pending"])
+        self.assertEqual(1, len(self.store.due_outbound()))
+
+    def test_pending_retry_state_survives_database_reopen(self):
+        outbound = self.store.queue_outbound("W8IJC-7", "TEST", 100)
+        self.agent._transmit_outbound(outbound, lambda _frame: None)
+        self.store.close()
+
+        reopened = pcs_aprs_agent.DedupStore(self.db_path, 3600, now=lambda: 10_031)
+        self.store = reopened
+        due = reopened.due_outbound()
+
+        self.assertEqual(1, len(due))
+        self.assertEqual(outbound.message_id, due[0].message_id)
+        self.assertEqual(1, due[0].attempts)
 
     def test_aprs_is_ichannel_command_is_acked_and_replied_to(self):
         sent = self.process(ichannel_frame(body="PING", message_id="11"))
@@ -335,6 +447,12 @@ class ConfigurationAndStatusTests(unittest.TestCase):
             self.assertNotIn(forbidden, service)
         self.assertIn("channel 0 remains RF", documentation)
         self.assertIn("not compatible with Graywolf", documentation)
+        self.assertIn("source must match the reply recipient", documentation)
+        self.assertIn("PCS_APRS_AGENT_OUTBOUND_RETRY_SECONDS", setup)
+        self.assertIn(
+            "outbound_retry_seconds = 30,60,120,240",
+            CONFIG_EXAMPLE_PATH.read_text(encoding="utf-8"),
+        )
 
     def test_runtime_does_not_connect_when_dire_wolf_is_inactive(self):
         config = pcs_aprs_agent.AgentConfig()
@@ -409,6 +527,30 @@ class ConfigurationAndStatusTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "state_db"):
+                pcs_aprs_agent.AgentConfig.load(path)
+
+    def test_configuration_validates_bounded_nondecreasing_retry_schedule(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "agent.conf"
+            base = (
+                "[agent]\n"
+                "callsign = W8IJC-10\n"
+                "kiss_host = 127.0.0.1\n"
+                "kiss_channel = 8\n"
+            )
+            path.write_text(base + "outbound_retry_seconds = 5,30,120\n", encoding="utf-8")
+            self.assertEqual((5, 30, 120), pcs_aprs_agent.AgentConfig.load(path).outbound_retry_seconds)
+
+            path.write_text(base + "outbound_retry_seconds = 30,5\n", encoding="utf-8")
+            with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "nondecreasing"):
+                pcs_aprs_agent.AgentConfig.load(path)
+
+            path.write_text(base + "outbound_retry_seconds = 1,30\n", encoding="utf-8")
+            with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "5 to 3600"):
+                pcs_aprs_agent.AgentConfig.load(path)
+
+            path.write_text(base + "outbound_retry_seconds = 5,,30\n", encoding="utf-8")
+            with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "empty delay"):
                 pcs_aprs_agent.AgentConfig.load(path)
 
     def test_temperature_uptime_and_power_are_bounded_read_only_values(self):

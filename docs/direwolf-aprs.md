@@ -351,6 +351,9 @@ hardware-evidence flags.
 | `PCS_APRS_AGENT_MAILBOX_LIMIT` | `100` | Maximum retained `MSG` mailbox entries; oldest entries are removed first. |
 | `PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE` | `12` | Per-sender response ceiling for the unauthenticated public APRS interface. |
 | `PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE` | `60` | Whole-agent response ceiling. |
+| `PCS_APRS_AGENT_OUTBOUND_RETRY_SECONDS` | `30,60,120,240` | Bounded retry delays for numbered agent replies sent through the Internet-only channel. |
+| `PCS_APRS_AGENT_OUTBOUND_MAX_PENDING` | `100` | Maximum agent replies waiting for ACK or REJ. |
+| `PCS_APRS_AGENT_OUTBOUND_RETENTION_SECONDS` | `604800` | Terminal ACK, rejection, and retry-exhaustion history retention. |
 | `PCS_APRS_IGATE` | `no` | Adds the `IGSERVER` and `IGLOGIN` APRS-IS connection; mode controls the return RF path. |
 | `PCS_APRS_IGATE_SERVER` | `noam.aprs2.net` | Regional APRS-IS rotate address; change when appropriate. |
 | `PCS_APRS_IGATE_MODE` | `rx-only` / `two-way` | Selected as `two-way`; `IGTXVIA` is generated only for the guarded TX profile. |
