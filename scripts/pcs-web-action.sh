@@ -46,7 +46,7 @@ dispatch_host_namespace_action() {
     local dispatcher
 
     case "${ACTION}" in
-        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb) ;;
+        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read) ;;
         *) return 0 ;;
     esac
 
@@ -132,6 +132,7 @@ Allowed actions:
   status
   self-test
   meshtastic-status
+  aprs-mailbox-read
   storage-status
   sync-backup
   mount-usb
@@ -147,6 +148,16 @@ Allowed actions:
   reboot-system
   shutdown-system
 EOF
+}
+
+aprs_mailbox_read_action() {
+    local helper="/usr/local/sbin/pcs-aprs-agent"
+    local config="/etc/pcs/aprs-agent.conf"
+    if [[ ! -x "${helper}" || ! -s "${config}" ]]; then
+        echo "ERROR: PCS APRS Agent mailbox is unavailable." >&2
+        return 1
+    fi
+    "${helper}" --config "${config}" --mark-mailbox-read
 }
 
 ensure_repo() {
@@ -553,6 +564,9 @@ USB_MOUNT = "/mnt/pcs-usb"
 PRIMARY_SHARE = "/mnt/pcs-usb/PCS-Share"
 BACKUP_SHARE = "/srv/pcs-share-backup"
 APRS_TELEMETRY_HELPER = "/usr/local/sbin/pcs-aprs-telemetry"
+APRS_AGENT_HELPER = "/usr/local/sbin/pcs-aprs-agent"
+APRS_AGENT_CONFIG = "/etc/pcs/aprs-agent.conf"
+APRS_AGENT_STATUS_FILE = "/run/pcs-aprs-agent/status.json"
 MESHTASTIC_STATUS_FILE = "/var/lib/pcs-meshtastic/status.json"
 MESHTASTIC_ENV_FILE = "/etc/pcs/meshtastic.env"
 CELLULAR_PROFILE_DEFAULT = "pcs-cellular-profile"
@@ -868,6 +882,63 @@ def default_route_iface():
 def ping_ok(target):
     rc, _, _ = run(["ping", "-c", "1", "-W", "2", target], timeout=4)
     return rc == 0
+
+def safe_nonnegative_int(value, default=0):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return default
+    return min(value, 999_999_999)
+
+def aprs_agent_runtime():
+    status = json_object(APRS_AGENT_STATUS_FILE)
+    collected = status.get("collected_at_epoch")
+    fresh = isinstance(collected, int) and not isinstance(collected, bool) and 0 <= time.time() - collected <= 15
+    state = str(status.get("state", "unavailable")) if fresh else "stale" if status else "unavailable"
+    runtime_status = str(status.get("status", "warn")) if fresh else "warn"
+    if runtime_status not in {"ok", "warn"}:
+        runtime_status = "warn"
+    mailbox = {"total": 0, "unread": 0, "last_received_at": None, "messages": []}
+    if os.path.isfile(APRS_AGENT_HELPER) and os.path.isfile(APRS_AGENT_CONFIG):
+        mode = "--mailbox-summary-json" if PUBLIC_VIEW else "--mailbox-json"
+        rc, output, _ = run([APRS_AGENT_HELPER, "--config", APRS_AGENT_CONFIG, mode], timeout=5)
+        if rc == 0:
+            try:
+                loaded = json.loads(output)
+                if isinstance(loaded, dict):
+                    mailbox.update(loaded)
+            except (TypeError, ValueError):
+                pass
+    messages = []
+    for entry in mailbox.get("messages", [])[:10] if isinstance(mailbox.get("messages"), list) else []:
+        if not isinstance(entry, dict):
+            continue
+        sender = str(entry.get("sender", "unknown"))[:9]
+        message_id = str(entry.get("message_id", ""))[:5]
+        body = " ".join(str(entry.get("body", "")).split())[:67]
+        received = entry.get("received_at")
+        received_label = "unknown time"
+        if isinstance(received, (int, float)) and not isinstance(received, bool):
+            received_label = datetime.fromtimestamp(received).astimezone().isoformat(timespec="seconds")
+        messages.append({
+            "id": safe_nonnegative_int(entry.get("id")),
+            "sender": sender,
+            "message_id": message_id,
+            "body": body,
+            "received_at": received_label,
+            "unread": entry.get("unread") is True,
+        })
+    return {
+        "active": active("pcs-aprs-agent.service"),
+        "enabled": enabled("pcs-aprs-agent.service"),
+        "status": runtime_status,
+        "state": state,
+        "fresh": fresh,
+        "packets_received": safe_nonnegative_int(status.get("packets_received")),
+        "messages_received": safe_nonnegative_int(status.get("messages_received")),
+        "mailbox_total": safe_nonnegative_int(mailbox.get("total")),
+        "mailbox_unread": safe_nonnegative_int(mailbox.get("unread")),
+        "last_mailbox_at": mailbox.get("last_received_at"),
+        "messages": messages,
+    }
 
 def tcp_connect_ok(host, port, timeout=1.5):
     try:
@@ -2234,6 +2305,20 @@ aprs_beacon_interval = CONFIG.get("PCS_APRS_BEACON_INTERVAL", "not configured")
 aprs_digipeat = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_DIGIPEAT", "no").lower() == "yes"
 aprs_digipeat_mode = CONFIG.get("PCS_APRS_DIGIPEAT_MODE", "standard")
 aprs_digipeat_alias = CONFIG.get("PCS_APRS_DIGIPEAT_ALIAS", "not configured")
+aprs_agent_enabled = CONFIG.get("PCS_APRS_AGENT_ENABLED", "no").lower() == "yes"
+aprs_agent = aprs_agent_runtime() if aprs_agent_enabled else {
+    "active": False,
+    "enabled": False,
+    "status": "warn",
+    "state": "disabled",
+    "fresh": False,
+    "packets_received": 0,
+    "messages_received": 0,
+    "mailbox_total": 0,
+    "mailbox_unread": 0,
+    "last_mailbox_at": None,
+    "messages": [],
+}
 graywolf_state = graywolf_runtime() if aprs_engine == "graywolf" else {"available": False}
 if graywolf_state.get("available"):
     aprs_igate = bool(graywolf_state.get("igate_enabled"))
@@ -2313,6 +2398,8 @@ if aprs_telemetry.get("available"):
 else:
     aprs_packet_summary = "not available"
     aprs_last_packet = "not available"
+aprs_last_mailbox_age = epoch_age(aprs_agent.get("last_mailbox_at"))
+aprs_last_mailbox = age_label(aprs_last_mailbox_age) if aprs_last_mailbox_age is not None else "none received"
 
 if APRS_STAGED:
     aprs_status = "ok" if aprs_engine_installed and aprs_engine_staged and not aprs_engine_active and not aprs_engine_enabled else "warn"
@@ -2336,6 +2423,14 @@ elif APRS_CONFIGURED:
     aprs_service_label = "active" if aprs_engine_active else "inactive"
     aprs_radio_label = CONFIG.get("PCS_APRS_RADIO", f"{aprs_audio_input} -> {aprs_audio_output}")
     aprs_tx_label = "enabled" if aprs_tx_enabled else "receive-only"
+    if aprs_agent_enabled and not (
+        aprs_agent.get("active")
+        and aprs_agent.get("enabled")
+        and aprs_agent.get("status") == "ok"
+        and aprs_agent.get("state") == "connected"
+    ):
+        aprs_status = "warn"
+        aprs_summary = "Dire Wolf is active; APRS messaging agent needs attention"
 else:
     aprs_status = "ok"
     aprs_summary = "APRS not selected"
@@ -2920,8 +3015,40 @@ if APRS_PREPARED:
             {"label": "Unique stations / 24h", "value": str(aprs_telemetry.get("unique_stations_24h", 0)) if aprs_telemetry.get("available") else "not available"},
             {"label": "Last RF packet", "value": aprs_last_packet},
             {"label": "Last station", "value": aprs_telemetry.get("last_station") or "not available"},
+            {"label": "Messaging agent", "value": "active" if aprs_agent.get("active") else "inactive" if aprs_agent_enabled else "disabled"},
+            {"label": "Agent connection", "value": aprs_agent.get("state", "unavailable")},
+            {"label": "Agent packets (session)", "value": str(aprs_agent.get("packets_received", 0))},
+            {"label": "Addressed messages (session)", "value": str(aprs_agent.get("messages_received", 0))},
+            {"label": "Mailbox messages", "value": str(aprs_agent.get("mailbox_total", 0))},
+            {"label": "Mailbox unread", "value": str(aprs_agent.get("mailbox_unread", 0))},
+            {"label": "Last mailbox message", "value": aprs_last_mailbox},
         ],
     })
+
+    if aprs_agent_enabled:
+        mailbox_items = [
+            {"label": "Agent service", "value": "active" if aprs_agent.get("active") else "inactive"},
+            {"label": "KISS / APRS-IS channel", "value": aprs_agent.get("state", "unavailable")},
+            {"label": "Stored messages", "value": str(aprs_agent.get("mailbox_total", 0))},
+            {"label": "Unread messages", "value": str(aprs_agent.get("mailbox_unread", 0))},
+            {"label": "Last message", "value": aprs_last_mailbox},
+        ]
+        for message in aprs_agent.get("messages", []):
+            state = "unread" if message.get("unread") else "read"
+            label = f"{message.get('sender', 'unknown')} #{message.get('message_id', '')} ({state})"
+            value = f"{message.get('body', '')} — {message.get('received_at', 'unknown time')}"
+            mailbox_items.append({"label": label, "value": value})
+        cards.append({
+            "id": "aprs-mailbox",
+            "title": "APRS Message Mailbox",
+            "status": "ok" if aprs_agent.get("status") == "ok" else "warn",
+            "summary": (
+                f"{aprs_agent.get('mailbox_unread', 0)} unread message(s)"
+                if aprs_agent.get("mailbox_unread", 0)
+                else "Mailbox ready; no unread messages"
+            ),
+            "items": mailbox_items,
+        })
 
 if MESHTASTIC_PREPARED:
     cards.append({
@@ -2971,6 +3098,7 @@ card_order = [
     "time",
     "gps",
     "aprs",
+    "aprs-mailbox",
     "meshtastic",
 ]
 
@@ -3159,6 +3287,14 @@ if PUBLIC_VIEW:
             "packets": aprs_packet_summary,
             "last_heard": aprs_last_packet,
             "tx_state": aprs_tx_label,
+            "agent_enabled": aprs_agent_enabled,
+            "agent_status": aprs_agent.get("status", "warn"),
+            "agent_connection": aprs_agent.get("state", "unavailable"),
+            "agent_packets_received": aprs_agent.get("packets_received", 0),
+            "agent_messages_received": aprs_agent.get("messages_received", 0),
+            "mailbox_messages": aprs_agent.get("mailbox_total", 0),
+            "mailbox_unread": aprs_agent.get("mailbox_unread", 0),
+            "last_mailbox_message": aprs_last_mailbox,
         },
         "meshtastic": {
             "configured": MESHTASTIC_CONFIGURED,
@@ -4049,6 +4185,10 @@ case "${ACTION}" in
 
     restart-meshtastic)
         restart_meshtastic_action
+        ;;
+
+    aprs-mailbox-read)
+        aprs_mailbox_read_action
         ;;
 
     dashboard-json)

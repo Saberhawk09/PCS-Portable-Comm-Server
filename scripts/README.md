@@ -114,6 +114,29 @@ state. NetworkManager also requests a refresh after relevant uplink events.
 
 ## Meshtastic USB/Bluetooth / MQTT
 
+## PCS APRS Agent
+
+### setup-pcs-aprs-agent.sh
+
+Installs or checks the APRS status and mailbox agent after the managed Dire Wolf
+profile has a matching Internet-only `ICHANNEL`:
+
+```bash
+./scripts/setup-pcs-aprs-agent.sh --check
+./scripts/setup-pcs-aprs-agent.sh --install
+```
+
+The installer never edits or restarts Dire Wolf and refuses installation when
+the live KISS/ICHANNEL mapping is absent. See
+[PCS APRS Agent](../docs/aprs-agent.md).
+
+### pcs_aprs_agent.py
+
+Connects to local Dire Wolf KISS, accepts numbered messages addressed exactly
+to the PCS callsign, ACKs duplicates without re-running commands, and answers
+only the documented read-only status commands. It never connects to APRS-IS or
+uses the RF KISS channel.
+
 ### setup-meshtastic-bluetooth.sh
 
 Stages or configures a persistent USB serial or BLE connection to a dedicated

@@ -91,12 +91,16 @@ for the vendor's PWM capability and 100 Hz example.
 
 ## HD44780 Live Status
 
-The installed 16x2 LCD rotates six pages every three seconds: PCS state and
+The installed 16x2 LCD rotates seven pages every three seconds: PCS state and
 uptime; CPU temperature in Celsius and Fahrenheit; active Cellular/WiFi/Offline
 uplink; NetworkManager cellular data state and ModemManager signal quality; gpsd fix state with
 paired satellites in view/used; then active AP client count and the current
-six-character Maidenhead grid square. Raw coordinates are never retained or
-logged by the display daemon.
+six-character Maidenhead grid square; then APRS agent state and session counters.
+The APRS page shows `APRS Stats: Ok` when connected, `APRS Stats: MSG` when the
+mailbox has unread entries, or `APRS Stats: Err` when status is unavailable.
+Its second line begins as `Pkt RX:0 Msgs:0` and compacts larger counts to remain
+within 16 characters. Raw coordinates and mailbox contents are never retained
+or logged by the display daemon.
 The displayed cellular `On`/`Off` state follows the NetworkManager data session,
 not the modem's separate registered/available state.
 Warnings append a centered plain-language condition page after the six normal
@@ -137,6 +141,9 @@ data. The chain is configured for 800 kHz GRB ordering and a global brightness
 of 32/255, so the status display remains subdued. The daemon rewrites the chain
 only when a status color changes and turns all six pixels off during a clean
 service stop.
+While APRS mail is unread, pixel 3 briefly pulses white once per second and then
+returns to its normal local-services color; the underlying six pixel meanings
+do not change.
 
 Install or inspect the persistent service explicitly:
 
@@ -162,6 +169,11 @@ no active uplink, and unavailable GPS fix. The OpenWrt fault uses the Wi-Fi
 symbol and critical severity; Pi-Star uses a dedicated raspberry symbol and
 warning severity. Local systemd failures remain critical. Detailed live values
 remain on the LCD.
+Unread APRS mail alternates a letter/envelope icon with the normal checkmark
+when the system is otherwise healthy. Both use intensity 1. When a real warning
+or fault exists, the envelope precedes the alert frames and the healthy
+checkmark remains suppressed. Mail is informational and does not create a
+warning or fault by itself.
 The healthy checkmark uses intensity 1; warning and critical frames use
 intensity 10 out of the MAX7219's 0-15 range. The matrix service owns only
 `/dev/spidev0.0`; it does not request or drive PTT, UART, fan, LCD, or WS2812

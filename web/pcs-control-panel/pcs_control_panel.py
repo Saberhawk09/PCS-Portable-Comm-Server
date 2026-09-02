@@ -56,6 +56,7 @@ ACTIONS = [
     ("cellular-test", "Test Cellular", "Test cellular-only internet through the WWAN interface."),
     ("meshtastic-status", "View Meshtastic", "Show privacy-safe node, mesh, MQTT, GPSD, and environment status."),
     ("restart-meshtastic", "Restart Meshtastic", "Reconnect the Meshtastic radio transport and MQTT gateway."),
+    ("aprs-mailbox-read", "Mark APRS Mailbox Read", "Clear the unread APRS mailbox notification without deleting messages."),
     ("sync-backup", "Sync USB to SD Backup", "Mirror the USB primary share to the SD backup."),
     ("mount-usb", "Mount USB Storage", "Mount the USB primary share and restart Samba."),
     ("mount-new-usb", "Mount New USB Storage", "Configure a newly attached USB device as primary storage."),
@@ -76,6 +77,7 @@ ACTION_CONFIRMS = {
     "mount-new-usb": "Configure the attached USB device as PCS primary storage?",
     "safe-unmount-usb": "Sync the backup and safely unmount PCS USB storage?",
     "restart-meshtastic": "Restart the Meshtastic radio and MQTT gateway now?",
+    "aprs-mailbox-read": "Mark every stored APRS mailbox message as read? Messages will be retained.",
     "reboot-system": "Reboot PCS now? The administration page will disconnect during restart.",
     "shutdown-system": "Shutdown PCS now? Physical access is required to power it back on.",
 }
@@ -83,7 +85,7 @@ ACTION_GROUPS = [
     ("Health", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
-    ("Communications", ["meshtastic-status", "restart-meshtastic"]),
+    ("Communications", ["meshtastic-status", "restart-meshtastic", "aprs-mailbox-read"]),
     ("Storage", ["sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb"]),
     ("Services", ["restart-services", "restart-samba", "restart-modemmanager"]),
     ("Time / GPS", ["sync-time", "restart-chrony", "restart-gpsd"]),
@@ -98,6 +100,7 @@ DANGEROUS_ACTIONS = {
     "restart-chrony",
     "restart-gpsd",
     "restart-meshtastic",
+    "aprs-mailbox-read",
     "reboot-system",
     "shutdown-system",
 }
@@ -334,6 +337,9 @@ PUBLIC_FIELDS = {
         "aprs_is", "aprs_is_profile", "beacon", "digipeater", "kiss", "fx25", "packets",
         "last_heard", "tx_state", "engine", "graywolf_url", "graywolf_gain",
         "graywolf_tx_timing", "graywolf_igate", "graywolf_beacon_path",
+        "agent_enabled", "agent_status", "agent_connection",
+        "agent_packets_received", "agent_messages_received", "mailbox_messages",
+        "mailbox_unread", "last_mailbox_message",
     },
     "meshtastic": {
         "configured", "status", "service", "node", "hardware", "firmware",
@@ -703,6 +709,16 @@ def render_public_page(data: dict) -> bytes:
             ("Last RF packet", "last_heard", "not available"),
             ("Service", "service", "unknown"), ("RF TX", "tx_state", "Safe"),
         ]))
+        if aprs.get("agent_enabled"):
+            mailbox_section = {**aprs, "status": aprs.get("agent_status", "warn")}
+            cards.append(public_card("APRS Mailbox", mailbox_section, [
+                ("Messaging agent", "agent_connection", "unavailable"),
+                ("Agent packets (session)", "agent_packets_received", 0),
+                ("Addressed messages (session)", "agent_messages_received", 0),
+                ("Stored messages", "mailbox_messages", 0),
+                ("Unread messages", "mailbox_unread", 0),
+                ("Last message", "last_mailbox_message", "none received"),
+            ]))
         graywolf_card = graywolf_access_card(aprs)
         if graywolf_card:
             cards.append(graywolf_card)

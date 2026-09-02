@@ -92,6 +92,10 @@ PCS_APRS_BEACON="${PCS_APRS_BEACON:-no}"
 PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-IG}"
 PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
+PCS_APRS_AGENT_ENABLED="${PCS_APRS_AGENT_ENABLED:-no}"
+PCS_APRS_AGENT_ICHANNEL="${PCS_APRS_AGENT_ICHANNEL:-8}"
+PCS_APRS_AGENT_RF_ENABLED="${PCS_APRS_AGENT_RF_ENABLED:-no}"
+PCS_APRS_AGENT_RF_CHANNEL="${PCS_APRS_AGENT_RF_CHANNEL:-0}"
 PCS_APRS_RADIO_INIT="${PCS_APRS_RADIO_INIT:-no}"
 PCS_APRS_FX25_TX="${PCS_APRS_FX25_TX:-no}"
 
@@ -1172,6 +1176,71 @@ case "${PCS_SETUP_APRS}" in
                 pass "AGW tcp/${PCS_APRS_AGW_PORT} and KISS tcp/${PCS_APRS_KISS_PORT} have PCS-LAN-only firewall enforcement"
             else
                 fail "Active APRS client ports require the PCS LAN-only firewall service"
+            fi
+        fi
+
+        if [[ "${PCS_APRS_AGENT_ENABLED}" == "yes" ]]; then
+            if sudo -n grep -Eq "^ICHANNEL[[:space:]]+${PCS_APRS_AGENT_ICHANNEL}$" /etc/direwolf.conf; then
+                pass "Dire Wolf maps the PCS APRS Agent Internet-only KISS channel"
+            else
+                fail "PCS APRS Agent is selected but the live ICHANNEL mapping is missing"
+            fi
+            if [[ -x /usr/local/sbin/pcs-aprs-agent && -s /etc/pcs/aprs-agent.conf ]] \
+                && /usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf --check-config >/dev/null 2>&1; then
+                pass "PCS APRS Agent executable and configuration are valid"
+            else
+                fail "PCS APRS Agent executable or configuration is missing or invalid"
+            fi
+            if service_enabled pcs-aprs-agent.service && service_active pcs-aprs-agent.service; then
+                pass "pcs-aprs-agent.service is enabled and active"
+            else
+                fail "PCS APRS Agent is selected but its service is not enabled and active"
+            fi
+            if [[ "${PCS_APRS_AGENT_RF_ENABLED}" == "yes" ]]; then
+                if [[ "${PCS_APRS_ACTIVE_MODE}" == "tx" && "${PCS_APRS_AGENT_RF_CHANNEL}" == "0" ]] \
+                    && sudo -n grep -Fxq "rf_enabled = yes" /etc/pcs/aprs-agent.conf \
+                    && sudo -n grep -Fxq "rf_channel = 0" /etc/pcs/aprs-agent.conf; then
+                    pass "PCS APRS Agent local RF route is explicitly enabled on guarded channel 0"
+                else
+                    fail "PCS APRS Agent RF route is selected without the guarded channel-0 TX profile"
+                fi
+            fi
+            if python3 - <<'PY'
+import json
+import time
+from pathlib import Path
+
+try:
+    payload = json.loads(Path("/run/pcs-aprs-agent/status.json").read_text(encoding="utf-8"))
+    required = {
+        "schema_version", "collected_at_epoch", "state", "status",
+        "packets_received", "messages_received", "mailbox_total", "mailbox_unread",
+        "last_mailbox_at_epoch",
+    }
+    assert set(payload) == required
+    assert payload["schema_version"] == 1
+    assert payload["state"] == "connected" and payload["status"] == "ok"
+    assert 0 <= time.time() - payload["collected_at_epoch"] <= 15
+    for key in ("packets_received", "messages_received", "mailbox_total", "mailbox_unread"):
+        assert isinstance(payload[key], int) and not isinstance(payload[key], bool) and payload[key] >= 0
+except (OSError, ValueError, TypeError, AssertionError):
+    raise SystemExit(1)
+PY
+            then
+                pass "PCS APRS Agent runtime status is fresh, connected, and aggregate-only"
+            else
+                fail "PCS APRS Agent runtime status is missing, stale, disconnected, or invalid"
+            fi
+            APRS_MAILBOX_SUMMARY="$(sudo -n /usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf --mailbox-summary-json 2>/dev/null || true)"
+            if python3 -c 'import json,sys; value=json.loads(sys.stdin.read()); assert set(value) == {"total", "unread", "last_received_at"}; assert all(isinstance(value[key], int) and not isinstance(value[key], bool) and value[key] >= 0 for key in ("total", "unread")); assert value["unread"] <= value["total"]' <<<"${APRS_MAILBOX_SUMMARY}"; then
+                pass "PCS APRS mailbox database and aggregate query are valid"
+            else
+                fail "PCS APRS mailbox database or aggregate query is invalid"
+            fi
+            if sudo -n /usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf --check-state >/dev/null 2>&1; then
+                pass "PCS APRS outbound state and retry queue are valid"
+            else
+                fail "PCS APRS outbound state or retry queue is invalid"
             fi
         fi
 

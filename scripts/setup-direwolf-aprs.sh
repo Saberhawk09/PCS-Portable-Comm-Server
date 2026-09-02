@@ -53,7 +53,7 @@ DIREWOLF_SOURCE_COMMIT="a231971a652bfb574a4bae9a5d875fbce53d2267"
 DIREWOLF_SOURCE_URL="https://github.com/wb2osz/direwolf.git"
 DIREWOLF_CLOCK_JUMP_PATCH="${REPO_DIR}/patches/direwolf-1.8.1-tracker-clock-jump.patch"
 DIREWOLF_CLOCK_JUMP_MARKER="Tracker beacon schedule updated."
-APRS_CONFIG_VERSION_CURRENT="2"
+APRS_CONFIG_VERSION_CURRENT="3"
 MODE="${1:---prepare}"
 PROFILE="${2:-}"
 VALUE2="${3:-}"
@@ -92,6 +92,12 @@ PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-8000}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-8001}"
 PCS_APRS_KISS_LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"
 PCS_APRS_KISS_LAN_NETWORK="${PCS_APRS_KISS_LAN_NETWORK:-10.42.0.0/24}"
+PCS_APRS_AGENT_ENABLED="${PCS_APRS_AGENT_ENABLED:-no}"
+PCS_APRS_AGENT_ICHANNEL="${PCS_APRS_AGENT_ICHANNEL:-8}"
+PCS_APRS_AGENT_TOCALL="${PCS_APRS_AGENT_TOCALL:-APZPCS}"
+PCS_APRS_AGENT_DEDUPE_TTL_SECONDS="${PCS_APRS_AGENT_DEDUPE_TTL_SECONDS:-86400}"
+PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE="${PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE:-12}"
+PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE="${PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE:-60}"
 PCS_APRS_IGATE="${PCS_APRS_IGATE:-yes}"
 PCS_APRS_IGATE_SERVER="${PCS_APRS_IGATE_SERVER:-noam.aprs2.net}"
 PCS_APRS_IGATE_MODE="${PCS_APRS_IGATE_MODE:-two-way}"
@@ -732,6 +738,11 @@ validate_profile_values() {
     validate_value PCS_APRS_KISS_PORT "${PCS_APRS_KISS_PORT}" '^[0-9]{1,5}$'
     validate_value PCS_APRS_KISS_LAN_INTERFACE "${PCS_APRS_KISS_LAN_INTERFACE}" '^[A-Za-z0-9_.:-]+$'
     validate_value PCS_APRS_KISS_LAN_NETWORK "${PCS_APRS_KISS_LAN_NETWORK}" '^[0-9.]+/[0-9]{1,2}$'
+    validate_value PCS_APRS_AGENT_ICHANNEL "${PCS_APRS_AGENT_ICHANNEL}" '^([1-9]|1[0-5])$'
+    validate_value PCS_APRS_AGENT_TOCALL "${PCS_APRS_AGENT_TOCALL}" '^[A-Z0-9]{1,6}$'
+    validate_value PCS_APRS_AGENT_DEDUPE_TTL_SECONDS "${PCS_APRS_AGENT_DEDUPE_TTL_SECONDS}" '^[0-9]{2,7}$'
+    validate_value PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE "${PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE}" '^[0-9]{1,3}$'
+    validate_value PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE "${PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE}" '^[0-9]{1,3}$'
     validate_value PCS_APRS_IGATE_SERVER "${PCS_APRS_IGATE_SERVER}" '^[A-Za-z0-9.-]+$'
     validate_value PCS_APRS_IGATE_MODE "${PCS_APRS_IGATE_MODE}" '^(rx-only|two-way)$'
     validate_value PCS_APRS_IGATE_RF_TO_IS_FILTER "${PCS_APRS_IGATE_RF_TO_IS_FILTER}" '^[A-Za-z0-9_/*,|&!().:+ -]{1,160}$'
@@ -773,7 +784,7 @@ validate_profile_values() {
         validate_value "${radio_switch}" "${!radio_switch}" '^(on|off)$'
     done
 
-    for boolean_value in PCS_APRS_IGATE PCS_APRS_GPSD PCS_APRS_BEACON PCS_APRS_BEACON_ALTITUDE PCS_APRS_DIGIPEAT PCS_APRS_TX_ENABLED PCS_APRS_FX25_TX PCS_APRS_LOGGING PCS_APRS_RADIO_INIT PCS_APRS_RX_AUDIO_VALIDATED PCS_APRS_RADIO_CHANNEL_VALIDATED PCS_APRS_PTT_VALIDATED PCS_APRS_TX_AUDIO_VALIDATED PCS_APRS_TX_TIMING_VALIDATED; do
+    for boolean_value in PCS_APRS_AGENT_ENABLED PCS_APRS_IGATE PCS_APRS_GPSD PCS_APRS_BEACON PCS_APRS_BEACON_ALTITUDE PCS_APRS_DIGIPEAT PCS_APRS_TX_ENABLED PCS_APRS_FX25_TX PCS_APRS_LOGGING PCS_APRS_RADIO_INIT PCS_APRS_RX_AUDIO_VALIDATED PCS_APRS_RADIO_CHANNEL_VALIDATED PCS_APRS_PTT_VALIDATED PCS_APRS_TX_AUDIO_VALIDATED PCS_APRS_TX_TIMING_VALIDATED; do
         validate_value "${boolean_value}" "${!boolean_value}" '^(yes|no)$'
     done
 
@@ -784,6 +795,30 @@ validate_profile_values() {
     if (( (PCS_APRS_AGW_PORT > 0 && PCS_APRS_AGW_PORT < 1024) || (PCS_APRS_KISS_PORT > 0 && PCS_APRS_KISS_PORT < 1024) )); then
         echo "ERROR: AGW and KISS listeners must be disabled or use ports 1024 through 65535." >&2
         failed=1
+    fi
+    if [[ "${PCS_APRS_AGENT_ENABLED}" == "yes" ]]; then
+        if [[ "${PCS_APRS_ENGINE}" != "direwolf" ]]; then
+            echo "ERROR: the APRS agent ICHANNEL is supported only when PCS_APRS_ENGINE=direwolf." >&2
+            failed=1
+        fi
+        if [[ "${PCS_APRS_IGATE}" != "yes" || "${PCS_APRS_KISS_PORT}" == "0" ]]; then
+            echo "ERROR: the APRS agent requires the Dire Wolf IGate and KISS listener." >&2
+            failed=1
+        fi
+        if (( PCS_APRS_AGENT_ICHANNEL < PCS_APRS_AUDIO_CHANNELS )); then
+            echo "ERROR: the APRS agent ICHANNEL overlaps a configured radio channel." >&2
+            failed=1
+        fi
+        if (( PCS_APRS_AGENT_DEDUPE_TTL_SECONDS < 60 || PCS_APRS_AGENT_DEDUPE_TTL_SECONDS > 2592000 )); then
+            echo "ERROR: APRS agent dedupe TTL must be between 60 and 2592000 seconds." >&2
+            failed=1
+        fi
+        if (( PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE < 1 || PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE > 120 \
+            || PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE < PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE \
+            || PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE > 600 )); then
+            echo "ERROR: APRS agent rate limits are outside the supported bounds." >&2
+            failed=1
+        fi
     fi
 
     return "${failed}"
@@ -860,6 +895,9 @@ EOF
 IGSERVER ${PCS_APRS_IGATE_SERVER}
 IGLOGIN ${PCS_APRS_CALLSIGN} ${passcode}
 EOF
+        if [[ "${PCS_APRS_AGENT_ENABLED}" == "yes" ]]; then
+            echo "ICHANNEL ${PCS_APRS_AGENT_ICHANNEL}"
+        fi
         if [[ "${PCS_APRS_IGATE_RF_TO_IS_FILTER}" != "all-eligible" ]]; then
             echo "FILTER 0 IG ${PCS_APRS_IGATE_RF_TO_IS_FILTER}"
         fi
@@ -937,6 +975,11 @@ validate_rendered_config() {
             failed=1
         fi
     done
+    if [[ "${PCS_APRS_AGENT_ENABLED}" == "yes" ]] \
+        && ! grep -Eq "^ICHANNEL[[:space:]]+${PCS_APRS_AGENT_ICHANNEL}$" "${config_file}"; then
+        echo "ERROR: rendered configuration is missing the selected APRS agent ICHANNEL." >&2
+        failed=1
+    fi
 
     if [[ "${profile}" == "rx" ]]; then
         if ! grep -Eq '^ADEVICE [^ ]+ null$' "${config_file}"; then

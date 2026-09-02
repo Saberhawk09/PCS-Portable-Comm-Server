@@ -29,6 +29,8 @@ The homepage is read-only and does not require authentication. It shows an expli
 - USB, `PCS-Share`, and `PCS-Backup` availability and free space
 - Local file-share, NTP, GPSD, Cockpit, and OpenWrt access information
 - Pi-Star status and link only when Pi-Star integration is configured
+- Active APRS agent connection, session packet/message counters, and aggregate
+  mailbox stored/unread counts without sender or message text
 - Active Meshtastic node, radio transport, MQTT session/broker, aggregate mesh
   and proxy activity, GPSD position-feed health, case environment, utilization,
   and power state
@@ -78,6 +80,11 @@ The `/admin/` area contains the detailed dashboard and all operator action group
 - Services
 - Time / GPS
 - Power
+
+When the APRS Agent is enabled, its authenticated mailbox card shows the ten
+newest sender/message-ID/body records. **Mark APRS Mailbox Read** clears the
+unread indicator without deleting stored messages. The public page and public
+JSON retain aggregate counts only.
 
 The authenticated header menu contains a **Backup Settings** pop-up. An
 operator can enable or disable automatic backups, select a whole-minute

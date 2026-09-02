@@ -106,7 +106,7 @@ class StatsApiSetupTests(unittest.TestCase):
             "status", "self-test", "storage-status", "restart-logs", "wifi-status",
             "wifi-connect", "wifi-disconnect", "cellular-status", "cellular-connect",
             "cellular-disconnect", "cellular-test", "meshtastic-status",
-            "restart-meshtastic", "sync-backup", "mount-usb", "mount-new-usb",
+            "restart-meshtastic", "aprs-mailbox-read", "sync-backup", "mount-usb", "mount-new-usb",
             "safe-unmount-usb", "restart-services", "restart-samba",
             "restart-modemmanager", "sync-time", "restart-chrony", "restart-gpsd",
             "reboot-system", "shutdown-system",
@@ -155,6 +155,9 @@ class StatsApiSetupTests(unittest.TestCase):
         self.assertLess(firewall_start, api_start)
         self.assertLess(api_start, enable)
         self.assertIn("if ! check_feature", setup)
+        self.assertIn(
+            "meshtastic-status restart-meshtastic aprs-mailbox-read", setup
+        )
         self.assertIn("deactivate_feature", setup[api_start:])
         self.assertIn("preserving policy, TLS, and token data", setup)
 

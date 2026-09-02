@@ -134,7 +134,7 @@ command, or free-form argument is accepted.
 
 The action dispatcher is still a fixed allowlist matching the web panel: status,
 self-test, Wi-Fi/cellular controls and tests, storage and backup operations,
-Meshtastic restart, service/time/GPS restarts, restart logs, reboot, and
+Meshtastic restart, APRS mailbox mark-read, service/time/GPS restarts, restart logs, reboot, and
 shutdown. There is no arbitrary action name, shell argument, or API-selected
 command path. Query parameters are rejected in version 1. Other unsupported
 `POST`, `PUT`, `PATCH`, and `DELETE` requests return `405`.

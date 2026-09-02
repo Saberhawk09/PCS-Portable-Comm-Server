@@ -391,7 +391,10 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pcs_gpio.format_uptime(None), "Up: --d --h --m")
 
     def test_lcd_status_pages_are_concise_and_cover_unknown_gps(self):
-        snapshot = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "Cellular", 2, "EN91qs")
+        snapshot = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "Cellular", 2, "EN91qs",
+            "ok", 0, 0, 0, 0,
+        )
         pages = pcs_gpio.lcd_status_pages(snapshot, 93784)
         self.assertEqual(pages, (
             ("PCS Online", "Up: 1d 02h 03m"),
@@ -400,6 +403,7 @@ class PcsGpioTests(unittest.TestCase):
             ("Cell Data: On", "Signal: 012%"),
             ("GPS Status: Lock", "View 21 Used 14"),
             ("AP Clients: 2", "GridSq: EN91qs"),
+            ("APRS Stats: Ok", "Pkt RX:0 Msgs:0"),
         ))
         unknown = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(None, None, None, None), None)
         self.assertEqual(unknown, (
@@ -409,18 +413,51 @@ class PcsGpioTests(unittest.TestCase):
             ("Cell Data: Off", "Signal: 000%"),
             ("GPS Status: Err", "View -- Used --"),
             ("AP Clients: --", "GridSq: ------"),
+            ("APRS Stats: Err", "Pkt:-- Msgs:--"),
         ))
         self.assertTrue(all(len(line) <= 16 for page in pages + unknown for line in page))
 
         no_fix = pcs_gpio.lcd_status_pages(pcs_gpio.StatsSnapshot(39, 12, 8, False, True, 0), 60)
-        self.assertEqual(no_fix[-2], ("GPS Status: NoFx", "View 08 Used 00"))
+        self.assertEqual(no_fix[-3], ("GPS Status: NoFx", "View 08 Used 00"))
+
+    def test_lcd_aprs_page_reports_unread_mail_and_total_message_counter(self):
+        snapshot = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs",
+            "ok", 123, 9, 4, 2,
+        )
+        self.assertEqual(
+            pcs_gpio.lcd_status_pages(snapshot, 60)[-1],
+            ("APRS Stats: MSG", "Pkt:123 Msgs:9"),
+        )
+
+    def test_aprs_status_reader_accepts_only_fresh_aggregate_schema(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "status.json"
+            path.write_text(json.dumps({
+                "schema_version": 1,
+                "collected_at_epoch": 1000,
+                "status": "ok",
+                "packets_received": 12,
+                "messages_received": 3,
+                "mailbox_total": 2,
+                "mailbox_unread": 1,
+                "mailbox_body": "must be ignored",
+            }), encoding="utf-8")
+            self.assertEqual(
+                pcs_gpio.read_aprs_status(path, now=lambda: 1005),
+                ("ok", 12, 3, 2, 1),
+            )
+            self.assertEqual(
+                pcs_gpio.read_aprs_status(path, now=lambda: 1020),
+                ("warn", None, None, None, None),
+            )
 
     def test_lcd_warnings_append_explanation_pages(self):
         stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
         health = pcs_gpio.MatrixHealthSnapshot(stats, 20, False, 0)
         pages = pcs_gpio.lcd_health_pages(health, 93784)
-        self.assertEqual(pages[:6], pcs_gpio.lcd_status_pages(stats, 93784))
-        self.assertEqual(pages[6:], (("WARNING", "USB NOT MOUNTED"),))
+        self.assertEqual(pages[:7], pcs_gpio.lcd_status_pages(stats, 93784))
+        self.assertEqual(pages[7:], (("WARNING", "USB NOT MOUNTED"),))
 
     def test_configured_offline_pistar_warns_on_all_gpio_displays(self):
         stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
@@ -487,7 +524,7 @@ class PcsGpioTests(unittest.TestCase):
         self.assertNotIn(("PCS Online", "Up: 1d 02h 03m"), pages)
         self.assertTrue(all(len(line) <= 16 for page in pages for line in page))
 
-    def test_one_lcd_status_rotation_writes_six_pages_when_healthy(self):
+    def test_one_lcd_status_rotation_writes_all_pages_when_healthy(self):
         class FakeLcd:
             def __init__(self):
                 self.pages = []
@@ -555,6 +592,15 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(alerts, ())
         self.assertEqual([frame.rows for frame in frames], [pcs_gpio.CHECK_ICON])
         self.assertEqual([frame.intensity for frame in frames], [1])
+
+    def test_unread_aprs_mailbox_prepends_letter_icon(self):
+        frames = pcs_gpio.matrix_alert_frames((), mailbox_unread=2)
+        self.assertEqual(
+            [frame.rows for frame in frames],
+            [pcs_gpio.LETTER_ICON, pcs_gpio.CHECK_ICON],
+        )
+        self.assertEqual(frames[0].metric, "aprs_mailbox")
+        self.assertEqual([frame.intensity for frame in frames], [1, 1])
 
     def test_matrix_annunciator_prioritizes_critical_and_warning_conditions(self):
         self.assertEqual(
@@ -694,6 +740,38 @@ class PcsGpioTests(unittest.TestCase):
         parsed = json.loads(output.getvalue())
         self.assertEqual(parsed["health"], health.as_dict())
         self.assertEqual(parsed["indicators"][4]["state"], "cellular")
+
+    def test_unread_aprs_mailbox_flashes_pixel_three_white_then_restores(self):
+        class FakeLeds:
+            def __init__(self):
+                self.frames = []
+
+            def colors(self, colors):
+                self.frames.append(tuple(colors))
+
+            def close(self):
+                pass
+
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs",
+            "ok", 12, 3, 2, 1,
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0)
+        stable = tuple(indicator.color for indicator in pcs_gpio.led_status_indicators(health))
+        leds = FakeLeds()
+        sleeps = []
+        with redirect_stdout(io.StringIO()):
+            pcs_gpio.run_led_status(
+                leds,
+                once=True,
+                collector=lambda: health,
+                sleeper=sleeps.append,
+            )
+        self.assertEqual(len(leds.frames), 2)
+        self.assertEqual(leds.frames[0][pcs_gpio.APRS_MESSAGE_PIXEL], pcs_gpio.LED_MESSAGE)
+        self.assertEqual(leds.frames[1], stable)
+        self.assertEqual(sleeps, [pcs_gpio.APRS_MESSAGE_FLASH_SECONDS])
+        self.assertEqual(pcs_gpio.WS2812_POLL_SECONDS, 1.0)
 
     def test_temperature_unit_frame_is_degree_c_not_thermometer(self):
         self.assertEqual(len(pcs_gpio.DEGREE_C_ICON), 8)

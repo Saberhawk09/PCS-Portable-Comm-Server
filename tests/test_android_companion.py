@@ -125,6 +125,16 @@ class AndroidCompanionTests(unittest.TestCase):
         self.assertIn("authenticateAction", ui)
         self.assertNotIn("/bin/sh", api)
 
+    def test_server_driven_aprs_mailbox_needs_no_hardcoded_android_route(self):
+        contract = json.loads(
+            (ROOT / "docs" / "pcs-stats-api-v1.openapi.json").read_text(encoding="utf-8")
+        )
+        actions = contract["components"]["schemas"]["ActionName"]["enum"]
+        ui = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "ui" / "PcsCompanionApp.kt").read_text(encoding="utf-8")
+        self.assertIn("aprs-mailbox-read", actions)
+        self.assertIn("status.details?.let", ui)
+        self.assertIn("state.actions.groupBy", ui)
+
     def test_every_administrative_mutation_requires_device_authentication(self):
         ui = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "ui" / "PcsCompanionApp.kt").read_text(encoding="utf-8")
         activity = (ANDROID / "app" / "src" / "main" / "java" / "com" / "saberhawk" / "pcscompanion" / "MainActivity.kt").read_text(encoding="utf-8")

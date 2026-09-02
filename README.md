@@ -81,7 +81,8 @@ also unfinished.
 - Installer-selectable Dire Wolf or Graywolf APRS engine with SA818S
   programming, ALSA level restoration, LAN-only AGW/KISS access, mutual
   exclusion, guarded activation/rollback, and stuck-PTT protection; the
-  commissioned PCS uses Graywolf while retaining Dire Wolf for rollback
+  commissioned PCS currently uses Dire Wolf while retaining Graywolf as a
+  masked alternative
 - Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
   dashboard status, guarded restart, broker/proxy policy validation, GPSD
   position delivery, public-map forwarding status, and local environment telemetry
@@ -121,14 +122,23 @@ status alert summaries, and LAN-only clickable file-share discovery. See
 [Android Client Bootstrap Contract](docs/pcs-android-client-bootstrap.md), and
 [Remote Management/API/Android Roadmap](docs/remote-management-api-android-roadmap.md).
 
-PCS v1.6 adds the complete Graywolf APRS engine option and commissions it on
-the live appliance with the existing SA818S/Easy Digi radio path. Graywolf's
-portal is available to PCS LAN clients on TCP 8070, Dire Wolf remains installed
-and masked for rollback, and the GPIO6 watchdog provides an independent
-stuck-transmit cutoff. A PCS-specific Graywolf 0.14.13 capture-buffer patch
-eliminates the observed ALSA `POLLERR` rebuild loop; supervised RF testing
-established 925/100 ms as the reliable Graywolf timing at the calibrated
-operator-selected audio level.
+PCS v1.6 adds the complete Graywolf APRS engine option and commissioned it on
+the live appliance with the existing SA818S/Easy Digi radio path. The appliance
+was subsequently rolled back to Dire Wolf; Graywolf is currently inactive and
+masked. When Graywolf is selected, its portal is available to PCS LAN clients
+on TCP 8070 and the GPIO6 watchdog provides an independent stuck-transmit
+cutoff. A PCS-specific Graywolf 0.14.13 capture-buffer patch eliminates the
+observed ALSA `POLLERR` rebuild loop; supervised RF testing established 925/100
+ms as the reliable Graywolf timing at the calibrated operator-selected audio
+level.
+
+PCS v1.7 adds the read-only APRS status, command, and mailbox agent layered on
+Dire Wolf. It supports APRS-IS through virtual KISS `ICHANNEL 8` and explicitly
+gated local access on 144.550 MHz through radio channel 0, returning ACKs,
+numbered replies, and bounded retries through the request's original path.
+Mailbox state is available through the public and administrator dashboards,
+API, LCD, WS2812 indicators, and MAX7219 matrix. Supervised testing with a Yaesu
+FT3DR verified the complete RF request, ACK, `PONG`, and reply-ACK exchange.
 
 ## Hardware Setup
 

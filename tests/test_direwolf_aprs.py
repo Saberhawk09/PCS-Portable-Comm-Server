@@ -178,7 +178,7 @@ class DireWolfAprsTests(unittest.TestCase):
         example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
 
         self.assertIn('PCS_SETUP_APRS="staged"', example)
-        self.assertIn('PCS_APRS_CONFIG_VERSION="2"', example)
+        self.assertIn('PCS_APRS_CONFIG_VERSION="3"', example)
         self.assertIn('PCS_APRS_BEACON_SENDTO="BOTH"', example)
         for evidence_key in (
             "PCS_APRS_RX_AUDIO_VALIDATED",
@@ -435,6 +435,7 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn("TXDELAY 70", result.stdout)
         self.assertIn("TXTAIL 20", result.stdout)
         self.assertIn("AGWPORT 8000", result.stdout)
+        self.assertNotIn("ICHANNEL", result.stdout)
         rf_beacon = 'TBEACON SENDTO=0 DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"'
         is_beacon = 'TBEACON SENDTO=IG DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"'
         self.assertIn(rf_beacon, result.stdout)
@@ -444,7 +445,10 @@ class DireWolfAprsTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")
     def test_completed_tx_profile_renders_without_blocked_directives(self):
-        profile = INSTALL_EXAMPLE.read_text(encoding="utf-8")
+        profile = INSTALL_EXAMPLE.read_text(encoding="utf-8").replace(
+            'PCS_APRS_AGENT_ENABLED="no"',
+            'PCS_APRS_AGENT_ENABLED="yes"',
+        )
         with tempfile.TemporaryDirectory() as temp_dir:
             install_config = Path(temp_dir) / "pcs-install.conf"
             install_config.write_text(profile, encoding="utf-8")
@@ -463,6 +467,7 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn('TBEACON SENDTO=0 DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
         self.assertIn('TBEACON SENDTO=IG DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
         self.assertIn("GPSD localhost 2947", result.stdout)
+        self.assertIn("ICHANNEL 8", result.stdout)
 
     @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")
     def test_dual_path_applies_via_only_to_the_rf_beacon(self):
