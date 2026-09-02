@@ -416,7 +416,7 @@ check_feature() {
         status self-test storage-status restart-logs \
         wifi-status wifi-connect wifi-disconnect \
         cellular-status cellular-connect cellular-disconnect cellular-test \
-        meshtastic-status restart-meshtastic \
+        meshtastic-status restart-meshtastic aprs-mailbox-read \
         sync-backup mount-usb mount-new-usb safe-unmount-usb \
         restart-services restart-samba restart-modemmanager \
         sync-time restart-chrony restart-gpsd \
