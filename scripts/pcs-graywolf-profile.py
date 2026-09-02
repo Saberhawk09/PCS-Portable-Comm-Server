@@ -308,9 +308,95 @@ def repair_staged_defaults(api: Api, callsign: str) -> None:
     api.request("PUT", "digipeater", {"enabled": False, "dedupe_window_seconds": 30, "my_call": callsign})
 
 
+def resource_payload(value: object, name: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise RuntimeError(f"Graywolf returned an invalid {name} resource")
+    payload = dict(value)
+    payload.pop("id", None)
+    return payload
+
+
+def set_active(api: Api, active: bool) -> None:
+    channels = api.request("GET", "channels")
+    beacons = api.request("GET", "beacons")
+    rules = api.request("GET", "digipeater/rules")
+    kiss = api.request("GET", "kiss")
+    if not all(isinstance(value, list) and len(value) == 1 for value in (channels, beacons, rules, kiss)):
+        raise RuntimeError("activation requires exactly one channel, beacon, digipeater rule, and KISS interface")
+
+    channel_id = int(channels[0]["id"])
+    beacon_id = int(beacons[0]["id"])
+    rule_id = int(rules[0]["id"])
+    kiss_id = int(kiss[0]["id"])
+
+    if not active:
+        beacon = resource_payload(beacons[0], "beacon")
+        beacon["enabled"] = False
+        api.request("PUT", f"beacons/{beacon_id}", beacon)
+        igate = resource_payload(api.request("GET", "igate/config"), "iGate")
+        igate.update({"enabled": False, "simulation_mode": True})
+        api.request("PUT", "igate/config", igate)
+        digipeater = resource_payload(api.request("GET", "digipeater"), "digipeater")
+        digipeater["enabled"] = False
+        api.request("PUT", "digipeater", digipeater)
+        rule = resource_payload(rules[0], "digipeater rule")
+        rule["enabled"] = False
+        api.request("PUT", f"digipeater/rules/{rule_id}", rule)
+        agw = resource_payload(api.request("GET", "agw"), "AGW")
+        agw["enabled"] = False
+        api.request("PUT", "agw", agw)
+        api.request("PUT", f"kiss/{kiss_id}/enabled", {"enabled": False})
+        api.request("PUT", f"channels/{channel_id}/enabled", {"enabled": False})
+        return
+
+    verify_staged(api, str(api.request("GET", "station/config")["callsign"]))
+    api.request("PUT", f"channels/{channel_id}/enabled", {"enabled": True})
+    api.request("PUT", f"kiss/{kiss_id}/enabled", {"enabled": True})
+    agw = resource_payload(api.request("GET", "agw"), "AGW")
+    agw["enabled"] = True
+    api.request("PUT", "agw", agw)
+    rule = resource_payload(rules[0], "digipeater rule")
+    rule["enabled"] = True
+    api.request("PUT", f"digipeater/rules/{rule_id}", rule)
+    digipeater = resource_payload(api.request("GET", "digipeater"), "digipeater")
+    digipeater["enabled"] = True
+    api.request("PUT", "digipeater", digipeater)
+    igate = resource_payload(api.request("GET", "igate/config"), "iGate")
+    igate.update({"enabled": True, "simulation_mode": False})
+    api.request("PUT", "igate/config", igate)
+    beacon = resource_payload(beacons[0], "beacon")
+    beacon.update({"enabled": True, "path": "", "send_path": "both"})
+    api.request("PUT", f"beacons/{beacon_id}", beacon)
+
+
+def verify_active(api: Api, callsign: str) -> None:
+    station = api.request("GET", "station/config")
+    channels = api.request("GET", "channels")
+    beacons = api.request("GET", "beacons")
+    rules = api.request("GET", "digipeater/rules")
+    kiss = api.request("GET", "kiss")
+    digipeater = api.request("GET", "digipeater")
+    igate = api.request("GET", "igate/config")
+    agw = api.request("GET", "agw")
+    if station != {"callsign": callsign}:
+        raise RuntimeError("active station callsign mismatch")
+    checks = (
+        (len(channels) == 1 and channels[0].get("enabled") is True, "channel"),
+        (len(beacons) == 1 and beacons[0].get("enabled") is True and beacons[0].get("path") == "" and beacons[0].get("send_path") == "both", "beacon"),
+        (len(rules) == 1 and rules[0].get("enabled") is True, "digipeater rule"),
+        (len(kiss) == 1 and kiss[0].get("enabled") is True, "KISS"),
+        (isinstance(digipeater, dict) and digipeater.get("enabled") is True, "digipeater"),
+        (isinstance(igate, dict) and igate.get("enabled") is True and igate.get("simulation_mode") is False, "iGate"),
+        (isinstance(agw, dict) and agw.get("enabled") is True, "AGW"),
+    )
+    failed = [name for okay, name in checks if not okay]
+    if failed:
+        raise RuntimeError("active Graywolf profile mismatch: " + ", ".join(failed))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("stage", "repair", "verify"))
+    parser.add_argument("command", choices=("stage", "repair", "verify", "activate", "deactivate", "verify-active"))
     parser.add_argument("--base-url", default="http://127.0.0.1:8071")
     parser.add_argument("--credential-file", type=Path, default=Path("/etc/pcs/aprs/graywolf-admin.json"))
     parser.add_argument("--callsign", required=True)
@@ -335,9 +421,20 @@ def main() -> int:
         repair_staged_defaults(api, args.callsign)
         verify_staged(api, args.callsign)
         print("Graywolf staged profile defaults repaired and read-back verified.")
-    else:
+    elif args.command == "verify":
         verify_staged(api, args.callsign)
         print("Graywolf staged profile read-back is safe and complete.")
+    elif args.command == "activate":
+        set_active(api, True)
+        verify_active(api, args.callsign)
+        print("Graywolf production profile activated and read-back verified.")
+    elif args.command == "deactivate":
+        set_active(api, False)
+        verify_staged(api, args.callsign)
+        print("Graywolf production profile deactivated to safe staged state.")
+    else:
+        verify_active(api, args.callsign)
+        print("Graywolf production profile read-back is active and complete.")
     return 0
 
 

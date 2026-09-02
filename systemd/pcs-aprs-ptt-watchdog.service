@@ -1,0 +1,13 @@
+[Unit]
+Description=Stop PCS APRS if PTT remains keyed too long
+After=graywolf.service pcs-aprs-ptt-safe.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/pcs/aprs/ptt-safe.conf
+ExecStart=/usr/local/sbin/pcs-aprs-ptt-watchdog
+Restart=always
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

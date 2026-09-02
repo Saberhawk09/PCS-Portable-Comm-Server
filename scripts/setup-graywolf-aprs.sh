@@ -8,6 +8,9 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_CONFIG="${PCS_INSTALL_CONFIG:-${REPO_DIR}/config/pcs-install.conf}"
 APRS_CONFIG_DIR="/etc/pcs/aprs"
 STAGED_MARKER="${APRS_CONFIG_DIR}/graywolf-staged"
+ACTIVE_MARKER="${APRS_CONFIG_DIR}/graywolf-active"
+PROFILE_SRC="${REPO_DIR}/scripts/pcs-graywolf-profile.py"
+PROFILE_DST="/usr/local/sbin/pcs-graywolf-profile"
 GRAYWOLF_OVERRIDE_SRC="${REPO_DIR}/systemd/pcs-graywolf-override.conf"
 GRAYWOLF_OVERRIDE_DST="/etc/systemd/system/graywolf.service.d/pcs.conf"
 KISS_FIREWALL_CONFIG="${APRS_CONFIG_DIR}/kiss-firewall.conf"
@@ -15,6 +18,10 @@ PTT_SAFE_SRC="${REPO_DIR}/scripts/pcs-aprs-ptt-safe.sh"
 PTT_SAFE_DST="/usr/local/sbin/pcs-aprs-ptt-safe"
 PTT_SAFE_SERVICE_SRC="${REPO_DIR}/systemd/pcs-aprs-ptt-safe.service"
 PTT_SAFE_SERVICE_DST="/etc/systemd/system/pcs-aprs-ptt-safe.service"
+PTT_WATCHDOG_SRC="${REPO_DIR}/scripts/pcs-aprs-ptt-watchdog.sh"
+PTT_WATCHDOG_DST="/usr/local/sbin/pcs-aprs-ptt-watchdog"
+PTT_WATCHDOG_SERVICE_SRC="${REPO_DIR}/systemd/pcs-aprs-ptt-watchdog.service"
+PTT_WATCHDOG_SERVICE_DST="/etc/systemd/system/pcs-aprs-ptt-watchdog.service"
 PTT_SAFE_CONFIG="${APRS_CONFIG_DIR}/ptt-safe.conf"
 GRAYWOLF_VERSION="0.14.13"
 GRAYWOLF_RELEASE_BASE="https://github.com/chrissnell/graywolf/releases/download/v${GRAYWOLF_VERSION}"
@@ -31,6 +38,8 @@ PCS_APRS_ENGINE_STAGED="${PCS_APRS_ENGINE_STAGED:-}"
 PCS_GRAYWOLF_HTTP_ADDRESS="${PCS_GRAYWOLF_HTTP_ADDRESS:-10.42.0.1}"
 PCS_GRAYWOLF_HTTP_PORT="${PCS_GRAYWOLF_HTTP_PORT:-8070}"
 PCS_APRS_PTT_GPIO_LINE="${PCS_APRS_PTT_GPIO_LINE:-6}"
+PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-}"
+PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-tx}"
 
 usage() {
     cat <<'EOF'
@@ -40,10 +49,13 @@ Usage: ./scripts/setup-graywolf-aprs.sh COMMAND
                   Graywolf remains stopped and disabled with no radio profile.
   --check         Report package, service, marker, port, and mutual-exclusion state.
   --capabilities  Report the installed Graywolf version and PCS-required interfaces.
+  --activate      Transactionally replace Dire Wolf with the commissioned Graywolf profile.
+  --rollback-direwolf
+                  Stop Graywolf, restore its pre-activation database, and restart Dire Wolf.
   -h, --help      Show this help.
 
-This script stages software only. It does not create an admin account, configure
-audio/GPS/PTT, enable an iGate or digipeater, start a service, or transmit RF.
+--prepare stages software only. --activate can enable scheduled RF transmission
+after the typed callsign confirmation and all PCS prerequisite checks pass.
 EOF
 }
 
@@ -215,7 +227,8 @@ prepare() {
     ensure_sudo
 
     if [[ ! -f "${GRAYWOLF_OVERRIDE_SRC}" || ! -f "${PTT_SAFE_SRC}" \
-        || ! -f "${PTT_SAFE_SERVICE_SRC}" ]]; then
+        || ! -f "${PTT_SAFE_SERVICE_SRC}" || ! -f "${PTT_WATCHDOG_SRC}" \
+        || ! -f "${PTT_WATCHDOG_SERVICE_SRC}" || ! -f "${PROFILE_SRC}" ]]; then
         echo "ERROR: PCS Graywolf runtime support files are missing from the repository." >&2
         return 1
     fi
@@ -253,6 +266,8 @@ prepare() {
         "gpiochip0" "${PCS_APRS_PTT_GPIO_LINE}" >"${ptt_safe_env}"
     sudo install -o root -g root -m 0755 "${PTT_SAFE_SRC}" "${PTT_SAFE_DST}"
     sudo install -o root -g root -m 0644 "${PTT_SAFE_SERVICE_SRC}" "${PTT_SAFE_SERVICE_DST}"
+    sudo install -o root -g root -m 0755 "${PTT_WATCHDOG_SRC}" "${PTT_WATCHDOG_DST}"
+    sudo install -o root -g root -m 0644 "${PTT_WATCHDOG_SERVICE_SRC}" "${PTT_WATCHDOG_SERVICE_DST}"
     sudo install -o root -g root -m 0644 "${ptt_safe_env}" "${PTT_SAFE_CONFIG}"
     printf 'graywolf=%s\nhttp=%s:%s\nstate=staged\n' \
         "${GRAYWOLF_VERSION}" "${PCS_GRAYWOLF_HTTP_ADDRESS}" "${PCS_GRAYWOLF_HTTP_PORT}" \
@@ -261,6 +276,7 @@ prepare() {
     set_privileged_config_value "${KISS_FIREWALL_CONFIG}" \
         "PCS_APRS_GRAYWOLF_HTTP_PORT" "${PCS_GRAYWOLF_HTTP_PORT}"
     sudo systemctl daemon-reload
+    sudo systemctl enable --now pcs-aprs-ptt-watchdog.service
 
     set_install_config_value "PCS_APRS_ENGINE_STAGED" "graywolf"
     PCS_APRS_ENGINE_STAGED="graywolf"
@@ -280,6 +296,121 @@ prepare() {
     echo "No account, callsign, APRS-IS, audio, GPS, PTT, beacon, digipeater, service start, or RF TX was configured."
 }
 
+wait_for_graywolf_api() {
+    local attempt
+    for attempt in {1..50}; do
+        if curl -sS --max-time 2 -o /dev/null \
+            "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}/api/health" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.2
+    done
+    echo "ERROR: Graywolf health API did not become ready." >&2
+    return 1
+}
+
+install_activation_support() {
+    sudo install -o root -g root -m 0755 "${PROFILE_SRC}" "${PROFILE_DST}"
+    sudo install -o root -g root -m 0755 "${PTT_WATCHDOG_SRC}" "${PTT_WATCHDOG_DST}"
+    sudo install -o root -g root -m 0644 "${PTT_WATCHDOG_SERVICE_SRC}" "${PTT_WATCHDOG_SERVICE_DST}"
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now pcs-aprs-ptt-watchdog.service
+}
+
+activate() {
+    local backup_dir="/var/backups/pcs-aprs"
+    local backup_file=""
+    local confirmation="${PCS_GRAYWOLF_ACTIVATE_CONFIRM:-}"
+    local expected="ENABLE-RF-${PCS_APRS_CALLSIGN}"
+    local timestamp
+
+    require_normal_user
+    validate_http_endpoint
+    ensure_sudo
+    if [[ -z "${PCS_APRS_CALLSIGN}" ]]; then
+        echo "ERROR: PCS_APRS_CALLSIGN is required for Graywolf activation." >&2
+        return 1
+    fi
+    if [[ "${PCS_APRS_ACTIVE_MODE}" != "tx" ]]; then
+        echo "ERROR: the commissioned Graywolf replacement currently requires PCS_APRS_ACTIVE_MODE=tx." >&2
+        return 1
+    fi
+    if [[ "${confirmation}" != "${expected}" ]]; then
+        if [[ ! -t 0 ]]; then
+            echo "ERROR: set PCS_GRAYWOLF_ACTIVATE_CONFIRM=${expected} for authorized non-interactive activation." >&2
+            return 1
+        fi
+        echo "Graywolf activation enables the GPS beacon, fill-in digipeater, and two-way iGate on RF."
+        read -r -p "Type ${expected} to continue: " confirmation
+        [[ "${confirmation}" == "${expected}" ]] || { echo "Activation cancelled."; return 1; }
+    fi
+    command -v graywolf >/dev/null 2>&1 && command -v graywolf-modem >/dev/null 2>&1 \
+        || { echo "ERROR: Graywolf binaries are missing." >&2; return 1; }
+    sudo test -s /var/lib/graywolf/graywolf.db \
+        || { echo "ERROR: Graywolf staged profile database is missing." >&2; return 1; }
+    systemctl is-active --quiet gpsd.service \
+        || { echo "ERROR: gpsd.service is not active." >&2; return 1; }
+    sudo /usr/local/sbin/pcs-sa818 --config /etc/pcs/aprs/sa818.ini --check >/dev/null
+    sudo /usr/local/sbin/pcs-aprs-audio --check >/dev/null
+    sudo /usr/local/sbin/pcs-aprs-kiss-firewall --check >/dev/null
+
+    install_activation_support
+    timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    sudo install -d -o root -g root -m 0700 "${backup_dir}"
+    backup_file="${backup_dir}/graywolf.db.pre-activation.${timestamp}"
+    sudo install -o root -g root -m 0600 /var/lib/graywolf/graywolf.db "${backup_file}"
+
+    sudo systemctl disable --now direwolf.service >/dev/null 2>&1 || true
+    sudo systemctl mask direwolf.service >/dev/null
+    sudo systemctl unmask graywolf.service >/dev/null
+    if ! sudo systemctl start graywolf.service || ! wait_for_graywolf_api \
+        || ! sudo "${PROFILE_DST}" activate \
+            --base-url "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}" \
+            --credential-file /etc/pcs/aprs/graywolf-admin.json \
+            --callsign "${PCS_APRS_CALLSIGN}"; then
+        echo "ERROR: Graywolf activation failed; restoring the staged database and PTT guard." >&2
+        sudo systemctl disable --now graywolf.service >/dev/null 2>&1 || true
+        sudo install -o graywolf -g graywolf -m 0640 "${backup_file}" /var/lib/graywolf/graywolf.db
+        sudo systemctl mask graywolf.service >/dev/null
+        sudo systemctl enable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
+        return 1
+    fi
+
+    sudo systemctl enable graywolf.service
+    set_install_config_value "PCS_APRS_ENGINE" "graywolf"
+    set_install_config_value "PCS_APRS_ENGINE_STAGED" "graywolf"
+    set_install_config_value "PCS_SETUP_APRS" "yes"
+    set_install_config_value "PCS_APRS_ACTIVE_MODE" "tx"
+    set_install_config_value "PCS_APRS_TX_ENABLED" "yes"
+    printf 'graywolf=%s\nhttp=%s:%s\nstate=active\nbackup=%s\n' \
+        "${GRAYWOLF_VERSION}" "${PCS_GRAYWOLF_HTTP_ADDRESS}" "${PCS_GRAYWOLF_HTTP_PORT}" "${backup_file}" \
+        | sudo tee "${ACTIVE_MARKER}" >/dev/null
+    sudo chmod 0600 "${ACTIVE_MARKER}"
+    echo "Graywolf is the selected active PCS APRS engine; Dire Wolf remains installed and masked for rollback."
+}
+
+rollback_direwolf() {
+    local backup_file
+
+    require_normal_user
+    ensure_sudo
+    backup_file="$(sudo find /var/backups/pcs-aprs -maxdepth 1 -type f -name 'graywolf.db.pre-activation.*' -printf '%T@ %p\n' 2>/dev/null \
+        | sort -nr | awk 'NR==1 {$1=""; sub(/^ /, ""); print}')"
+    [[ -n "${backup_file}" ]] || { echo "ERROR: no pre-activation Graywolf backup exists." >&2; return 1; }
+    sudo systemctl disable --now graywolf.service >/dev/null 2>&1 || true
+    sudo systemctl mask graywolf.service >/dev/null
+    sudo install -o graywolf -g graywolf -m 0640 "${backup_file}" /var/lib/graywolf/graywolf.db
+    sudo systemctl enable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1
+    sudo "${PTT_SAFE_DST}" --check
+    sudo systemctl unmask direwolf.service >/dev/null
+    sudo systemctl enable --now direwolf.service
+    set_install_config_value "PCS_APRS_ENGINE" "direwolf"
+    set_install_config_value "PCS_SETUP_APRS" "yes"
+    set_install_config_value "PCS_APRS_ACTIVE_MODE" "tx"
+    sudo rm -f "${ACTIVE_MARKER}"
+    echo "Dire Wolf rollback completed; Graywolf is stopped and its staged database was restored."
+}
+
 case "${MODE}" in
     --prepare)
         prepare
@@ -289,6 +420,12 @@ case "${MODE}" in
         ;;
     --capabilities)
         show_capabilities
+        ;;
+    --activate)
+        activate
+        ;;
+    --rollback-direwolf)
+        rollback_direwolf
         ;;
     -h|--help)
         usage

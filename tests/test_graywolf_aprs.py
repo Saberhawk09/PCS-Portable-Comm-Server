@@ -11,6 +11,8 @@ GRAYWOLF_OVERRIDE = ROOT / "systemd" / "pcs-graywolf-override.conf"
 DIREWOLF_OVERRIDE = ROOT / "systemd" / "pcs-direwolf-override.conf"
 PTT_SAFE_SCRIPT = ROOT / "scripts" / "pcs-aprs-ptt-safe.sh"
 PTT_SAFE_SERVICE = ROOT / "systemd" / "pcs-aprs-ptt-safe.service"
+PTT_WATCHDOG_SCRIPT = ROOT / "scripts" / "pcs-aprs-ptt-watchdog.sh"
+PTT_WATCHDOG_SERVICE = ROOT / "systemd" / "pcs-aprs-ptt-watchdog.service"
 SELF_TEST = ROOT / "scripts" / "pcs-self-test.sh"
 STATUS = ROOT / "scripts" / "pcs-status.sh"
 WEB_ACTION = ROOT / "scripts" / "pcs-web-action.sh"
@@ -53,6 +55,7 @@ class GraywolfAprsTests(unittest.TestCase):
 
     def test_prepare_preserves_direwolf_and_leaves_graywolf_inactive(self):
         setup = GRAYWOLF_SETUP.read_text(encoding="utf-8")
+        prepare_only = setup[setup.index("prepare() {"):setup.index("wait_for_graywolf_api() {")]
         graywolf_guard = setup.index("systemctl is-active --quiet graywolf.service")
         install = setup.index('sudo apt-get install -y gpiod "${temp_dir}/${package_name}"')
         disable = setup.index("systemctl disable --now graywolf.service")
@@ -60,7 +63,7 @@ class GraywolfAprsTests(unittest.TestCase):
         self.assertLess(graywolf_guard, install)
         self.assertLess(install, disable)
         self.assertIn('if ! systemctl is-active --quiet direwolf.service', setup)
-        self.assertNotRegex(setup, r"systemctl\s+(?:enable|start|restart)\s+graywolf[.]service")
+        self.assertNotRegex(prepare_only, r"systemctl\s+(?:enable|start|restart)\s+graywolf[.]service")
 
     def test_prepare_stages_without_removing_direwolf_or_creating_rf_profile(self):
         setup = GRAYWOLF_SETUP.read_text(encoding="utf-8")
@@ -71,8 +74,8 @@ class GraywolfAprsTests(unittest.TestCase):
         self.assertIn('STAGED_MARKER="${APRS_CONFIG_DIR}/graywolf-staged"', setup)
         self.assertNotRegex(setup, r"apt(?:-get)?\s+(?:purge|remove).*direwolf")
         self.assertNotIn("/etc/direwolf.conf", setup)
-        self.assertNotIn("--activate-rx", setup)
-        self.assertNotIn("--activate-tx", setup)
+        self.assertIn("--activate", setup)
+        self.assertIn("--rollback-direwolf", setup)
 
     def test_http_endpoint_refuses_pcs_reserved_port(self):
         setup = GRAYWOLF_SETUP.read_text(encoding="utf-8")
@@ -107,6 +110,30 @@ class GraywolfAprsTests(unittest.TestCase):
         self.assertIn('After=direwolf.service graywolf.service', guard)
         self.assertIn('"${PTT_LINE}=0"', helper)
 
+    def test_activation_has_runtime_stuck_ptt_watchdog(self):
+        setup = GRAYWOLF_SETUP.read_text(encoding="utf-8")
+        helper = PTT_WATCHDOG_SCRIPT.read_text(encoding="utf-8")
+        service = PTT_WATCHDOG_SERVICE.read_text(encoding="utf-8")
+
+        self.assertIn("PCS_APRS_PTT_MAX_HIGH_SECONDS:-8", helper)
+        self.assertIn('pinctrl get "${PTT_LINE}"', helper)
+        self.assertIn("systemctl kill --signal=SIGKILL", helper)
+        self.assertIn("systemctl start pcs-aprs-ptt-safe.service", helper)
+        self.assertIn("ExecStart=/usr/local/sbin/pcs-aprs-ptt-watchdog", service)
+        self.assertIn("enable --now pcs-aprs-ptt-watchdog.service", setup)
+
+    def test_activation_is_confirmed_transactional_and_keeps_direwolf_for_rollback(self):
+        setup = GRAYWOLF_SETUP.read_text(encoding="utf-8")
+
+        self.assertIn("ENABLE-RF-${PCS_APRS_CALLSIGN}", setup)
+        self.assertIn("graywolf.db.pre-activation", setup)
+        self.assertIn('"${PROFILE_DST}" activate', setup)
+        self.assertIn('set_install_config_value "PCS_APRS_ENGINE" "graywolf"', setup)
+        self.assertIn("systemctl mask direwolf.service", setup)
+        self.assertNotRegex(setup, r"apt(?:-get)?\s+(?:purge|remove).*direwolf")
+        self.assertIn("rollback_direwolf()", setup)
+        self.assertIn("systemctl enable --now direwolf.service", setup)
+
     def test_profile_provisioner_keeps_transmitters_disabled_and_repairs_defaults(self):
         profile = GRAYWOLF_PROFILE.read_text(encoding="utf-8")
 
@@ -140,11 +167,9 @@ class GraywolfAprsTests(unittest.TestCase):
     def test_documentation_preserves_activation_and_migration_gates(self):
         documentation = DOC.read_text(encoding="utf-8")
 
-        self.assertIn("does not yet provide a supported Graywolf", documentation)
         self.assertIn("Existing Dire Wolf configuration is not removed", documentation)
-        self.assertIn("Do not enable Graywolf manually", documentation)
-        self.assertIn("dependency audit and refactor", documentation)
-        self.assertIn("supervised RX and TX acceptance", documentation)
+        self.assertIn("--activate", documentation)
+        self.assertIn("--rollback-direwolf", documentation)
 
 
 if __name__ == "__main__":

@@ -1050,7 +1050,7 @@ case "${PCS_SETUP_APRS}" in
             else
                 fail "Active Graywolf APRS configuration database is missing"
             fi
-            if curl -fsS --max-time 5 "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}/api/health" >/dev/null 2>&1; then
+            if curl -sS --max-time 5 -o /dev/null "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}/api/health" >/dev/null 2>&1; then
                 pass "Graywolf health API responds on the PCS endpoint"
             else
                 fail "Graywolf health API is unavailable on the PCS endpoint"
@@ -1060,7 +1060,20 @@ case "${PCS_SETUP_APRS}" in
             else
                 pass "Graywolf management endpoint avoids PCS-reserved tcp/8080"
             fi
-            warn "Graywolf active-profile policy details require API-backed validation before PCS TX activation is supported"
+            if service_active pcs-aprs-ptt-watchdog.service; then
+                pass "Graywolf runtime stuck-PTT watchdog is active"
+            else
+                fail "Active Graywolf APRS requires the runtime stuck-PTT watchdog"
+            fi
+            if [[ -x /usr/local/sbin/pcs-graywolf-profile ]] \
+                && sudo -n /usr/local/sbin/pcs-graywolf-profile verify-active \
+                    --base-url "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}" \
+                    --credential-file /etc/pcs/aprs/graywolf-admin.json \
+                    --callsign "${PCS_APRS_CALLSIGN}" >/dev/null 2>&1; then
+                pass "Graywolf active channel, beacon, digipeater, iGate, AGW, and KISS profile is verified"
+            else
+                fail "Graywolf active profile read-back failed"
+            fi
         elif [[ "${PCS_APRS_ENGINE}" == "direwolf" ]]; then
         if command_exists direwolf; then
             pass "Dire Wolf is installed"

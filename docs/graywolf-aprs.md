@@ -1,9 +1,8 @@
 # Graywolf APRS Staging
 
 PCS can select `PCS_APRS_ENGINE="graywolf"` instead of the default
-`PCS_APRS_ENGINE="direwolf"`. The current integration is intentionally limited
-to hardware-safe software staging. It does not yet provide a supported Graywolf
-RX or TX activation command.
+`PCS_APRS_ENGINE="direwolf"`. Installation remains hardware-safe by default;
+production activation is a separate confirmed transaction.
 
 The base installer asks for the APRS engine when APRS staging is selected and
 then runs the matching setup script. For a direct Graywolf staging run:
@@ -14,6 +13,22 @@ then runs the matching setup script. For a direct Graywolf staging run:
 ./scripts/setup-graywolf-aprs.sh --check
 ./scripts/setup-graywolf-aprs.sh --capabilities
 ```
+
+After staging, commissioning, and supervised RX/TX acceptance:
+
+```bash
+./scripts/setup-graywolf-aprs.sh --activate
+./scripts/setup-graywolf-aprs.sh --rollback-direwolf
+```
+
+Activation requires typing `ENABLE-RF-<callsign>`, verifies the SA818S, audio,
+GPSD, and LAN-only firewall prerequisites, backs up the disabled Graywolf
+database, enables the equivalent channel/tracker/fill-in digi/two-way iGate/
+AGW/KISS profile, selects Graywolf in `pcs-install.conf`, and enables it at boot.
+An always-on watchdog observes GPIO6 with `pinctrl`; if PTT remains high for
+eight seconds it force-stops Graywolf and restores the low-holding guard.
+Rollback restores the pre-activation Graywolf database and re-enables the
+preserved Dire Wolf service and commissioned configuration.
 
 `--prepare` installs the architecture-matched Graywolf 0.14.13 Debian package
 from the upstream GitHub release and verifies the pinned upstream SHA-256 before
@@ -86,7 +101,7 @@ APRS-IS beacons, KISS TCP, AGWPE, a REST API, and Prometheus metrics. Those
 capabilities do not prove the commissioned SA818S/Easy Digi path works with
 Graywolf.
 
-Before PCS supports Graywolf activation, the implementation must add and test:
+PCS production activation requires all of the following to remain true:
 
 1. PCS SA818S and ALSA prerequisite service ownership independent of Dire Wolf
 2. dashboard telemetry from Graywolf's API or metrics
@@ -95,8 +110,8 @@ Before PCS supports Graywolf activation, the implementation must add and test:
 5. separately confirmed supervised RF TX after receive-only acceptance
 6. transactional activation and rollback between engine configurations
 
-Do not enable Graywolf manually on the commissioned radio merely because it is
-staged. Never run Graywolf and Dire Wolf together: they would contend for the
+Use `--activate`, not a manual service start, on the commissioned radio. Never
+run Graywolf and Dire Wolf together: they would contend for the
 same USB audio device, GPIO6 PTT line, APRS-IS identity, and network TNC ports.
 
 Both engine overrides conflict with the PTT guard and start it after the engine
