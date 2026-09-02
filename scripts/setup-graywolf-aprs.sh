@@ -322,7 +322,12 @@ activate() {
     local backup_file=""
     local confirmation="${PCS_GRAYWOLF_ACTIVATE_CONFIRM:-}"
     local expected="ENABLE-RF-${PCS_APRS_CALLSIGN}"
+    local igate_mode="disabled"
     local timestamp
+
+    if [[ "${PCS_APRS_IGATE:-no}" == "yes" ]]; then
+        igate_mode="two-way"
+    fi
 
     require_normal_user
     validate_http_endpoint
@@ -340,7 +345,7 @@ activate() {
             echo "ERROR: set PCS_GRAYWOLF_ACTIVATE_CONFIRM=${expected} for authorized non-interactive activation." >&2
             return 1
         fi
-        echo "Graywolf activation enables the GPS beacon, fill-in digipeater, and two-way iGate on RF."
+        echo "Graywolf activation enables the GPS beacon and fill-in digipeater; iGate mode: ${igate_mode}."
         read -r -p "Type ${expected} to continue: " confirmation
         [[ "${confirmation}" == "${expected}" ]] || { echo "Activation cancelled."; return 1; }
     fi
@@ -367,7 +372,8 @@ activate() {
         || ! sudo "${PROFILE_DST}" activate \
             --base-url "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}" \
             --credential-file /etc/pcs/aprs/graywolf-admin.json \
-            --callsign "${PCS_APRS_CALLSIGN}"; then
+            --callsign "${PCS_APRS_CALLSIGN}" \
+            --igate-mode "${igate_mode}"; then
         echo "ERROR: Graywolf activation failed; restoring the staged database and PTT guard." >&2
         sudo systemctl disable --now graywolf.service >/dev/null 2>&1 || true
         sudo install -o graywolf -g graywolf -m 0640 "${backup_file}" /var/lib/graywolf/graywolf.db

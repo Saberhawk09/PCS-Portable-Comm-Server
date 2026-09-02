@@ -796,9 +796,12 @@ systemctl is-active direwolf || true
 ```
 
 Expected: both APRS engines are inactive, Graywolf is disabled, the staged
-marker is present, and its management endpoint is not TCP 8080. Stop there;
-PCS does not yet support a Graywolf RX or TX activation workflow. See
-[Graywolf APRS Staging](graywolf-aprs.md).
+marker is present, and its management endpoint is not TCP 8080. Stop there
+unless RF activation has been separately authorized. For a commissioned
+activation, use `--activate`, confirm Dire Wolf is masked, confirm Graywolf and
+`pcs-aprs-ptt-watchdog.service` are active/enabled, verify GPIO6 returns low,
+and verify the configured iGate mode through the authenticated Graywolf API.
+See [Graywolf APRS Engine](graywolf-aprs.md).
 
 For a Dire Wolf selection, run:
 

@@ -133,6 +133,9 @@ class GraywolfAprsTests(unittest.TestCase):
         self.assertNotRegex(setup, r"apt(?:-get)?\s+(?:purge|remove).*direwolf")
         self.assertIn("rollback_direwolf()", setup)
         self.assertIn("systemctl enable --now direwolf.service", setup)
+        self.assertIn('igate_mode="disabled"', setup)
+        self.assertIn('igate_mode="two-way"', setup)
+        self.assertIn('--igate-mode "${igate_mode}"', setup)
 
     def test_profile_provisioner_keeps_transmitters_disabled_and_repairs_defaults(self):
         profile = GRAYWOLF_PROFILE.read_text(encoding="utf-8")
@@ -145,6 +148,10 @@ class GraywolfAprsTests(unittest.TestCase):
         self.assertIn("digipeater/rules/{int(rule['id'])}", profile)
         self.assertIn("beacons/{int(beacon['id'])}", profile)
         self.assertIn('beacons[0].get("path") != ""', profile)
+        self.assertIn('--igate-mode', profile)
+        self.assertIn('"send_path": "both" if igate_enabled else "rf"', profile)
+        self.assertIn('"gate_rf_to_is": igate_enabled', profile)
+        self.assertIn('"gate_is_to_rf": igate_enabled', profile)
 
     def test_shared_aprs_prerequisites_order_before_either_engine(self):
         for relative_path in (

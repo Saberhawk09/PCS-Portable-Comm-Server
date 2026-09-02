@@ -539,6 +539,7 @@ import os
 import re
 import shlex
 import socket
+import sqlite3
 import time
 import shutil
 import subprocess
@@ -627,6 +628,38 @@ def json_object(path):
         return value if isinstance(value, dict) else {}
     except Exception:
         return {}
+
+def graywolf_runtime(path="/var/lib/graywolf/graywolf.db"):
+    state = {"available": False}
+    try:
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
+        output = db.execute(
+            "SELECT gain_db FROM audio_devices WHERE direction='output' ORDER BY id LIMIT 1"
+        ).fetchone()
+        timing = db.execute(
+            "SELECT tx_delay_ms, tx_tail_ms FROM tx_timings ORDER BY id LIMIT 1"
+        ).fetchone()
+        igate = db.execute(
+            "SELECT enabled, simulation_mode, gate_rf_to_is, gate_is_to_rf FROM i_gate_configs ORDER BY id LIMIT 1"
+        ).fetchone()
+        beacon = db.execute(
+            "SELECT send_path FROM beacons WHERE enabled=1 ORDER BY id LIMIT 1"
+        ).fetchone()
+        state.update({
+            "available": True,
+            "output_gain_db": output[0] if output else None,
+            "tx_delay_ms": timing[0] if timing else None,
+            "tx_tail_ms": timing[1] if timing else None,
+            "igate_enabled": bool(igate[0]) if igate else False,
+            "igate_simulation": bool(igate[1]) if igate else True,
+            "gate_rf_to_is": bool(igate[2]) if igate else False,
+            "gate_is_to_rf": bool(igate[3]) if igate else False,
+            "beacon_send_path": beacon[0] if beacon else "disabled",
+        })
+        db.close()
+    except Exception:
+        pass
+    return state
 
 def bool_value(value):
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
@@ -2201,6 +2234,9 @@ aprs_beacon_interval = CONFIG.get("PCS_APRS_BEACON_INTERVAL", "not configured")
 aprs_digipeat = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_DIGIPEAT", "no").lower() == "yes"
 aprs_digipeat_mode = CONFIG.get("PCS_APRS_DIGIPEAT_MODE", "standard")
 aprs_digipeat_alias = CONFIG.get("PCS_APRS_DIGIPEAT_ALIAS", "not configured")
+graywolf_state = graywolf_runtime() if aprs_engine == "graywolf" else {"available": False}
+if graywolf_state.get("available"):
+    aprs_igate = bool(graywolf_state.get("igate_enabled"))
 
 aprs_role_label = {
     "digi-igate": "digi-IGate / GPS tracker",
@@ -2230,6 +2266,30 @@ else:
     aprs_beacon_label = "disabled"
 aprs_digipeater_label = f"{aprs_digipeat_alias} only ({aprs_digipeat_mode})" if aprs_digipeat else "disabled"
 aprs_fx25_label = "enabled" if aprs_fx25_tx else "disabled"
+graywolf_url = "http://10.42.0.1:8070/" if aprs_engine == "graywolf" else ""
+graywolf_gain_label = (
+    f"{float(graywolf_state['output_gain_db']):g} dB"
+    if graywolf_state.get("output_gain_db") is not None
+    else "unknown"
+)
+graywolf_timing_label = (
+    f"{int(graywolf_state['tx_delay_ms'])} ms delay / {int(graywolf_state['tx_tail_ms'])} ms tail"
+    if graywolf_state.get("tx_delay_ms") is not None and graywolf_state.get("tx_tail_ms") is not None
+    else "unknown"
+)
+graywolf_igate_label = (
+    "enabled"
+    if graywolf_state.get("igate_enabled")
+    else "disabled; both directions off"
+    if graywolf_state.get("available")
+    else "unknown"
+)
+graywolf_beacon_path_label = {
+    "rf": "RF only",
+    "both": "RF and APRS-IS",
+    "is_only": "APRS-IS only",
+    "disabled": "disabled",
+}.get(str(graywolf_state.get("beacon_send_path", "")), "unknown")
 aprs_telemetry = {
     "available": False,
     "packets_1h": 0,
@@ -2966,6 +3026,16 @@ data = {
     "alerts": alerts,
     "client_info": client_info,
     "cards": cards,
+    "aprs": {
+        "engine": aprs_engine,
+        "status": aprs_status,
+        "service": aprs_service_label,
+        "graywolf_url": graywolf_url,
+        "graywolf_gain": graywolf_gain_label,
+        "graywolf_tx_timing": graywolf_timing_label,
+        "graywolf_igate": graywolf_igate_label,
+        "graywolf_beacon_path": graywolf_beacon_path_label,
+    },
 }
 
 if PUBLIC_VIEW:
@@ -3070,6 +3140,12 @@ if PUBLIC_VIEW:
             "configured": APRS_CONFIGURED,
             "status": aprs_status,
             "service": aprs_service_label,
+            "engine": aprs_engine,
+            "graywolf_url": graywolf_url,
+            "graywolf_gain": graywolf_gain_label,
+            "graywolf_tx_timing": graywolf_timing_label,
+            "graywolf_igate": graywolf_igate_label,
+            "graywolf_beacon_path": graywolf_beacon_path_label,
             "callsign": aprs_callsign,
             "role": aprs_role_label,
             "frequency": aprs_frequency,

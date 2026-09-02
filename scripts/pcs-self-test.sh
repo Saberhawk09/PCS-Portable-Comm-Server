@@ -83,6 +83,11 @@ PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
 PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_IGATE="${PCS_APRS_IGATE:-no}"
+PCS_GRAYWOLF_IGATE_MODE="disabled"
+if [[ "${PCS_APRS_IGATE}" == "yes" ]]; then
+    PCS_GRAYWOLF_IGATE_MODE="two-way"
+fi
 PCS_APRS_BEACON="${PCS_APRS_BEACON:-no}"
 PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-IG}"
 PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
@@ -1069,8 +1074,9 @@ case "${PCS_SETUP_APRS}" in
                 && sudo -n /usr/local/sbin/pcs-graywolf-profile verify-active \
                     --base-url "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}" \
                     --credential-file /etc/pcs/aprs/graywolf-admin.json \
-                    --callsign "${PCS_APRS_CALLSIGN}" >/dev/null 2>&1; then
-                pass "Graywolf active channel, beacon, digipeater, iGate, AGW, and KISS profile is verified"
+                    --callsign "${PCS_APRS_CALLSIGN}" \
+                    --igate-mode "${PCS_GRAYWOLF_IGATE_MODE}" >/dev/null 2>&1; then
+                pass "Graywolf active channel, beacon, digipeater, configured iGate mode, AGW, and KISS profile is verified"
             else
                 fail "Graywolf active profile read-back failed"
             fi

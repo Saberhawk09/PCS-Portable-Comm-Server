@@ -332,7 +332,8 @@ PUBLIC_FIELDS = {
     "aprs": {
         "configured", "status", "service", "callsign", "role", "frequency", "modem",
         "aprs_is", "aprs_is_profile", "beacon", "digipeater", "kiss", "fx25", "packets",
-        "last_heard", "tx_state",
+        "last_heard", "tx_state", "engine", "graywolf_url", "graywolf_gain",
+        "graywolf_tx_timing", "graywolf_igate", "graywolf_beacon_path",
     },
     "meshtastic": {
         "configured", "status", "service", "node", "hardware", "firmware",
@@ -598,6 +599,25 @@ def public_card(title: str, section: dict, fields: list[tuple[str, str, object]]
     return f'<article class="card"><div class="card-top"><h2>{esc(title)}</h2>{badge(status)}</div><div>{rows}</div></article>'
 
 
+def graywolf_access_card(section: dict, admin: bool = False) -> str:
+    if str(section.get("engine", "")).lower() != "graywolf":
+        return ""
+    rows = [
+        item("Management address", "10.42.0.1:8070"),
+        item("Service", section.get("service", "unknown")),
+        item("Output drive", section.get("graywolf_gain", "unknown")),
+        item("TX timing", section.get("graywolf_tx_timing", "unknown")),
+        item("iGate / APRS-IS", section.get("graywolf_igate", "unknown")),
+        item("Beacon destination", section.get("graywolf_beacon_path", "unknown")),
+    ]
+    audience = "operator configuration and diagnostics" if admin else "local packet dashboard"
+    return (
+        '<article class="card service-card"><div class="card-top"><h2>Graywolf APRS</h2>'
+        f'{badge(section.get("status", "warn"))}</div><p class="summary">Graywolf {esc(audience)}.</p>'
+        f'{"".join(rows)}<a class="button secondary" href="http://10.42.0.1:8070/">Open Graywolf dashboard</a></article>'
+    )
+
+
 def render_public_page(data: dict) -> bytes:
     overall = status_value(data.get("overall", "warn"))
     error = data.get("error")
@@ -683,6 +703,9 @@ def render_public_page(data: dict) -> bytes:
             ("Last RF packet", "last_heard", "not available"),
             ("Service", "service", "unknown"), ("RF TX", "tx_state", "Safe"),
         ]))
+        graywolf_card = graywolf_access_card(aprs)
+        if graywolf_card:
+            cards.append(graywolf_card)
 
     meshtastic = data.get("meshtastic", {})
     if meshtastic.get("configured"):
@@ -785,10 +808,13 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
       <button type="submit">Save backup settings</button>
     </form><p class="small">The rolling backup is additive: files removed from PCS-Share remain on PCS-Backup. Snapshot history preserves each dated version and is never pruned automatically, so storage use will grow.</p></dialog>"""
 
+    aprs_section = data.get("aprs", {}) if isinstance(data.get("aprs"), dict) else {}
+    graywolf_admin_card = graywolf_access_card(aprs_section, admin=True)
+
     body = f"""
     <header><div class="nav"><div class="brand-group"><div class="brand">PCS Administration</div>{header_health(data)}</div><nav class="navlinks"><button class="secondary" type="button" id="open-backup-settings">Backup Settings</button><a class="button secondary" href="/">Public Homepage</a><a class="button secondary" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
     <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
-    <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}</section>
+    <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}{graywolf_admin_card}</section>
     <h2 class="section-title">Detailed field access</h2><section class="card">{''.join(access_rows)}</section>
     {backup_settings_html}
     <h2 class="section-title">Administrator access</h2><section class="card password-card"><div><h2>Admin panel password</h2><p>Change it here while the current password is known. A forgotten password cannot be recovered in the browser; rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from the Pi terminal.</p></div><a class="button" href="/admin/password">Change Admin Password</a></section>

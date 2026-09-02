@@ -265,6 +265,42 @@ class PublicDataTests(unittest.TestCase):
         self.assertNotIn("USB audio", page)
         self.assertNotIn("must-not-render", page)
 
+    def test_graywolf_access_cards_are_shown_on_public_and_admin_pages(self):
+        active = deepcopy(PUBLIC_DATA)
+        active["aprs"] = {
+            "configured": True,
+            "status": "ok",
+            "service": "active",
+            "engine": "graywolf",
+            "callsign": "W8IJC-10",
+            "graywolf_url": "http://10.42.0.1:8070/",
+            "graywolf_gain": "-15.5 dB",
+            "graywolf_tx_timing": "500 ms delay / 50 ms tail",
+            "graywolf_igate": "disabled; both directions off",
+            "graywolf_beacon_path": "RF only",
+        }
+        public_page = pcs.render_public_page(
+            pcs.sanitize_public_dashboard(active)
+        ).decode("utf-8")
+        self.assertIn("Graywolf APRS", public_page)
+        self.assertIn("Open Graywolf dashboard", public_page)
+        self.assertIn('href="http://10.42.0.1:8070/"', public_page)
+        self.assertIn("-15.5 dB", public_page)
+        self.assertIn("disabled; both directions off", public_page)
+        self.assertIn("RF only", public_page)
+
+        admin = deepcopy(ADMIN_DATA)
+        admin["aprs"] = active["aprs"]
+        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        self.assertIn("Graywolf operator configuration and diagnostics", admin_page)
+        self.assertIn("Open Graywolf dashboard", admin_page)
+        self.assertIn("500 ms delay / 50 ms tail", admin_page)
+
+        collector = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")
+        self.assertIn("def graywolf_runtime", collector)
+        self.assertIn('"gate_rf_to_is": bool(igate[2])', collector)
+        self.assertIn('graywolf_url = "http://10.42.0.1:8070/"', collector)
+
     def test_meshtastic_card_is_privacy_safe_and_hidden_until_active(self):
         staged = deepcopy(PUBLIC_DATA)
         staged["meshtastic"] = {

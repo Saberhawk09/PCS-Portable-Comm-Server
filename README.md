@@ -160,9 +160,10 @@ without attached APRS hardware or an enabled RF path. The documented workflow
 provides separate guarded RX/TX activation, managed SA818S and ALSA startup,
 LAN-only AGW/KISS, logs/dashboard telemetry, and transactional rollback. See
 [Dire Wolf / APRS Integration](docs/direwolf-aprs.md).
-Graywolf is available as a stopped/disabled software-staging alternative; its
-hardware activation remains deliberately unsupported pending PCS acceptance.
-See [Graywolf APRS Staging](docs/graywolf-aprs.md).
+Graywolf is available as a safely staged alternative and now has a guarded,
+transactional activation path with GPIO6 watchdog protection, LAN-only web/
+AGW/KISS access, configurable iGate mode, and Dire Wolf rollback. See
+[Graywolf APRS Engine](docs/graywolf-aprs.md).
 
 ## After Setup
 
