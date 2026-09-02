@@ -1,0 +1,752 @@
+#!/usr/bin/env python3
+"""Read-only PCS APRS message agent using Dire Wolf's KISS ICHANNEL."""
+
+from __future__ import annotations
+
+import argparse
+import configparser
+import hashlib
+import json
+import logging
+import re
+import signal
+import socket
+import sqlite3
+import subprocess
+import threading
+import time
+from collections import defaultdict, deque
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
+from typing import Callable, Iterable
+
+
+LOG = logging.getLogger("pcs-aprs-agent")
+
+FEND = 0xC0
+FESC = 0xDB
+TFEND = 0xDC
+TFESC = 0xDD
+KISS_DATA = 0x00
+AX25_UI = 0x03
+AX25_NO_LAYER_3 = 0xF0
+MAX_KISS_FRAME = 4096
+MAX_APRS_MESSAGE_TEXT = 67
+DEFAULT_CONFIG = "/etc/pcs/aprs-agent.conf"
+DEFAULT_STATE_DB = "/var/lib/pcs-aprs-agent/state.sqlite3"
+CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,6}(?:-(?:[1-9]|1[0-5]))?$")
+MESSAGE_ID_RE = re.compile(r"\{([A-Za-z0-9]{1,5})(?:\}[A-Za-z0-9]{1,5})?$")
+COMMANDS = ("PING", "STATUS", "POWER", "LTE", "GPS", "TEMP", "NET", "UPTIME", "HELP")
+
+
+class ConfigError(ValueError):
+    """Raised when the APRS agent configuration is unsafe or invalid."""
+
+
+@dataclass(frozen=True)
+class AgentConfig:
+    callsign: str = "W8IJC-10"
+    tocall: str = "APZPCS"
+    kiss_host: str = "127.0.0.1"
+    kiss_port: int = 8001
+    kiss_channel: int = 8
+    state_db: str = DEFAULT_STATE_DB
+    dedupe_ttl_seconds: int = 86400
+    gpsd_host: str = "127.0.0.1"
+    gpsd_port: int = 2947
+    command_timeout_seconds: float = 3.0
+    sender_rate_per_minute: int = 12
+    global_rate_per_minute: int = 60
+    reconnect_max_seconds: int = 60
+
+    @classmethod
+    def load(cls, path: str | Path) -> "AgentConfig":
+        parser = configparser.ConfigParser(interpolation=None)
+        if not parser.read(path, encoding="utf-8"):
+            raise ConfigError(f"configuration file is unavailable: {path}")
+        section = parser["agent"] if parser.has_section("agent") else {}
+        try:
+            config = cls(
+                callsign=str(section.get("callsign", cls.callsign)).strip().upper(),
+                tocall=str(section.get("tocall", cls.tocall)).strip().upper(),
+                kiss_host=str(section.get("kiss_host", cls.kiss_host)).strip(),
+                kiss_port=int(section.get("kiss_port", cls.kiss_port)),
+                kiss_channel=int(section.get("kiss_channel", cls.kiss_channel)),
+                state_db=str(section.get("state_db", cls.state_db)).strip(),
+                dedupe_ttl_seconds=int(section.get("dedupe_ttl_seconds", cls.dedupe_ttl_seconds)),
+                gpsd_host=str(section.get("gpsd_host", cls.gpsd_host)).strip(),
+                gpsd_port=int(section.get("gpsd_port", cls.gpsd_port)),
+                command_timeout_seconds=float(section.get("command_timeout_seconds", cls.command_timeout_seconds)),
+                sender_rate_per_minute=int(section.get("sender_rate_per_minute", cls.sender_rate_per_minute)),
+                global_rate_per_minute=int(section.get("global_rate_per_minute", cls.global_rate_per_minute)),
+                reconnect_max_seconds=int(section.get("reconnect_max_seconds", cls.reconnect_max_seconds)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(f"configuration contains an invalid number: {exc}") from exc
+        config.validate()
+        return config
+
+    def validate(self) -> None:
+        if not CALLSIGN_RE.fullmatch(self.callsign):
+            raise ConfigError(f"invalid APRS callsign: {self.callsign!r}")
+        if not re.fullmatch(r"[A-Z0-9]{1,6}", self.tocall):
+            raise ConfigError(f"invalid APRS destination/tocall: {self.tocall!r}")
+        if self.kiss_host.lower() not in {"127.0.0.1", "localhost", "::1"}:
+            raise ConfigError("kiss_host must be loopback; the agent may only use the local Dire Wolf instance")
+        if self.gpsd_host.lower() not in {"127.0.0.1", "localhost", "::1"}:
+            raise ConfigError("gpsd_host must be loopback; GPS status may only use the local receiver")
+        state_path = PurePosixPath(self.state_db)
+        if not state_path.is_absolute() or state_path.parent != PurePosixPath("/var/lib/pcs-aprs-agent"):
+            raise ConfigError("state_db must be a file directly under /var/lib/pcs-aprs-agent")
+        if not 1 <= self.kiss_port <= 65535 or not 1 <= self.gpsd_port <= 65535:
+            raise ConfigError("TCP ports must be between 1 and 65535")
+        if not 1 <= self.kiss_channel <= 15:
+            raise ConfigError("kiss_channel must be an Internet-only KISS channel from 1 through 15")
+        if not 60 <= self.dedupe_ttl_seconds <= 2_592_000:
+            raise ConfigError("dedupe_ttl_seconds must be between 60 and 2592000")
+        if not 0.2 <= self.command_timeout_seconds <= 15:
+            raise ConfigError("command_timeout_seconds must be between 0.2 and 15")
+        if not 1 <= self.sender_rate_per_minute <= 120:
+            raise ConfigError("sender_rate_per_minute must be between 1 and 120")
+        if not self.sender_rate_per_minute <= self.global_rate_per_minute <= 600:
+            raise ConfigError("global_rate_per_minute must cover one sender and be no greater than 600")
+        if not 1 <= self.reconnect_max_seconds <= 300:
+            raise ConfigError("reconnect_max_seconds must be between 1 and 300")
+
+
+class KissDecoder:
+    """Incrementally decode escaped KISS frames from a TCP stream."""
+
+    def __init__(self, maximum: int = MAX_KISS_FRAME) -> None:
+        self.maximum = maximum
+        self._frame = bytearray()
+        self._escaped = False
+        self._discarding = False
+
+    def feed(self, data: bytes) -> list[bytes]:
+        frames: list[bytes] = []
+        for value in data:
+            if value == FEND:
+                if self._frame and not self._discarding and not self._escaped:
+                    frames.append(bytes(self._frame))
+                self._frame.clear()
+                self._escaped = False
+                self._discarding = False
+                continue
+            if self._discarding:
+                continue
+            if self._escaped:
+                if value == TFEND:
+                    value = FEND
+                elif value == TFESC:
+                    value = FESC
+                else:
+                    self._frame.clear()
+                    self._discarding = True
+                    self._escaped = False
+                    continue
+                self._escaped = False
+            elif value == FESC:
+                self._escaped = True
+                continue
+            self._frame.append(value)
+            if len(self._frame) > self.maximum:
+                self._frame.clear()
+                self._discarding = True
+        return frames
+
+
+def encode_kiss(channel: int, payload: bytes) -> bytes:
+    if not 0 <= channel <= 15:
+        raise ValueError("KISS channel must be between 0 and 15")
+    raw = bytes([(channel << 4) | KISS_DATA]) + payload
+    escaped = raw.replace(bytes([FESC]), bytes([FESC, TFESC]))
+    escaped = escaped.replace(bytes([FEND]), bytes([FESC, TFEND]))
+    return bytes([FEND]) + escaped + bytes([FEND])
+
+
+def split_callsign(value: str) -> tuple[str, int]:
+    normalized = value.strip().upper()
+    if not CALLSIGN_RE.fullmatch(normalized):
+        raise ValueError(f"invalid AX.25 callsign: {value!r}")
+    if "-" not in normalized:
+        return normalized, 0
+    call, ssid_text = normalized.rsplit("-", 1)
+    return call, int(ssid_text)
+
+
+def encode_ax25_address(value: str, *, last: bool) -> bytes:
+    call, ssid = split_callsign(value)
+    address = bytearray((ord(char) << 1) for char in call.ljust(6))
+    address.append(0x60 | (ssid << 1) | int(last))
+    return bytes(address)
+
+
+def decode_ax25_address(raw: bytes) -> tuple[str, bool]:
+    if len(raw) != 7:
+        raise ValueError("AX.25 address must contain seven bytes")
+    if any(value & 0x01 for value in raw[:6]):
+        raise ValueError("AX.25 address contains invalid shifted characters")
+    call = "".join(chr((value >> 1) & 0x7F) for value in raw[:6]).rstrip()
+    if not re.fullmatch(r"[A-Z0-9]{1,6}", call):
+        raise ValueError("AX.25 address contains an invalid callsign")
+    ssid = (raw[6] >> 1) & 0x0F
+    return f"{call}-{ssid}" if ssid else call, bool(raw[6] & 0x01)
+
+
+@dataclass(frozen=True)
+class Ax25Frame:
+    destination: str
+    source: str
+    information: bytes
+
+
+def decode_ax25_ui(raw: bytes) -> Ax25Frame:
+    if len(raw) < 16:
+        raise ValueError("AX.25 frame is too short")
+    addresses: list[str] = []
+    offset = 0
+    while True:
+        if offset + 7 > len(raw) or len(addresses) >= 10:
+            raise ValueError("AX.25 address list is incomplete or excessive")
+        address, last = decode_ax25_address(raw[offset : offset + 7])
+        addresses.append(address)
+        offset += 7
+        if last:
+            break
+    if len(addresses) < 2 or offset + 2 > len(raw):
+        raise ValueError("AX.25 frame has no source/destination pair or control fields")
+    if raw[offset] != AX25_UI or raw[offset + 1] != AX25_NO_LAYER_3:
+        raise ValueError("only AX.25 UI frames with PID F0 are accepted")
+    return Ax25Frame(destination=addresses[0], source=addresses[1], information=raw[offset + 2 :])
+
+
+def encode_ax25_ui(source: str, destination: str, information: bytes) -> bytes:
+    if len(information) > 256:
+        raise ValueError("AX.25 information field is too large")
+    return (
+        encode_ax25_address(destination, last=False)
+        + encode_ax25_address(source, last=True)
+        + bytes([AX25_UI, AX25_NO_LAYER_3])
+        + information
+    )
+
+
+@dataclass(frozen=True)
+class AprsMessage:
+    sender: str
+    addressee: str
+    body: str
+    message_id: str | None
+
+
+def parse_aprs_message(frame: Ax25Frame) -> AprsMessage | None:
+    try:
+        info = frame.information.decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    if len(info) < 11 or info[0] != ":" or info[10] != ":":
+        return None
+    addressee_field = info[1:10]
+    addressee = addressee_field.rstrip().upper()
+    if not addressee or not CALLSIGN_RE.fullmatch(addressee):
+        return None
+    wire_body = info[11:]
+    match = MESSAGE_ID_RE.search(wire_body)
+    message_id = match.group(1) if match else None
+    body = wire_body[: match.start()] if match else wire_body
+    return AprsMessage(
+        sender=frame.source.upper(),
+        addressee=addressee,
+        body=body,
+        message_id=message_id,
+    )
+
+
+def aprs_ack_information(recipient: str, message_id: str) -> bytes:
+    split_callsign(recipient)
+    if not re.fullmatch(r"[A-Za-z0-9]{1,5}", message_id):
+        raise ValueError("invalid APRS message ID")
+    return f":{recipient:<9}:ack{message_id}".encode("ascii")
+
+
+def aprs_reply_information(recipient: str, body: str, message_id: str) -> bytes:
+    split_callsign(recipient)
+    body = " ".join(body.strip().split())
+    suffix = f"{{{message_id}"
+    maximum_body = MAX_APRS_MESSAGE_TEXT - len(suffix)
+    if maximum_body < 1:
+        raise ValueError("outbound APRS message ID is too long")
+    body = body[:maximum_body].rstrip()
+    return f":{recipient:<9}:{body}{suffix}".encode("ascii", errors="replace")
+
+
+class DedupStore:
+    """Persist received command identities and the outbound ID sequence."""
+
+    def __init__(self, path: str | Path, ttl_seconds: int, now: Callable[[], float] = time.time) -> None:
+        self.path = Path(path)
+        self.ttl_seconds = ttl_seconds
+        self.now = now
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.connection = sqlite3.connect(self.path)
+        self.connection.execute("PRAGMA journal_mode=WAL")
+        self.connection.execute("PRAGMA synchronous=FULL")
+        self.connection.execute(
+            """CREATE TABLE IF NOT EXISTS received_messages (
+                   sender TEXT NOT NULL,
+                   message_id TEXT NOT NULL,
+                   body_digest TEXT NOT NULL,
+                   received_at REAL NOT NULL,
+                   PRIMARY KEY (sender, message_id)
+               )"""
+        )
+        self.connection.execute(
+            """CREATE TABLE IF NOT EXISTS state_values (
+                   name TEXT PRIMARY KEY,
+                   value INTEGER NOT NULL
+               )"""
+        )
+        self.connection.commit()
+
+    def close(self) -> None:
+        self.connection.close()
+
+    def claim(self, sender: str, message_id: str, body: str) -> str:
+        current = self.now()
+        cutoff = current - self.ttl_seconds
+        digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        with self.connection:
+            self.connection.execute("DELETE FROM received_messages WHERE received_at < ?", (cutoff,))
+            row = self.connection.execute(
+                "SELECT body_digest FROM received_messages WHERE sender = ? AND message_id = ?",
+                (sender, message_id),
+            ).fetchone()
+            if row is not None:
+                return "duplicate" if row[0] == digest else "conflict"
+            self.connection.execute(
+                "INSERT INTO received_messages(sender, message_id, body_digest, received_at) VALUES (?, ?, ?, ?)",
+                (sender, message_id, digest, current),
+            )
+        return "new"
+
+    def next_outbound_id(self) -> str:
+        with self.connection:
+            row = self.connection.execute("SELECT value FROM state_values WHERE name = 'outbound_id'").fetchone()
+            value = ((int(row[0]) if row else -1) + 1) % (36**4)
+            self.connection.execute(
+                "INSERT INTO state_values(name, value) VALUES ('outbound_id', ?) "
+                "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+                (value,),
+            )
+        alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        encoded = ""
+        remainder = value
+        for _ in range(4):
+            encoded = alphabet[remainder % 36] + encoded
+            remainder //= 36
+        return encoded
+
+
+class SlidingWindowLimiter:
+    def __init__(
+        self,
+        per_sender: int,
+        global_limit: int,
+        now: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.per_sender = per_sender
+        self.global_limit = global_limit
+        self.now = now
+        self.global_events: deque[float] = deque()
+        self.sender_events: defaultdict[str, deque[float]] = defaultdict(deque)
+
+    @staticmethod
+    def _expire(events: deque[float], cutoff: float) -> None:
+        while events and events[0] <= cutoff:
+            events.popleft()
+
+    def allow(self, sender: str) -> bool:
+        current = self.now()
+        cutoff = current - 60.0
+        sender_queue = self.sender_events[sender]
+        self._expire(self.global_events, cutoff)
+        self._expire(sender_queue, cutoff)
+        if len(self.global_events) >= self.global_limit or len(sender_queue) >= self.per_sender:
+            return False
+        self.global_events.append(current)
+        sender_queue.append(current)
+        return True
+
+
+class CommandRunner:
+    def run(self, arguments: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                arguments,
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return subprocess.CompletedProcess(arguments, 127, "", str(exc))
+
+
+def direwolf_service_active(runner: CommandRunner | None = None) -> bool:
+    """Return true only while the authoritative Dire Wolf unit is active."""
+
+    result = (runner or CommandRunner()).run(
+        ["systemctl", "is-active", "--quiet", "direwolf.service"],
+        3.0,
+    )
+    return result.returncode == 0
+
+
+class StatusProvider:
+    """Collect coarse, privacy-preserving PCS status from read-only sources."""
+
+    def __init__(
+        self,
+        *,
+        runner: CommandRunner | None = None,
+        gpsd_host: str = "127.0.0.1",
+        gpsd_port: int = 2947,
+        timeout: float = 3.0,
+        temperature_path: str | Path = "/sys/class/thermal/thermal_zone0/temp",
+        uptime_path: str | Path = "/proc/uptime",
+        wall_time: Callable[[], float] = time.time,
+    ) -> None:
+        self.runner = runner or CommandRunner()
+        self.gpsd_host = gpsd_host
+        self.gpsd_port = gpsd_port
+        self.timeout = timeout
+        self.temperature_path = Path(temperature_path)
+        self.uptime_path = Path(uptime_path)
+        self.wall_time = wall_time
+
+    def temperature_value(self) -> str:
+        try:
+            millidegrees = int(self.temperature_path.read_text(encoding="ascii").strip())
+        except (OSError, ValueError):
+            return "N/A"
+        if not -40_000 <= millidegrees <= 150_000:
+            return "N/A"
+        return f"{round(millidegrees / 1000)}C"
+
+    def temperature(self) -> str:
+        return f"TEMP {self.temperature_value()}"
+
+    def uptime_value(self) -> str:
+        try:
+            seconds = max(0, int(float(self.uptime_path.read_text(encoding="ascii").split()[0])))
+        except (OSError, ValueError, IndexError):
+            return "N/A"
+        days, remainder = divmod(seconds, 86400)
+        hours, remainder = divmod(remainder, 3600)
+        minutes = remainder // 60
+        if days:
+            return f"{days}D {hours}H {minutes}M"
+        return f"{hours}H {minutes}M"
+
+    def uptime(self) -> str:
+        return f"UPTIME {self.uptime_value()}"
+
+    def gps_value(self) -> str:
+        deadline = time.monotonic() + self.timeout
+        best_mode = 0
+        stale_fix = False
+        try:
+            with socket.create_connection((self.gpsd_host, self.gpsd_port), timeout=self.timeout) as connection:
+                connection.settimeout(max(0.1, self.timeout))
+                connection.sendall(b'?WATCH={"enable":true,"json":true};\n')
+                buffer = b""
+                while time.monotonic() < deadline:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    while b"\n" in buffer:
+                        raw_line, buffer = buffer.split(b"\n", 1)
+                        try:
+                            report = json.loads(raw_line)
+                        except (UnicodeDecodeError, json.JSONDecodeError):
+                            continue
+                        if report.get("class") != "TPV":
+                            continue
+                        try:
+                            mode = int(report.get("mode", 0))
+                        except (TypeError, ValueError):
+                            mode = 0
+                        if mode >= 2 and not self._gps_report_is_fresh(report):
+                            stale_fix = True
+                            continue
+                        best_mode = max(best_mode, mode)
+                        if best_mode >= 3:
+                            return "3D"
+        except (OSError, TimeoutError):
+            return "UNAVAILABLE"
+        if best_mode == 2:
+            return "2D"
+        if stale_fix:
+            return "STALE"
+        return "NO FIX"
+
+    def _gps_report_is_fresh(self, report: dict) -> bool:
+        value = report.get("time")
+        if not isinstance(value, str):
+            return False
+        try:
+            timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return False
+        age = self.wall_time() - timestamp.timestamp()
+        return -5 <= age <= 30
+
+    def gps(self) -> str:
+        return f"GPS {self.gps_value()}"
+
+    def _network_states(self) -> list[tuple[str, str]]:
+        result = self.runner.run(["nmcli", "-t", "-f", "TYPE,STATE", "device", "status"], self.timeout)
+        if result.returncode != 0:
+            return []
+        states: list[tuple[str, str]] = []
+        for line in result.stdout.splitlines():
+            fields = line.strip().lower().split(":", 1)
+            if len(fields) == 2:
+                states.append((fields[0], fields[1]))
+        return states
+
+    def lte_value(self) -> str:
+        states = self._network_states()
+        if any(kind == "gsm" and state.startswith("connected") for kind, state in states):
+            return "UP"
+        modem = self.runner.run(["mmcli", "-L"], self.timeout)
+        if modem.returncode == 0 and "/Modem/" in modem.stdout:
+            return "STANDBY"
+        if modem.returncode == 0:
+            return "NO MODEM"
+        return "UNKNOWN"
+
+    def lte(self) -> str:
+        return f"LTE {self.lte_value()}"
+
+    def network_value(self) -> str:
+        states = self._network_states()
+        connected = {kind for kind, state in states if state.startswith("connected")}
+        if "ethernet" in connected:
+            return "ETH"
+        if "wifi" in connected or "802-11-wireless" in connected:
+            return "WIFI"
+        if "gsm" in connected:
+            return "CELL"
+        route = self.runner.run(["ip", "-4", "route", "show", "default"], self.timeout)
+        return "UP" if route.returncode == 0 and route.stdout.strip() else "DOWN"
+
+    def network(self) -> str:
+        return f"NET {self.network_value()}"
+
+    @staticmethod
+    def power() -> str:
+        return "POWER N/A"
+
+    def status(self) -> str:
+        return " | ".join(
+            (
+                "PCS OK",
+                f"LTE {self.lte_value()}",
+                f"GPS {self.gps_value()}",
+                "PWR N/A",
+                self.temperature_value(),
+                f"NET {self.network_value()}",
+            )
+        )
+
+    def execute(self, command: str) -> str:
+        handlers: dict[str, Callable[[], str]] = {
+            "PING": lambda: "PONG",
+            "STATUS": self.status,
+            "POWER": self.power,
+            "LTE": self.lte,
+            "GPS": self.gps,
+            "TEMP": self.temperature,
+            "NET": self.network,
+            "UPTIME": self.uptime,
+            "HELP": lambda: " ".join(COMMANDS),
+        }
+        handler = handlers.get(command)
+        return handler() if handler else "UNKNOWN COMMAND | SEND HELP"
+
+
+class AprsAgent:
+    def __init__(
+        self,
+        config: AgentConfig,
+        store: DedupStore,
+        provider: StatusProvider,
+        limiter: SlidingWindowLimiter,
+    ) -> None:
+        self.config = config
+        self.store = store
+        self.provider = provider
+        self.limiter = limiter
+
+    def process(self, raw_ax25: bytes, send_ax25: Callable[[bytes], None]) -> None:
+        try:
+            frame = decode_ax25_ui(raw_ax25)
+        except ValueError as exc:
+            LOG.debug("Ignored malformed AX.25 frame: %s", exc)
+            return
+        message = parse_aprs_message(frame)
+        if message is None or message.addressee != self.config.callsign:
+            return
+        if message.sender == self.config.callsign:
+            LOG.warning("Ignored an APRS message claiming the local station as its sender")
+            return
+        if message.message_id is None:
+            LOG.info("Ignored unnumbered APRS message from %s", message.sender)
+            return
+        ack = aprs_ack_information(message.sender, message.message_id)
+        send_ax25(encode_ax25_ui(self.config.callsign, self.config.tocall, ack))
+
+        if not self.limiter.allow(message.sender):
+            LOG.warning("Rate limit suppressed APRS command handling for %s", message.sender)
+            return
+
+        command = " ".join(message.body.strip().upper().split())
+        claim = self.store.claim(message.sender, message.message_id, command)
+        if claim == "duplicate":
+            LOG.info("Acknowledged duplicate APRS message from %s id=%s", message.sender, message.message_id)
+            return
+        if claim == "conflict":
+            LOG.warning("Ignored conflicting APRS message reuse from %s id=%s", message.sender, message.message_id)
+            return
+
+        command_label = command if command in COMMANDS else "<unknown>"
+        LOG.info("Executing read-only APRS command from %s id=%s command=%s", message.sender, message.message_id, command_label)
+        try:
+            response = self.provider.execute(command)
+        except Exception:
+            LOG.exception("Read-only status provider failed")
+            response = "PCS STATUS UNAVAILABLE"
+        outbound_id = self.store.next_outbound_id()
+        reply = aprs_reply_information(message.sender, response, outbound_id)
+        send_ax25(encode_ax25_ui(self.config.callsign, self.config.tocall, reply))
+
+
+class AgentRuntime:
+    def __init__(
+        self,
+        config: AgentConfig,
+        agent: AprsAgent,
+        engine_active: Callable[[], bool] = direwolf_service_active,
+    ) -> None:
+        self.config = config
+        self.agent = agent
+        self.engine_active = engine_active
+        self.stop_event = threading.Event()
+
+    def stop(self, *_args: object) -> None:
+        self.stop_event.set()
+
+    def _serve_connection(self, connection: socket.socket) -> None:
+        decoder = KissDecoder()
+        connection.settimeout(1.0)
+
+        def send_ax25(frame: bytes) -> None:
+            connection.sendall(encode_kiss(self.config.kiss_channel, frame))
+
+        while not self.stop_event.is_set():
+            try:
+                chunk = connection.recv(4096)
+            except socket.timeout:
+                continue
+            if not chunk:
+                raise ConnectionError("Dire Wolf closed the KISS connection")
+            for kiss_frame in decoder.feed(chunk):
+                if not kiss_frame:
+                    continue
+                command = kiss_frame[0]
+                channel = command >> 4
+                if (command & 0x0F) != KISS_DATA or channel != self.config.kiss_channel:
+                    continue
+                self.agent.process(kiss_frame[1:], send_ax25)
+
+    def run(self) -> None:
+        delay = 1
+        while not self.stop_event.is_set():
+            if not self.engine_active():
+                LOG.warning(
+                    "direwolf.service is inactive; suppressing the APRS Agent KISS connection for %ds",
+                    delay,
+                )
+                self.stop_event.wait(delay)
+                delay = min(self.config.reconnect_max_seconds, delay * 2)
+                continue
+            try:
+                with socket.create_connection(
+                    (self.config.kiss_host, self.config.kiss_port),
+                    timeout=self.config.command_timeout_seconds,
+                ) as connection:
+                    LOG.info(
+                        "Connected to local Dire Wolf KISS %s:%d on Internet channel %d",
+                        self.config.kiss_host,
+                        self.config.kiss_port,
+                        self.config.kiss_channel,
+                    )
+                    delay = 1
+                    self._serve_connection(connection)
+            except (OSError, ConnectionError) as exc:
+                if self.stop_event.is_set():
+                    break
+                LOG.warning("Dire Wolf KISS connection unavailable: %s; retrying in %ds", exc, delay)
+                self.stop_event.wait(delay)
+                delay = min(self.config.reconnect_max_seconds, delay * 2)
+
+
+def parse_args(arguments: Iterable[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", default=DEFAULT_CONFIG)
+    parser.add_argument("--check-config", action="store_true")
+    parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="INFO")
+    return parser.parse_args(arguments)
+
+
+def main(arguments: Iterable[str] | None = None) -> int:
+    args = parse_args(arguments)
+    logging.basicConfig(level=getattr(logging, args.log_level), format="%(levelname)s %(message)s")
+    try:
+        config = AgentConfig.load(args.config)
+    except ConfigError as exc:
+        LOG.error("%s", exc)
+        return 2
+    if args.check_config:
+        print(
+            f"APRS agent configuration is valid for {config.callsign}; "
+            f"local KISS {config.kiss_host}:{config.kiss_port} ICHANNEL {config.kiss_channel}."
+        )
+        return 0
+
+    store = DedupStore(config.state_db, config.dedupe_ttl_seconds)
+    provider = StatusProvider(
+        gpsd_host=config.gpsd_host,
+        gpsd_port=config.gpsd_port,
+        timeout=config.command_timeout_seconds,
+    )
+    limiter = SlidingWindowLimiter(config.sender_rate_per_minute, config.global_rate_per_minute)
+    agent = AprsAgent(config, store, provider, limiter)
+    runtime = AgentRuntime(config, agent)
+    signal.signal(signal.SIGTERM, runtime.stop)
+    signal.signal(signal.SIGINT, runtime.stop)
+    try:
+        runtime.run()
+    finally:
+        store.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

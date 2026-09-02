@@ -1,0 +1,36 @@
+[Unit]
+Description=PCS read-only APRS messaging and status agent
+Documentation=file:/usr/local/share/doc/pcs/aprs-agent.md
+After=direwolf.service gpsd.service NetworkManager.service ModemManager.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=pcs-aprs-agent
+StateDirectoryMode=0700
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf --check-config
+ExecStart=/usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,10 @@ All notable user-facing PCS changes are recorded here.
 
 ### Added
 
+- a local-only, read-only PCS APRS messaging/status agent using Dire Wolf's
+  Internet-only KISS `ICHANNEL`, with APRS ACKs, persistent duplicate
+  suppression, bounded public status commands, hardened systemd packaging, and
+  guarded deployment that does not own APRS-IS, RF, audio, PTT, or beaconing
 - a hardware-safe APRS engine selector with checksum-pinned Graywolf 0.14.13
   staging, Dire Wolf/Graywolf systemd mutual exclusion, a non-conflicting
   LAN management endpoint, engine-aware status/self-test integration, guarded

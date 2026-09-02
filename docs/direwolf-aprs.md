@@ -344,6 +344,12 @@ hardware-evidence flags.
 | `PCS_APRS_KISS_PORT` | `8001` | `KISSPORT`; `kissutil` and KISS clients. |
 | `PCS_APRS_KISS_LAN_INTERFACE` | `eth0` | Only this PCS client interface may accept AGW/KISS traffic. |
 | `PCS_APRS_KISS_LAN_NETWORK` | `10.42.0.0/24` | Source network admitted by the dedicated nftables rule. |
+| `PCS_APRS_AGENT_ENABLED` | `no` | When selected, generates a virtual Internet channel for the separately managed read-only APRS Agent. |
+| `PCS_APRS_AGENT_ICHANNEL` | `8` | Unused KISS channel mapped to APRS-IS; channel 0 remains RF. |
+| `PCS_APRS_AGENT_TOCALL` | `APZPCS` | Experimental APRS software destination used on agent ACKs and replies. |
+| `PCS_APRS_AGENT_DEDUPE_TTL_SECONDS` | `86400` | Persistent sender/message-ID duplicate window. |
+| `PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE` | `12` | Per-sender response ceiling for the unauthenticated public APRS interface. |
+| `PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE` | `60` | Whole-agent response ceiling. |
 | `PCS_APRS_IGATE` | `no` | Adds the `IGSERVER` and `IGLOGIN` APRS-IS connection; mode controls the return RF path. |
 | `PCS_APRS_IGATE_SERVER` | `noam.aprs2.net` | Regional APRS-IS rotate address; change when appropriate. |
 | `PCS_APRS_IGATE_MODE` | `rx-only` / `two-way` | Selected as `two-way`; `IGTXVIA` is generated only for the guarded TX profile. |
@@ -364,6 +370,11 @@ unprivileged service account. `pcs-aprs-telemetry` counts RF packets from the
 transmissions, and reads both current and rotated gzip logs. Public status gets
 aggregate counts and the last RF timestamp; the authenticated dashboard may
 also display the most recently heard station.
+
+The optional [PCS APRS Agent](aprs-agent.md) connects only to Dire Wolf on
+loopback. It does not use APRS-IS credentials or channel 0 and therefore cannot
+request RF transmission. `ICHANNEL` carries every APRS-IS packet delivered to
+Dire Wolf, so exact addressee filtering remains the agent's responsibility.
 
 The selected GPS flow is:
 

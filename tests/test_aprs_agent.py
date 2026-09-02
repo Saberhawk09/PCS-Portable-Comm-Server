@@ -1,0 +1,375 @@
+import importlib.util
+import sqlite3
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+
+ROOT = Path(__file__).parents[1]
+AGENT_PATH = ROOT / "scripts" / "pcs_aprs_agent.py"
+SETUP_PATH = ROOT / "scripts" / "setup-pcs-aprs-agent.sh"
+SERVICE_PATH = ROOT / "systemd" / "pcs-aprs-agent.service"
+CONFIG_EXAMPLE_PATH = ROOT / "config" / "aprs-agent.example.conf"
+INSTALL_EXAMPLE_PATH = ROOT / "config" / "pcs-install.example.conf"
+DIREWOLF_SETUP_PATH = ROOT / "scripts" / "setup-direwolf-aprs.sh"
+DOC_PATH = ROOT / "docs" / "aprs-agent.md"
+SPEC = importlib.util.spec_from_file_location("pcs_aprs_agent", AGENT_PATH)
+assert SPEC and SPEC.loader
+pcs_aprs_agent = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = pcs_aprs_agent
+SPEC.loader.exec_module(pcs_aprs_agent)
+
+
+class FakeProvider:
+    def __init__(self):
+        self.commands = []
+
+    def execute(self, command):
+        self.commands.append(command)
+        return f"RESULT {command}"
+
+
+class FakeRunner:
+    def __init__(self, results):
+        self.results = list(results)
+        self.calls = []
+
+    def run(self, arguments, timeout):
+        self.calls.append((arguments, timeout))
+        return self.results.pop(0)
+
+
+class FakeGpsSocket:
+    def __init__(self, chunks):
+        self.chunks = list(chunks)
+        self.sent = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def settimeout(self, _timeout):
+        return None
+
+    def sendall(self, value):
+        self.sent.append(value)
+
+    def recv(self, _size):
+        return self.chunks.pop(0) if self.chunks else b""
+
+
+def inbound_frame(sender="W8IJC-7", addressee="W8IJC-10", body="PING", message_id="42"):
+    suffix = f"{{{message_id}" if message_id is not None else ""
+    information = f":{addressee:<9}:{body}{suffix}".encode("ascii")
+    return pcs_aprs_agent.encode_ax25_ui(sender, "APRS", information)
+
+
+class KissAndAx25Tests(unittest.TestCase):
+    def test_kiss_round_trip_handles_fragmentation_and_reserved_bytes(self):
+        payload = b"before" + bytes([pcs_aprs_agent.FEND, pcs_aprs_agent.FESC]) + b"after"
+        encoded = pcs_aprs_agent.encode_kiss(8, payload)
+        decoder = pcs_aprs_agent.KissDecoder()
+
+        frames = []
+        for byte in encoded:
+            frames.extend(decoder.feed(bytes([byte])))
+
+        self.assertEqual([bytes([0x80]) + payload], frames)
+
+    def test_kiss_decoder_discards_invalid_escape_and_oversized_frame(self):
+        decoder = pcs_aprs_agent.KissDecoder(maximum=4)
+        self.assertEqual([], decoder.feed(bytes([0xC0, 0x80, 0xDB, 0x01, 0xC0])))
+        self.assertEqual([], decoder.feed(bytes([0xC0, 0x80, 0xDB, 0xC0])))
+        self.assertEqual([], decoder.feed(bytes([0xC0, 1, 2, 3, 4, 5, 0xC0])))
+        self.assertEqual([b"ok"], decoder.feed(bytes([0xC0]) + b"ok" + bytes([0xC0])))
+
+    def test_ax25_ui_round_trip_preserves_source_destination_and_information(self):
+        raw = pcs_aprs_agent.encode_ax25_ui("W8IJC-10", "APZPCS", b":W8IJC-7 :ack42")
+        decoded = pcs_aprs_agent.decode_ax25_ui(raw)
+
+        self.assertEqual("W8IJC-10", decoded.source)
+        self.assertEqual("APZPCS", decoded.destination)
+        self.assertEqual(b":W8IJC-7 :ack42", decoded.information)
+
+    def test_ax25_rejects_non_ui_frames(self):
+        raw = bytearray(pcs_aprs_agent.encode_ax25_ui("W8IJC-7", "APRS", b"hello"))
+        raw[14] = 0x13
+        with self.assertRaisesRegex(ValueError, "UI frames"):
+            pcs_aprs_agent.decode_ax25_ui(bytes(raw))
+
+    def test_aprs_parser_requires_fixed_addressee_field_and_extracts_reply_ack_id(self):
+        frame = pcs_aprs_agent.decode_ax25_ui(inbound_frame(body="STATUS", message_id="A1"))
+        message = pcs_aprs_agent.parse_aprs_message(frame)
+
+        self.assertEqual("W8IJC-7", message.sender)
+        self.assertEqual("W8IJC-10", message.addressee)
+        self.assertEqual("STATUS", message.body)
+        self.assertEqual("A1", message.message_id)
+
+        reply_ack = pcs_aprs_agent.encode_ax25_ui(
+            "W8IJC-7", "APRS", b":W8IJC-10 :PING{B2}A1"
+        )
+        message = pcs_aprs_agent.parse_aprs_message(pcs_aprs_agent.decode_ax25_ui(reply_ack))
+        self.assertEqual("B2", message.message_id)
+        self.assertEqual("PING", message.body)
+
+
+class StoreAndAgentTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.temp_dir.name) / "state.sqlite3"
+        self.store = pcs_aprs_agent.DedupStore(self.db_path, 3600, now=lambda: 10_000)
+        self.provider = FakeProvider()
+        self.config = pcs_aprs_agent.AgentConfig(state_db=str(self.db_path))
+        self.limiter = pcs_aprs_agent.SlidingWindowLimiter(12, 60, now=lambda: 500)
+        self.agent = pcs_aprs_agent.AprsAgent(self.config, self.store, self.provider, self.limiter)
+
+    def tearDown(self):
+        self.store.close()
+        self.temp_dir.cleanup()
+
+    def process(self, frame):
+        sent = []
+        self.agent.process(frame, sent.append)
+        return [pcs_aprs_agent.decode_ax25_ui(raw) for raw in sent]
+
+    def test_addressed_command_is_acked_before_numbered_reply(self):
+        sent = self.process(inbound_frame(body="status", message_id="42"))
+
+        self.assertEqual(2, len(sent))
+        self.assertEqual("W8IJC-10", sent[0].source)
+        self.assertEqual(b":W8IJC-7  :ack42", sent[0].information)
+        self.assertRegex(sent[1].information.decode("ascii"), r"^:W8IJC-7  :RESULT STATUS\{[0-9A-Z]{4}$")
+        self.assertEqual(["STATUS"], self.provider.commands)
+
+    def test_duplicate_is_acked_again_but_not_executed_or_replied_again(self):
+        first = self.process(inbound_frame(body="PING", message_id="77"))
+        second = self.process(inbound_frame(body="PING", message_id="77"))
+
+        self.assertEqual(2, len(first))
+        self.assertEqual(1, len(second))
+        self.assertEqual(b":W8IJC-7  :ack77", second[0].information)
+        self.assertEqual(["PING"], self.provider.commands)
+
+    def test_reused_id_with_different_body_is_acked_but_not_executed(self):
+        self.process(inbound_frame(body="PING", message_id="77"))
+        second = self.process(inbound_frame(body="STATUS", message_id="77"))
+
+        self.assertEqual(1, len(second))
+        self.assertEqual(b":W8IJC-7  :ack77", second[0].information)
+        self.assertEqual(["PING"], self.provider.commands)
+
+    def test_other_addressee_unnumbered_and_self_sourced_messages_are_ignored(self):
+        self.assertEqual([], self.process(inbound_frame(addressee="N0CALL", message_id="1")))
+        self.assertEqual([], self.process(inbound_frame(message_id=None)))
+        self.assertEqual([], self.process(inbound_frame(sender="W8IJC-10", message_id="2")))
+        self.assertEqual([], self.provider.commands)
+
+    def test_deduplication_and_outbound_sequence_survive_restart(self):
+        self.assertEqual("new", self.store.claim("W8IJC-7", "12", "PING"))
+        self.assertEqual("0000", self.store.next_outbound_id())
+        self.store.close()
+
+        reopened = pcs_aprs_agent.DedupStore(self.db_path, 3600, now=lambda: 10_001)
+        self.store = reopened
+        self.assertEqual("duplicate", reopened.claim("W8IJC-7", "12", "PING"))
+        self.assertEqual("conflict", reopened.claim("W8IJC-7", "12", "STATUS"))
+        self.assertEqual("0001", reopened.next_outbound_id())
+
+    def test_rate_limiter_is_per_sender_and_global(self):
+        now = [100.0]
+        limiter = pcs_aprs_agent.SlidingWindowLimiter(2, 3, now=lambda: now[0])
+        self.assertTrue(limiter.allow("A"))
+        self.assertTrue(limiter.allow("A"))
+        self.assertFalse(limiter.allow("A"))
+        self.assertTrue(limiter.allow("B"))
+        self.assertFalse(limiter.allow("C"))
+        now[0] = 161.0
+        self.assertTrue(limiter.allow("A"))
+
+    def test_numbered_messages_are_acked_even_when_command_handling_is_rate_limited(self):
+        limited_agent = pcs_aprs_agent.AprsAgent(
+            self.config,
+            self.store,
+            self.provider,
+            pcs_aprs_agent.SlidingWindowLimiter(0, 0),
+        )
+        sent = []
+
+        limited_agent.process(inbound_frame("W8IJC-7", "W8IJC-10", "PING", "91"), sent.append)
+        limited_agent.process(inbound_frame("W8IJC-7", "W8IJC-10", "PING", "91"), sent.append)
+
+        self.assertEqual(2, len(sent))
+        self.assertEqual(
+            [b":W8IJC-7  :ack91", b":W8IJC-7  :ack91"],
+            [pcs_aprs_agent.decode_ax25_ui(frame).information for frame in sent],
+        )
+        self.assertEqual([], self.provider.commands)
+
+
+class ConfigurationAndStatusTests(unittest.TestCase):
+    def test_packaging_preserves_dire_wolf_and_rf_safety_boundary(self):
+        setup = SETUP_PATH.read_text(encoding="utf-8")
+        service = SERVICE_PATH.read_text(encoding="utf-8")
+        direwolf_setup = DIREWOLF_SETUP_PATH.read_text(encoding="utf-8")
+        profile = INSTALL_EXAMPLE_PATH.read_text(encoding="utf-8")
+        documentation = DOC_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('PCS_APRS_AGENT_ENABLED="no"', profile)
+        self.assertIn('PCS_APRS_AGENT_ICHANNEL="8"', profile)
+        self.assertIn('echo "ICHANNEL ${PCS_APRS_AGENT_ICHANNEL}"', direwolf_setup)
+        self.assertIn("validate_live_mapping", setup)
+        self.assertIn('PCS_APRS_ENGINE}" != "direwolf"', setup)
+        self.assertIn("systemctl is-active --quiet direwolf.service", setup)
+        self.assertNotIn("systemctl restart direwolf", setup)
+        self.assertNotIn("IGLOGIN", setup)
+        self.assertIn("DynamicUser=yes", service)
+        self.assertIn("After=direwolf.service", service)
+        self.assertIn("AF_NETLINK", service)
+        for forbidden in ("Requires=direwolf", "Wants=direwolf", "PartOf=direwolf"):
+            self.assertNotIn(forbidden, service)
+        self.assertIn("channel 0 remains RF", documentation)
+        self.assertIn("not compatible with Graywolf", documentation)
+
+    def test_runtime_does_not_connect_when_dire_wolf_is_inactive(self):
+        config = pcs_aprs_agent.AgentConfig()
+        runtime = pcs_aprs_agent.AgentRuntime(config, mock.Mock(), engine_active=lambda: False)
+
+        def stop_after_wait(_delay):
+            runtime.stop()
+            return True
+
+        with mock.patch.object(runtime.stop_event, "wait", side_effect=stop_after_wait), mock.patch.object(
+            pcs_aprs_agent.socket, "create_connection"
+        ) as connect:
+            runtime.run()
+
+        connect.assert_not_called()
+
+    def test_dire_wolf_guard_uses_only_fixed_systemctl_query(self):
+        completed = pcs_aprs_agent.subprocess.CompletedProcess
+        runner = FakeRunner([completed([], 0, "", "")])
+
+        self.assertTrue(pcs_aprs_agent.direwolf_service_active(runner))
+        self.assertEqual(
+            ["systemctl", "is-active", "--quiet", "direwolf.service"],
+            runner.calls[0][0],
+        )
+
+    def test_agent_example_is_valid_and_loopback_only(self):
+        config = pcs_aprs_agent.AgentConfig.load(CONFIG_EXAMPLE_PATH)
+        self.assertEqual("127.0.0.1", config.kiss_host)
+        self.assertEqual(8, config.kiss_channel)
+        self.assertEqual("W8IJC-10", config.callsign)
+
+    def test_configuration_requires_loopback_kiss_and_non_radio_channel(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "agent.conf"
+            path.write_text(
+                "[agent]\n"
+                "callsign = W8IJC-10\n"
+                "kiss_host = 10.42.0.1\n"
+                "kiss_channel = 0\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "loopback"):
+                pcs_aprs_agent.AgentConfig.load(path)
+
+            path.write_text(
+                "[agent]\n"
+                "callsign = W8IJC-10\n"
+                "kiss_host = 127.0.0.1\n"
+                "kiss_channel = 0\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "1 through 15"):
+                pcs_aprs_agent.AgentConfig.load(path)
+
+            path.write_text(
+                "[agent]\n"
+                "callsign = W8IJC-10\n"
+                "kiss_host = 127.0.0.1\n"
+                "kiss_channel = 8\n"
+                "state_db = /tmp/aprs-agent.sqlite3\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "state_db"):
+                pcs_aprs_agent.AgentConfig.load(path)
+
+    def test_temperature_uptime_and_power_are_bounded_read_only_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temperature = Path(temp_dir) / "temp"
+            uptime = Path(temp_dir) / "uptime"
+            temperature.write_text("43250\n", encoding="ascii")
+            uptime.write_text("93784.22 1.0\n", encoding="ascii")
+            provider = pcs_aprs_agent.StatusProvider(
+                temperature_path=temperature,
+                uptime_path=uptime,
+            )
+
+            self.assertEqual("TEMP 43C", provider.temperature())
+            self.assertEqual("UPTIME 1D 2H 3M", provider.uptime())
+            self.assertEqual("POWER N/A", provider.power())
+
+    def test_gps_reports_fix_dimension_without_coordinates(self):
+        gps_socket = FakeGpsSocket(
+            [b'{"class":"TPV","mode":3,"time":"2026-09-02T16:00:00Z","lat":39.0,"lon":-77.0}\n']
+        )
+        provider = pcs_aprs_agent.StatusProvider(timeout=1, wall_time=lambda: 1_788_364_805)
+        with mock.patch.object(pcs_aprs_agent.socket, "create_connection", return_value=gps_socket):
+            self.assertEqual("GPS 3D", provider.gps())
+        self.assertEqual([b'?WATCH={"enable":true,"json":true};\n'], gps_socket.sent)
+
+    def test_gps_does_not_present_a_replayed_fix_as_current(self):
+        gps_socket = FakeGpsSocket(
+            [b'{"class":"TPV","mode":3,"time":"2026-09-02T15:00:00Z","lat":39.0,"lon":-77.0}\n']
+        )
+        provider = pcs_aprs_agent.StatusProvider(timeout=1, wall_time=lambda: 1_788_364_805)
+        with mock.patch.object(pcs_aprs_agent.socket, "create_connection", return_value=gps_socket):
+            self.assertEqual("GPS STALE", provider.gps())
+
+    def test_lte_and_network_use_fixed_read_only_commands(self):
+        completed = pcs_aprs_agent.subprocess.CompletedProcess
+        runner = FakeRunner(
+            [
+                completed([], 0, "gsm:connected\nwifi:disconnected\n", ""),
+                completed([], 0, "ethernet:connected\ngsm:disconnected\n", ""),
+            ]
+        )
+        provider = pcs_aprs_agent.StatusProvider(runner=runner, timeout=2)
+
+        self.assertEqual("LTE UP", provider.lte())
+        self.assertEqual("NET ETH", provider.network())
+        self.assertEqual(
+            ["nmcli", "-t", "-f", "TYPE,STATE", "device", "status"],
+            runner.calls[0][0],
+        )
+
+    def test_help_and_every_command_fit_aprs_message_limit(self):
+        provider = pcs_aprs_agent.StatusProvider()
+        for command in pcs_aprs_agent.COMMANDS:
+            if command in {"STATUS", "LTE", "GPS", "NET"}:
+                continue
+            result = provider.execute(command)
+            wire = pcs_aprs_agent.aprs_reply_information("W8IJC-7", result, "0001")
+            self.assertLessEqual(len(wire[11:]), pcs_aprs_agent.MAX_APRS_MESSAGE_TEXT)
+
+    def test_state_schema_stores_no_command_body_or_status_payload(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "state.sqlite3"
+            store = pcs_aprs_agent.DedupStore(path, 3600, now=lambda: 100)
+            store.claim("W8IJC-7", "1", "STATUS")
+            store.close()
+            connection = sqlite3.connect(path)
+            columns = [row[1] for row in connection.execute("PRAGMA table_info(received_messages)")]
+            connection.close()
+        self.assertNotIn("body", columns)
+        self.assertIn("body_digest", columns)
+
+
+if __name__ == "__main__":
+    unittest.main()

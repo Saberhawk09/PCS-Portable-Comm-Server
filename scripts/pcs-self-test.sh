@@ -92,6 +92,8 @@ PCS_APRS_BEACON="${PCS_APRS_BEACON:-no}"
 PCS_APRS_BEACON_SENDTO="${PCS_APRS_BEACON_SENDTO:-IG}"
 PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
+PCS_APRS_AGENT_ENABLED="${PCS_APRS_AGENT_ENABLED:-no}"
+PCS_APRS_AGENT_ICHANNEL="${PCS_APRS_AGENT_ICHANNEL:-8}"
 PCS_APRS_RADIO_INIT="${PCS_APRS_RADIO_INIT:-no}"
 PCS_APRS_FX25_TX="${PCS_APRS_FX25_TX:-no}"
 
@@ -1172,6 +1174,25 @@ case "${PCS_SETUP_APRS}" in
                 pass "AGW tcp/${PCS_APRS_AGW_PORT} and KISS tcp/${PCS_APRS_KISS_PORT} have PCS-LAN-only firewall enforcement"
             else
                 fail "Active APRS client ports require the PCS LAN-only firewall service"
+            fi
+        fi
+
+        if [[ "${PCS_APRS_AGENT_ENABLED}" == "yes" ]]; then
+            if sudo -n grep -Eq "^ICHANNEL[[:space:]]+${PCS_APRS_AGENT_ICHANNEL}$" /etc/direwolf.conf; then
+                pass "Dire Wolf maps the PCS APRS Agent Internet-only KISS channel"
+            else
+                fail "PCS APRS Agent is selected but the live ICHANNEL mapping is missing"
+            fi
+            if [[ -x /usr/local/sbin/pcs-aprs-agent && -s /etc/pcs/aprs-agent.conf ]] \
+                && /usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf --check-config >/dev/null 2>&1; then
+                pass "PCS APRS Agent executable and configuration are valid"
+            else
+                fail "PCS APRS Agent executable or configuration is missing or invalid"
+            fi
+            if service_enabled pcs-aprs-agent.service && service_active pcs-aprs-agent.service; then
+                pass "pcs-aprs-agent.service is enabled and active"
+            else
+                fail "PCS APRS Agent is selected but its service is not enabled and active"
             fi
         fi
 
