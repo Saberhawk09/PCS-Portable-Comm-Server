@@ -128,6 +128,25 @@ class KissAndAx25Tests(unittest.TestCase):
         self.assertEqual("A1", message.reply_ack_id)
         self.assertEqual("PING", message.body)
 
+    def test_aprs_parser_accepts_terminal_yaesu_carriage_return(self):
+        yaesu = pcs_aprs_agent.encode_ax25_ui(
+            "W8IJC-7", "APY03D", b":W8IJC-10 :ping{24\r"
+        )
+        message = pcs_aprs_agent.parse_aprs_message(
+            pcs_aprs_agent.decode_ax25_ui(yaesu)
+        )
+
+        self.assertEqual("ping", message.body)
+        self.assertEqual("24", message.message_id)
+
+        trailing_data = pcs_aprs_agent.encode_ax25_ui(
+            "W8IJC-7", "APY03D", b":W8IJC-10 :ping{24\rX"
+        )
+        message = pcs_aprs_agent.parse_aprs_message(
+            pcs_aprs_agent.decode_ax25_ui(trailing_data)
+        )
+        self.assertIsNone(message.message_id)
+
     def test_direwolf_ichannel_wrapper_recovers_original_aprs_is_packet(self):
         outer = pcs_aprs_agent.decode_ax25_ui(
             ichannel_frame(body="PING", message_id="11")

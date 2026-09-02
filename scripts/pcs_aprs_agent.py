@@ -372,7 +372,10 @@ def parse_aprs_message(frame: Ax25Frame) -> AprsMessage | None:
     addressee = addressee_field.rstrip().upper()
     if not addressee or not CALLSIGN_RE.fullmatch(addressee):
         return None
-    wire_body = info[11:]
+    # Some radios, including the Yaesu FT3DR, append a CR after the APRS
+    # message ID. Treat only terminal CR/LF framing as transport padding so
+    # embedded control characters or other trailing data remain invalid.
+    wire_body = info[11:].rstrip("\r\n")
     match = MESSAGE_ID_RE.search(wire_body)
     message_id = match.group(1) if match else None
     reply_ack_id = match.group(2) if match else None

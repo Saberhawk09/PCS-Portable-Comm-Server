@@ -49,7 +49,9 @@ Dire Wolf; Graywolf remains unsupported by this agent and must stay inactive.
 The agent accepts only correctly formed APRS messages whose fixed-width
 addressee resolves exactly to `W8IJC-10` and which carry a one-to-five character
 message ID. It immediately sends `ack<ID>` through the request's ingress
-channel. The numbered response and every retry use that same channel.
+channel. A terminal CR/LF added by radios such as the Yaesu FT3DR is accepted as
+transport padding after the message ID. The numbered response and every retry
+use that same channel.
 
 Received `(sender, message ID)` identities and a SHA-256 body digest are retained
 in SQLite for 24 hours. Duplicate packets are ACKed again but their commands are
