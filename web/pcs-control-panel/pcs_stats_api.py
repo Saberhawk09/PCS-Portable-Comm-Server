@@ -96,6 +96,7 @@ ACTION_GROUPS = {
     "communications": {
         "meshtastic-status": ("View Meshtastic", "Show privacy-safe node, mesh, MQTT, GPSD, and environment status."),
         "restart-meshtastic": ("Restart Meshtastic", "Reconnect the Meshtastic radio transport and MQTT gateway."),
+        "aprs-mailbox-read": ("Mark APRS Mailbox Read", "Clear the unread APRS mailbox notification without deleting messages."),
     },
     "storage": {
         "sync-backup": ("Sync USB to SD Backup", "Mirror the USB primary share to the SD backup."),
@@ -137,7 +138,7 @@ RESOURCE_CARD_IDS = {
     "cellular": {"cellular"},
     "time": {"time"},
     "gps": {"gps"},
-    "aprs": {"aprs"},
+    "aprs": {"aprs", "aprs-mailbox"},
     "meshtastic": {"meshtastic"},
     "pistar": set(),
     "storage": {"storage", "backup-health", "samba"},
@@ -185,6 +186,9 @@ API_FIELDS = {
         "configured", "status", "service", "callsign", "role", "frequency",
         "aprs_is", "aprs_is_profile", "modem", "beacon", "digipeater",
         "kiss", "fx25", "packets", "last_heard", "tx_state",
+        "agent_enabled", "agent_status", "agent_connection",
+        "agent_packets_received", "agent_messages_received", "mailbox_messages",
+        "mailbox_unread", "last_mailbox_message",
     },
     "meshtastic": {
         "configured", "status", "service", "hardware", "firmware",

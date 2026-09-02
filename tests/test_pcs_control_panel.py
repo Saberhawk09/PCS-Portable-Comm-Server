@@ -265,6 +265,55 @@ class PublicDataTests(unittest.TestCase):
         self.assertNotIn("USB audio", page)
         self.assertNotIn("must-not-render", page)
 
+    def test_aprs_mailbox_is_aggregate_only_public_and_detailed_for_admin(self):
+        public = deepcopy(PUBLIC_DATA)
+        public["aprs"] = {
+            "configured": True,
+            "status": "ok",
+            "callsign": "W8IJC-10",
+            "agent_enabled": True,
+            "agent_status": "ok",
+            "agent_connection": "connected",
+            "agent_packets_received": 14,
+            "agent_messages_received": 4,
+            "mailbox_messages": 2,
+            "mailbox_unread": 1,
+            "last_mailbox_message": "30 seconds ago",
+            "mailbox_sender": "W8IJC-7",
+            "mailbox_body": "private field note",
+        }
+        sanitized = pcs.sanitize_public_dashboard(public)
+        page = pcs.render_public_page(sanitized).decode("utf-8")
+        self.assertEqual(sanitized["aprs"]["mailbox_unread"], 1)
+        self.assertIn("APRS Mailbox", page)
+        self.assertIn("Unread messages", page)
+        self.assertIn("30 seconds ago", page)
+        self.assertNotIn("W8IJC-7", page)
+        self.assertNotIn("private field note", page)
+
+        admin = deepcopy(ADMIN_DATA)
+        admin["cards"].append({
+            "id": "aprs-mailbox",
+            "title": "APRS Mailbox",
+            "status": "warn",
+            "summary": "1 unread / 2 stored",
+            "items": [{"label": "W8IJC-7 · 42", "value": "private field note"}],
+        })
+        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        self.assertIn("APRS Mailbox", admin_page)
+        self.assertIn("W8IJC-7", admin_page)
+        self.assertIn("private field note", admin_page)
+
+    def test_aprs_mailbox_read_action_is_fixed_confirmed_and_installed(self):
+        self.assertIn("aprs-mailbox-read", pcs.ACTION_MAP)
+        self.assertIn("aprs-mailbox-read", pcs.ACTION_CONFIRMS)
+        self.assertIn("aprs-mailbox-read", pcs.DANGEROUS_ACTIONS)
+        dispatcher = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")
+        installer = (ROOT / "scripts" / "setup-pcs-control-panel.sh").read_text(encoding="utf-8")
+        self.assertIn("aprs-mailbox-read)", dispatcher)
+        self.assertIn("--mark-mailbox-read", dispatcher)
+        self.assertIn("${DISPATCHER_DST} aprs-mailbox-read", installer)
+
     def test_graywolf_access_cards_are_shown_on_public_and_admin_pages(self):
         active = deepcopy(PUBLIC_DATA)
         active["aprs"] = {

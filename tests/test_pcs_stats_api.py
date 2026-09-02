@@ -46,7 +46,14 @@ PUBLIC_DASHBOARD = {
     "storage": {"status": "ok", "usb_mounted": True},
     "services": {"status": "ok", "homepage_available": True},
     "pistar": {"configured": True, "online": True, "url": "must-not-render"},
-    "aprs": {"configured": True, "status": "ok", "callsign": "N0CALL-10", "passcode": "must-not-render"},
+    "aprs": {
+        "configured": True, "status": "ok", "callsign": "N0CALL-10",
+        "agent_connection": "connected", "agent_packets_received": 14,
+        "agent_messages_received": 4, "mailbox_messages": 2,
+        "mailbox_unread": 1, "last_mailbox_message": "30 seconds ago",
+        "mailbox_sender": "must-not-render", "mailbox_body": "must-not-render",
+        "passcode": "must-not-render",
+    },
     "meshtastic": {"configured": True, "status": "warn", "mqtt": "disconnected", "broker": "must-not-render", "node": "must-not-render"},
 }
 
@@ -250,6 +257,36 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual([card["id"] for card in meshtastic["details"]["cards"]], ["meshtastic"])
         self.assertNotIn("client_info", meshtastic["details"])
+
+    def test_aprs_resource_keeps_public_counts_and_adds_admin_mailbox_details(self):
+        public = api.api_document("aprs", PUBLIC_DASHBOARD)
+        self.assertEqual(public["data"]["mailbox_unread"], 1)
+        self.assertEqual(public["data"]["agent_messages_received"], 4)
+        self.assertNotIn("mailbox_body", public["data"])
+        self.assertNotIn("mailbox_sender", public["data"])
+
+        admin = dict(ADMIN_DASHBOARD)
+        admin["cards"] = [
+            {"id": "aprs", "title": "APRS", "status": "ok", "summary": "Connected", "items": []},
+            {
+                "id": "aprs-mailbox", "title": "APRS Mailbox", "status": "warn",
+                "summary": "1 unread / 2 stored",
+                "items": [{"label": "W8IJC-7 · 42", "value": "private field note"}],
+            },
+        ]
+        authenticated = api.add_authenticated_details(public, "aprs", admin)
+        self.assertEqual(
+            [card["id"] for card in authenticated["details"]["cards"]],
+            ["aprs", "aprs-mailbox"],
+        )
+        self.assertIn("private field note", json.dumps(authenticated))
+
+    def test_aprs_mailbox_read_is_a_challenge_gated_admin_action(self):
+        metadata = api.ACTION_MAP["aprs-mailbox-read"]
+        self.assertEqual(metadata["group"], "communications")
+        self.assertIn("aprs-mailbox-read", api.DANGEROUS_ACTIONS)
+        catalog = {item["name"]: item for item in api.action_catalog_document()["actions"]}
+        self.assertTrue(catalog["aprs-mailbox-read"]["challenge_required"])
 
 
 class TokenTests(unittest.TestCase):

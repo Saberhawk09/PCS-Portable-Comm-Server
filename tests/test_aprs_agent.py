@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sqlite3
 import sys
 import tempfile
@@ -186,6 +187,65 @@ class StoreAndAgentTests(unittest.TestCase):
         self.assertRegex(sent[1].information.decode("ascii"), r"^:W8IJC-7  :RESULT PING\{[0-9A-Z]{4}$")
         self.assertEqual(["PING"], self.provider.commands)
 
+    def test_short_status_and_help_aliases_execute_canonical_commands(self):
+        status = self.process(inbound_frame(body="s", message_id="51"))
+        help_reply = self.process(inbound_frame(body="H", message_id="52"))
+
+        self.assertRegex(status[1].information.decode("ascii"), r"RESULT STATUS\{")
+        self.assertRegex(help_reply[1].information.decode("ascii"), r"RESULT HELP\{")
+        self.assertEqual(["STATUS", "HELP"], self.provider.commands)
+
+    def test_msg_command_stores_bounded_mailbox_entry_once(self):
+        first = self.process(inbound_frame(body="MSG Bring Water At 1800", message_id="61"))
+        duplicate = self.process(inbound_frame(body="MSG Bring Water At 1800", message_id="61"))
+        mailbox = self.store.mailbox_summary(include_messages=True)
+
+        self.assertEqual(2, len(first))
+        self.assertIn(b":MESSAGE STORED{", first[1].information)
+        self.assertEqual(1, len(duplicate))
+        self.assertEqual(1, mailbox["total"])
+        self.assertEqual(1, mailbox["unread"])
+        self.assertEqual("Bring Water At 1800", mailbox["messages"][0]["body"])
+        self.assertEqual([], self.provider.commands)
+
+        self.assertEqual(1, self.store.mark_mailbox_read())
+        self.assertEqual(0, self.store.mailbox_summary()["unread"])
+
+    def test_mailbox_accepts_a_reused_aprs_id_after_dedupe_expiry(self):
+        clock = [100.0]
+        self.store.close()
+        self.store = pcs_aprs_agent.DedupStore(self.db_path, 60, now=lambda: clock[0])
+        self.agent.store = self.store
+        self.process(inbound_frame(body="MSG First note", message_id="5"))
+        clock[0] = 161.0
+        self.process(inbound_frame(body="MSG Second note", message_id="5"))
+        messages = self.store.mailbox_summary(include_messages=True)["messages"]
+
+        self.assertEqual(2, len(messages))
+        self.assertEqual(["Second note", "First note"], [item["body"] for item in messages])
+
+    def test_mailbox_limit_removes_oldest_entry_first(self):
+        for number in range(3):
+            self.store.store_mailbox_message(
+                "W8IJC-7", str(number), f"Note {number}", limit=2,
+            )
+        messages = self.store.mailbox_summary(include_messages=True)["messages"]
+        self.assertEqual(2, len(messages))
+        self.assertEqual(["Note 2", "Note 1"], [item["body"] for item in messages])
+
+    def test_empty_msg_and_unknown_command_have_unambiguous_replies(self):
+        empty = self.process(inbound_frame(body="MSG", message_id="62"))
+        unknown = self.process(inbound_frame(body="TEST", message_id="63"))
+
+        self.assertIn(b":MSG FORMAT: MSG <TEXT>{", empty[1].information)
+        self.assertIn(b":RESULT TEST{", unknown[1].information)
+
+        provider = pcs_aprs_agent.StatusProvider()
+        self.assertEqual(
+            "COMMAND UNKNOWN | COMMAND LIST: HELP",
+            provider.execute("TEST"),
+        )
+
     def test_duplicate_is_acked_again_but_not_executed_or_replied_again(self):
         first = self.process(inbound_frame(body="PING", message_id="77"))
         second = self.process(inbound_frame(body="PING", message_id="77"))
@@ -270,6 +330,7 @@ class ConfigurationAndStatusTests(unittest.TestCase):
         self.assertIn("DynamicUser=yes", service)
         self.assertIn("After=direwolf.service", service)
         self.assertIn("AF_NETLINK", service)
+        self.assertIn("PCS APRS Agent runtime status is fresh, connected, and aggregate-only", (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8"))
         for forbidden in ("Requires=direwolf", "Wants=direwolf", "PartOf=direwolf"):
             self.assertNotIn(forbidden, service)
         self.assertIn("channel 0 remains RF", documentation)
@@ -365,6 +426,27 @@ class ConfigurationAndStatusTests(unittest.TestCase):
             self.assertEqual("UPTIME 1D 2H 3M", provider.uptime())
             self.assertEqual("POWER N/A", provider.power())
 
+    def test_status_uses_requested_health_uplink_gps_and_temperature_fields(self):
+        provider = pcs_aprs_agent.StatusProvider()
+        with (
+            mock.patch.object(provider, "uplink_value", return_value="WiFi"),
+            mock.patch.object(provider, "gps_value", return_value="3D"),
+            mock.patch.object(provider, "temperature_c", return_value=37),
+        ):
+            self.assertEqual(
+                "PCS OK | Uplink - WiFi | GPS 3D | Pi Temp - 37C",
+                provider.status(),
+            )
+        with (
+            mock.patch.object(provider, "uplink_value", return_value="Down"),
+            mock.patch.object(provider, "gps_value", return_value="NO FIX"),
+            mock.patch.object(provider, "temperature_c", return_value=38),
+        ):
+            self.assertEqual(
+                "PCS BAD | Uplink - Down | GPS NoFX | Pi Temp - 38C",
+                provider.status(),
+            )
+
     def test_gps_reports_fix_dimension_without_coordinates(self):
         gps_socket = FakeGpsSocket(
             [b'{"class":"TPV","mode":3,"time":"2026-09-02T16:00:00Z","lat":39.0,"lon":-77.0}\n']
@@ -408,7 +490,7 @@ class ConfigurationAndStatusTests(unittest.TestCase):
             wire = pcs_aprs_agent.aprs_reply_information("W8IJC-7", result, "0001")
             self.assertLessEqual(len(wire[11:]), pcs_aprs_agent.MAX_APRS_MESSAGE_TEXT)
 
-    def test_state_schema_stores_no_command_body_or_status_payload(self):
+    def test_dedupe_schema_stores_only_a_command_digest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "state.sqlite3"
             store = pcs_aprs_agent.DedupStore(path, 3600, now=lambda: 100)
@@ -419,6 +501,27 @@ class ConfigurationAndStatusTests(unittest.TestCase):
             connection.close()
         self.assertNotIn("body", columns)
         self.assertIn("body_digest", columns)
+
+    def test_status_reporter_exports_only_aggregate_mailbox_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "state.sqlite3"
+            status_path = Path(temp_dir) / "status.json"
+            store = pcs_aprs_agent.DedupStore(database, 3600, now=lambda: 100)
+            store.store_mailbox_message("W8IJC-7", "71", "Meet at 1900", 100)
+            reporter = pcs_aprs_agent.StatusReporter(status_path, store, now=lambda: 101)
+            reporter.packet_received()
+            reporter.message_received()
+            reporter.set_state("connected")
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+            store.close()
+
+        self.assertEqual("ok", payload["status"])
+        self.assertEqual(1, payload["packets_received"])
+        self.assertEqual(1, payload["messages_received"])
+        self.assertEqual(1, payload["mailbox_total"])
+        self.assertEqual(1, payload["mailbox_unread"])
+        self.assertNotIn("body", payload)
+        self.assertNotIn("sender", payload)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 # PCS APRS Agent
 
-The PCS APRS Agent is a small, read-only APRS message application layered on
-Dire Wolf. Dire Wolf remains the only APRS-IS client and continues to own RF
+The PCS APRS Agent is a small status-command and message-mailbox application
+layered on Dire Wolf. Dire Wolf remains the only APRS-IS client and continues to own RF
 audio, PTT, beaconing, digipeating, IGate policy, and packet routing.
 
 ## Data path and safety boundary
@@ -42,27 +42,35 @@ message ID. It immediately sends `ack<ID>` through ICHANNEL 8.
 
 Received `(sender, message ID)` identities and a SHA-256 body digest are retained
 in SQLite for 24 hours. Duplicate packets are ACKed again but their commands are
-not run again. Reuse of the same sender/ID with a different body is ACKed, logged
-as a conflict, and not executed. The database never stores command bodies,
-status responses, GPS coordinates, APRS-IS credentials, or radio settings.
+not run again. Reuse of the same sender/ID with a different body inside that
+window is ACKed, logged as a conflict, and not executed. The database stores the
+body only for an accepted `MSG` mailbox entry; other command bodies, status
+responses, GPS coordinates, APRS-IS credentials, and radio settings are not
+retained. The mailbox is capped and removes its oldest entries first.
 
 Status replies receive a persistent four-character outbound message ID. ACK
 tracking and retry of those replies are intentionally deferred to a later
 version.
 
-## Read-only commands
+## Commands
 
 | Command | Reply |
 | --- | --- |
 | `PING` | `PONG` |
-| `STATUS` | Compact PCS/LTE/GPS/power/temperature/network summary |
+| `STATUS` or `S` | `PCS OK/BAD | Uplink - LTE/WiFi/Down | GPS 3D/NoFX | Pi Temp - XXC` |
 | `POWER` | `POWER N/A` until monitoring hardware is installed |
 | `LTE` | `UP`, `STANDBY`, `NO MODEM`, or `UNKNOWN` |
 | `GPS` | `3D`, `2D`, `STALE`, `NO FIX`, or `UNAVAILABLE` |
 | `TEMP` | Raspberry Pi thermal-zone temperature |
 | `NET` | Coarse active transport: Ethernet, Wi-Fi, cellular, up, or down |
 | `UPTIME` | Days/hours/minutes from `/proc/uptime` |
-| `HELP` | Supported command names |
+| `HELP` or `H` | Supported command names |
+| `MSG <text>` | Store a 1-63 character mailbox message and reply `MESSAGE STORED` |
+
+`STATUS` deliberately omits the not-yet-installed power monitor. APRS messaging
+uses printable 7-bit text, so the radio reply uses `37C` rather than a degree
+symbol. An unrecognized command receives `COMMAND UNKNOWN | COMMAND LIST: HELP`,
+which cannot reasonably be mistaken for a distress request.
 
 GPS replies never include coordinates. LTE and network replies never expose IP
 addresses, SSIDs, carriers, IMEI/ICCID values, device names, or account data.
@@ -71,6 +79,28 @@ text is never passed to a shell. Per-sender and global command/reply limits
 bound abuse of the public, unauthenticated APRS identity. Protocol ACKs are sent
 before those limits so valid numbered duplicates are still ACKed without
 re-running their commands.
+
+## Mailbox and operator interfaces
+
+The public homepage and public API expose only aggregate agent state: connection,
+session packet/message counters, stored count, unread count, and last-message
+age. They never expose a sender, message ID, or body. The authenticated admin
+dashboard and authenticated APRS API resource show the ten newest retained
+messages. The fixed **Mark APRS Mailbox Read** action clears the unread state
+without deleting any message.
+
+The Android companion already renders authenticated resource cards and the
+fixed action catalog, so a paired app can read the mailbox under APRS details
+and invoke the challenge-protected mark-read action without an app-specific
+transport. A later dedicated Mailbox screen could add search, per-message read
+state, and notifications. Web/app message composition is intentionally deferred
+until outgoing APRS ACK tracking and retry exist.
+
+The aggregate runtime file `/run/pcs-aprs-agent/status.json` feeds the hardware
+indicators. The 16x2 LCD adds `APRS Stats: Ok` or `APRS Stats: MSG` and a bounded
+counter line such as `Pkt RX:0 Msgs:0`. Unread mail prepends an envelope on the
+MAX7219 and pulses WS2812 pixel 3 white before restoring that pixel's normal
+service-health color.
 
 ## Configuration
 
@@ -83,6 +113,7 @@ generates `/etc/pcs/aprs-agent.conf` from the non-secret PCS install settings:
 | `PCS_APRS_AGENT_ICHANNEL` | `8` | Unused KISS port nibble mapped to APRS-IS. Must never overlap radio channels. |
 | `PCS_APRS_AGENT_TOCALL` | `APZPCS` | Experimental PCS software destination identifier. |
 | `PCS_APRS_AGENT_DEDUPE_TTL_SECONDS` | `86400` | Persistent duplicate window. |
+| `PCS_APRS_AGENT_MAILBOX_LIMIT` | `100` | Maximum retained mailbox messages. |
 | `PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE` | `12` | Per-sender command/reply ceiling; required ACKs are not dropped. |
 | `PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE` | `60` | Whole-agent command/reply ceiling; required ACKs are not dropped. |
 

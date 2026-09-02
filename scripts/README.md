@@ -118,7 +118,7 @@ state. NetworkManager also requests a refresh after relevant uplink events.
 
 ### setup-pcs-aprs-agent.sh
 
-Installs or checks the read-only APRS message agent after the managed Dire Wolf
+Installs or checks the APRS status and mailbox agent after the managed Dire Wolf
 profile has a matching Internet-only `ICHANNEL`:
 
 ```bash

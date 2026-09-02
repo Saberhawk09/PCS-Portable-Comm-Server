@@ -1,5 +1,5 @@
 [Unit]
-Description=PCS read-only APRS messaging and status agent
+Description=PCS APRS messaging, status, and mailbox agent
 Documentation=file:/usr/local/share/doc/pcs/aprs-agent.md
 After=direwolf.service gpsd.service NetworkManager.service ModemManager.service
 
@@ -8,6 +8,8 @@ Type=simple
 DynamicUser=yes
 StateDirectory=pcs-aprs-agent
 StateDirectoryMode=0700
+RuntimeDirectory=pcs-aprs-agent
+RuntimeDirectoryMode=0755
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStartPre=/usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf --check-config
 ExecStart=/usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf

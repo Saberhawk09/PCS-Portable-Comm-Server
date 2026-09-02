@@ -1194,6 +1194,38 @@ case "${PCS_SETUP_APRS}" in
             else
                 fail "PCS APRS Agent is selected but its service is not enabled and active"
             fi
+            if python3 - <<'PY'
+import json
+import time
+from pathlib import Path
+
+try:
+    payload = json.loads(Path("/run/pcs-aprs-agent/status.json").read_text(encoding="utf-8"))
+    required = {
+        "schema_version", "collected_at_epoch", "state", "status",
+        "packets_received", "messages_received", "mailbox_total", "mailbox_unread",
+        "last_mailbox_at_epoch",
+    }
+    assert set(payload) == required
+    assert payload["schema_version"] == 1
+    assert payload["state"] == "connected" and payload["status"] == "ok"
+    assert 0 <= time.time() - payload["collected_at_epoch"] <= 15
+    for key in ("packets_received", "messages_received", "mailbox_total", "mailbox_unread"):
+        assert isinstance(payload[key], int) and not isinstance(payload[key], bool) and payload[key] >= 0
+except (OSError, ValueError, TypeError, AssertionError):
+    raise SystemExit(1)
+PY
+            then
+                pass "PCS APRS Agent runtime status is fresh, connected, and aggregate-only"
+            else
+                fail "PCS APRS Agent runtime status is missing, stale, disconnected, or invalid"
+            fi
+            APRS_MAILBOX_SUMMARY="$(sudo -n /usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf --mailbox-summary-json 2>/dev/null || true)"
+            if python3 -c 'import json,sys; value=json.loads(sys.stdin.read()); assert set(value) == {"total", "unread", "last_received_at"}; assert all(isinstance(value[key], int) and not isinstance(value[key], bool) and value[key] >= 0 for key in ("total", "unread")); assert value["unread"] <= value["total"]' <<<"${APRS_MAILBOX_SUMMARY}"; then
+                pass "PCS APRS mailbox database and aggregate query are valid"
+            else
+                fail "PCS APRS mailbox database or aggregate query is invalid"
+            fi
         fi
 
         if [[ -x /usr/local/sbin/pcs-aprs-telemetry ]]; then

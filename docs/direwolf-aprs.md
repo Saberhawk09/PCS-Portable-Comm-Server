@@ -344,10 +344,11 @@ hardware-evidence flags.
 | `PCS_APRS_KISS_PORT` | `8001` | `KISSPORT`; `kissutil` and KISS clients. |
 | `PCS_APRS_KISS_LAN_INTERFACE` | `eth0` | Only this PCS client interface may accept AGW/KISS traffic. |
 | `PCS_APRS_KISS_LAN_NETWORK` | `10.42.0.0/24` | Source network admitted by the dedicated nftables rule. |
-| `PCS_APRS_AGENT_ENABLED` | `no` | When selected, generates a virtual Internet channel for the separately managed read-only APRS Agent. |
+| `PCS_APRS_AGENT_ENABLED` | `no` | When selected, generates a virtual Internet channel for the separately managed APRS status/mailbox agent. |
 | `PCS_APRS_AGENT_ICHANNEL` | `8` | Unused KISS channel mapped to APRS-IS; channel 0 remains RF. |
 | `PCS_APRS_AGENT_TOCALL` | `APZPCS` | Experimental APRS software destination used on agent ACKs and replies. |
 | `PCS_APRS_AGENT_DEDUPE_TTL_SECONDS` | `86400` | Persistent sender/message-ID duplicate window. |
+| `PCS_APRS_AGENT_MAILBOX_LIMIT` | `100` | Maximum retained `MSG` mailbox entries; oldest entries are removed first. |
 | `PCS_APRS_AGENT_SENDER_RATE_PER_MINUTE` | `12` | Per-sender response ceiling for the unauthenticated public APRS interface. |
 | `PCS_APRS_AGENT_GLOBAL_RATE_PER_MINUTE` | `60` | Whole-agent response ceiling. |
 | `PCS_APRS_IGATE` | `no` | Adds the `IGSERVER` and `IGLOGIN` APRS-IS connection; mode controls the return RF path. |

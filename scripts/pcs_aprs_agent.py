@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only PCS APRS message agent using Dire Wolf's KISS ICHANNEL."""
+"""PCS APRS status and mailbox agent using Dire Wolf's KISS ICHANNEL."""
 
 from __future__ import annotations
 
@@ -8,11 +8,13 @@ import configparser
 import hashlib
 import json
 import logging
+import os
 import re
 import signal
 import socket
 import sqlite3
 import subprocess
+import tempfile
 import threading
 import time
 from collections import defaultdict, deque
@@ -35,9 +37,12 @@ MAX_KISS_FRAME = 4096
 MAX_APRS_MESSAGE_TEXT = 67
 DEFAULT_CONFIG = "/etc/pcs/aprs-agent.conf"
 DEFAULT_STATE_DB = "/var/lib/pcs-aprs-agent/state.sqlite3"
+DEFAULT_STATUS_FILE = "/run/pcs-aprs-agent/status.json"
 CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,6}(?:-(?:[1-9]|1[0-5]))?$")
 MESSAGE_ID_RE = re.compile(r"\{([A-Za-z0-9]{1,5})(?:\}[A-Za-z0-9]{1,5})?$")
-COMMANDS = ("PING", "STATUS", "POWER", "LTE", "GPS", "TEMP", "NET", "UPTIME", "HELP")
+COMMANDS = ("PING", "STATUS", "POWER", "LTE", "GPS", "TEMP", "NET", "UPTIME", "HELP", "MSG")
+COMMAND_ALIASES = {"S": "STATUS", "H": "HELP"}
+MAX_MAILBOX_TEXT = MAX_APRS_MESSAGE_TEXT - len("MSG ")
 
 
 class ConfigError(ValueError):
@@ -52,7 +57,9 @@ class AgentConfig:
     kiss_port: int = 8001
     kiss_channel: int = 8
     state_db: str = DEFAULT_STATE_DB
+    status_file: str = DEFAULT_STATUS_FILE
     dedupe_ttl_seconds: int = 86400
+    mailbox_limit: int = 100
     gpsd_host: str = "127.0.0.1"
     gpsd_port: int = 2947
     command_timeout_seconds: float = 3.0
@@ -74,7 +81,9 @@ class AgentConfig:
                 kiss_port=int(section.get("kiss_port", cls.kiss_port)),
                 kiss_channel=int(section.get("kiss_channel", cls.kiss_channel)),
                 state_db=str(section.get("state_db", cls.state_db)).strip(),
+                status_file=str(section.get("status_file", cls.status_file)).strip(),
                 dedupe_ttl_seconds=int(section.get("dedupe_ttl_seconds", cls.dedupe_ttl_seconds)),
+                mailbox_limit=int(section.get("mailbox_limit", cls.mailbox_limit)),
                 gpsd_host=str(section.get("gpsd_host", cls.gpsd_host)).strip(),
                 gpsd_port=int(section.get("gpsd_port", cls.gpsd_port)),
                 command_timeout_seconds=float(section.get("command_timeout_seconds", cls.command_timeout_seconds)),
@@ -99,12 +108,17 @@ class AgentConfig:
         state_path = PurePosixPath(self.state_db)
         if not state_path.is_absolute() or state_path.parent != PurePosixPath("/var/lib/pcs-aprs-agent"):
             raise ConfigError("state_db must be a file directly under /var/lib/pcs-aprs-agent")
+        status_path = PurePosixPath(self.status_file)
+        if not status_path.is_absolute() or status_path.parent != PurePosixPath("/run/pcs-aprs-agent"):
+            raise ConfigError("status_file must be a file directly under /run/pcs-aprs-agent")
         if not 1 <= self.kiss_port <= 65535 or not 1 <= self.gpsd_port <= 65535:
             raise ConfigError("TCP ports must be between 1 and 65535")
         if not 1 <= self.kiss_channel <= 15:
             raise ConfigError("kiss_channel must be an Internet-only KISS channel from 1 through 15")
         if not 60 <= self.dedupe_ttl_seconds <= 2_592_000:
             raise ConfigError("dedupe_ttl_seconds must be between 60 and 2592000")
+        if not 1 <= self.mailbox_limit <= 1000:
+            raise ConfigError("mailbox_limit must be between 1 and 1000")
         if not 0.2 <= self.command_timeout_seconds <= 15:
             raise ConfigError("command_timeout_seconds must be between 0.2 and 15")
         if not 1 <= self.sender_rate_per_minute <= 120:
@@ -309,8 +323,66 @@ def aprs_reply_information(recipient: str, body: str, message_id: str) -> bytes:
     return f":{recipient:<9}:{body}{suffix}".encode("ascii", errors="replace")
 
 
+def mailbox_summary_from_connection(
+    connection: sqlite3.Connection,
+    *,
+    include_messages: bool = False,
+    limit: int = 10,
+) -> dict[str, object]:
+    total, unread, last_received = connection.execute(
+        "SELECT COUNT(*), SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END), MAX(received_at) "
+        "FROM mailbox_messages"
+    ).fetchone()
+    result: dict[str, object] = {
+        "total": int(total or 0),
+        "unread": int(unread or 0),
+        "last_received_at": float(last_received) if last_received is not None else None,
+    }
+    if include_messages:
+        rows = connection.execute(
+            "SELECT id, sender, message_id, body, received_at, read_at "
+            "FROM mailbox_messages ORDER BY id DESC LIMIT ?",
+            (max(1, min(100, int(limit))),),
+        ).fetchall()
+        result["messages"] = [
+            {
+                "id": int(row[0]),
+                "sender": str(row[1]),
+                "message_id": str(row[2]),
+                "body": str(row[3]),
+                "received_at": float(row[4]),
+                "unread": row[5] is None,
+            }
+            for row in rows
+        ]
+    return result
+
+
+def read_mailbox_snapshot(
+    path: str | Path,
+    *,
+    include_messages: bool = False,
+    limit: int = 10,
+) -> dict[str, object]:
+    database = Path(path)
+    if not database.is_file():
+        result: dict[str, object] = {"total": 0, "unread": 0, "last_received_at": None}
+        if include_messages:
+            result["messages"] = []
+        return result
+    connection = sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True, timeout=2)
+    try:
+        return mailbox_summary_from_connection(
+            connection,
+            include_messages=include_messages,
+            limit=limit,
+        )
+    finally:
+        connection.close()
+
+
 class DedupStore:
-    """Persist received command identities and the outbound ID sequence."""
+    """Persist received identities, the bounded mailbox, and outbound IDs."""
 
     def __init__(self, path: str | Path, ttl_seconds: int, now: Callable[[], float] = time.time) -> None:
         self.path = Path(path)
@@ -333,6 +405,16 @@ class DedupStore:
             """CREATE TABLE IF NOT EXISTS state_values (
                    name TEXT PRIMARY KEY,
                    value INTEGER NOT NULL
+               )"""
+        )
+        self.connection.execute(
+            """CREATE TABLE IF NOT EXISTS mailbox_messages (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT,
+                   sender TEXT NOT NULL,
+                   message_id TEXT NOT NULL,
+                   body TEXT NOT NULL,
+                   received_at REAL NOT NULL,
+                   read_at REAL
                )"""
         )
         self.connection.commit()
@@ -374,6 +456,111 @@ class DedupStore:
             encoded = alphabet[remainder % 36] + encoded
             remainder //= 36
         return encoded
+
+    def store_mailbox_message(
+        self,
+        sender: str,
+        message_id: str,
+        body: str,
+        limit: int,
+    ) -> bool:
+        normalized = " ".join(body.split())
+        if not normalized or len(normalized) > MAX_MAILBOX_TEXT:
+            raise ValueError(f"mailbox text must contain 1 through {MAX_MAILBOX_TEXT} characters")
+        if any(ord(character) < 0x20 or ord(character) > 0x7E for character in normalized):
+            raise ValueError("mailbox text must contain printable APRS ASCII")
+        with self.connection:
+            cursor = self.connection.execute(
+                "INSERT INTO mailbox_messages"
+                "(sender, message_id, body, received_at, read_at) VALUES (?, ?, ?, ?, NULL)",
+                (sender, message_id, normalized, self.now()),
+            )
+            self.connection.execute(
+                "DELETE FROM mailbox_messages WHERE id NOT IN "
+                "(SELECT id FROM mailbox_messages ORDER BY id DESC LIMIT ?)",
+                (limit,),
+            )
+        return cursor.rowcount == 1
+
+    def mailbox_summary(self, *, include_messages: bool = False, limit: int = 10) -> dict[str, object]:
+        return mailbox_summary_from_connection(
+            self.connection,
+            include_messages=include_messages,
+            limit=limit,
+        )
+
+    def mark_mailbox_read(self) -> int:
+        with self.connection:
+            cursor = self.connection.execute(
+                "UPDATE mailbox_messages SET read_at = ? WHERE read_at IS NULL",
+                (self.now(),),
+            )
+        return max(0, int(cursor.rowcount))
+
+
+class StatusReporter:
+    """Publish aggregate, non-sensitive current-session state for PCS displays."""
+
+    def __init__(
+        self,
+        path: str | Path,
+        store: DedupStore,
+        now: Callable[[], float] = time.time,
+    ) -> None:
+        self.path = Path(path)
+        self.store = store
+        self.now = now
+        self.state = "starting"
+        self.packets_received = 0
+        self.messages_received = 0
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def packet_received(self) -> None:
+        self.packets_received += 1
+        self.write()
+
+    def message_received(self) -> None:
+        self.messages_received += 1
+        self.write()
+
+    def set_state(self, state: str) -> None:
+        if state not in {"starting", "connected", "waiting", "stopped"}:
+            raise ValueError("invalid APRS agent runtime state")
+        self.state = state
+        self.write()
+
+    def write(self) -> None:
+        mailbox = self.store.mailbox_summary()
+        payload = {
+            "schema_version": 1,
+            "collected_at_epoch": int(self.now()),
+            "state": self.state,
+            "status": "ok" if self.state == "connected" else "warn",
+            "packets_received": self.packets_received,
+            "messages_received": self.messages_received,
+            "mailbox_total": mailbox["total"],
+            "mailbox_unread": mailbox["unread"],
+            "last_mailbox_at_epoch": mailbox["last_received_at"],
+        }
+        temporary_name = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.path.parent,
+                prefix=f".{self.path.name}.",
+                delete=False,
+            ) as output:
+                temporary_name = output.name
+                json.dump(payload, output, separators=(",", ":"), sort_keys=True)
+                output.write("\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.chmod(temporary_name, 0o644)
+            os.replace(temporary_name, self.path)
+        finally:
+            if temporary_name and os.path.exists(temporary_name):
+                os.unlink(temporary_name)
 
 
 class SlidingWindowLimiter:
@@ -478,14 +665,18 @@ class StatusProvider:
         self.uptime_path = Path(uptime_path)
         self.wall_time = wall_time
 
-    def temperature_value(self) -> str:
+    def temperature_c(self) -> int | None:
         try:
             millidegrees = int(self.temperature_path.read_text(encoding="ascii").strip())
         except (OSError, ValueError):
-            return "N/A"
+            return None
         if not -40_000 <= millidegrees <= 150_000:
-            return "N/A"
-        return f"{round(millidegrees / 1000)}C"
+            return None
+        return round(millidegrees / 1000)
+
+    def temperature_value(self) -> str:
+        value = self.temperature_c()
+        return "N/A" if value is None else f"{value}C"
 
     def temperature(self) -> str:
         return f"TEMP {self.temperature_value()}"
@@ -601,20 +792,38 @@ class StatusProvider:
     def network(self) -> str:
         return f"NET {self.network_value()}"
 
+    def uplink_value(self) -> str:
+        route = self.runner.run(["ip", "-4", "route", "get", "8.8.8.8"], self.timeout)
+        if route.returncode == 0:
+            match = re.search(r"\bdev\s+(\S+)", route.stdout)
+            interface = match.group(1).lower() if match else ""
+            if interface.startswith("wlan"):
+                return "WiFi"
+            if interface.startswith(("wwan", "ppp", "cdc", "rmnet")):
+                return "LTE"
+        states = self._network_states()
+        if any(kind == "gsm" and state.startswith("connected") for kind, state in states):
+            return "LTE"
+        if any(
+            kind in {"wifi", "802-11-wireless"} and state.startswith("connected")
+            for kind, state in states
+        ):
+            return "WiFi"
+        return "Down"
+
     @staticmethod
     def power() -> str:
         return "POWER N/A"
 
     def status(self) -> str:
-        return " | ".join(
-            (
-                "PCS OK",
-                f"LTE {self.lte_value()}",
-                f"GPS {self.gps_value()}",
-                "PWR N/A",
-                self.temperature_value(),
-                f"NET {self.network_value()}",
-            )
+        uplink = self.uplink_value()
+        gps = "3D" if self.gps_value() == "3D" else "NoFX"
+        temperature = self.temperature_c()
+        health = "BAD" if uplink == "Down" or temperature is None or temperature >= 85 else "OK"
+        temperature_label = "N/A" if temperature is None else f"{temperature}C"
+        return (
+            f"PCS {health} | Uplink - {uplink} | GPS {gps} | "
+            f"Pi Temp - {temperature_label}"
         )
 
     def execute(self, command: str) -> str:
@@ -630,7 +839,7 @@ class StatusProvider:
             "HELP": lambda: " ".join(COMMANDS),
         }
         handler = handlers.get(command)
-        return handler() if handler else "UNKNOWN COMMAND | SEND HELP"
+        return handler() if handler else "COMMAND UNKNOWN | COMMAND LIST: HELP"
 
 
 class AprsAgent:
@@ -640,11 +849,25 @@ class AprsAgent:
         store: DedupStore,
         provider: StatusProvider,
         limiter: SlidingWindowLimiter,
+        reporter: StatusReporter | None = None,
     ) -> None:
         self.config = config
         self.store = store
         self.provider = provider
         self.limiter = limiter
+        self.reporter = reporter
+
+    def set_runtime_state(self, state: str) -> None:
+        if self.reporter is not None:
+            self.reporter.set_state(state)
+
+    def note_packet_received(self) -> None:
+        if self.reporter is not None:
+            self.reporter.packet_received()
+
+    def refresh_status(self) -> None:
+        if self.reporter is not None:
+            self.reporter.write()
 
     def process(self, raw_ax25: bytes, send_ax25: Callable[[bytes], None]) -> None:
         try:
@@ -662,6 +885,8 @@ class AprsAgent:
         if message.message_id is None:
             LOG.info("Ignored unnumbered APRS message from %s", message.sender)
             return
+        if self.reporter is not None:
+            self.reporter.message_received()
         ack = aprs_ack_information(message.sender, message.message_id)
         send_ax25(encode_ax25_ui(self.config.callsign, self.config.tocall, ack))
 
@@ -669,8 +894,15 @@ class AprsAgent:
             LOG.warning("Rate limit suppressed APRS command handling for %s", message.sender)
             return
 
-        command = " ".join(message.body.strip().upper().split())
-        claim = self.store.claim(message.sender, message.message_id, command)
+        normalized_body = " ".join(message.body.strip().split())
+        upper_body = normalized_body.upper()
+        command_word, separator, mailbox_text = normalized_body.partition(" ")
+        if separator and command_word.upper() == "MSG":
+            command = "MSG"
+        else:
+            command = COMMAND_ALIASES.get(upper_body, upper_body)
+        claim_body = normalized_body if command == "MSG" else upper_body
+        claim = self.store.claim(message.sender, message.message_id, claim_body)
         if claim == "duplicate":
             LOG.info("Acknowledged duplicate APRS message from %s id=%s", message.sender, message.message_id)
             return
@@ -679,12 +911,28 @@ class AprsAgent:
             return
 
         command_label = command if command in COMMANDS else "<unknown>"
-        LOG.info("Executing read-only APRS command from %s id=%s command=%s", message.sender, message.message_id, command_label)
-        try:
-            response = self.provider.execute(command)
-        except Exception:
-            LOG.exception("Read-only status provider failed")
-            response = "PCS STATUS UNAVAILABLE"
+        LOG.info("Handling APRS request from %s id=%s command=%s", message.sender, message.message_id, command_label)
+        if command == "MSG":
+            try:
+                if not separator or not mailbox_text.strip():
+                    response = "MSG FORMAT: MSG <TEXT>"
+                else:
+                    self.store.store_mailbox_message(
+                        message.sender,
+                        message.message_id,
+                        mailbox_text,
+                        self.config.mailbox_limit,
+                    )
+                    self.refresh_status()
+                    response = "MESSAGE STORED"
+            except ValueError:
+                response = "MSG FORMAT: MSG <TEXT>"
+        else:
+            try:
+                response = self.provider.execute(command)
+            except Exception:
+                LOG.exception("APRS status provider failed")
+                response = "PCS STATUS UNAVAILABLE"
         outbound_id = self.store.next_outbound_id()
         reply = aprs_reply_information(message.sender, response, outbound_id)
         send_ax25(encode_ax25_ui(self.config.callsign, self.config.tocall, reply))
@@ -716,6 +964,7 @@ class AgentRuntime:
             try:
                 chunk = connection.recv(4096)
             except socket.timeout:
+                self.agent.refresh_status()
                 continue
             if not chunk:
                 raise ConnectionError("Dire Wolf closed the KISS connection")
@@ -726,12 +975,15 @@ class AgentRuntime:
                 channel = command >> 4
                 if (command & 0x0F) != KISS_DATA or channel != self.config.kiss_channel:
                     continue
+                self.agent.note_packet_received()
                 self.agent.process(kiss_frame[1:], send_ax25)
 
     def run(self) -> None:
         delay = 1
+        self.agent.set_runtime_state("starting")
         while not self.stop_event.is_set():
             if not self.engine_active():
+                self.agent.set_runtime_state("waiting")
                 LOG.warning(
                     "direwolf.service is inactive; suppressing the APRS Agent KISS connection for %ds",
                     delay,
@@ -744,6 +996,7 @@ class AgentRuntime:
                     (self.config.kiss_host, self.config.kiss_port),
                     timeout=self.config.command_timeout_seconds,
                 ) as connection:
+                    self.agent.set_runtime_state("connected")
                     LOG.info(
                         "Connected to local Dire Wolf KISS %s:%d on Internet channel %d",
                         self.config.kiss_host,
@@ -753,6 +1006,7 @@ class AgentRuntime:
                     delay = 1
                     self._serve_connection(connection)
             except (OSError, ConnectionError) as exc:
+                self.agent.set_runtime_state("waiting")
                 if self.stop_event.is_set():
                     break
                 LOG.warning("Dire Wolf KISS connection unavailable: %s; retrying in %ds", exc, delay)
@@ -764,6 +1018,9 @@ def parse_args(arguments: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=DEFAULT_CONFIG)
     parser.add_argument("--check-config", action="store_true")
+    parser.add_argument("--mailbox-json", action="store_true")
+    parser.add_argument("--mailbox-summary-json", action="store_true")
+    parser.add_argument("--mark-mailbox-read", action="store_true")
     parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="INFO")
     return parser.parse_args(arguments)
 
@@ -783,20 +1040,52 @@ def main(arguments: Iterable[str] | None = None) -> int:
         )
         return 0
 
+    selected_modes = sum(
+        bool(value)
+        for value in (args.mailbox_json, args.mailbox_summary_json, args.mark_mailbox_read)
+    )
+    if selected_modes > 1:
+        LOG.error("select only one mailbox operation")
+        return 2
+    if args.mailbox_json or args.mailbox_summary_json:
+        try:
+            snapshot = read_mailbox_snapshot(
+                config.state_db,
+                include_messages=args.mailbox_json,
+            )
+        except (OSError, sqlite3.Error) as exc:
+            LOG.error("APRS mailbox is unavailable: %s", exc)
+            return 1
+        print(json.dumps(snapshot, separators=(",", ":")))
+        return 0
+    if args.mark_mailbox_read and not Path(config.state_db).is_file():
+        LOG.error("APRS mailbox database is unavailable")
+        return 1
+
     store = DedupStore(config.state_db, config.dedupe_ttl_seconds)
+    if args.mark_mailbox_read:
+        try:
+            marked = store.mark_mailbox_read()
+            print(f"Marked {marked} APRS mailbox message(s) read.")
+        finally:
+            store.close()
+        return 0
+
+    reporter = StatusReporter(config.status_file, store)
     provider = StatusProvider(
         gpsd_host=config.gpsd_host,
         gpsd_port=config.gpsd_port,
         timeout=config.command_timeout_seconds,
     )
     limiter = SlidingWindowLimiter(config.sender_rate_per_minute, config.global_rate_per_minute)
-    agent = AprsAgent(config, store, provider, limiter)
+    agent = AprsAgent(config, store, provider, limiter, reporter)
     runtime = AgentRuntime(config, agent)
     signal.signal(signal.SIGTERM, runtime.stop)
     signal.signal(signal.SIGINT, runtime.stop)
     try:
         runtime.run()
     finally:
+        agent.set_runtime_state("stopped")
         store.close()
     return 0
 

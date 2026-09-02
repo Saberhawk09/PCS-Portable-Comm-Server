@@ -63,6 +63,8 @@ WS2812_FREQUENCY_HZ = 800_000
 WS2812_DMA_CHANNEL = 10
 WS2812_BRIGHTNESS = 32
 WS2812_POLL_SECONDS = 3.0
+APRS_MESSAGE_FLASH_SECONDS = 0.25
+APRS_MESSAGE_PIXEL = 3
 WS2812_PYTHON_PATH = Path("/opt/pcs-gpio-leds/bin/python")
 # Full RGB values are deliberately scaled by the strip-wide 32/255 brightness.
 LED_OFF = (0, 0, 0)
@@ -70,6 +72,7 @@ LED_HEALTHY = (0, 255, 0)
 LED_WARNING = (220, 48, 0)
 LED_CRITICAL = (176, 0, 0)
 LED_UNKNOWN = (32, 32, 96)
+LED_MESSAGE = (255, 255, 255)
 LED_SHUTDOWN = (0, 0, 255)
 SHUTDOWN_LED_COLORS = (LED_SHUTDOWN,) * WS2812_COUNT
 FAN_PWM_PIN = 18
@@ -78,6 +81,8 @@ FAN_PWM_FREQUENCY_HZ = 100
 FAN_PWM_PERIOD_NS = 1_000_000_000 // FAN_PWM_FREQUENCY_HZ
 FAN_PWM_CHIP_PATH = Path("/sys/class/pwm/pwmchip0")
 FAN_STATUS_PATH = Path("/run/pcs-gpio-fan/status.json")
+APRS_STATUS_PATH = Path("/run/pcs-aprs-agent/status.json")
+APRS_STATUS_MAX_AGE_SECONDS = 15
 FAN_FAILSAFE_DUTY = 100
 FAN_HYSTERESIS_C = 3
 FAN_POLL_SECONDS = 5.0
@@ -424,6 +429,7 @@ STORAGE_ICON = (0x7E, 0x42, 0x5A, 0x42, 0x42, 0x5A, 0x42, 0x7E)
 SERVICE_ICON = (0x24, 0x7E, 0xDB, 0xBD, 0xBD, 0xDB, 0x7E, 0x24)
 PISTAR_ICON = (0x66, 0x3C, 0x7E, 0xFF, 0xFF, 0x7E, 0x3C, 0x18)
 ROUTER_ICON = (0x7E, 0x81, 0x81, 0x3C, 0x42, 0x42, 0x18, 0x18)
+LETTER_ICON = (0xFF, 0x81, 0xC3, 0xA5, 0x99, 0x81, 0x81, 0xFF)
 TEMPERATURE_WARNING_C = 75
 TEMPERATURE_CRITICAL_C = 85
 DISK_WARNING_PERCENT = 85
@@ -441,6 +447,11 @@ class StatsSnapshot:
     network_uplink: str | None = None
     ap_clients: int | None = None
     grid_square: str | None = None
+    aprs_status: str | None = None
+    aprs_packets_received: int | None = None
+    aprs_messages_received: int | None = None
+    aprs_mailbox_total: int | None = None
+    aprs_mailbox_unread: int | None = None
 
     def as_dict(self) -> dict[str, int | bool | str | None]:
         return asdict(self)
@@ -962,9 +973,42 @@ def read_gps_status(host: str = "127.0.0.1", port: int = 2947) -> tuple[int | No
     return satellites_view, locked
 
 
+def read_aprs_status(
+    path: Path = APRS_STATUS_PATH,
+    now: Callable[[], float] = time.time,
+) -> tuple[str | None, int | None, int | None, int | None, int | None]:
+    """Read only aggregate APRS agent counters; mailbox contents stay private."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+            raise ValueError("invalid APRS status schema")
+        collected = int(payload["collected_at_epoch"])
+        if not 0 <= now() - collected <= APRS_STATUS_MAX_AGE_SECONDS:
+            return "warn", None, None, None, None
+        status = str(payload.get("status", "warn"))
+        if status not in {"ok", "warn"}:
+            status = "warn"
+        counters = []
+        for key in (
+            "packets_received",
+            "messages_received",
+            "mailbox_total",
+            "mailbox_unread",
+        ):
+            value = payload.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                counters.append(None)
+            else:
+                counters.append(min(value, 999_999_999))
+        return status, counters[0], counters[1], counters[2], counters[3]
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None, None, None, None, None
+
+
 def collect_stats() -> StatsSnapshot:
     cellular_online, cellular_quality = read_cellular_status()
     gps_satellites, gps_satellites_used, gps_locked, grid_square = read_gps_details()
+    aprs_status, aprs_packets, aprs_messages, mailbox_total, mailbox_unread = read_aprs_status()
     return StatsSnapshot(
         temperature_c=read_temperature(),
         cellular_quality=cellular_quality,
@@ -975,6 +1019,11 @@ def collect_stats() -> StatsSnapshot:
         network_uplink=read_network_uplink(),
         ap_clients=read_ap_client_count(),
         grid_square=grid_square,
+        aprs_status=aprs_status,
+        aprs_packets_received=aprs_packets,
+        aprs_messages_received=aprs_messages,
+        aprs_mailbox_total=mailbox_total,
+        aprs_mailbox_unread=mailbox_unread,
     )
 
 
@@ -993,6 +1042,14 @@ def format_uptime(seconds: int | None) -> str:
     days, minutes = divmod(minutes, 24 * 60)
     hours, minutes = divmod(minutes, 60)
     return f"Up: {min(days, 999)}d {hours:02}h {minutes:02}m"
+
+
+def compact_counter(value: int | None) -> str:
+    if value is None:
+        return "--"
+    if value < 10_000:
+        return str(max(0, value))
+    return f"{min(999, value // 1000)}K"
 
 
 def lcd_status_pages(
@@ -1019,6 +1076,18 @@ def lcd_status_pages(
     network_uplink = snapshot.network_uplink or "Offline"
     ap_clients = "--" if snapshot.ap_clients is None else str(snapshot.ap_clients)
     grid_square = snapshot.grid_square or "------"
+    aprs_state = (
+        "MSG"
+        if (snapshot.aprs_mailbox_unread or 0) > 0
+        else "Ok"
+        if snapshot.aprs_status == "ok"
+        else "Err"
+    )
+    packet_count = compact_counter(snapshot.aprs_packets_received)
+    message_count = compact_counter(snapshot.aprs_messages_received)
+    aprs_counts = f"Pkt RX:{packet_count} Msgs:{message_count}"
+    if len(aprs_counts) > LCD_COLUMNS:
+        aprs_counts = f"Pkt:{packet_count} Msgs:{message_count}"
     return (
         ("PCS Online", format_uptime(uptime_seconds)),
         ("Pi CPU Temp", temperature_line),
@@ -1026,6 +1095,7 @@ def lcd_status_pages(
         (f"Cell Data: {cellular_state}", f"Signal: {cellular_quality:03d}%"),
         (gps_heading, f"View {gps_view} Used {gps_used}"),
         (f"AP Clients: {ap_clients}", f"GridSq: {grid_square}"),
+        (f"APRS Stats: {aprs_state}", aprs_counts),
     )
 
 
@@ -1341,7 +1411,15 @@ def run_led_status(
         snapshot = collector()
         indicators = led_status_indicators(snapshot)
         colors = tuple(indicator.color for indicator in indicators)
-        if colors != previous_colors:
+        unread = snapshot.stats.aprs_mailbox_unread or 0
+        if unread > 0:
+            flash_colors = list(colors)
+            flash_colors[APRS_MESSAGE_PIXEL] = LED_MESSAGE
+            leds.colors(tuple(flash_colors))
+            sleeper(min(APRS_MESSAGE_FLASH_SECONDS, max(0.0, poll_seconds)))
+            leds.colors(colors)
+            previous_colors = colors
+        elif colors != previous_colors:
             leds.colors(colors)
             previous_colors = colors
         summary = json.dumps(
@@ -1356,13 +1434,19 @@ def run_led_status(
             previous_summary = summary
         if once:
             break
-        sleeper(poll_seconds)
+        remaining = poll_seconds - APRS_MESSAGE_FLASH_SECONDS if unread > 0 else poll_seconds
+        sleeper(max(0.0, remaining))
 
 
-def matrix_alert_frames(alerts: Sequence[MatrixAlert]) -> tuple[StatsFrame, ...]:
-    if not alerts:
-        return (StatsFrame("system_health", "healthy", CHECK_ICON, 1),)
+def matrix_alert_frames(
+    alerts: Sequence[MatrixAlert],
+    mailbox_unread: int = 0,
+) -> tuple[StatsFrame, ...]:
     frames: list[StatsFrame] = []
+    if mailbox_unread > 0:
+        frames.append(StatsFrame("aprs_mailbox", "message", LETTER_ICON, 5))
+    if not alerts and not frames:
+        return (StatsFrame("system_health", "healthy", CHECK_ICON, 1),)
     for alert in alerts:
         attention = X_ICON if alert.severity == "critical" else EXCLAMATION_ICON
         intensity = 10
@@ -1385,7 +1469,7 @@ def run_matrix_alerts(
     while not should_stop():
         snapshot = collector()
         alerts = matrix_alerts(snapshot)
-        frames = matrix_alert_frames(alerts)
+        frames = matrix_alert_frames(alerts, snapshot.stats.aprs_mailbox_unread or 0)
         summary = json.dumps(
             {
                 "health": snapshot.as_dict(),
