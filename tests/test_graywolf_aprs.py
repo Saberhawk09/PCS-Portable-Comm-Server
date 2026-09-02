@@ -53,6 +53,24 @@ class GraywolfAprsTests(unittest.TestCase):
         self.assertIn("sha256sum --check --status", setup)
         self.assertIn("--proto '=https' --tlsv1.2", setup)
 
+    def test_capture_buffer_patch_and_scope_are_documented(self):
+        doc = DOC.read_text(encoding="utf-8")
+        patch = ROOT / "patches" / "graywolf-0.14.13-alsa-capture-buffer.patch"
+
+        self.assertTrue(patch.is_file())
+        self.assertIn("INPUT_PERIOD_MS: u32 = 40", patch.read_text(encoding="utf-8"))
+        self.assertIn("Selecting the native `hw:` endpoint alone did not eliminate", doc)
+        self.assertIn("3840-frame, 80 ms capture", doc)
+        self.assertIn("leaves the persistent playback stream", doc)
+
+    def test_commissioned_graywolf_timing_is_the_supervised_rf_result(self):
+        profile = GRAYWOLF_PROFILE.read_text(encoding="utf-8")
+        doc = DOC.read_text(encoding="utf-8")
+
+        self.assertIn('parser.add_argument("--tx-delay-ms", type=int, default=925)', profile)
+        self.assertIn('parser.add_argument("--tx-tail-ms", type=int, default=100)', profile)
+        self.assertIn("15/15 across two batches at 925 ms", doc)
+
     def test_prepare_preserves_direwolf_and_leaves_graywolf_inactive(self):
         setup = GRAYWOLF_SETUP.read_text(encoding="utf-8")
         prepare_only = setup[setup.index("prepare() {"):setup.index("wait_for_graywolf_api() {")]

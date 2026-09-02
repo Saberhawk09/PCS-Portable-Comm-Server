@@ -69,11 +69,19 @@ by `--prepare` and does not activate an APRS engine.
 
 The PCS profile uses `hw:CARD=Device,DEV=0` for Graywolf capture and keeps
 `plughw:CARD=Device,DEV=0` for playback. On the commissioned C-Media USB
-adapter, Graywolf's CPAL capture through `plughw:` repeatedly entered ALSA
-`POLLERR` loops and rebuilt the input stream, despite no USB disconnect or
-kernel error. The native S16LE/48 kHz capture endpoint avoids that conversion
-layer. This distinction is Graywolf-specific; it does not change Dire Wolf's
-audio configuration or the calibrated Graywolf playback gain.
+adapter, unmodified Graywolf 0.14.13 negotiated two 241-frame capture periods:
+only about 10 ms of total ALSA buffering at 48 kHz. Ordinary scheduler jitter
+could overrun that stream, causing repeated ALSA `POLLERR` callbacks and input
+stream rebuilds. Selecting the native `hw:` endpoint alone did not eliminate
+the fault.
+
+`patches/graywolf-0.14.13-alsa-capture-buffer.patch` fixes the Graywolf input
+period at 40 ms. ALSA consequently negotiated a 3840-frame, 80 ms capture
+buffer on PCS. The patch deliberately leaves the persistent playback stream
+unchanged, so it does not add a corresponding GPIO-to-AFSK transmit delay. It
+applies to upstream commit `217352fce265a30a447ff4d0fb881685350157f4`
+(`v0.14.13`). This distinction is Graywolf-specific; it does not change Dire
+Wolf's audio configuration or the calibrated Graywolf playback gain.
 
 ## Why Dire Wolf Remains Installed
 
@@ -143,14 +151,23 @@ configuration.
 
 On the commissioned USB audio/GPIO6 path, use separate measurements for GPIO
 PTT duration, USB audio onset, and over-the-air decode. A long configured HDLC
-preamble is not evidence of a software stall. The September 2026 acceptance
+preamble is not evidence of a software stall. The September 2026 diagnostic
 run observed six consistent GPIO pulses at approximately 1.30 seconds with a
 500 ms preamble and 50 ms tail. USB audio began within the 5–10 ms observation
 resolution of GPIO assertion, including the first transmission after a modem
-sink rebuild. No ALSA, drain, or watchdog fault occurred. Therefore any
-remaining variable 700–1200 ms carrier-to-decode behavior is downstream of the
-PCS GPIO-to-USB-audio path and must be verified at the SA818S RF output and
-receiving decoder before reducing the commissioned preamble.
+sink rebuild. That established that Graywolf keys GPIO and submits AFSK audio
+without a hidden software sleep.
+
+After installing the capture-buffer patch, repeated RF batches produced no
+ALSA `POLLERR`, input rebuild, playback, drain, watchdog, or stuck-PTT errors;
+GPIO6 returned low after every batch. Over-the-air decode still varied with
+the configured preamble, so the commissioned delay must be selected from
+operator-observed RF decodes and not inferred from GPIO or API timing alone.
+The supervised threshold run decoded 2/5 packets at 700 ms, 4/5 at 900 ms,
+and 15/15 across two batches at 925 ms, all with a 100 ms tail. PCS therefore
+uses 925/100 ms as the commissioned Graywolf timing. This is specific to the
+installed SA818S, Easy Digi, USB adapter, audio level, and Graywolf modem; it
+does not revise the preserved Dire Wolf rollback profile.
 
 The live output gain is an RF measurement, not an installer default. Preserve
 the operator-calibrated Graywolf gain when reapplying or verifying the profile;

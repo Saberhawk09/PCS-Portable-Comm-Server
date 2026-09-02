@@ -457,7 +457,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--audio-input-device",
         default="hw:CARD=Device,DEV=0",
-        help="capture PCM; PCS uses the native endpoint to avoid CPAL/ALSA POLLERR loops",
+        help="native capture PCM used with the PCS Graywolf capture-buffer patch",
     )
     parser.add_argument("--audio-output-device", default="plughw:CARD=Device,DEV=0")
     parser.add_argument(
@@ -465,8 +465,8 @@ def parse_args() -> argparse.Namespace:
         help="deprecated compatibility option that sets both input and output PCMs",
     )
     parser.add_argument("--gpio-line", type=int, default=6)
-    parser.add_argument("--tx-delay-ms", type=int, default=700)
-    parser.add_argument("--tx-tail-ms", type=int, default=200)
+    parser.add_argument("--tx-delay-ms", type=int, default=925)
+    parser.add_argument("--tx-tail-ms", type=int, default=100)
     parser.add_argument("--igate-server", default="noam.aprs2.net")
     parser.add_argument("--igate-mode", choices=("disabled", "two-way"), default="two-way")
     parser.add_argument("--beacon-comment", default="Portable Comm Server - Local APRS Fill In Hotspot")

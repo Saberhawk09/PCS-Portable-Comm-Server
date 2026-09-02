@@ -1,0 +1,49 @@
+diff --git a/graywolf-modem/src/audio/soundcard.rs b/graywolf-modem/src/audio/soundcard.rs
+index b02918a..30bd720 100644
+--- a/graywolf-modem/src/audio/soundcard.rs
++++ b/graywolf-modem/src/audio/soundcard.rs
+@@ -38,6 +38,22 @@ const REBUILD_BACKOFF: &[Duration] = &[
+ /// backoffs for the rest of the session.
+ const BACKOFF_RESET_AFTER: Duration = Duration::from_secs(60);
+ 
++/// Give ALSA enough capture headroom to tolerate ordinary scheduler jitter.
++/// `BufferSize::Default` selected two 241-frame periods on the commissioned
++/// PCS C-Media adapter: only about 10 ms at 48 kHz. A transient overrun then
++/// sends cpal into a POLLERR callback loop and forces a stream rebuild. This
++/// affects capture only; the persistent output stream keeps its small default
++/// buffer so GPIO-to-AFSK TX onset is not delayed.
++const INPUT_PERIOD_MS: u32 = 40;
++
++fn input_period_frames(sample_rate: u32) -> u32 {
++    sample_rate
++        .saturating_mul(INPUT_PERIOD_MS)
++        .checked_div(1000)
++        .unwrap_or(0)
++        .max(1)
++}
++
+ /// Sleep the current thread for the backoff duration at `*idx`, then
+ /// advance `*idx` up to the last slot. Wakes early if `stop` is set so
+ /// shutdown isn't delayed by a pending retry wait. Walks the schedule
+@@ -204,7 +220,7 @@ pub fn spawn(
+     let stream_config = StreamConfig {
+         channels,
+         sample_rate: stream_rate,
+-        buffer_size: cpal::BufferSize::Default,
++        buffer_size: cpal::BufferSize::Fixed(input_period_frames(stream_rate)),
+     };
+ 
+     let want_ch = cfg.audio_channel as usize;
+@@ -1685,6 +1701,12 @@ mod tests {
+         move || iter.next()
+     }
+ 
++    #[test]
++    fn input_period_is_forty_milliseconds_at_common_rates() {
++        assert_eq!(input_period_frames(48_000), 1_920);
++        assert_eq!(input_period_frames(44_100), 1_764);
++    }
++
+     #[test]
+     fn fill_output_f32_writes_mono_sample_into_every_slot() {
+         let mut out = [0.0f32; 3];
