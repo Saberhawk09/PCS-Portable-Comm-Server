@@ -104,7 +104,9 @@ install_agent() {
     for source in "${AGENT_SRC}" "${SERVICE_SRC}" "${DOC_SRC}"; do
         [[ -f "${source}" ]] || { echo "ERROR: missing repository file: ${source}" >&2; return 1; }
     done
-    sudo -v
+    if ! sudo -n true 2>/dev/null; then
+        sudo -v
+    fi
     validate_live_mapping
     TEMP_DIR="$(mktemp -d)"
     config_file="${TEMP_DIR}/aprs-agent.conf"
