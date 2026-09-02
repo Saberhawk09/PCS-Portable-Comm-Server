@@ -68,6 +68,15 @@ def inbound_frame(sender="W8IJC-7", addressee="W8IJC-10", body="PING", message_i
     return pcs_aprs_agent.encode_ax25_ui(sender, "APRS", information)
 
 
+def ichannel_frame(sender="W8IJC-7", addressee="W8IJC-10", body="PING", message_id="42"):
+    suffix = f"{{{message_id}" if message_id is not None else ""
+    packet = (
+        f"}}{sender}>APY03D,WIDE1-1,qAR,W8IJC-1:"
+        f":{addressee:<9}:{body}{suffix}"
+    ).encode("ascii")
+    return pcs_aprs_agent.encode_ax25_ui("X", "X", packet)
+
+
 class KissAndAx25Tests(unittest.TestCase):
     def test_kiss_round_trip_handles_fragmentation_and_reserved_bytes(self):
         payload = b"before" + bytes([pcs_aprs_agent.FEND, pcs_aprs_agent.FESC]) + b"after"
@@ -117,6 +126,29 @@ class KissAndAx25Tests(unittest.TestCase):
         self.assertEqual("B2", message.message_id)
         self.assertEqual("PING", message.body)
 
+    def test_direwolf_ichannel_wrapper_recovers_original_aprs_is_packet(self):
+        outer = pcs_aprs_agent.decode_ax25_ui(
+            ichannel_frame(body="PING", message_id="11")
+        )
+        inner = pcs_aprs_agent.unwrap_direwolf_ichannel(outer)
+        message = pcs_aprs_agent.parse_aprs_message(inner)
+
+        self.assertEqual("W8IJC-7", inner.source)
+        self.assertEqual("APY03D", inner.destination)
+        self.assertEqual("W8IJC-7", message.sender)
+        self.assertEqual("W8IJC-10", message.addressee)
+        self.assertEqual("PING", message.body)
+        self.assertEqual("11", message.message_id)
+
+    def test_direwolf_ichannel_wrapper_rejects_malformed_or_nested_tnc2(self):
+        malformed = pcs_aprs_agent.Ax25Frame("X", "X", b"}not-a-packet")
+        nested = pcs_aprs_agent.Ax25Frame("X", "X", b"}W8IJC-7>APRS:}nested")
+
+        with self.assertRaisesRegex(ValueError, "TNC2 framing"):
+            pcs_aprs_agent.unwrap_direwolf_ichannel(malformed)
+        with self.assertRaisesRegex(ValueError, "nested data"):
+            pcs_aprs_agent.unwrap_direwolf_ichannel(nested)
+
 
 class StoreAndAgentTests(unittest.TestCase):
     def setUp(self):
@@ -145,6 +177,14 @@ class StoreAndAgentTests(unittest.TestCase):
         self.assertEqual(b":W8IJC-7  :ack42", sent[0].information)
         self.assertRegex(sent[1].information.decode("ascii"), r"^:W8IJC-7  :RESULT STATUS\{[0-9A-Z]{4}$")
         self.assertEqual(["STATUS"], self.provider.commands)
+
+    def test_aprs_is_ichannel_command_is_acked_and_replied_to(self):
+        sent = self.process(ichannel_frame(body="PING", message_id="11"))
+
+        self.assertEqual(2, len(sent))
+        self.assertEqual(b":W8IJC-7  :ack11", sent[0].information)
+        self.assertRegex(sent[1].information.decode("ascii"), r"^:W8IJC-7  :RESULT PING\{[0-9A-Z]{4}$")
+        self.assertEqual(["PING"], self.provider.commands)
 
     def test_duplicate_is_acked_again_but_not_executed_or_replied_again(self):
         first = self.process(inbound_frame(body="PING", message_id="77"))

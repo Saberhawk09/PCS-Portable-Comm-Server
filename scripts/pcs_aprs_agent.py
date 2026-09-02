@@ -222,6 +222,33 @@ def decode_ax25_ui(raw: bytes) -> Ax25Frame:
     return Ax25Frame(destination=addresses[0], source=addresses[1], information=raw[offset + 2 :])
 
 
+def unwrap_direwolf_ichannel(frame: Ax25Frame) -> Ax25Frame:
+    """Recover the original TNC2 packet from Dire Wolf's ICHANNEL wrapper."""
+
+    if not frame.information.startswith(b"}"):
+        return frame
+    try:
+        packet = frame.information[1:].decode("ascii").rstrip("\r\n")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Dire Wolf ICHANNEL wrapper is not ASCII") from exc
+    header, separator, information = packet.partition(":")
+    source, address_separator, route = header.partition(">")
+    destination = route.split(",", 1)[0]
+    if not separator or not address_separator or not information or not destination:
+        raise ValueError("Dire Wolf ICHANNEL wrapper has invalid TNC2 framing")
+    if "\r" in packet or "\n" in packet or information.startswith("}"):
+        raise ValueError("Dire Wolf ICHANNEL wrapper contains invalid nested data")
+    source = source.strip().upper()
+    destination = destination.strip().upper()
+    split_callsign(source)
+    split_callsign(destination)
+    return Ax25Frame(
+        destination=destination,
+        source=source,
+        information=information.encode("ascii"),
+    )
+
+
 def encode_ax25_ui(source: str, destination: str, information: bytes) -> bytes:
     if len(information) > 256:
         raise ValueError("AX.25 information field is too large")
@@ -622,6 +649,7 @@ class AprsAgent:
     def process(self, raw_ax25: bytes, send_ax25: Callable[[bytes], None]) -> None:
         try:
             frame = decode_ax25_ui(raw_ax25)
+            frame = unwrap_direwolf_ichannel(frame)
         except ValueError as exc:
             LOG.debug("Ignored malformed AX.25 frame: %s", exc)
             return
