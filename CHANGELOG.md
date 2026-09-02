@@ -2,14 +2,42 @@
 
 All notable user-facing PCS changes are recorded here.
 
+## [1.7] - 2026-09-02
+
+### Added
+
+- a read-only PCS APRS messaging and status agent layered on Dire Wolf KISS,
+  with `PING`, `STATUS`, `POWER`, `LTE`, `GPS`, `TEMP`, `NET`, `UPTIME`, and
+  `HELP` commands plus the short `S` and `H` aliases
+- a bounded persistent `MSG <text>` mailbox with public and administrator web
+  cards, authenticated mark-read handling, aggregate API fields, 16x2 LCD
+  counters, MAX7219 envelope indication, and a WS2812 unread-mail pulse
+- persistent numbered outbound replies with sender-bound ACK/REJ handling,
+  bounded retries, restart-safe delivery state, duplicate suppression, and
+  sender/global rate limits
+- explicitly gated local command access on 144.550 MHz through Dire Wolf radio
+  channel 0 while preserving APRS-IS traffic on virtual `ICHANNEL 8`; replies
+  and retries retain the request's original ingress path
+
+### Changed
+
+- report `STATUS` as PCS health, active LTE/Wi-Fi uplink, GPS fix state, and Pi
+  temperature without the unfinished power-monitor field
+- pulse the unread-mail WS2812 pixel once per second and alternate the mailbox
+  envelope with the healthy checkmark at the same MAX7219 intensity
+
+### Fixed
+
+- decode Dire Wolf's APRS-IS `ICHANNEL` wrapper before applying APRS addressee
+  filtering and keep the runtime guard compatible with the hardened DynamicUser
+  service
+- accept terminal CR/LF padding appended to message IDs by radios such as the
+  Yaesu FT3DR, while continuing to reject embedded or trailing packet data
+
 ## [1.6] - 2026-09-02
 
 ### Added
 
-- a local-only, read-only PCS APRS messaging/status agent using Dire Wolf's
-  Internet-only KISS `ICHANNEL`, with APRS ACKs, persistent duplicate
-  suppression, bounded public status commands, hardened systemd packaging, and
-  guarded deployment that does not own APRS-IS, RF, audio, PTT, or beaconing
 - a hardware-safe APRS engine selector with checksum-pinned Graywolf 0.14.13
   staging, Dire Wolf/Graywolf systemd mutual exclusion, a non-conflicting
   LAN management endpoint, engine-aware status/self-test integration, guarded

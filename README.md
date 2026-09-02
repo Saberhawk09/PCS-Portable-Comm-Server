@@ -132,6 +132,14 @@ observed ALSA `POLLERR` rebuild loop; supervised RF testing established 925/100
 ms as the reliable Graywolf timing at the calibrated operator-selected audio
 level.
 
+PCS v1.7 adds the read-only APRS status, command, and mailbox agent layered on
+Dire Wolf. It supports APRS-IS through virtual KISS `ICHANNEL 8` and explicitly
+gated local access on 144.550 MHz through radio channel 0, returning ACKs,
+numbered replies, and bounded retries through the request's original path.
+Mailbox state is available through the public and administrator dashboards,
+API, LCD, WS2812 indicators, and MAX7219 matrix. Supervised testing with a Yaesu
+FT3DR verified the complete RF request, ACK, `PONG`, and reply-ACK exchange.
+
 ## Hardware Setup
 
 Before running setup, connect the hardware you want the installer to configure:
