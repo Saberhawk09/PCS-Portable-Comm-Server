@@ -1226,6 +1226,11 @@ PY
             else
                 fail "PCS APRS mailbox database or aggregate query is invalid"
             fi
+            if sudo -n /usr/local/sbin/pcs-aprs-agent --config /etc/pcs/aprs-agent.conf --check-state >/dev/null 2>&1; then
+                pass "PCS APRS outbound state and retry queue are valid"
+            else
+                fail "PCS APRS outbound state or retry queue is invalid"
+            fi
         fi
 
         if [[ -x /usr/local/sbin/pcs-aprs-telemetry ]]; then

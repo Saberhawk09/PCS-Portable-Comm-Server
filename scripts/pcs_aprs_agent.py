@@ -459,6 +459,43 @@ def read_mailbox_snapshot(
         connection.close()
 
 
+def validate_state_database(path: str | Path, maximum_pending: int) -> None:
+    database = Path(path)
+    if not database.is_file():
+        raise ValueError("state database is unavailable")
+    connection = sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True, timeout=2)
+    try:
+        if connection.execute("PRAGMA quick_check").fetchone() != ("ok",):
+            raise ValueError("state database integrity check failed")
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        required = {
+            "received_messages",
+            "state_values",
+            "mailbox_messages",
+            "outbound_messages",
+        }
+        if not required.issubset(tables):
+            raise ValueError("state database schema is incomplete")
+        invalid = connection.execute(
+            "SELECT COUNT(*) FROM outbound_messages WHERE "
+            "state NOT IN ('pending', 'acked', 'rejected', 'failed') OR attempts < 0 OR "
+            "(state = 'pending' AND next_attempt_at IS NULL) OR "
+            "(state != 'pending' AND next_attempt_at IS NOT NULL)"
+        ).fetchone()[0]
+        pending = connection.execute(
+            "SELECT COUNT(*) FROM outbound_messages WHERE state = 'pending'"
+        ).fetchone()[0]
+        if int(invalid) != 0 or int(pending) > maximum_pending:
+            raise ValueError("outbound message state is invalid")
+    finally:
+        connection.close()
+
+
 class DedupStore:
     """Persist received identities, the bounded mailbox, and outbound IDs."""
 
@@ -1305,6 +1342,7 @@ def parse_args(arguments: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mailbox-json", action="store_true")
     parser.add_argument("--mailbox-summary-json", action="store_true")
     parser.add_argument("--mark-mailbox-read", action="store_true")
+    parser.add_argument("--check-state", action="store_true")
     parser.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default="INFO")
     return parser.parse_args(arguments)
 
@@ -1326,7 +1364,12 @@ def main(arguments: Iterable[str] | None = None) -> int:
 
     selected_modes = sum(
         bool(value)
-        for value in (args.mailbox_json, args.mailbox_summary_json, args.mark_mailbox_read)
+        for value in (
+            args.mailbox_json,
+            args.mailbox_summary_json,
+            args.mark_mailbox_read,
+            args.check_state,
+        )
     )
     if selected_modes > 1:
         LOG.error("select only one mailbox operation")
@@ -1341,6 +1384,14 @@ def main(arguments: Iterable[str] | None = None) -> int:
             LOG.error("APRS mailbox is unavailable: %s", exc)
             return 1
         print(json.dumps(snapshot, separators=(",", ":")))
+        return 0
+    if args.check_state:
+        try:
+            validate_state_database(config.state_db, config.outbound_max_pending)
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            LOG.error("APRS agent state is invalid: %s", exc)
+            return 1
+        print("APRS agent state database and outbound queue are valid.")
         return 0
     if args.mark_mailbox_read and not Path(config.state_db).is_file():
         LOG.error("APRS mailbox database is unavailable")

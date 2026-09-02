@@ -443,6 +443,10 @@ class ConfigurationAndStatusTests(unittest.TestCase):
         self.assertIn("After=direwolf.service", service)
         self.assertIn("AF_NETLINK", service)
         self.assertIn("PCS APRS Agent runtime status is fresh, connected, and aggregate-only", (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8"))
+        self.assertIn(
+            "PCS APRS outbound state and retry queue are valid",
+            (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8"),
+        )
         for forbidden in ("Requires=direwolf", "Wants=direwolf", "PartOf=direwolf"):
             self.assertNotIn(forbidden, service)
         self.assertIn("channel 0 remains RF", documentation)
@@ -664,6 +668,24 @@ class ConfigurationAndStatusTests(unittest.TestCase):
         self.assertEqual(1, payload["mailbox_unread"])
         self.assertNotIn("body", payload)
         self.assertNotIn("sender", payload)
+
+    def test_state_validation_requires_outbound_schema_and_valid_queue_rows(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "state.sqlite3"
+            store = pcs_aprs_agent.DedupStore(database, 3600, now=lambda: 100)
+            store.queue_outbound("W8IJC-7", "TEST", 100)
+            store.close()
+
+            pcs_aprs_agent.validate_state_database(database, 100)
+            connection = sqlite3.connect(database)
+            connection.execute(
+                "UPDATE outbound_messages SET state = 'pending', next_attempt_at = NULL"
+            )
+            connection.commit()
+            connection.close()
+
+            with self.assertRaisesRegex(ValueError, "outbound message state"):
+                pcs_aprs_agent.validate_state_database(database, 100)
 
 
 if __name__ == "__main__":
