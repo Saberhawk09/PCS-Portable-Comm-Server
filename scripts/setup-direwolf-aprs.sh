@@ -23,6 +23,11 @@ KISS_FIREWALL_SERVICE_SRC="${REPO_DIR}/systemd/pcs-aprs-kiss-firewall.service"
 KISS_FIREWALL_SERVICE_DST="/etc/systemd/system/pcs-aprs-kiss-firewall.service"
 DIREWOLF_OVERRIDE_SRC="${REPO_DIR}/systemd/pcs-direwolf-override.conf"
 DIREWOLF_OVERRIDE_DST="/etc/systemd/system/direwolf.service.d/pcs.conf"
+PTT_SAFE_SRC="${SCRIPT_DIR}/pcs-aprs-ptt-safe.sh"
+PTT_SAFE_DST="/usr/local/sbin/pcs-aprs-ptt-safe"
+PTT_SAFE_SERVICE_SRC="${REPO_DIR}/systemd/pcs-aprs-ptt-safe.service"
+PTT_SAFE_SERVICE_DST="/etc/systemd/system/pcs-aprs-ptt-safe.service"
+PTT_SAFE_CONFIG="${APRS_CONFIG_DIR}/ptt-safe.conf"
 SA818_SRC="${SCRIPT_DIR}/pcs_sa818.py"
 SA818_DST="/usr/local/sbin/pcs-sa818"
 SA818_SERVICE_SRC="${REPO_DIR}/systemd/pcs-sa818.service"
@@ -60,6 +65,7 @@ if [[ -f "${INSTALL_CONFIG}" ]]; then
 fi
 
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-no}"
+PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
 PCS_APRS_CONFIG_VERSION="${PCS_APRS_CONFIG_VERSION:-0}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
@@ -1592,10 +1598,12 @@ install_runtime_support() {
     local sa818_ini="${temp_dir}/sa818.ini"
     local logrotate_config="${temp_dir}/pcs-direwolf.logrotate"
     local direwolf_override="${temp_dir}/pcs-direwolf-override.conf"
+    local ptt_safe_env="${temp_dir}/ptt-safe.conf"
     local direwolf_bin=""
 
     if [[ ! -f "${KISS_FIREWALL_SRC}" || ! -f "${KISS_FIREWALL_SERVICE_SRC}" \
-        || ! -f "${DIREWOLF_OVERRIDE_SRC}" || ! -f "${SA818_SRC}" \
+        || ! -f "${DIREWOLF_OVERRIDE_SRC}" || ! -f "${PTT_SAFE_SRC}" \
+        || ! -f "${PTT_SAFE_SERVICE_SRC}" || ! -f "${SA818_SRC}" \
         || ! -f "${SA818_SERVICE_SRC}" || ! -f "${APRS_AUDIO_SRC}" \
         || ! -f "${APRS_AUDIO_SERVICE_SRC}" ]]; then
         echo "ERROR: PCS APRS runtime support files are missing from the repository." >&2
@@ -1608,6 +1616,8 @@ install_runtime_support() {
         return 1
     fi
     sed "s|@DIREWOLF_BIN@|${direwolf_bin}|g" "${DIREWOLF_OVERRIDE_SRC}" >"${direwolf_override}"
+    printf 'PCS_APRS_PTT_CHIP=%q\nPCS_APRS_PTT_LINE=%q\n' \
+        "gpiochip0" "${PCS_APRS_PTT_GPIO_LINE}" >"${ptt_safe_env}"
 
     printf 'PCS_APRS_AGW_PORT=%q\nPCS_APRS_KISS_PORT=%q\nPCS_APRS_KISS_LAN_INTERFACE=%q\nPCS_APRS_KISS_LAN_NETWORK=%q\n' \
         "${PCS_APRS_AGW_PORT}" "${PCS_APRS_KISS_PORT}" "${PCS_APRS_KISS_LAN_INTERFACE}" "${PCS_APRS_KISS_LAN_NETWORK}" >"${kiss_env}"
@@ -1646,6 +1656,9 @@ EOF
     sudo install -o root -g root -m 0755 "${KISS_FIREWALL_SRC}" "${KISS_FIREWALL_DST}"
     sudo install -o root -g root -m 0644 "${KISS_FIREWALL_SERVICE_SRC}" "${KISS_FIREWALL_SERVICE_DST}"
     sudo install -o root -g root -m 0640 "${kiss_env}" "${APRS_CONFIG_DIR}/kiss-firewall.conf"
+    sudo install -o root -g root -m 0755 "${PTT_SAFE_SRC}" "${PTT_SAFE_DST}"
+    sudo install -o root -g root -m 0644 "${PTT_SAFE_SERVICE_SRC}" "${PTT_SAFE_SERVICE_DST}"
+    sudo install -o root -g root -m 0644 "${ptt_safe_env}" "${PTT_SAFE_CONFIG}"
     sudo install -o root -g root -m 0755 "${SA818_SRC}" "${SA818_DST}"
     sudo install -o root -g root -m 0644 "${SA818_SERVICE_SRC}" "${SA818_SERVICE_DST}"
     sudo install -o root -g direwolf -m 0640 "${sa818_ini}" "${APRS_CONFIG_DIR}/sa818.ini"
@@ -1667,6 +1680,36 @@ EOF
     sudo systemctl restart pcs-aprs-kiss-firewall.service
 }
 
+install_staged_ptt_safety() {
+    local temp_dir
+    local ptt_safe_env
+
+    if [[ ! -f "${PTT_SAFE_SRC}" || ! -f "${PTT_SAFE_SERVICE_SRC}" ]]; then
+        echo "ERROR: PCS APRS PTT safety files are missing from the repository." >&2
+        return 1
+    fi
+    temp_dir="$(mktemp -d)"
+    ptt_safe_env="${temp_dir}/ptt-safe.conf"
+    printf 'PCS_APRS_PTT_CHIP=%q\nPCS_APRS_PTT_LINE=%q\n' \
+        "gpiochip0" "${PCS_APRS_PTT_GPIO_LINE}" >"${ptt_safe_env}"
+    sudo install -o root -g root -m 0755 "${PTT_SAFE_SRC}" "${PTT_SAFE_DST}"
+    sudo install -o root -g root -m 0644 "${PTT_SAFE_SERVICE_SRC}" "${PTT_SAFE_SERVICE_DST}"
+    sudo install -o root -g root -m 0644 "${ptt_safe_env}" "${PTT_SAFE_CONFIG}"
+    sudo systemctl daemon-reload
+    rm -rf -- "${temp_dir}"
+}
+
+restart_direwolf_with_ptt_guard() {
+    sudo systemctl stop direwolf.service
+    sudo systemctl start pcs-aprs-ptt-safe.service
+    sudo "${PTT_SAFE_DST}" --check
+    sudo systemctl stop pcs-aprs-ptt-safe.service
+    if ! sudo systemctl start direwolf.service; then
+        sudo systemctl start pcs-aprs-ptt-safe.service || true
+        return 1
+    fi
+}
+
 restore_backup_file() {
     local backup_file="$1"
     local mode_file="${backup_file}.mode"
@@ -1676,7 +1719,7 @@ restore_backup_file() {
     if sudo test -s "${mode_file}"; then
         restored_mode="$(sudo sed -n '1p' "${mode_file}" | tr -d '\r\n')"
     fi
-    sudo systemctl restart direwolf.service
+    restart_direwolf_with_ptt_guard
     set_install_config_value PCS_SETUP_APRS yes
     set_install_config_value PCS_APRS_ACTIVE_MODE "${restored_mode}"
     PCS_SETUP_APRS="yes"
@@ -1739,15 +1782,16 @@ activate_profile() {
 
     sudo install -o root -g direwolf -m 0640 "${rendered_config}" "${DIREWOLF_CONFIG}"
     sudo systemctl enable direwolf.service
-    if ! sudo systemctl restart direwolf.service; then
+    if ! restart_direwolf_with_ptt_guard; then
         echo "ERROR: direwolf.service failed after installing the ${profile} profile." >&2
         if [[ -n "${backup_file}" ]]; then
             sudo install -o root -g direwolf -m 0640 "${backup_file}" "${DIREWOLF_CONFIG}"
-            sudo systemctl restart direwolf.service || true
+            restart_direwolf_with_ptt_guard || true
             echo "Previous live configuration restored."
         else
             sudo rm -f -- "${DIREWOLF_CONFIG}"
             sudo systemctl disable --now direwolf.service >/dev/null 2>&1 || true
+            sudo systemctl enable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
             echo "No previous configuration existed; Dire Wolf was disabled again."
         fi
         sudo journalctl -u direwolf.service -n 40 --no-pager || true
@@ -1827,12 +1871,16 @@ prepare() {
     echo "Installing the PCS safe-default configuration example..."
     sudo install -d -o root -g direwolf -m 0750 "${APRS_CONFIG_DIR}"
     sudo install -o root -g direwolf -m 0640 "${TEMPLATE_SRC}" "${TEMPLATE_DST}"
+    install_staged_ptt_safety
 
     if [[ "${was_active}" -eq 0 ]]; then
         echo "Keeping Dire Wolf stopped and disabled until hardware activation."
         sudo systemctl disable --now direwolf.service >/dev/null 2>&1 || true
         set_install_config_value "PCS_SETUP_APRS" "staged"
+        set_install_config_value "PCS_APRS_ENGINE" "direwolf"
         PCS_SETUP_APRS="staged"
+        PCS_APRS_ENGINE="direwolf"
+        sudo systemctl enable --now pcs-aprs-ptt-safe.service
     fi
 
     show_check

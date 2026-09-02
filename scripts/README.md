@@ -365,6 +365,30 @@ temperature are observable but actual fan RPM is not measured.
 
 ## Dire Wolf / APRS
 
+The base installer records `PCS_APRS_ENGINE` as `direwolf` or `graywolf` and
+dispatches software staging to the matching script. Only Dire Wolf currently
+has a supported PCS activation workflow.
+
+### setup-graywolf-aprs.sh
+
+Installs the pinned, checksum-verified Graywolf package without replacing an
+active Dire Wolf engine:
+
+```bash
+./scripts/setup-graywolf-aprs.sh --prepare
+./scripts/setup-graywolf-aprs.sh --check
+./scripts/setup-graywolf-aprs.sh --capabilities
+./scripts/setup-graywolf-aprs.sh --help
+```
+
+The script preserves an active Dire Wolf service, refuses an active Graywolf
+service, overrides Graywolf away from PCS-reserved TCP 8080, uses tmpfs for
+packet history, records the staged engine, and does not start a radio path. A
+separate migration helper, `pcs-graywolf-profile.py`, provisions the matching
+PCS profile with every transmitter-producing feature disabled and reads the
+safety-critical values back; it is not an activation command. See
+[Graywolf APRS Staging](../docs/graywolf-aprs.md).
+
 ### setup-direwolf-aprs.sh
 
 Stages Dire Wolf software and provides guarded rendering,

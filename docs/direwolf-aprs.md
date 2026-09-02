@@ -2,6 +2,11 @@
 
 PCS treats APRS as an optional subsystem with a deliberate two-stage rollout:
 
+`PCS_APRS_ENGINE` selects `direwolf` (the commissioned default described here)
+or the separately staged `graywolf` alternative. See
+[Graywolf APRS Staging](graywolf-aprs.md). Only Dire Wolf currently has a
+supported PCS activation and rollback workflow.
+
 1. **Software staging** installs Dire Wolf and PCS monitoring support while the
    service remains stopped and disabled.
 2. **Managed activation** installs the commissioned SA818S, ALSA, firewall, and
@@ -158,7 +163,7 @@ the hardware activation checklist still requires a client-side reachability test
 
 ## Managed Startup and Recovery
 
-Activation installs three prerequisite services and a Dire Wolf override:
+Activation installs shared support services and a Dire Wolf override:
 
 1. `pcs-sa818.service` opens `/dev/serial0` at 9600 8N1, sends the commissioned
    SA818S commands, and requires an exact group readback:
@@ -180,11 +185,15 @@ Activation installs three prerequisite services and a Dire Wolf override:
    mixer values behind.
 3. `pcs-aprs-kiss-firewall.service` admits AGW 8000/tcp and KISS 8001/tcp only
    on loopback or `eth0` from `10.42.0.0/24` and drops both ports elsewhere.
-4. `direwolf.service` starts after those services, gpsd, sound, and
+4. `pcs-aprs-ptt-safe.service` owns GPIO6 as an output low with a pull-down
+   whenever neither APRS engine is running. Both engine overrides conflict with
+   the guard and start it again after an engine stops.
+5. `direwolf.service` starts after the radio/audio/firewall services, gpsd,
+   sound, and
    `network-online.target`. Its pre-start hooks reapply both the radio and audio
    profiles on every restart. `Restart=always` with a five-second delay lets it
     recover when the UART or USB sound card disappears and later re-enumerates.
-5. `91-pcs-direwolf-uplink-recovery` asks a hardened oneshot helper to evaluate
+6. `91-pcs-direwolf-uplink-recovery` asks a hardened oneshot helper to evaluate
    confirmed NetworkManager changes. It compares the selected IPv4 default
    interface with a runtime baseline, gives Dire Wolf 45 seconds to reconnect
    by itself, verifies APRS-IS DNS, and restarts Dire Wolf only when its
@@ -203,7 +212,8 @@ profile only after a real uplink transition and failed native APRS-IS recovery.
 If APRS-IS DNS is unavailable, it leaves Dire Wolf running so its normal retry
 loop can continue without causing an unnecessary RF startup beacon.
 
-Dire Wolf alone owns GPIO6 PTT. The UART initializer never keys the radio. The
+The active APRS engine alone owns GPIO6 PTT; the PTT guard owns it low between
+engine runs. The UART initializer never keys the radio. The
 bench FTDI adapter must be unplugged during normal RF operation: it previously
 caused stuck-TX behavior and defeats the intended USB/radio-side isolation.
 

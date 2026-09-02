@@ -78,7 +78,10 @@ also unfinished.
   fallback; the commissioned PCS uses automatic mode, with live failover,
   cellular-only Internet, Wi-Fi recovery, and boot persistence validated
 - LAN GPSD, NTP, and installer-assisted coordinated Pi-Star shutdown integration
-- Managed Dire Wolf 1.8.1 startup with SA818S programming, ALSA level restoration, LAN-only AGW/KISS access, and guarded activation/rollback
+- Installer-selectable Dire Wolf or Graywolf APRS engine with SA818S
+  programming, ALSA level restoration, LAN-only AGW/KISS access, mutual
+  exclusion, guarded activation/rollback, and stuck-PTT protection; the
+  commissioned PCS uses Graywolf while retaining Dire Wolf for rollback
 - Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
   dashboard status, guarded restart, broker/proxy policy validation, GPSD
   position delivery, public-map forwarding status, and local environment telemetry
@@ -118,6 +121,15 @@ status alert summaries, and LAN-only clickable file-share discovery. See
 [Android Client Bootstrap Contract](docs/pcs-android-client-bootstrap.md), and
 [Remote Management/API/Android Roadmap](docs/remote-management-api-android-roadmap.md).
 
+PCS v1.6 adds the complete Graywolf APRS engine option and commissions it on
+the live appliance with the existing SA818S/Easy Digi radio path. Graywolf's
+portal is available to PCS LAN clients on TCP 8070, Dire Wolf remains installed
+and masked for rollback, and the GPIO6 watchdog provides an independent
+stuck-transmit cutoff. A PCS-specific Graywolf 0.14.13 capture-buffer patch
+eliminates the observed ALSA `POLLERR` rebuild loop; supervised RF testing
+established 925/100 ms as the reliable Graywolf timing at the calibrated
+operator-selected audio level.
+
 ## Hardware Setup
 
 Before running setup, connect the hardware you want the installer to configure:
@@ -151,7 +163,7 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can stage Dire Wolf without activating an RF path, can stage the persistent Meshtastic USB/Bluetooth MQTT gateway without connecting to a radio, and can install the 16x2 HD44780 status display, six-pixel WS2812 indicators, MAX7219 annunciator, and GPIO18 hardware-PWM thermal fan controller.
+The setup script installs the PCS software baseline, configures the Pi client network, and sets up Samba, Chrony, RTC support, Cockpit, the public PCS homepage, and the authenticated administrative control panel. When selected, it also configures Pi-Star monitoring and coordinated-shutdown pairing, can safely stage either Dire Wolf or Graywolf without activating an RF path, can stage the persistent Meshtastic USB/Bluetooth MQTT gateway without connecting to a radio, and can install the 16x2 HD44780 status display, six-pixel WS2812 indicators, MAX7219 annunciator, and GPIO18 hardware-PWM thermal fan controller.
 
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 
@@ -160,6 +172,10 @@ without attached APRS hardware or an enabled RF path. The documented workflow
 provides separate guarded RX/TX activation, managed SA818S and ALSA startup,
 LAN-only AGW/KISS, logs/dashboard telemetry, and transactional rollback. See
 [Dire Wolf / APRS Integration](docs/direwolf-aprs.md).
+Graywolf is available as a safely staged alternative and now has a guarded,
+transactional activation path with GPIO6 watchdog protection, LAN-only web/
+AGW/KISS access, configurable iGate mode, and Dire Wolf rollback. See
+[Graywolf APRS Engine](docs/graywolf-aprs.md).
 
 ## After Setup
 
@@ -354,6 +370,8 @@ For more detail, see [Samba File Share](docs/samba-file-share.md).
 - [`scripts/setup-pistar-pcs.sh`](scripts/setup-pistar-pcs.sh) - Apply or verify the Pi-Star PCS integration
 - [`scripts/setup-pistar-shutdown.sh`](scripts/setup-pistar-shutdown.sh) - Pair the PCS shutdown button with Pi-Star
 - [`scripts/setup-direwolf-aprs.sh`](scripts/setup-direwolf-aprs.sh) - Stage, validate, activate, or recover the managed APRS subsystem
+- [`scripts/setup-graywolf-aprs.sh`](scripts/setup-graywolf-aprs.sh) - Safely stage the pinned Graywolf APRS alternative without activating hardware or RF
+- [`scripts/pcs-graywolf-profile.py`](scripts/pcs-graywolf-profile.py) - Provision and read back a disabled Dire Wolf-equivalent Graywolf migration profile
 - [`scripts/setup-meshtastic-bluetooth.sh`](scripts/setup-meshtastic-bluetooth.sh) - Stage or configure the persistent Meshtastic USB/BLE MQTT gateway
 - [`scripts/setup-wireguard-management.sh`](scripts/setup-wireguard-management.sh) - Opt-in WireGuard profile import and commissioned management workflow
 - [`scripts/pcs_gpio.py`](scripts/pcs_gpio.py) - Inspect, simulate, and deliberately test PCS GPIO status hardware

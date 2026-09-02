@@ -20,9 +20,9 @@ Use this checklist for every public PCS release.
 - [ ] verify the public homepage and admin login from a PCS client
 - [ ] verify an authenticated admin action
 - [ ] verify Samba, NTP, GNSS, OpenWrt, and Pi-Star as applicable
-- [ ] when APRS is selected, run `./scripts/setup-direwolf-aprs.sh --check`, `--capabilities`, and `--software-test`
-- [ ] review `--validate-config rx` and `--validate-config tx`; investigate every blocker instead of bypassing it
-- [ ] confirm Dire Wolf is disabled/inactive when staged, or complete the documented bench and operator-supervised RF validation for an intentionally active mode
+- [ ] when APRS is selected, run the selected engine's setup script with `--check` and `--capabilities`
+- [ ] for Dire Wolf, also run `--software-test` and review `--validate-config rx` and `--validate-config tx`; investigate every blocker instead of bypassing it
+- [ ] confirm the selected APRS service is disabled/inactive when staged; an intentionally active Dire Wolf or Graywolf engine requires its documented guarded activation and RF validation, and Graywolf additionally requires the runtime GPIO6 watchdog
 - [ ] reboot and repeat the self-test for changes affecting startup or systemd
 
 ## GitHub Validation

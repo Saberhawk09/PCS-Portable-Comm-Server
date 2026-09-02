@@ -2,7 +2,7 @@
 Description=Restore and verify PCS APRS USB audio levels
 After=sound.target alsa-restore.service
 Wants=sound.target
-Before=direwolf.service
+Before=direwolf.service graywolf.service
 StartLimitIntervalSec=0
 
 [Service]

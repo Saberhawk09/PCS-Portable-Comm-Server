@@ -2,7 +2,32 @@
 
 All notable user-facing PCS changes are recorded here.
 
-## [Unreleased]
+## [1.6] - 2026-09-02
+
+### Added
+
+- a hardware-safe APRS engine selector with checksum-pinned Graywolf 0.14.13
+  staging, Dire Wolf/Graywolf systemd mutual exclusion, a non-conflicting
+  LAN management endpoint, engine-aware status/self-test integration, guarded
+  production activation and rollback, and an eight-second stuck-PTT watchdog
+- Graywolf access cards on the public and authenticated PCS dashboards, with
+  its management portal restricted to the PCS LAN on TCP 8070
+
+### Changed
+
+- commission Graywolf as the active PCS APRS engine while retaining the
+  installed Dire Wolf service, configuration, and stock Graywolf modem binary
+  as rollback paths
+- use the supervised SA818S timing of 925 ms preamble and 100 ms tail; the
+  calibrated live Graywolf output remains an operator-owned RF setting
+
+### Fixed
+
+- increase Graywolf 0.14.13 capture buffering from the unstable approximately
+  10 ms ALSA default to 80 ms on PCS, eliminating the repeated `POLLERR` and
+  input-stream rebuild loop without increasing playback onset latency
+- correct the Graywolf capture diagnosis: selecting the native `hw:` endpoint
+  alone does not resolve the C-Media/CPAL capture overrun
 
 ## [1.5] - 2026-08-31
 

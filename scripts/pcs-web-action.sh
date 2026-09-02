@@ -539,6 +539,7 @@ import os
 import re
 import shlex
 import socket
+import sqlite3
 import time
 import shutil
 import subprocess
@@ -627,6 +628,38 @@ def json_object(path):
         return value if isinstance(value, dict) else {}
     except Exception:
         return {}
+
+def graywolf_runtime(path="/var/lib/graywolf/graywolf.db"):
+    state = {"available": False}
+    try:
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
+        output = db.execute(
+            "SELECT gain_db FROM audio_devices WHERE direction='output' ORDER BY id LIMIT 1"
+        ).fetchone()
+        timing = db.execute(
+            "SELECT tx_delay_ms, tx_tail_ms FROM tx_timings ORDER BY id LIMIT 1"
+        ).fetchone()
+        igate = db.execute(
+            "SELECT enabled, simulation_mode, gate_rf_to_is, gate_is_to_rf FROM i_gate_configs ORDER BY id LIMIT 1"
+        ).fetchone()
+        beacon = db.execute(
+            "SELECT send_path FROM beacons WHERE enabled=1 ORDER BY id LIMIT 1"
+        ).fetchone()
+        state.update({
+            "available": True,
+            "output_gain_db": output[0] if output else None,
+            "tx_delay_ms": timing[0] if timing else None,
+            "tx_tail_ms": timing[1] if timing else None,
+            "igate_enabled": bool(igate[0]) if igate else False,
+            "igate_simulation": bool(igate[1]) if igate else True,
+            "gate_rf_to_is": bool(igate[2]) if igate else False,
+            "gate_is_to_rf": bool(igate[3]) if igate else False,
+            "beacon_send_path": beacon[0] if beacon else "disabled",
+        })
+        db.close()
+    except Exception:
+        pass
+    return state
 
 def bool_value(value):
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
@@ -2161,11 +2194,22 @@ cellular_fallback_owned = file_text("/run/pcs-cellular-fallback-owned") == cell_
 gpsd_active = active("gpsd")
 gps_info = merge_gps_info(merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
 
-direwolf_installed = shutil.which("direwolf") is not None
-direwolf_active = active("direwolf.service")
-direwolf_enabled = enabled("direwolf.service")
-direwolf_template = os.path.isfile("/etc/pcs/aprs/direwolf.example.conf")
-direwolf_live_config = os.path.isfile("/etc/direwolf.conf")
+aprs_engine = CONFIG.get("PCS_APRS_ENGINE", "direwolf").lower()
+if aprs_engine == "graywolf":
+    aprs_engine_label = "Graywolf"
+    aprs_engine_installed = shutil.which("graywolf") is not None and shutil.which("graywolf-modem") is not None
+    aprs_engine_active = active("graywolf.service")
+    aprs_engine_enabled = enabled("graywolf.service")
+    aprs_engine_staged = os.path.isfile("/etc/pcs/aprs/graywolf-staged")
+    aprs_engine_live_config = os.path.isfile("/var/lib/graywolf/graywolf.db")
+else:
+    aprs_engine = "direwolf"
+    aprs_engine_label = "Dire Wolf"
+    aprs_engine_installed = shutil.which("direwolf") is not None
+    aprs_engine_active = active("direwolf.service")
+    aprs_engine_enabled = enabled("direwolf.service")
+    aprs_engine_staged = os.path.isfile("/etc/pcs/aprs/direwolf.example.conf")
+    aprs_engine_live_config = os.path.isfile("/etc/direwolf.conf")
 aprs_audio_input = CONFIG.get("PCS_APRS_AUDIO_INPUT", "auto")
 aprs_audio_output = CONFIG.get("PCS_APRS_AUDIO_OUTPUT", "null")
 aprs_active_mode = CONFIG.get("PCS_APRS_ACTIVE_MODE", "staged")
@@ -2190,6 +2234,9 @@ aprs_beacon_interval = CONFIG.get("PCS_APRS_BEACON_INTERVAL", "not configured")
 aprs_digipeat = aprs_active_mode == "tx" and CONFIG.get("PCS_APRS_DIGIPEAT", "no").lower() == "yes"
 aprs_digipeat_mode = CONFIG.get("PCS_APRS_DIGIPEAT_MODE", "standard")
 aprs_digipeat_alias = CONFIG.get("PCS_APRS_DIGIPEAT_ALIAS", "not configured")
+graywolf_state = graywolf_runtime() if aprs_engine == "graywolf" else {"available": False}
+if graywolf_state.get("available"):
+    aprs_igate = bool(graywolf_state.get("igate_enabled"))
 
 aprs_role_label = {
     "digi-igate": "digi-IGate / GPS tracker",
@@ -2219,6 +2266,30 @@ else:
     aprs_beacon_label = "disabled"
 aprs_digipeater_label = f"{aprs_digipeat_alias} only ({aprs_digipeat_mode})" if aprs_digipeat else "disabled"
 aprs_fx25_label = "enabled" if aprs_fx25_tx else "disabled"
+graywolf_url = "http://10.42.0.1:8070/" if aprs_engine == "graywolf" else ""
+graywolf_gain_label = (
+    f"{float(graywolf_state['output_gain_db']):g} dB"
+    if graywolf_state.get("output_gain_db") is not None
+    else "unknown"
+)
+graywolf_timing_label = (
+    f"{int(graywolf_state['tx_delay_ms'])} ms delay / {int(graywolf_state['tx_tail_ms'])} ms tail"
+    if graywolf_state.get("tx_delay_ms") is not None and graywolf_state.get("tx_tail_ms") is not None
+    else "unknown"
+)
+graywolf_igate_label = (
+    "enabled"
+    if graywolf_state.get("igate_enabled")
+    else "disabled; both directions off"
+    if graywolf_state.get("available")
+    else "unknown"
+)
+graywolf_beacon_path_label = {
+    "rf": "RF only",
+    "both": "RF and APRS-IS",
+    "is_only": "APRS-IS only",
+    "disabled": "disabled",
+}.get(str(graywolf_state.get("beacon_send_path", "")), "unknown")
 aprs_telemetry = {
     "available": False,
     "packets_1h": 0,
@@ -2227,7 +2298,7 @@ aprs_telemetry = {
     "last_packet_at": "",
     "last_station": "",
 }
-if os.path.isfile(APRS_TELEMETRY_HELPER):
+if aprs_engine == "direwolf" and os.path.isfile(APRS_TELEMETRY_HELPER):
     telemetry_rc, telemetry_out, _ = run([APRS_TELEMETRY_HELPER, "--json"], timeout=5)
     if telemetry_rc == 0:
         try:
@@ -2244,9 +2315,9 @@ else:
     aprs_last_packet = "not available"
 
 if APRS_STAGED:
-    aprs_status = "ok" if direwolf_installed and direwolf_template and not direwolf_active and not direwolf_enabled else "warn"
-    aprs_summary = "Dire Wolf software staged; no live radio profile is active"
-    aprs_service_label = "staged / disabled" if not direwolf_active else "unexpectedly active"
+    aprs_status = "ok" if aprs_engine_installed and aprs_engine_staged and not aprs_engine_active and not aprs_engine_enabled else "warn"
+    aprs_summary = f"{aprs_engine_label} software staged; no live radio profile is active"
+    aprs_service_label = "staged / disabled" if not aprs_engine_active else "unexpectedly active"
     aprs_radio_label = "not active during staging"
     aprs_tx_label = "disabled during staging"
 elif APRS_CONFIGURED:
@@ -2254,15 +2325,15 @@ elif APRS_CONFIGURED:
     aprs_audio_service = active("pcs-aprs-audio.service")
     aprs_firewall_service = active("pcs-aprs-kiss-firewall.service")
     aprs_status = "ok" if all((
-        direwolf_installed,
-        direwolf_live_config,
-        direwolf_active,
+        aprs_engine_installed,
+        aprs_engine_live_config,
+        aprs_engine_active,
         aprs_radio_service,
         aprs_audio_service,
         aprs_firewall_service,
     )) else "warn"
-    aprs_summary = "Dire Wolf APRS service active" if aprs_status == "ok" else "Configured APRS service needs attention"
-    aprs_service_label = "active" if direwolf_active else "inactive"
+    aprs_summary = f"{aprs_engine_label} APRS service active" if aprs_status == "ok" else "Configured APRS service needs attention"
+    aprs_service_label = "active" if aprs_engine_active else "inactive"
     aprs_radio_label = CONFIG.get("PCS_APRS_RADIO", f"{aprs_audio_input} -> {aprs_audio_output}")
     aprs_tx_label = "enabled" if aprs_tx_enabled else "receive-only"
 else:
@@ -2831,10 +2902,11 @@ if APRS_PREPARED:
         "summary": aprs_summary,
         "items": [
             {"label": "PCS state", "value": APRS_STATE},
+            {"label": "APRS engine", "value": aprs_engine_label},
             {"label": "Active profile", "value": aprs_active_mode},
-            {"label": "Dire Wolf package", "value": "installed" if direwolf_installed else "missing"},
+            {"label": f"{aprs_engine_label} package", "value": "installed" if aprs_engine_installed else "missing"},
             {"label": "Service", "value": aprs_service_label},
-            {"label": "Boot enablement", "value": "enabled" if direwolf_enabled else "disabled"},
+            {"label": "Boot enablement", "value": "enabled" if aprs_engine_enabled else "disabled"},
             {"label": "Radio / audio", "value": aprs_radio_label},
             {"label": "SA818S initialization", "value": "active" if active("pcs-sa818.service") else "inactive"},
             {"label": "ALSA profile", "value": "active" if active("pcs-aprs-audio.service") else "inactive"},
@@ -2954,6 +3026,16 @@ data = {
     "alerts": alerts,
     "client_info": client_info,
     "cards": cards,
+    "aprs": {
+        "engine": aprs_engine,
+        "status": aprs_status,
+        "service": aprs_service_label,
+        "graywolf_url": graywolf_url,
+        "graywolf_gain": graywolf_gain_label,
+        "graywolf_tx_timing": graywolf_timing_label,
+        "graywolf_igate": graywolf_igate_label,
+        "graywolf_beacon_path": graywolf_beacon_path_label,
+    },
 }
 
 if PUBLIC_VIEW:
@@ -3058,6 +3140,12 @@ if PUBLIC_VIEW:
             "configured": APRS_CONFIGURED,
             "status": aprs_status,
             "service": aprs_service_label,
+            "engine": aprs_engine,
+            "graywolf_url": graywolf_url,
+            "graywolf_gain": graywolf_gain_label,
+            "graywolf_tx_timing": graywolf_timing_label,
+            "graywolf_igate": graywolf_igate_label,
+            "graywolf_beacon_path": graywolf_beacon_path_label,
             "callsign": aprs_callsign,
             "role": aprs_role_label,
             "frequency": aprs_frequency,

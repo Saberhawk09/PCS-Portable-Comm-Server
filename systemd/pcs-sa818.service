@@ -1,7 +1,7 @@
 [Unit]
 Description=Program and verify the PCS SA818S APRS radio
 After=dev-serial0.device
-Before=direwolf.service
+Before=direwolf.service graywolf.service
 StartLimitIntervalSec=0
 
 [Service]

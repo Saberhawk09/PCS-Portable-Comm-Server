@@ -40,6 +40,9 @@ PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
 PCS_SETUP_WIREGUARD="${PCS_SETUP_WIREGUARD:-ask}"
 PCS_WIREGUARD_PROFILE="${PCS_WIREGUARD_PROFILE:-${PCS_WIREGUARD_PROFILE_DEFAULT}}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
+PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
+PCS_GRAYWOLF_HTTP_ADDRESS="${PCS_GRAYWOLF_HTTP_ADDRESS:-10.42.0.1}"
+PCS_GRAYWOLF_HTTP_PORT="${PCS_GRAYWOLF_HTTP_PORT:-8070}"
 PCS_SETUP_MESHTASTIC="${PCS_SETUP_MESHTASTIC:-ask}"
 PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-ask}"
 PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-ask}"
@@ -187,6 +190,39 @@ ask_value() {
     echo "${answer:-${default_value}}"
 }
 
+ask_choice() {
+    local prompt="$1"
+    local default_value="$2"
+    shift 2
+    local choices=("$@")
+    local answer
+    local choice
+
+    while true; do
+        read -r -p "${prompt} [${choices[*]}] (default: ${default_value}): " answer
+        answer="${answer:-${default_value}}"
+        for choice in "${choices[@]}"; do
+            if [[ "${answer}" == "${choice}" ]]; then
+                echo "${answer}"
+                return 0
+            fi
+        done
+        echo "Choose one of: ${choices[*]}" >&2
+    done
+}
+
+validate_aprs_engine() {
+    case "${PCS_APRS_ENGINE}" in
+        direwolf|graywolf)
+            return 0
+            ;;
+        *)
+            echo "ERROR: PCS_APRS_ENGINE must be direwolf or graywolf; got: ${PCS_APRS_ENGINE}" >&2
+            return 1
+            ;;
+    esac
+}
+
 ask_secret_confirm() {
     local prompt="$1"
     local output_var="$2"
@@ -235,6 +271,9 @@ write_install_config() {
         printf "PCS_SETUP_WIREGUARD=%q\n" "${PCS_SETUP_WIREGUARD}"
         printf "PCS_WIREGUARD_PROFILE=%q\n" "${PCS_WIREGUARD_PROFILE}"
         printf "PCS_SETUP_APRS=%q\n" "${PCS_SETUP_APRS}"
+        printf "PCS_APRS_ENGINE=%q\n" "${PCS_APRS_ENGINE}"
+        printf "PCS_GRAYWOLF_HTTP_ADDRESS=%q\n" "${PCS_GRAYWOLF_HTTP_ADDRESS}"
+        printf "PCS_GRAYWOLF_HTTP_PORT=%q\n" "${PCS_GRAYWOLF_HTTP_PORT}"
         printf "PCS_SETUP_MESHTASTIC=%q\n" "${PCS_SETUP_MESHTASTIC}"
         printf "PCS_SETUP_GPIO_LCD=%q\n" "${PCS_SETUP_GPIO_LCD}"
         printf "PCS_SETUP_GPIO_LEDS=%q\n" "${PCS_SETUP_GPIO_LEDS}"
@@ -399,6 +438,7 @@ collect_install_answers() {
             PCS_SETUP_WIREGUARD="no"
             PCS_WIREGUARD_PROFILE="${PCS_WIREGUARD_PROFILE_DEFAULT}"
             PCS_SETUP_APRS="no"
+            PCS_APRS_ENGINE="direwolf"
             PCS_SETUP_MESHTASTIC="no"
             PCS_SETUP_GPIO_LCD="no"
             PCS_SETUP_GPIO_LEDS="no"
@@ -457,7 +497,10 @@ collect_install_answers() {
             if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
                 PCS_WIREGUARD_PROFILE="$(ask_value "WireGuard profile path (kept outside Git)" "${PCS_WIREGUARD_PROFILE}")"
             fi
-            PCS_SETUP_APRS="$(ask_yes_no "Stage optional Dire Wolf / APRS software without enabling radio or RF transmit?" "${aprs_default}")"
+            PCS_SETUP_APRS="$(ask_yes_no "Stage optional APRS software without enabling radio or RF transmit?" "${aprs_default}")"
+            if [[ "${PCS_SETUP_APRS}" == "yes" ]]; then
+                PCS_APRS_ENGINE="$(ask_choice "APRS software engine" "${PCS_APRS_ENGINE}" direwolf graywolf)"
+            fi
             PCS_SETUP_MESHTASTIC="$(ask_yes_no "Stage optional Meshtastic USB/Bluetooth support without connecting to or configuring a radio?" "${meshtastic_default}")"
             PCS_SETUP_GPIO_LCD="$(ask_yes_no "Install and start the optional 16x2 HD44780 LCD status display?" "${gpio_lcd_default}")"
             PCS_SETUP_GPIO_LEDS="$(ask_yes_no "Install and start the optional six-pixel WS2812 status indicators?" "${gpio_leds_default}")"
@@ -514,6 +557,9 @@ collect_install_answers() {
     export PCS_SETUP_WIREGUARD
     export PCS_WIREGUARD_PROFILE
     export PCS_SETUP_APRS
+    export PCS_APRS_ENGINE
+    export PCS_GRAYWOLF_HTTP_ADDRESS
+    export PCS_GRAYWOLF_HTTP_PORT
     export PCS_SETUP_MESHTASTIC
     export PCS_SETUP_GPIO_LCD
     export PCS_SETUP_GPIO_LEDS
@@ -554,7 +600,7 @@ confirm_install_answers() {
     echo "  Pi-Star monitoring: ${PCS_SETUP_PISTAR}"
     echo "  WireGuard remote:   ${PCS_SETUP_WIREGUARD}"
     echo "  WireGuard profile:  ${PCS_WIREGUARD_PROFILE}"
-    echo "  Dire Wolf / APRS:   ${PCS_SETUP_APRS}"
+    echo "  APRS software:       ${PCS_SETUP_APRS} (${PCS_APRS_ENGINE})"
     echo "  Meshtastic BLE:      ${PCS_SETUP_MESHTASTIC}"
     echo "  HD44780 LCD:         ${PCS_SETUP_GPIO_LCD}"
     echo "  WS2812 indicators:   ${PCS_SETUP_GPIO_LEDS}"
@@ -701,6 +747,7 @@ ensure_executable "scripts/setup-wwan-gps-nmea.sh"
 ensure_executable "scripts/setup-gpsd-lan-proxy.sh"
 ensure_executable "scripts/setup-pistar-shutdown.sh"
 ensure_executable "scripts/setup-direwolf-aprs.sh"
+ensure_executable "scripts/setup-graywolf-aprs.sh"
 ensure_executable "scripts/setup-meshtastic-bluetooth.sh"
 ensure_executable "scripts/setup-gpio-lcd.sh"
 ensure_executable "scripts/setup-gpio-leds.sh"
@@ -1118,10 +1165,10 @@ esac
 
 echo
 echo "============================================================"
-echo "OPTIONAL STEP: Stage Dire Wolf / APRS software"
+echo "OPTIONAL STEP: Stage APRS software"
 echo "============================================================"
 echo
-echo "This installs Dire Wolf but leaves its service disabled, with no callsign,"
+echo "This installs the selected APRS engine but leaves its service disabled, with no callsign,"
 echo "APRS-IS credential, audio device, PTT method, beacon, or RF transmit path."
 echo
 
@@ -1130,11 +1177,21 @@ if [[ "${PCS_SETUP_APRS}" == "yes" || "${PCS_SETUP_APRS}" == "no" ]]; then
 elif [[ "${PCS_SETUP_APRS}" == "staged" ]]; then
     aprs_answer="yes"
 else
-    aprs_answer="$(ask_yes_no "Stage Dire Wolf / APRS software now?" "no")"
+    aprs_answer="$(ask_yes_no "Stage APRS software now?" "no")"
 fi
 
 case "${aprs_answer}" in
     y|Y|yes|YES|Yes)
+        if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
+            PCS_APRS_ENGINE="$(ask_choice "APRS software engine" "${PCS_APRS_ENGINE}" direwolf graywolf)"
+            export PCS_APRS_ENGINE
+        fi
+        if ! validate_aprs_engine; then
+            echo "APRS software staging was not attempted."
+            PCS_SETUP_APRS="no"
+            export PCS_SETUP_APRS
+            exit 1
+        fi
         if ./scripts/setup-direwolf-aprs.sh --prepare-uart; then
             echo "PCS APRS UART preparation completed."
         else
@@ -1143,21 +1200,27 @@ case "${aprs_answer}" in
             echo "RF activation will remain blocked until this succeeds:"
             echo "  ./scripts/setup-direwolf-aprs.sh --prepare-uart"
         fi
-        if ./scripts/setup-direwolf-aprs.sh --prepare; then
-            echo "Dire Wolf / APRS software staging completed."
+        aprs_setup_script="./scripts/setup-${PCS_APRS_ENGINE}-aprs.sh"
+        if "${aprs_setup_script}" --prepare; then
+            PCS_SETUP_APRS="staged"
+            export PCS_SETUP_APRS
+            echo "${PCS_APRS_ENGINE} APRS software staging completed."
         else
             echo
-            echo "WARNING: Dire Wolf / APRS software staging failed."
+            echo "WARNING: ${PCS_APRS_ENGINE} APRS software staging failed."
             echo "You can retry it later with:"
-            echo "  ./scripts/setup-direwolf-aprs.sh --prepare"
+            echo "  ${aprs_setup_script} --prepare"
         fi
         ;;
     *)
-        echo "Skipping Dire Wolf / APRS software staging."
+        PCS_SETUP_APRS="no"
+        export PCS_SETUP_APRS
+        echo "Skipping APRS software staging."
         echo "You can run it later:"
-        echo "  ./scripts/setup-direwolf-aprs.sh --prepare"
+        echo "  ./scripts/setup-${PCS_APRS_ENGINE}-aprs.sh --prepare"
         ;;
 esac
+write_install_config
 
 echo
 echo "============================================================"

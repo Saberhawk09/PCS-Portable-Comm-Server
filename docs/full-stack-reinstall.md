@@ -125,10 +125,12 @@ installer establishes the PCS LAN on `eth0`, it immediately attempts the
 coordinated-shutdown pairing before continuing with the remaining setup. SSH
 asks for the Pi-Star password at that point; the password is not stored.
 
-`PCS_SETUP_APRS=staged` means Dire Wolf is installed but stopped and disabled,
-with no live APRS-IS credential or enabled RF path. Selecting APRS staging also
-runs the idempotent Pi UART preparation; reboot when it reports a boot-file
-change. The versioned desired profile can then be installed as one complete,
+`PCS_SETUP_APRS=staged` means the engine selected by `PCS_APRS_ENGINE` is
+installed but stopped and disabled, with no live APRS-IS credential or enabled
+RF path. Selecting APRS staging also runs the idempotent Pi UART preparation;
+reboot when it reports a boot-file change. Graywolf staging stops there; see
+[Graywolf APRS Staging](graywolf-aprs.md). For the commissioned Dire Wolf path,
+the versioned desired profile can then be installed as one complete,
 evidence-reset block:
 
 ```bash
