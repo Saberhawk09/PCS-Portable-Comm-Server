@@ -250,15 +250,25 @@ class ConfigurationAndStatusTests(unittest.TestCase):
 
         connect.assert_not_called()
 
-    def test_dire_wolf_guard_uses_only_fixed_systemctl_query(self):
-        completed = pcs_aprs_agent.subprocess.CompletedProcess
-        runner = FakeRunner([completed([], 0, "", "")])
+    def test_dire_wolf_guard_requires_exact_cgroup_process_and_config(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            proc_root = Path(temp_dir)
+            process = proc_root / "123"
+            process.mkdir()
+            (process / "cgroup").write_text(
+                "0::/system.slice/direwolf.service\n",
+                encoding="ascii",
+            )
+            (process / "cmdline").write_bytes(
+                b"/usr/local/bin/direwolf\0-c\0/etc/direwolf.conf\0"
+            )
+            self.assertTrue(pcs_aprs_agent.direwolf_service_active(proc_root))
 
-        self.assertTrue(pcs_aprs_agent.direwolf_service_active(runner))
-        self.assertEqual(
-            ["systemctl", "is-active", "--quiet", "direwolf.service"],
-            runner.calls[0][0],
-        )
+            (process / "cgroup").write_text(
+                "0::/system.slice/graywolf.service\n",
+                encoding="ascii",
+            )
+            self.assertFalse(pcs_aprs_agent.direwolf_service_active(proc_root))
 
     def test_agent_example_is_valid_and_loopback_only(self):
         config = pcs_aprs_agent.AgentConfig.load(CONFIG_EXAMPLE_PATH)

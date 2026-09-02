@@ -394,14 +394,39 @@ class CommandRunner:
             return subprocess.CompletedProcess(arguments, 127, "", str(exc))
 
 
-def direwolf_service_active(runner: CommandRunner | None = None) -> bool:
-    """Return true only while the authoritative Dire Wolf unit is active."""
+def direwolf_service_active(proc_root: str | Path = "/proc") -> bool:
+    """Return true only for Dire Wolf running in its exact systemd cgroup."""
 
-    result = (runner or CommandRunner()).run(
-        ["systemctl", "is-active", "--quiet", "direwolf.service"],
-        3.0,
-    )
-    return result.returncode == 0
+    try:
+        processes = Path(proc_root).iterdir()
+    except OSError:
+        return False
+    for process in processes:
+        if not process.name.isdigit():
+            continue
+        try:
+            cgroups = (process / "cgroup").read_text(encoding="ascii").splitlines()
+            arguments = [
+                field.decode("utf-8", "replace")
+                for field in (process / "cmdline").read_bytes().split(b"\0")
+                if field
+            ]
+        except OSError:
+            continue
+        if not any(
+            line.split(":", 2)[-1] == "/system.slice/direwolf.service"
+            for line in cgroups
+        ):
+            continue
+        if not arguments or Path(arguments[0]).name != "direwolf":
+            continue
+        try:
+            config_index = arguments.index("-c") + 1
+        except ValueError:
+            continue
+        if config_index < len(arguments) and arguments[config_index] == "/etc/direwolf.conf":
+            return True
+    return False
 
 
 class StatusProvider:
