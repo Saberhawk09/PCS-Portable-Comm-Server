@@ -153,6 +153,16 @@ class GraywolfAprsTests(unittest.TestCase):
         self.assertIn('"gate_rf_to_is": igate_enabled', profile)
         self.assertIn('"gate_is_to_rf": igate_enabled', profile)
 
+    def test_profile_uses_native_capture_pcm_and_preserves_plug_playback(self):
+        profile = GRAYWOLF_PROFILE.read_text(encoding="utf-8")
+
+        self.assertIn('default="hw:CARD=Device,DEV=0"', profile)
+        self.assertIn('default="plughw:CARD=Device,DEV=0"', profile)
+        self.assertIn('"device_path": args.audio_input_device', profile)
+        self.assertIn('"device_path": args.audio_output_device', profile)
+        self.assertIn("def verify_audio_devices", profile)
+        self.assertIn("Graywolf input audio path read-back mismatch", profile)
+
     def test_shared_aprs_prerequisites_order_before_either_engine(self):
         for relative_path in (
             "systemd/pcs-sa818.service",

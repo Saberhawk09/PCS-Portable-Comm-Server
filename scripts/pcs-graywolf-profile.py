@@ -73,16 +73,31 @@ def stage_profile(api: Api, args: argparse.Namespace) -> dict[str, int]:
 
     common_audio = {
         "source_type": "soundcard",
-        "device_path": args.audio_device,
         "sample_rate": 48000,
         "channels": 1,
         "format": "s16le",
     }
     input_device = api.request(
-        "POST", "audio-devices", {**common_audio, "name": "PCS APRS input", "direction": "input", "gain_db": 0}
+        "POST",
+        "audio-devices",
+        {
+            **common_audio,
+            "name": "PCS APRS input",
+            "direction": "input",
+            "device_path": args.audio_input_device,
+            "gain_db": 0,
+        },
     )
     output_device = api.request(
-        "POST", "audio-devices", {**common_audio, "name": "PCS APRS output", "direction": "output", "gain_db": -0.001}
+        "POST",
+        "audio-devices",
+        {
+            **common_audio,
+            "name": "PCS APRS output",
+            "direction": "output",
+            "device_path": args.audio_output_device,
+            "gain_db": -0.001,
+        },
     )
     if not isinstance(input_device, dict) or not isinstance(output_device, dict):
         raise RuntimeError("Graywolf did not return audio device identifiers")
@@ -294,6 +309,17 @@ def verify_staged(api: Api, callsign: str) -> None:
         raise RuntimeError("staged AGW interface is enabled")
 
 
+def verify_audio_devices(api: Api, input_path: str, output_path: str) -> None:
+    devices = api.request("GET", "audio-devices")
+    if not isinstance(devices, list) or len(devices) != 2:
+        raise RuntimeError("Graywolf profile requires exactly two audio devices")
+    paths = {device.get("direction"): device.get("device_path") for device in devices}
+    if paths.get("input") != input_path:
+        raise RuntimeError("Graywolf input audio path read-back mismatch")
+    if paths.get("output") != output_path:
+        raise RuntimeError("Graywolf output audio path read-back mismatch")
+
+
 def repair_staged_defaults(api: Api, callsign: str) -> None:
     rules = api.request("GET", "digipeater/rules")
     beacons = api.request("GET", "beacons")
@@ -428,14 +454,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-url", default="http://127.0.0.1:8071")
     parser.add_argument("--credential-file", type=Path, default=Path("/etc/pcs/aprs/graywolf-admin.json"))
     parser.add_argument("--callsign", required=True)
-    parser.add_argument("--audio-device", default="plughw:CARD=Device,DEV=0")
+    parser.add_argument(
+        "--audio-input-device",
+        default="hw:CARD=Device,DEV=0",
+        help="capture PCM; PCS uses the native endpoint to avoid CPAL/ALSA POLLERR loops",
+    )
+    parser.add_argument("--audio-output-device", default="plughw:CARD=Device,DEV=0")
+    parser.add_argument(
+        "--audio-device",
+        help="deprecated compatibility option that sets both input and output PCMs",
+    )
     parser.add_argument("--gpio-line", type=int, default=6)
     parser.add_argument("--tx-delay-ms", type=int, default=700)
     parser.add_argument("--tx-tail-ms", type=int, default=200)
     parser.add_argument("--igate-server", default="noam.aprs2.net")
     parser.add_argument("--igate-mode", choices=("disabled", "two-way"), default="two-way")
     parser.add_argument("--beacon-comment", default="Portable Comm Server - Local APRS Fill In Hotspot")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.audio_device:
+        args.audio_input_device = args.audio_device
+        args.audio_output_device = args.audio_device
+    return args
 
 
 def main() -> int:
@@ -445,24 +484,30 @@ def main() -> int:
     if args.command == "stage":
         ids = stage_profile(api, args)
         verify_staged(api, args.callsign)
+        verify_audio_devices(api, args.audio_input_device, args.audio_output_device)
         print("Graywolf equivalent profile staged disabled; identifiers: " + json.dumps(ids, sort_keys=True))
     elif args.command == "repair":
         repair_staged_defaults(api, args.callsign)
         verify_staged(api, args.callsign)
+        verify_audio_devices(api, args.audio_input_device, args.audio_output_device)
         print("Graywolf staged profile defaults repaired and read-back verified.")
     elif args.command == "verify":
         verify_staged(api, args.callsign)
+        verify_audio_devices(api, args.audio_input_device, args.audio_output_device)
         print("Graywolf staged profile read-back is safe and complete.")
     elif args.command == "activate":
         set_active(api, True, args.igate_mode)
         verify_active(api, args.callsign, args.igate_mode)
+        verify_audio_devices(api, args.audio_input_device, args.audio_output_device)
         print("Graywolf production profile activated and read-back verified.")
     elif args.command == "deactivate":
         set_active(api, False)
         verify_staged(api, args.callsign)
+        verify_audio_devices(api, args.audio_input_device, args.audio_output_device)
         print("Graywolf production profile deactivated to safe staged state.")
     else:
         verify_active(api, args.callsign, args.igate_mode)
+        verify_audio_devices(api, args.audio_input_device, args.audio_output_device)
         print("Graywolf production profile read-back is active and complete.")
     return 0
 

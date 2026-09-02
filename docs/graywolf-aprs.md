@@ -67,6 +67,14 @@ Graywolf 0.14.13's SQLite create defaults otherwise turn those boolean fields
 on and add a `WIDE1-1` beacon path. The helper is intentionally not dispatched
 by `--prepare` and does not activate an APRS engine.
 
+The PCS profile uses `hw:CARD=Device,DEV=0` for Graywolf capture and keeps
+`plughw:CARD=Device,DEV=0` for playback. On the commissioned C-Media USB
+adapter, Graywolf's CPAL capture through `plughw:` repeatedly entered ALSA
+`POLLERR` loops and rebuilt the input stream, despite no USB disconnect or
+kernel error. The native S16LE/48 kHz capture endpoint avoids that conversion
+layer. This distinction is Graywolf-specific; it does not change Dire Wolf's
+audio configuration or the calibrated Graywolf playback gain.
+
 ## Why Dire Wolf Remains Installed
 
 Removing Dire Wolf now could break PCS behavior even if Graywolf can handle the
