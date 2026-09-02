@@ -16,6 +16,8 @@ SCRIPT_DOC = ROOT / "scripts" / "README.md"
 FIREWALL_SCRIPT = ROOT / "scripts" / "pcs-aprs-kiss-firewall.sh"
 FIREWALL_SERVICE = ROOT / "systemd" / "pcs-aprs-kiss-firewall.service"
 DIREWOLF_OVERRIDE = ROOT / "systemd" / "pcs-direwolf-override.conf"
+PTT_SAFE_SCRIPT = ROOT / "scripts" / "pcs-aprs-ptt-safe.sh"
+PTT_SAFE_SERVICE = ROOT / "systemd" / "pcs-aprs-ptt-safe.service"
 SOFTWARE_TEST = ROOT / "scripts" / "test-direwolf-aprs-software.sh"
 SA818_UTILITY = ROOT / "scripts" / "pcs_sa818.py"
 SA818_SERVICE = ROOT / "systemd" / "pcs-sa818.service"
@@ -26,6 +28,24 @@ APRS_AUDIO_UDEV_RULE = ROOT / "udev" / "99-pcs-aprs-audio.rules"
 
 
 class DireWolfAprsTests(unittest.TestCase):
+    def test_ptt_guard_owns_gpio_low_between_engine_runs(self):
+        helper = PTT_SAFE_SCRIPT.read_text(encoding="utf-8")
+        service = PTT_SAFE_SERVICE.read_text(encoding="utf-8")
+        override = DIREWOLF_OVERRIDE.read_text(encoding="utf-8")
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn('PCS_APRS_PTT_CHIP:-gpiochip0', helper)
+        self.assertIn('PCS_APRS_PTT_LINE:-6', helper)
+        self.assertIn('--bias pull-down "${PTT_LINE}=0"', helper)
+        self.assertIn('consumer pcs-ptt-safe', helper)
+        self.assertIn('Conflicts=direwolf.service graywolf.service', service)
+        self.assertIn('After=direwolf.service graywolf.service', service)
+        self.assertIn('WantedBy=multi-user.target', service)
+        self.assertIn('ExecStopPost=+/usr/bin/systemctl --no-block start pcs-aprs-ptt-safe.service', override)
+        self.assertIn('restart_direwolf_with_ptt_guard()', setup)
+        self.assertIn('sudo "${PTT_SAFE_DST}" --check', setup)
+        self.assertIn('PCS_APRS_PTT_LINE=%q', setup)
+
     def test_repository_template_is_safe_by_default(self):
         content = TEMPLATE.read_text(encoding="utf-8")
         active_lines = [

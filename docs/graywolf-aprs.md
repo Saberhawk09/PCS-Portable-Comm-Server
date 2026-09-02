@@ -27,6 +27,8 @@ The command then:
 - preserves an active Dire Wolf service and its active-engine selection
 - refuses to proceed when Graywolf itself is already active
 - installs a systemd override with `Conflicts=direwolf.service`
+- installs and starts `pcs-aprs-ptt-safe.service` when neither APRS engine is
+  active; it owns GPIO6 low with a pull-down until an APRS engine starts
 - records `PCS_APRS_ENGINE_STAGED="graywolf"`; on a fresh install with no
   active Dire Wolf service it also records Graywolf as the selected staged
   engine
@@ -96,6 +98,11 @@ Before PCS supports Graywolf activation, the implementation must add and test:
 Do not enable Graywolf manually on the commissioned radio merely because it is
 staged. Never run Graywolf and Dire Wolf together: they would contend for the
 same USB audio device, GPIO6 PTT line, APRS-IS identity, and network TNC ports.
+
+Both engine overrides conflict with the PTT guard and start it after the engine
+stops. This is a software fail-safe for the active-high EasyDigi input; it does
+not replace a supervised physical key/unkey test. A failed or interrupted test
+must leave both engines stopped and the guard verified as the GPIO6 consumer.
 
 Do not store Graywolf administrator credentials or other protected deployment
 state in Git. Its SQLite databases are local appliance state, not repository

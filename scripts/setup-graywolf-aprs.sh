@@ -11,6 +11,11 @@ STAGED_MARKER="${APRS_CONFIG_DIR}/graywolf-staged"
 GRAYWOLF_OVERRIDE_SRC="${REPO_DIR}/systemd/pcs-graywolf-override.conf"
 GRAYWOLF_OVERRIDE_DST="/etc/systemd/system/graywolf.service.d/pcs.conf"
 KISS_FIREWALL_CONFIG="${APRS_CONFIG_DIR}/kiss-firewall.conf"
+PTT_SAFE_SRC="${REPO_DIR}/scripts/pcs-aprs-ptt-safe.sh"
+PTT_SAFE_DST="/usr/local/sbin/pcs-aprs-ptt-safe"
+PTT_SAFE_SERVICE_SRC="${REPO_DIR}/systemd/pcs-aprs-ptt-safe.service"
+PTT_SAFE_SERVICE_DST="/etc/systemd/system/pcs-aprs-ptt-safe.service"
+PTT_SAFE_CONFIG="${APRS_CONFIG_DIR}/ptt-safe.conf"
 GRAYWOLF_VERSION="0.14.13"
 GRAYWOLF_RELEASE_BASE="https://github.com/chrissnell/graywolf/releases/download/v${GRAYWOLF_VERSION}"
 MODE="${1:---prepare}"
@@ -25,6 +30,7 @@ PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-graywolf}"
 PCS_APRS_ENGINE_STAGED="${PCS_APRS_ENGINE_STAGED:-}"
 PCS_GRAYWOLF_HTTP_ADDRESS="${PCS_GRAYWOLF_HTTP_ADDRESS:-10.42.0.1}"
 PCS_GRAYWOLF_HTTP_PORT="${PCS_GRAYWOLF_HTTP_PORT:-8070}"
+PCS_APRS_PTT_GPIO_LINE="${PCS_APRS_PTT_GPIO_LINE:-6}"
 
 usage() {
     cat <<'EOF'
@@ -202,10 +208,17 @@ prepare() {
     local package_sha256
     local temp_dir
     local rendered_override
+    local ptt_safe_env
 
     require_normal_user
     validate_http_endpoint
     ensure_sudo
+
+    if [[ ! -f "${GRAYWOLF_OVERRIDE_SRC}" || ! -f "${PTT_SAFE_SRC}" \
+        || ! -f "${PTT_SAFE_SERVICE_SRC}" ]]; then
+        echo "ERROR: PCS Graywolf runtime support files are missing from the repository." >&2
+        return 1
+    fi
 
     if systemctl is-active --quiet graywolf.service 2>/dev/null; then
         echo "ERROR: graywolf.service is already active; --prepare never changes an active radio service." >&2
@@ -222,7 +235,7 @@ prepare() {
     printf '%s  %s\n' "${package_sha256}" "${temp_dir}/${package_name}" | sha256sum --check --status
 
     echo "Installing Graywolf; the verified package enables but does not start its service..."
-    sudo apt-get install -y "${temp_dir}/${package_name}"
+    sudo apt-get install -y gpiod "${temp_dir}/${package_name}"
     sudo systemctl disable --now graywolf.service >/dev/null 2>&1 || true
 
     rendered_override="${temp_dir}/pcs-graywolf-override.conf"
@@ -235,6 +248,12 @@ prepare() {
         aprs_group="direwolf"
     fi
     sudo install -d -o root -g "${aprs_group}" -m 0750 "${APRS_CONFIG_DIR}"
+    ptt_safe_env="${temp_dir}/ptt-safe.conf"
+    printf 'PCS_APRS_PTT_CHIP=%q\nPCS_APRS_PTT_LINE=%q\n' \
+        "gpiochip0" "${PCS_APRS_PTT_GPIO_LINE}" >"${ptt_safe_env}"
+    sudo install -o root -g root -m 0755 "${PTT_SAFE_SRC}" "${PTT_SAFE_DST}"
+    sudo install -o root -g root -m 0644 "${PTT_SAFE_SERVICE_SRC}" "${PTT_SAFE_SERVICE_DST}"
+    sudo install -o root -g root -m 0644 "${ptt_safe_env}" "${PTT_SAFE_CONFIG}"
     printf 'graywolf=%s\nhttp=%s:%s\nstate=staged\n' \
         "${GRAYWOLF_VERSION}" "${PCS_GRAYWOLF_HTTP_ADDRESS}" "${PCS_GRAYWOLF_HTTP_PORT}" \
         | sudo tee "${STAGED_MARKER}" >/dev/null
@@ -250,6 +269,7 @@ prepare() {
         set_install_config_value "PCS_SETUP_APRS" "staged"
         PCS_APRS_ENGINE="graywolf"
         PCS_SETUP_APRS="staged"
+        sudo systemctl enable --now pcs-aprs-ptt-safe.service
     fi
 
     rm -rf -- "${temp_dir}"

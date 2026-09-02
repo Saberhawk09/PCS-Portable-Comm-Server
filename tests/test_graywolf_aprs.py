@@ -9,6 +9,8 @@ GRAYWOLF_SETUP = ROOT / "scripts" / "setup-graywolf-aprs.sh"
 GRAYWOLF_PROFILE = ROOT / "scripts" / "pcs-graywolf-profile.py"
 GRAYWOLF_OVERRIDE = ROOT / "systemd" / "pcs-graywolf-override.conf"
 DIREWOLF_OVERRIDE = ROOT / "systemd" / "pcs-direwolf-override.conf"
+PTT_SAFE_SCRIPT = ROOT / "scripts" / "pcs-aprs-ptt-safe.sh"
+PTT_SAFE_SERVICE = ROOT / "systemd" / "pcs-aprs-ptt-safe.service"
 SELF_TEST = ROOT / "scripts" / "pcs-self-test.sh"
 STATUS = ROOT / "scripts" / "pcs-status.sh"
 WEB_ACTION = ROOT / "scripts" / "pcs-web-action.sh"
@@ -52,7 +54,7 @@ class GraywolfAprsTests(unittest.TestCase):
     def test_prepare_preserves_direwolf_and_leaves_graywolf_inactive(self):
         setup = GRAYWOLF_SETUP.read_text(encoding="utf-8")
         graywolf_guard = setup.index("systemctl is-active --quiet graywolf.service")
-        install = setup.index('sudo apt-get install -y "${temp_dir}/${package_name}"')
+        install = setup.index('sudo apt-get install -y gpiod "${temp_dir}/${package_name}"')
         disable = setup.index("systemctl disable --now graywolf.service")
 
         self.assertLess(graywolf_guard, install)
@@ -89,6 +91,21 @@ class GraywolfAprsTests(unittest.TestCase):
 
         self.assertIn("Conflicts=direwolf.service", graywolf)
         self.assertIn("Conflicts=graywolf.service", direwolf)
+
+    def test_graywolf_staging_installs_the_shared_ptt_guard(self):
+        setup = GRAYWOLF_SETUP.read_text(encoding="utf-8")
+        graywolf = GRAYWOLF_OVERRIDE.read_text(encoding="utf-8")
+        guard = PTT_SAFE_SERVICE.read_text(encoding="utf-8")
+        helper = PTT_SAFE_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertIn('sudo apt-get install -y gpiod', setup)
+        self.assertIn('PTT_SAFE_SRC=', setup)
+        self.assertIn('PCS_APRS_PTT_LINE=%q', setup)
+        self.assertIn('enable --now pcs-aprs-ptt-safe.service', setup)
+        self.assertIn('pcs-aprs-ptt-safe.service', graywolf)
+        self.assertIn('ExecStopPost=+/usr/bin/systemctl --no-block start pcs-aprs-ptt-safe.service', graywolf)
+        self.assertIn('After=direwolf.service graywolf.service', guard)
+        self.assertIn('"${PTT_LINE}=0"', helper)
 
     def test_profile_provisioner_keeps_transmitters_disabled_and_repairs_defaults(self):
         profile = GRAYWOLF_PROFILE.read_text(encoding="utf-8")

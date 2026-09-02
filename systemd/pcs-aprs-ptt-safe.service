@@ -1,0 +1,14 @@
+[Unit]
+Description=Hold PCS APRS PTT inactive while no APRS engine owns GPIO
+Conflicts=direwolf.service graywolf.service
+After=direwolf.service graywolf.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/pcs/aprs/ptt-safe.conf
+ExecStart=/usr/local/sbin/pcs-aprs-ptt-safe --hold
+Restart=on-failure
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target
