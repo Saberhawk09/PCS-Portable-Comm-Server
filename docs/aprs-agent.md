@@ -8,14 +8,24 @@ audio, PTT, beaconing, digipeating, IGate policy, and packet routing.
 
 ```text
 APRS-IS <-> Dire Wolf IGate <-> KISS ICHANNEL 8 <-> pcs-aprs-agent
-RF      <-> Dire Wolf radio channel 0
+144.550 <-> Dire Wolf radio channel 0 <-> pcs-aprs-agent (explicit opt-in)
 ```
 
 `ICHANNEL 8` is a Dire Wolf virtual Internet channel. Frames submitted by the
-agent on channel 8 go to APRS-IS, not the radio; channel 0 remains RF. The agent rejects KISS channel
-0 in configuration and ignores every received KISS channel except the selected
-Internet channel. It connects only to loopback and never has an APRS-IS
-passcode.
+agent on channel 8 go to APRS-IS, not the radio. When the separately gated RF
+option is enabled, the agent also accepts physical radio channel 0 and returns
+its ACK and reply on the same channel on which a request arrived. A local
+144.550 MHz request therefore receives a direct 144.550 MHz response, while an
+APRS-IS request remains on ICHANNEL 8. Each queued reply retains its selected
+channel across retries and agent restarts. The agent connects only to loopback
+and never has an APRS-IS passcode.
+
+RF access is off by default. The installer accepts it only with the commissioned
+guarded Dire Wolf TX profile and physical channel 0. The agent never opens the
+SA818S, audio device, or PTT GPIO itself; Dire Wolf performs normal channel
+access, modulation, and PTT for channel-0 KISS frames. RF commands remain
+read-only and use the same sender/global rate limits, duplicate suppression,
+bounded queue, ACK matching, and retry limits as APRS-IS commands.
 
 Dire Wolf's existing KISS TCP listener is unauthenticated and admitted from the
 trusted PCS LAN by its nftables policy. Enabling ICHANNEL therefore also lets a
@@ -38,7 +48,8 @@ Dire Wolf; Graywolf remains unsupported by this agent and must stay inactive.
 
 The agent accepts only correctly formed APRS messages whose fixed-width
 addressee resolves exactly to `W8IJC-10` and which carry a one-to-five character
-message ID. It immediately sends `ack<ID>` through ICHANNEL 8.
+message ID. It immediately sends `ack<ID>` through the request's ingress
+channel. The numbered response and every retry use that same channel.
 
 Received `(sender, message ID)` identities and a SHA-256 body digest are retained
 in SQLite for 24 hours. Duplicate packets are ACKed again but their commands are
@@ -113,9 +124,10 @@ database directly.
 
 The aggregate runtime file `/run/pcs-aprs-agent/status.json` feeds the hardware
 indicators. The 16x2 LCD adds `APRS Stats: Ok` or `APRS Stats: MSG` and a bounded
-counter line such as `Pkt RX:0 Msgs:0`. Unread mail prepends an envelope on the
-MAX7219 and pulses WS2812 pixel 3 white before restoring that pixel's normal
-service-health color.
+counter line such as `Pkt RX:0 Msgs:0`. When the system is otherwise healthy,
+unread mail alternates an intensity-1 envelope and intensity-1 checkmark on the
+MAX7219. WS2812 pixel 3 pulses white once per second before restoring that
+pixel's normal service-health color.
 
 ## Configuration
 
@@ -126,6 +138,8 @@ generates `/etc/pcs/aprs-agent.conf` from the non-secret PCS install settings:
 | --- | --- | --- |
 | `PCS_APRS_AGENT_ENABLED` | `no` | Explicitly opt in to generating the Internet channel and permitting installation. |
 | `PCS_APRS_AGENT_ICHANNEL` | `8` | Unused KISS port nibble mapped to APRS-IS. Must never overlap radio channels. |
+| `PCS_APRS_AGENT_RF_ENABLED` | `no` | Explicitly admit local 144.550 MHz commands through Dire Wolf's guarded TX profile. |
+| `PCS_APRS_AGENT_RF_CHANNEL` | `0` | Commissioned physical Dire Wolf channel used for local requests and responses. |
 | `PCS_APRS_AGENT_TOCALL` | `APZPCS` | Experimental PCS software destination identifier. |
 | `PCS_APRS_AGENT_DEDUPE_TTL_SECONDS` | `86400` | Persistent duplicate window. |
 | `PCS_APRS_AGENT_MAILBOX_LIMIT` | `100` | Maximum retained mailbox messages. |
@@ -155,5 +169,8 @@ journalctl -u pcs-aprs-agent.service
 
 The installer refuses to start the agent unless Dire Wolf is selected and
 active and the live managed Dire Wolf file already contains both matching
-directives. It does not edit or restart Dire Wolf, collect credentials, touch
-GPIO/PTT/audio, or transmit RF.
+directives. RF enablement additionally requires the guarded commissioned TX
+profile and channel 0. The installer does not edit or restart Dire Wolf, collect
+credentials, or directly touch GPIO/PTT/audio. Once RF access is enabled, an
+addressed radio command can cause Dire Wolf to transmit the protocol ACK and
+numbered response on 144.550 MHz.

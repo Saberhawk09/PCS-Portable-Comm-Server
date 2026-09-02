@@ -175,10 +175,11 @@ class StoreAndAgentTests(unittest.TestCase):
         self.store.close()
         self.temp_dir.cleanup()
 
-    def process(self, frame):
+    def process(self, frame, channel=8):
         sent = []
-        self.agent.process(frame, sent.append)
-        return [pcs_aprs_agent.decode_ax25_ui(raw) for raw in sent]
+        self.agent.process(frame, channel, lambda outbound_channel, raw: sent.append((outbound_channel, raw)))
+        self.sent_channels = [outbound_channel for outbound_channel, _raw in sent]
+        return [pcs_aprs_agent.decode_ax25_ui(raw) for _outbound_channel, raw in sent]
 
     def test_addressed_command_is_acked_before_numbered_reply(self):
         sent = self.process(inbound_frame(body="status", message_id="42"))
@@ -246,15 +247,16 @@ class StoreAndAgentTests(unittest.TestCase):
         initial = self.process(inbound_frame(body="PING", message_id="44"))
         outbound_id = initial[1].information.decode("ascii").rsplit("{", 1)[1]
         retried = []
+        send_retry = lambda channel, frame: retried.append((channel, frame))
 
         clock[0] = 104.0
-        self.assertEqual(0, self.agent.retry_due(retried.append))
+        self.assertEqual(0, self.agent.retry_due(send_retry))
         clock[0] = 105.0
-        self.assertEqual(1, self.agent.retry_due(retried.append))
+        self.assertEqual(1, self.agent.retry_due(send_retry))
         clock[0] = 114.0
-        self.assertEqual(0, self.agent.retry_due(retried.append))
+        self.assertEqual(0, self.agent.retry_due(send_retry))
         clock[0] = 115.0
-        self.assertEqual(1, self.agent.retry_due(retried.append))
+        self.assertEqual(1, self.agent.retry_due(send_retry))
 
         summary = self.store.outbound_summary(include_messages=True)
         self.assertEqual(2, len(retried))
@@ -265,7 +267,7 @@ class StoreAndAgentTests(unittest.TestCase):
         self.assertEqual(1, self.store.outbound_summary()["acked"])
 
     def test_failed_socket_send_leaves_message_due_without_counting_an_attempt(self):
-        outbound = self.store.queue_outbound("W8IJC-7", "TEST", 100)
+        outbound = self.store.queue_outbound("W8IJC-7", "TEST", 100, 8)
 
         with self.assertRaisesRegex(OSError, "send failed"):
             self.agent._transmit_outbound(
@@ -279,8 +281,8 @@ class StoreAndAgentTests(unittest.TestCase):
         self.assertEqual(1, len(self.store.due_outbound()))
 
     def test_pending_retry_state_survives_database_reopen(self):
-        outbound = self.store.queue_outbound("W8IJC-7", "TEST", 100)
-        self.agent._transmit_outbound(outbound, lambda _frame: None)
+        outbound = self.store.queue_outbound("W8IJC-7", "TEST", 100, 8)
+        self.agent._transmit_outbound(outbound, lambda _channel, _frame: None)
         self.store.close()
 
         reopened = pcs_aprs_agent.DedupStore(self.db_path, 3600, now=lambda: 10_031)
@@ -290,6 +292,47 @@ class StoreAndAgentTests(unittest.TestCase):
         self.assertEqual(1, len(due))
         self.assertEqual(outbound.message_id, due[0].message_id)
         self.assertEqual(1, due[0].attempts)
+        self.assertEqual(8, due[0].kiss_channel)
+
+    def test_rf_channel_is_opt_in_and_replies_on_the_ingress_channel(self):
+        self.assertEqual([], self.process(inbound_frame(body="PING", message_id="45"), channel=0))
+
+        self.config = pcs_aprs_agent.AgentConfig(
+            state_db=str(self.db_path),
+            rf_enabled=True,
+        )
+        self.agent = pcs_aprs_agent.AprsAgent(
+            self.config, self.store, self.provider, self.limiter,
+        )
+        sent = self.process(inbound_frame(body="PING", message_id="46"), channel=0)
+
+        self.assertEqual(2, len(sent))
+        self.assertEqual([0, 0], self.sent_channels)
+        queued = self.store.outbound_summary(include_messages=True)["messages"]
+        self.assertEqual(0, queued[0]["kiss_channel"])
+
+    def test_runtime_preserves_rf_channel_in_kiss_ack_and_reply_frames(self):
+        self.config = pcs_aprs_agent.AgentConfig(
+            state_db=str(self.db_path),
+            rf_enabled=True,
+        )
+        self.agent = pcs_aprs_agent.AprsAgent(
+            self.config, self.store, self.provider, self.limiter,
+        )
+        runtime = pcs_aprs_agent.AgentRuntime(self.config, self.agent)
+        connection = FakeGpsSocket([
+            pcs_aprs_agent.encode_kiss(
+                0,
+                inbound_frame(body="PING", message_id="47"),
+            )
+        ])
+
+        with self.assertRaisesRegex(ConnectionError, "closed"):
+            runtime._serve_connection(connection)
+
+        decoder = pcs_aprs_agent.KissDecoder()
+        frames = [decoder.feed(item)[0] for item in connection.sent]
+        self.assertEqual([0, 0], [frame[0] >> 4 for frame in frames])
 
     def test_aprs_is_ichannel_command_is_acked_and_replied_to(self):
         sent = self.process(ichannel_frame(body="PING", message_id="11"))
@@ -367,6 +410,26 @@ class StoreAndAgentTests(unittest.TestCase):
         self.assertEqual(b":W8IJC-7  :ack77", second[0].information)
         self.assertEqual(["PING"], self.provider.commands)
 
+    def test_duplicate_seen_on_rf_and_aprs_is_is_acked_on_each_ingress_only(self):
+        self.config = pcs_aprs_agent.AgentConfig(
+            state_db=str(self.db_path),
+            rf_enabled=True,
+        )
+        self.agent = pcs_aprs_agent.AprsAgent(
+            self.config, self.store, self.provider, self.limiter,
+        )
+
+        first = self.process(inbound_frame(body="PING", message_id="78"), channel=0)
+        first_channels = list(self.sent_channels)
+        second = self.process(inbound_frame(body="PING", message_id="78"), channel=8)
+
+        self.assertEqual(2, len(first))
+        self.assertEqual([0, 0], first_channels)
+        self.assertEqual(1, len(second))
+        self.assertEqual([8], self.sent_channels)
+        self.assertEqual(b":W8IJC-7  :ack78", second[0].information)
+        self.assertEqual(["PING"], self.provider.commands)
+
     def test_reused_id_with_different_body_is_acked_but_not_executed(self):
         self.process(inbound_frame(body="PING", message_id="77"))
         second = self.process(inbound_frame(body="STATUS", message_id="77"))
@@ -412,8 +475,9 @@ class StoreAndAgentTests(unittest.TestCase):
         )
         sent = []
 
-        limited_agent.process(inbound_frame("W8IJC-7", "W8IJC-10", "PING", "91"), sent.append)
-        limited_agent.process(inbound_frame("W8IJC-7", "W8IJC-10", "PING", "91"), sent.append)
+        send_limited = lambda _channel, frame: sent.append(frame)
+        limited_agent.process(inbound_frame("W8IJC-7", "W8IJC-10", "PING", "91"), 8, send_limited)
+        limited_agent.process(inbound_frame("W8IJC-7", "W8IJC-10", "PING", "91"), 8, send_limited)
 
         self.assertEqual(2, len(sent))
         self.assertEqual(
@@ -433,6 +497,8 @@ class ConfigurationAndStatusTests(unittest.TestCase):
 
         self.assertIn('PCS_APRS_AGENT_ENABLED="no"', profile)
         self.assertIn('PCS_APRS_AGENT_ICHANNEL="8"', profile)
+        self.assertIn('PCS_APRS_AGENT_RF_ENABLED="no"', profile)
+        self.assertIn('PCS_APRS_AGENT_RF_CHANNEL="0"', profile)
         self.assertIn('echo "ICHANNEL ${PCS_APRS_AGENT_ICHANNEL}"', direwolf_setup)
         self.assertIn("validate_live_mapping", setup)
         self.assertIn('PCS_APRS_ENGINE}" != "direwolf"', setup)
@@ -447,12 +513,19 @@ class ConfigurationAndStatusTests(unittest.TestCase):
             "PCS APRS outbound state and retry queue are valid",
             (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8"),
         )
+        self.assertIn(
+            "PCS APRS Agent local RF route is explicitly enabled on guarded channel 0",
+            (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8"),
+        )
         for forbidden in ("Requires=direwolf", "Wants=direwolf", "PartOf=direwolf"):
             self.assertNotIn(forbidden, service)
-        self.assertIn("channel 0 remains RF", documentation)
+        self.assertIn("RF access is off by default", documentation)
+        self.assertIn("Dire Wolf performs normal channel", documentation)
         self.assertIn("not compatible with Graywolf", documentation)
         self.assertIn("source must match the reply recipient", documentation)
         self.assertIn("PCS_APRS_AGENT_OUTBOUND_RETRY_SECONDS", setup)
+        self.assertIn("APRS Agent RF access requires the guarded commissioned TX profile", setup)
+        self.assertIn("APRS Agent RF access requires a live guarded Dire Wolf PTT directive", setup)
         self.assertIn(
             "outbound_retry_seconds = 30,60,120,240",
             CONFIG_EXAMPLE_PATH.read_text(encoding="utf-8"),
@@ -497,6 +570,8 @@ class ConfigurationAndStatusTests(unittest.TestCase):
         config = pcs_aprs_agent.AgentConfig.load(CONFIG_EXAMPLE_PATH)
         self.assertEqual("127.0.0.1", config.kiss_host)
         self.assertEqual(8, config.kiss_channel)
+        self.assertFalse(config.rf_enabled)
+        self.assertEqual(0, config.rf_channel)
         self.assertEqual("W8IJC-10", config.callsign)
 
     def test_configuration_requires_loopback_kiss_and_non_radio_channel(self):
@@ -531,6 +606,29 @@ class ConfigurationAndStatusTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "state_db"):
+                pcs_aprs_agent.AgentConfig.load(path)
+
+            path.write_text(
+                "[agent]\n"
+                "callsign = W8IJC-10\n"
+                "kiss_host = 127.0.0.1\n"
+                "kiss_channel = 8\n"
+                "rf_enabled = yes\n"
+                "rf_channel = 1\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "physical radio channel 0"):
+                pcs_aprs_agent.AgentConfig.load(path)
+
+            path.write_text(
+                "[agent]\n"
+                "callsign = W8IJC-10\n"
+                "kiss_host = 127.0.0.1\n"
+                "kiss_channel = 8\n"
+                "rf_enabled = maybe\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(pcs_aprs_agent.ConfigError, "rf_enabled must be yes or no"):
                 pcs_aprs_agent.AgentConfig.load(path)
 
     def test_configuration_validates_bounded_nondecreasing_retry_schedule(self):
@@ -673,7 +771,7 @@ class ConfigurationAndStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             database = Path(temp_dir) / "state.sqlite3"
             store = pcs_aprs_agent.DedupStore(database, 3600, now=lambda: 100)
-            store.queue_outbound("W8IJC-7", "TEST", 100)
+            store.queue_outbound("W8IJC-7", "TEST", 100, 8)
             store.close()
 
             pcs_aprs_agent.validate_state_database(database, 100)
@@ -686,6 +784,43 @@ class ConfigurationAndStatusTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "outbound message state"):
                 pcs_aprs_agent.validate_state_database(database, 100)
+
+    def test_existing_outbound_schema_migrates_with_legacy_internet_channel(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "state.sqlite3"
+            connection = sqlite3.connect(database)
+            connection.execute(
+                """CREATE TABLE outbound_messages (
+                       message_id TEXT PRIMARY KEY,
+                       recipient TEXT NOT NULL,
+                       body TEXT NOT NULL,
+                       state TEXT NOT NULL,
+                       attempts INTEGER NOT NULL,
+                       created_at REAL NOT NULL,
+                       updated_at REAL NOT NULL,
+                       next_attempt_at REAL,
+                       last_sent_at REAL,
+                       completed_at REAL
+                   )"""
+            )
+            connection.execute(
+                "INSERT INTO outbound_messages VALUES "
+                "('ABCD', 'W8IJC-7', 'TEST', 'pending', 1, 10, 10, 20, 10, NULL)"
+            )
+            connection.commit()
+            connection.close()
+
+            store = pcs_aprs_agent.DedupStore(
+                database,
+                3600,
+                now=lambda: 20,
+                legacy_outbound_channel=7,
+            )
+            due = store.due_outbound()
+            store.close()
+
+            self.assertEqual(1, len(due))
+            self.assertEqual(7, due[0].kiss_channel)
 
 
 if __name__ == "__main__":

@@ -94,6 +94,8 @@ PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-0}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-0}"
 PCS_APRS_AGENT_ENABLED="${PCS_APRS_AGENT_ENABLED:-no}"
 PCS_APRS_AGENT_ICHANNEL="${PCS_APRS_AGENT_ICHANNEL:-8}"
+PCS_APRS_AGENT_RF_ENABLED="${PCS_APRS_AGENT_RF_ENABLED:-no}"
+PCS_APRS_AGENT_RF_CHANNEL="${PCS_APRS_AGENT_RF_CHANNEL:-0}"
 PCS_APRS_RADIO_INIT="${PCS_APRS_RADIO_INIT:-no}"
 PCS_APRS_FX25_TX="${PCS_APRS_FX25_TX:-no}"
 
@@ -1193,6 +1195,15 @@ case "${PCS_SETUP_APRS}" in
                 pass "pcs-aprs-agent.service is enabled and active"
             else
                 fail "PCS APRS Agent is selected but its service is not enabled and active"
+            fi
+            if [[ "${PCS_APRS_AGENT_RF_ENABLED}" == "yes" ]]; then
+                if [[ "${PCS_APRS_ACTIVE_MODE}" == "tx" && "${PCS_APRS_AGENT_RF_CHANNEL}" == "0" ]] \
+                    && sudo -n grep -Fxq "rf_enabled = yes" /etc/pcs/aprs-agent.conf \
+                    && sudo -n grep -Fxq "rf_channel = 0" /etc/pcs/aprs-agent.conf; then
+                    pass "PCS APRS Agent local RF route is explicitly enabled on guarded channel 0"
+                else
+                    fail "PCS APRS Agent RF route is selected without the guarded channel-0 TX profile"
+                fi
             fi
             if python3 - <<'PY'
 import json

@@ -45,6 +45,7 @@ COMMANDS = ("PING", "STATUS", "POWER", "LTE", "GPS", "TEMP", "NET", "UPTIME", "H
 COMMAND_ALIASES = {"S": "STATUS", "H": "HELP"}
 MAX_MAILBOX_TEXT = MAX_APRS_MESSAGE_TEXT - len("MSG ")
 DEFAULT_OUTBOUND_RETRY_SECONDS = (30, 60, 120, 240)
+SendAx25 = Callable[[int, bytes], None]
 
 
 class ConfigError(ValueError):
@@ -64,6 +65,15 @@ def parse_retry_seconds(value: str) -> tuple[int, ...]:
     return retry_seconds
 
 
+def parse_boolean(value: str, name: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "yes", "true", "on"}:
+        return True
+    if normalized in {"0", "no", "false", "off"}:
+        return False
+    raise ConfigError(f"{name} must be yes or no")
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     callsign: str = "W8IJC-10"
@@ -71,6 +81,8 @@ class AgentConfig:
     kiss_host: str = "127.0.0.1"
     kiss_port: int = 8001
     kiss_channel: int = 8
+    rf_enabled: bool = False
+    rf_channel: int = 0
     state_db: str = DEFAULT_STATE_DB
     status_file: str = DEFAULT_STATUS_FILE
     dedupe_ttl_seconds: int = 86400
@@ -98,6 +110,11 @@ class AgentConfig:
                 kiss_host=str(section.get("kiss_host", cls.kiss_host)).strip(),
                 kiss_port=int(section.get("kiss_port", cls.kiss_port)),
                 kiss_channel=int(section.get("kiss_channel", cls.kiss_channel)),
+                rf_enabled=parse_boolean(
+                    str(section.get("rf_enabled", "no")),
+                    "rf_enabled",
+                ),
+                rf_channel=int(section.get("rf_channel", cls.rf_channel)),
                 state_db=str(section.get("state_db", cls.state_db)).strip(),
                 status_file=str(section.get("status_file", cls.status_file)).strip(),
                 dedupe_ttl_seconds=int(section.get("dedupe_ttl_seconds", cls.dedupe_ttl_seconds)),
@@ -145,6 +162,8 @@ class AgentConfig:
             raise ConfigError("TCP ports must be between 1 and 65535")
         if not 1 <= self.kiss_channel <= 15:
             raise ConfigError("kiss_channel must be an Internet-only KISS channel from 1 through 15")
+        if self.rf_channel != 0:
+            raise ConfigError("rf_channel must be Dire Wolf physical radio channel 0")
         if not 60 <= self.dedupe_ttl_seconds <= 2_592_000:
             raise ConfigError("dedupe_ttl_seconds must be between 60 and 2592000")
         if not 1 <= self.mailbox_limit <= 1000:
@@ -167,6 +186,10 @@ class AgentConfig:
             raise ConfigError("outbound_max_pending must be between 1 and 1000")
         if not 3600 <= self.outbound_retention_seconds <= 2_592_000:
             raise ConfigError("outbound_retention_seconds must be between 3600 and 2592000")
+
+    @property
+    def receive_channels(self) -> tuple[int, ...]:
+        return (self.kiss_channel, self.rf_channel) if self.rf_enabled else (self.kiss_channel,)
 
 
 class KissDecoder:
@@ -335,6 +358,7 @@ class OutboundMessage:
     recipient: str
     body: str
     attempts: int
+    kiss_channel: int
 
 
 def parse_aprs_message(frame: Ax25Frame) -> AprsMessage | None:
@@ -484,6 +508,7 @@ def validate_state_database(path: str | Path, maximum_pending: int) -> None:
         invalid = connection.execute(
             "SELECT COUNT(*) FROM outbound_messages WHERE "
             "state NOT IN ('pending', 'acked', 'rejected', 'failed') OR attempts < 0 OR "
+            "kiss_channel NOT BETWEEN 0 AND 15 OR "
             "(state = 'pending' AND next_attempt_at IS NULL) OR "
             "(state != 'pending' AND next_attempt_at IS NOT NULL)"
         ).fetchone()[0]
@@ -499,7 +524,13 @@ def validate_state_database(path: str | Path, maximum_pending: int) -> None:
 class DedupStore:
     """Persist received identities, the bounded mailbox, and outbound IDs."""
 
-    def __init__(self, path: str | Path, ttl_seconds: int, now: Callable[[], float] = time.time) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        ttl_seconds: int,
+        now: Callable[[], float] = time.time,
+        legacy_outbound_channel: int = 8,
+    ) -> None:
         self.path = Path(path)
         self.ttl_seconds = ttl_seconds
         self.now = now
@@ -543,9 +574,24 @@ class DedupStore:
                    updated_at REAL NOT NULL,
                    next_attempt_at REAL,
                    last_sent_at REAL,
-                   completed_at REAL
+                   completed_at REAL,
+                   kiss_channel INTEGER NOT NULL
                )"""
         )
+        outbound_columns = {
+            str(row[1])
+            for row in self.connection.execute("PRAGMA table_info(outbound_messages)").fetchall()
+        }
+        if "kiss_channel" not in outbound_columns:
+            if not 0 <= legacy_outbound_channel <= 15:
+                raise ValueError("legacy outbound KISS channel must be between 0 and 15")
+            self.connection.execute(
+                "ALTER TABLE outbound_messages ADD COLUMN kiss_channel INTEGER NOT NULL DEFAULT 8"
+            )
+            self.connection.execute(
+                "UPDATE outbound_messages SET kiss_channel = ?",
+                (legacy_outbound_channel,),
+            )
         self.connection.execute(
             "CREATE INDEX IF NOT EXISTS outbound_due_idx "
             "ON outbound_messages(state, next_attempt_at)"
@@ -593,8 +639,16 @@ class DedupStore:
         with self.connection:
             return self._next_outbound_id_locked()
 
-    def queue_outbound(self, recipient: str, body: str, maximum_pending: int) -> OutboundMessage:
+    def queue_outbound(
+        self,
+        recipient: str,
+        body: str,
+        maximum_pending: int,
+        kiss_channel: int,
+    ) -> OutboundMessage:
         split_callsign(recipient)
+        if not 0 <= kiss_channel <= 15:
+            raise ValueError("outbound KISS channel must be between 0 and 15")
         with self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
             pending = self.connection.execute(
@@ -607,21 +661,22 @@ class DedupStore:
             current = self.now()
             self.connection.execute(
                 "INSERT INTO outbound_messages"
-                "(message_id, recipient, body, state, attempts, created_at, updated_at, next_attempt_at) "
-                "VALUES (?, ?, ?, 'pending', 0, ?, ?, ?)",
-                (message_id, recipient.upper(), normalized, current, current, current),
+                "(message_id, recipient, body, state, attempts, created_at, updated_at, "
+                "next_attempt_at, kiss_channel) "
+                "VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, ?)",
+                (message_id, recipient.upper(), normalized, current, current, current, kiss_channel),
             )
-        return OutboundMessage(message_id, recipient.upper(), normalized, 0)
+        return OutboundMessage(message_id, recipient.upper(), normalized, 0, kiss_channel)
 
     def due_outbound(self, limit: int = 10) -> list[OutboundMessage]:
         rows = self.connection.execute(
-            "SELECT message_id, recipient, body, attempts FROM outbound_messages "
+            "SELECT message_id, recipient, body, attempts, kiss_channel FROM outbound_messages "
             "WHERE state = 'pending' AND next_attempt_at <= ? "
             "ORDER BY next_attempt_at, created_at LIMIT ?",
             (self.now(), max(1, min(100, int(limit)))),
         ).fetchall()
         return [
-            OutboundMessage(str(row[0]), str(row[1]), str(row[2]), int(row[3]))
+            OutboundMessage(str(row[0]), str(row[1]), str(row[2]), int(row[3]), int(row[4]))
             for row in rows
         ]
 
@@ -684,7 +739,7 @@ class DedupStore:
         if include_messages:
             rows = self.connection.execute(
                 "SELECT message_id, recipient, body, state, attempts, created_at, updated_at, "
-                "next_attempt_at, last_sent_at, completed_at FROM outbound_messages "
+                "next_attempt_at, last_sent_at, completed_at, kiss_channel FROM outbound_messages "
                 "ORDER BY created_at DESC LIMIT ?",
                 (max(1, min(100, int(limit))),),
             ).fetchall()
@@ -700,6 +755,7 @@ class DedupStore:
                     "next_attempt_at": float(row[7]) if row[7] is not None else None,
                     "last_sent_at": float(row[8]) if row[8] is not None else None,
                     "completed_at": float(row[9]) if row[9] is not None else None,
+                    "kiss_channel": int(row[10]),
                 }
                 for row in rows
             ]
@@ -1129,27 +1185,31 @@ class AprsAgent:
     def _transmit_outbound(
         self,
         outbound: OutboundMessage,
-        send_ax25: Callable[[bytes], None],
+        send_ax25: SendAx25,
     ) -> None:
         information = aprs_reply_information(
             outbound.recipient,
             outbound.body,
             outbound.message_id,
         )
-        send_ax25(encode_ax25_ui(self.config.callsign, self.config.tocall, information))
+        send_ax25(
+            outbound.kiss_channel,
+            encode_ax25_ui(self.config.callsign, self.config.tocall, information),
+        )
         state = self.store.note_outbound_sent(
             outbound.message_id,
             self.config.outbound_retry_seconds,
         )
         LOG.info(
-            "Sent APRS message to %s id=%s attempt=%d state=%s",
+            "Sent APRS message to %s id=%s channel=%d attempt=%d state=%s",
             outbound.recipient,
             outbound.message_id,
+            outbound.kiss_channel,
             outbound.attempts + 1,
             state,
         )
 
-    def retry_due(self, send_ax25: Callable[[bytes], None]) -> int:
+    def retry_due(self, send_ax25: SendAx25) -> int:
         due = self.store.due_outbound()
         for outbound in due:
             self._transmit_outbound(outbound, send_ax25)
@@ -1172,7 +1232,10 @@ class AprsAgent:
                 receipt.message_id,
             )
 
-    def process(self, raw_ax25: bytes, send_ax25: Callable[[bytes], None]) -> None:
+    def process(self, raw_ax25: bytes, ingress_channel: int, send_ax25: SendAx25) -> None:
+        if ingress_channel not in self.config.receive_channels:
+            LOG.warning("Ignored APRS frame from unconfigured KISS channel %d", ingress_channel)
+            return
         try:
             frame = decode_ax25_ui(raw_ax25)
             frame = unwrap_direwolf_ichannel(frame)
@@ -1200,7 +1263,10 @@ class AprsAgent:
         if self.reporter is not None:
             self.reporter.message_received()
         ack = aprs_ack_information(message.sender, message.message_id)
-        send_ax25(encode_ax25_ui(self.config.callsign, self.config.tocall, ack))
+        send_ax25(
+            ingress_channel,
+            encode_ax25_ui(self.config.callsign, self.config.tocall, ack),
+        )
 
         if not self.limiter.allow(message.sender):
             LOG.warning("Rate limit suppressed APRS command handling for %s", message.sender)
@@ -1223,7 +1289,13 @@ class AprsAgent:
             return
 
         command_label = command if command in COMMANDS else "<unknown>"
-        LOG.info("Handling APRS request from %s id=%s command=%s", message.sender, message.message_id, command_label)
+        LOG.info(
+            "Handling APRS request from %s id=%s channel=%d command=%s",
+            message.sender,
+            message.message_id,
+            ingress_channel,
+            command_label,
+        )
         if command == "MSG":
             try:
                 if not separator or not mailbox_text.strip():
@@ -1251,6 +1323,7 @@ class AprsAgent:
                 message.sender,
                 response,
                 self.config.outbound_max_pending,
+                ingress_channel,
             )
         except RuntimeError:
             LOG.error("Outbound APRS queue is full; reply to %s was not queued", message.sender)
@@ -1277,8 +1350,8 @@ class AgentRuntime:
         decoder = KissDecoder()
         connection.settimeout(1.0)
 
-        def send_ax25(frame: bytes) -> None:
-            connection.sendall(encode_kiss(self.config.kiss_channel, frame))
+        def send_ax25(channel: int, frame: bytes) -> None:
+            connection.sendall(encode_kiss(channel, frame))
 
         while not self.stop_event.is_set():
             self.agent.retry_due(send_ax25)
@@ -1294,10 +1367,10 @@ class AgentRuntime:
                     continue
                 command = kiss_frame[0]
                 channel = command >> 4
-                if (command & 0x0F) != KISS_DATA or channel != self.config.kiss_channel:
+                if (command & 0x0F) != KISS_DATA or channel not in self.config.receive_channels:
                     continue
                 self.agent.note_packet_received()
-                self.agent.process(kiss_frame[1:], send_ax25)
+                self.agent.process(kiss_frame[1:], channel, send_ax25)
 
     def run(self) -> None:
         delay = 1
@@ -1319,10 +1392,10 @@ class AgentRuntime:
                 ) as connection:
                     self.agent.set_runtime_state("connected")
                     LOG.info(
-                        "Connected to local Dire Wolf KISS %s:%d on Internet channel %d",
+                        "Connected to local Dire Wolf KISS %s:%d on channels %s",
                         self.config.kiss_host,
                         self.config.kiss_port,
-                        self.config.kiss_channel,
+                        ",".join(str(channel) for channel in self.config.receive_channels),
                     )
                     delay = 1
                     self._serve_connection(connection)
@@ -1356,9 +1429,11 @@ def main(arguments: Iterable[str] | None = None) -> int:
         LOG.error("%s", exc)
         return 2
     if args.check_config:
+        rf_route = f"RF channel {config.rf_channel} enabled" if config.rf_enabled else "RF disabled"
         print(
             f"APRS agent configuration is valid for {config.callsign}; "
-            f"local KISS {config.kiss_host}:{config.kiss_port} ICHANNEL {config.kiss_channel}."
+            f"local KISS {config.kiss_host}:{config.kiss_port} "
+            f"APRS-IS channel {config.kiss_channel}; {rf_route}."
         )
         return 0
 
@@ -1397,7 +1472,11 @@ def main(arguments: Iterable[str] | None = None) -> int:
         LOG.error("APRS mailbox database is unavailable")
         return 1
 
-    store = DedupStore(config.state_db, config.dedupe_ttl_seconds)
+    store = DedupStore(
+        config.state_db,
+        config.dedupe_ttl_seconds,
+        legacy_outbound_channel=config.kiss_channel,
+    )
     if args.mark_mailbox_read:
         try:
             marked = store.mark_mailbox_read()

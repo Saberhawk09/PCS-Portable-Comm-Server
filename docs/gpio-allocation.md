@@ -141,7 +141,7 @@ data. The chain is configured for 800 kHz GRB ordering and a global brightness
 of 32/255, so the status display remains subdued. The daemon rewrites the chain
 only when a status color changes and turns all six pixels off during a clean
 service stop.
-While APRS mail is unread, pixel 3 briefly pulses white on each poll and then
+While APRS mail is unread, pixel 3 briefly pulses white once per second and then
 returns to its normal local-services color; the underlying six pixel meanings
 do not change.
 
@@ -169,8 +169,11 @@ no active uplink, and unavailable GPS fix. The OpenWrt fault uses the Wi-Fi
 symbol and critical severity; Pi-Star uses a dedicated raspberry symbol and
 warning severity. Local systemd failures remain critical. Detailed live values
 remain on the LCD.
-Unread APRS mail prepends a letter/envelope icon to this rotation. It is an
-informational frame and does not create a warning or fault by itself.
+Unread APRS mail alternates a letter/envelope icon with the normal checkmark
+when the system is otherwise healthy. Both use intensity 1. When a real warning
+or fault exists, the envelope precedes the alert frames and the healthy
+checkmark remains suppressed. Mail is informational and does not create a
+warning or fault by itself.
 The healthy checkmark uses intensity 1; warning and critical frames use
 intensity 10 out of the MAX7219's 0-15 range. The matrix service owns only
 `/dev/spidev0.0`; it does not request or drive PTT, UART, fan, LCD, or WS2812

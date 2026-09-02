@@ -595,9 +595,12 @@ class PcsGpioTests(unittest.TestCase):
 
     def test_unread_aprs_mailbox_prepends_letter_icon(self):
         frames = pcs_gpio.matrix_alert_frames((), mailbox_unread=2)
-        self.assertEqual([frame.rows for frame in frames], [pcs_gpio.LETTER_ICON])
+        self.assertEqual(
+            [frame.rows for frame in frames],
+            [pcs_gpio.LETTER_ICON, pcs_gpio.CHECK_ICON],
+        )
         self.assertEqual(frames[0].metric, "aprs_mailbox")
-        self.assertEqual(frames[0].intensity, 5)
+        self.assertEqual([frame.intensity for frame in frames], [1, 1])
 
     def test_matrix_annunciator_prioritizes_critical_and_warning_conditions(self):
         self.assertEqual(
@@ -768,6 +771,7 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(leds.frames[0][pcs_gpio.APRS_MESSAGE_PIXEL], pcs_gpio.LED_MESSAGE)
         self.assertEqual(leds.frames[1], stable)
         self.assertEqual(sleeps, [pcs_gpio.APRS_MESSAGE_FLASH_SECONDS])
+        self.assertEqual(pcs_gpio.WS2812_POLL_SECONDS, 1.0)
 
     def test_temperature_unit_frame_is_degree_c_not_thermometer(self):
         self.assertEqual(len(pcs_gpio.DEGREE_C_ICON), 8)

@@ -62,7 +62,7 @@ WS2812_COUNT = 6
 WS2812_FREQUENCY_HZ = 800_000
 WS2812_DMA_CHANNEL = 10
 WS2812_BRIGHTNESS = 32
-WS2812_POLL_SECONDS = 3.0
+WS2812_POLL_SECONDS = 1.0
 APRS_MESSAGE_FLASH_SECONDS = 0.25
 APRS_MESSAGE_PIXEL = 3
 WS2812_PYTHON_PATH = Path("/opt/pcs-gpio-leds/bin/python")
@@ -1444,7 +1444,9 @@ def matrix_alert_frames(
 ) -> tuple[StatsFrame, ...]:
     frames: list[StatsFrame] = []
     if mailbox_unread > 0:
-        frames.append(StatsFrame("aprs_mailbox", "message", LETTER_ICON, 5))
+        frames.append(StatsFrame("aprs_mailbox", "message", LETTER_ICON, 1))
+        if not alerts:
+            frames.append(StatsFrame("system_health", "healthy", CHECK_ICON, 1))
     if not alerts and not frames:
         return (StatsFrame("system_health", "healthy", CHECK_ICON, 1),)
     for alert in alerts:

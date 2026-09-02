@@ -32,6 +32,8 @@ PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
 PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-W8IJC-10}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-8001}"
 PCS_APRS_AGENT_ICHANNEL="${PCS_APRS_AGENT_ICHANNEL:-8}"
+PCS_APRS_AGENT_RF_ENABLED="${PCS_APRS_AGENT_RF_ENABLED:-no}"
+PCS_APRS_AGENT_RF_CHANNEL="${PCS_APRS_AGENT_RF_CHANNEL:-0}"
 PCS_APRS_AGENT_TOCALL="${PCS_APRS_AGENT_TOCALL:-APZPCS}"
 PCS_APRS_AGENT_DEDUPE_TTL_SECONDS="${PCS_APRS_AGENT_DEDUPE_TTL_SECONDS:-86400}"
 PCS_APRS_AGENT_MAILBOX_LIMIT="${PCS_APRS_AGENT_MAILBOX_LIMIT:-100}"
@@ -64,6 +66,8 @@ tocall = ${PCS_APRS_AGENT_TOCALL}
 kiss_host = 127.0.0.1
 kiss_port = ${PCS_APRS_KISS_PORT}
 kiss_channel = ${PCS_APRS_AGENT_ICHANNEL}
+rf_enabled = ${PCS_APRS_AGENT_RF_ENABLED}
+rf_channel = ${PCS_APRS_AGENT_RF_CHANNEL}
 state_db = /var/lib/pcs-aprs-agent/state.sqlite3
 status_file = /run/pcs-aprs-agent/status.json
 dedupe_ttl_seconds = ${PCS_APRS_AGENT_DEDUPE_TTL_SECONDS}
@@ -89,6 +93,18 @@ validate_live_mapping() {
         echo "ERROR: the APRS agent requires PCS_APRS_ENGINE=direwolf; ${PCS_APRS_ENGINE} is selected." >&2
         return 1
     fi
+    if [[ "${PCS_APRS_AGENT_RF_ENABLED}" != "yes" && "${PCS_APRS_AGENT_RF_ENABLED}" != "no" ]]; then
+        echo "ERROR: PCS_APRS_AGENT_RF_ENABLED must be yes or no." >&2
+        return 1
+    fi
+    if [[ "${PCS_APRS_AGENT_RF_CHANNEL}" != "0" ]]; then
+        echo "ERROR: the commissioned PCS physical radio is Dire Wolf channel 0." >&2
+        return 1
+    fi
+    if [[ "${PCS_APRS_AGENT_RF_ENABLED}" == "yes" && "${PCS_APRS_ACTIVE_MODE:-staged}" != "tx" ]]; then
+        echo "ERROR: APRS Agent RF access requires the guarded commissioned TX profile." >&2
+        return 1
+    fi
     if ! systemctl is-active --quiet direwolf.service; then
         echo "ERROR: direwolf.service must be active before the APRS agent is installed or started." >&2
         return 1
@@ -103,6 +119,11 @@ validate_live_mapping() {
     fi
     if ! sudo grep -Eq "^ICHANNEL[[:space:]]+${PCS_APRS_AGENT_ICHANNEL}$" "${DIREWOLF_CONFIG}"; then
         echo "ERROR: live Dire Wolf does not map ICHANNEL ${PCS_APRS_AGENT_ICHANNEL}." >&2
+        return 1
+    fi
+    if [[ "${PCS_APRS_AGENT_RF_ENABLED}" == "yes" ]] \
+        && ! sudo grep -Eq '^PTT[[:space:]]+' "${DIREWOLF_CONFIG}"; then
+        echo "ERROR: APRS Agent RF access requires a live guarded Dire Wolf PTT directive." >&2
         return 1
     fi
 }
