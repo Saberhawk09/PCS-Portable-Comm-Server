@@ -25,6 +25,7 @@ APRS_AUDIO = ROOT / "scripts" / "pcs-aprs-audio.sh"
 APRS_AUDIO_SERVICE = ROOT / "systemd" / "pcs-aprs-audio.service"
 APRS_AUDIO_REFRESH_SERVICE = ROOT / "systemd" / "pcs-aprs-audio-refresh.service"
 APRS_AUDIO_UDEV_RULE = ROOT / "udev" / "99-pcs-aprs-audio.rules"
+SELF_TEST = ROOT / "scripts" / "pcs-self-test.sh"
 
 
 class DireWolfAprsTests(unittest.TestCase):
@@ -44,7 +45,19 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertIn('ExecStopPost=+/usr/bin/systemctl --no-block start pcs-aprs-ptt-safe.service', override)
         self.assertIn('restart_direwolf_with_ptt_guard()', setup)
         self.assertIn('sudo "${PTT_SAFE_DST}" --check', setup)
+        self.assertIn('systemctl disable pcs-aprs-ptt-safe.service', setup)
+        self.assertIn('enable --now pcs-aprs-ptt-safe.service', setup)
         self.assertIn('PCS_APRS_PTT_LINE=%q', setup)
+
+        self_test = SELF_TEST.read_text(encoding="utf-8")
+        self.assertIn(
+            "Selected active APRS engine conflicts with the boot-enabled or active PTT guard",
+            self_test,
+        )
+        self.assertIn(
+            "PTT guard is boot-disabled while the selected APRS engine owns GPIO6",
+            self_test,
+        )
 
     def test_repository_template_is_safe_by_default(self):
         content = TEMPLATE.read_text(encoding="utf-8")

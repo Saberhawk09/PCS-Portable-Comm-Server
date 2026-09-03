@@ -132,7 +132,7 @@ the Pi-side `DATA IN` end:
 | 0 | Pi CPU temperature | Green | Amber at 75 C; red at 85 C |
 | 1 | Root filesystem use | Green | Amber at 85%; red at 95% |
 | 2 | Primary USB storage | Green when mounted | Amber when missing |
-| 3 | Local services / configured Pi-Star dependency | Green when local services are healthy and Pi-Star is reachable or not configured | Amber when configured Pi-Star is unreachable; red when one or more local systemd units fail |
+| 3 | Local services, APRS agent, and configured Pi-Star dependency | Green when local services and APRS are healthy and Pi-Star is reachable or not configured | Amber when configured Pi-Star is unreachable; red when APRS reports an error or one or more local systemd units fail |
 | 4 | Active network uplink / OpenWrt AP | Green for Cellular or WiFi when the AP is reachable | Amber when the uplink is offline; red when the OpenWrt AP is offline |
 | 5 | GPS fix | Green when locked | Amber for no fix |
 
@@ -164,6 +164,7 @@ indicates normal operation. Every warning shows an `!` followed by the
 affected subsystem icon; every critical fault shows an `X` followed by the
 subsystem icon. Alert sources are CPU temperature (75/85 C warning/critical),
 root-disk use (85/95 percent), missing primary USB storage, failed systemd units,
+an unavailable or unhealthy APRS agent,
 an unreachable OpenWrt AP/switch, a configured but unreachable Pi-Star hotspot,
 no active uplink, and unavailable GPS fix. The OpenWrt fault uses the Wi-Fi
 symbol and critical severity; Pi-Star uses a dedicated raspberry symbol and

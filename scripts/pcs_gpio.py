@@ -1298,6 +1298,8 @@ def collect_matrix_health() -> MatrixHealthSnapshot:
 
 def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
     alerts: list[MatrixAlert] = []
+    if snapshot.stats.aprs_status != "ok":
+        alerts.append(MatrixAlert("aprs_agent", "critical", SERVICE_ICON))
     temperature = snapshot.stats.temperature_c
     if temperature is not None and temperature >= TEMPERATURE_CRITICAL_C:
         alerts.append(MatrixAlert("cpu_temperature", "critical", DEGREE_C_ICON))
@@ -1354,7 +1356,9 @@ def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator,
     else:
         primary_usb = ("missing", LED_WARNING)
 
-    if snapshot.failed_services is None:
+    if snapshot.stats.aprs_status != "ok":
+        services = ("aprs_error", LED_CRITICAL)
+    elif snapshot.failed_services is None:
         services = ("unknown", LED_UNKNOWN)
     elif snapshot.failed_services > 0:
         services = ("failed", LED_CRITICAL)

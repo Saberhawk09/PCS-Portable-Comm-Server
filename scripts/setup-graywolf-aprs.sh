@@ -368,6 +368,9 @@ activate() {
     sudo systemctl disable --now direwolf.service >/dev/null 2>&1 || true
     sudo systemctl mask direwolf.service >/dev/null
     sudo systemctl unmask graywolf.service >/dev/null
+    # Keep the guard available for explicit failure handling, but remove its
+    # boot target link before the selected engine becomes persistent.
+    sudo systemctl disable pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
     if ! sudo systemctl start graywolf.service || ! wait_for_graywolf_api \
         || ! sudo "${PROFILE_DST}" activate \
             --base-url "http://${PCS_GRAYWOLF_HTTP_ADDRESS}:${PCS_GRAYWOLF_HTTP_PORT}" \
@@ -406,10 +409,15 @@ rollback_direwolf() {
     sudo systemctl disable --now graywolf.service >/dev/null 2>&1 || true
     sudo systemctl mask graywolf.service >/dev/null
     sudo install -o graywolf -g graywolf -m 0640 "${backup_file}" /var/lib/graywolf/graywolf.db
-    sudo systemctl enable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1
+    sudo systemctl start pcs-aprs-ptt-safe.service
     sudo "${PTT_SAFE_DST}" --check
     sudo systemctl unmask direwolf.service >/dev/null
-    sudo systemctl enable --now direwolf.service
+    sudo systemctl enable direwolf.service
+    if ! sudo systemctl start direwolf.service; then
+        sudo systemctl enable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
+        return 1
+    fi
+    sudo systemctl disable pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
     set_install_config_value "PCS_APRS_ENGINE" "direwolf"
     set_install_config_value "PCS_SETUP_APRS" "yes"
     set_install_config_value "PCS_APRS_ACTIVE_MODE" "tx"
