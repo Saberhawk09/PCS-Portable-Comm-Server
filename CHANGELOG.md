@@ -2,6 +2,18 @@
 
 All notable user-facing PCS changes are recorded here.
 
+## [1.7.1] - 2026-09-03
+
+### Fixed
+
+- prevent the GPIO6 PTT safety guard from competing with the selected APRS
+  engine through `multi-user.target`; the guard remains available for explicit
+  safe handoffs and is re-enabled automatically if an engine start fails
+- treat an unavailable or unhealthy APRS agent as a critical local fault on
+  WS2812 pixel 3 and the MAX7219 matrix instead of reporting it only on the LCD
+- fail the PCS self-test when an active APRS engine and the PTT guard are both
+  enabled or active, so the conflicting boot state cannot pass validation
+
 ## [1.7] - 2026-09-02
 
 ### Added
