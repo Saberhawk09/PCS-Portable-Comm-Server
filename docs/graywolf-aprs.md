@@ -142,6 +142,10 @@ Both engine overrides conflict with the PTT guard and start it after the engine
 stops. This is a software fail-safe for the active-high EasyDigi input; it does
 not replace a supervised physical key/unkey test. A failed or interrupted test
 must leave both engines stopped and the guard verified as the GPIO6 consumer.
+The guard is enabled at boot only while APRS is staged with no active engine.
+When Dire Wolf or Graywolf is selected, the guard remains explicitly startable
+for stop/failure handling but is disabled as a boot target so it cannot race the
+selected engine through `multi-user.target`.
 
 Do not store Graywolf administrator credentials or other protected deployment
 state in Git. Its SQLite databases are local appliance state, not repository

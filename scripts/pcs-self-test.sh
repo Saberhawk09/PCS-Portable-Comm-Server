@@ -1033,6 +1033,11 @@ case "${PCS_SETUP_APRS}" in
         fi
         ;;
     yes)
+        if service_enabled pcs-aprs-ptt-safe.service || service_active pcs-aprs-ptt-safe.service; then
+            fail "Selected active APRS engine conflicts with the boot-enabled or active PTT guard"
+        else
+            pass "PTT guard is boot-disabled while the selected APRS engine owns GPIO6"
+        fi
         if [[ "${PCS_APRS_ENGINE}" == "graywolf" ]]; then
             if command_exists graywolf && command_exists graywolf-modem; then
                 pass "Graywolf binaries are installed"

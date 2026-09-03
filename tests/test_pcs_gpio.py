@@ -167,7 +167,9 @@ class PcsGpioTests(unittest.TestCase):
 
     def test_startup_readiness_is_healthy_only_when_alerts_are_absent(self):
         healthy = pcs_gpio.MatrixHealthSnapshot(
-            stats=pcs_gpio.StatsSnapshot(40, 20, 8, True, network_uplink="WiFi"),
+            stats=pcs_gpio.StatsSnapshot(
+                40, 20, 8, True, network_uplink="WiFi", aprs_status="ok"
+            ),
             root_used_percent=20,
             primary_usb_mounted=True,
             failed_services=0,
@@ -175,7 +177,9 @@ class PcsGpioTests(unittest.TestCase):
             router_online=True,
         )
         warning = pcs_gpio.MatrixHealthSnapshot(
-            stats=pcs_gpio.StatsSnapshot(40, 20, 0, False, network_uplink="Offline"),
+            stats=pcs_gpio.StatsSnapshot(
+                40, 20, 0, False, network_uplink="Offline", aprs_status="ok"
+            ),
             root_used_percent=20,
             primary_usb_mounted=True,
             failed_services=0,
@@ -453,14 +457,18 @@ class PcsGpioTests(unittest.TestCase):
             )
 
     def test_lcd_warnings_append_explanation_pages(self):
-        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
         health = pcs_gpio.MatrixHealthSnapshot(stats, 20, False, 0)
         pages = pcs_gpio.lcd_health_pages(health, 93784)
         self.assertEqual(pages[:7], pcs_gpio.lcd_status_pages(stats, 93784))
         self.assertEqual(pages[7:], (("WARNING", "USB NOT MOUNTED"),))
 
     def test_configured_offline_pistar_warns_on_all_gpio_displays(self):
-        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
         health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, False)
 
         alerts = pcs_gpio.matrix_alerts(health)
@@ -487,7 +495,9 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(failed_service_led.color, pcs_gpio.LED_CRITICAL)
 
     def test_offline_openwrt_router_faults_on_all_gpio_displays(self):
-        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
         health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, True, False)
 
         alerts = pcs_gpio.matrix_alerts(health)
@@ -513,7 +523,9 @@ class PcsGpioTests(unittest.TestCase):
         self.assertNotIn('warn "OpenWrt AP does not respond', self_test)
 
     def test_lcd_hard_faults_replace_normal_status_pages(self):
-        stats = pcs_gpio.StatsSnapshot(86, 12, 0, False, False, 0, "Offline", 0, None)
+        stats = pcs_gpio.StatsSnapshot(
+            86, 12, 0, False, False, 0, "Offline", 0, None, aprs_status="ok"
+        )
         health = pcs_gpio.MatrixHealthSnapshot(stats, 96, False, 2)
         pages = pcs_gpio.lcd_health_pages(health, 93784)
         self.assertEqual(pages, (
@@ -536,7 +548,9 @@ class PcsGpioTests(unittest.TestCase):
                 pass
 
         lcd = FakeLcd()
-        stats = pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs")
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
         snapshot = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0)
         output = io.StringIO()
         with redirect_stdout(output):
@@ -582,7 +596,9 @@ class PcsGpioTests(unittest.TestCase):
 
     def test_healthy_matrix_annunciator_uses_dim_checkmark_only(self):
         health = pcs_gpio.MatrixHealthSnapshot(
-            pcs_gpio.StatsSnapshot(39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs"),
+            pcs_gpio.StatsSnapshot(
+                39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs", aprs_status="ok"
+            ),
             20,
             True,
             0,
@@ -602,13 +618,36 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(frames[0].metric, "aprs_mailbox")
         self.assertEqual([frame.intensity for frame in frames], [1, 1])
 
+    def test_aprs_error_faults_matrix_and_local_service_led(self):
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(
+                39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs",
+                "warn", None, None, None, None,
+            ),
+            20,
+            True,
+            0,
+        )
+
+        alerts = pcs_gpio.matrix_alerts(health)
+        self.assertEqual(
+            [(alert.name, alert.severity, alert.icon) for alert in alerts],
+            [("aprs_agent", "critical", pcs_gpio.SERVICE_ICON)],
+        )
+        frames = pcs_gpio.matrix_alert_frames(alerts)
+        self.assertEqual([frame.rows for frame in frames], [pcs_gpio.X_ICON, pcs_gpio.SERVICE_ICON])
+        service_led = pcs_gpio.led_status_indicators(health)[3]
+        self.assertEqual((service_led.state, service_led.color), ("aprs_error", pcs_gpio.LED_CRITICAL))
+
     def test_matrix_annunciator_prioritizes_critical_and_warning_conditions(self):
         self.assertEqual(
             pcs_gpio.EXCLAMATION_ICON,
             (0x18, 0x18, 0x18, 0x18, 0x18, 0x00, 0x18, 0x18),
         )
         health = pcs_gpio.MatrixHealthSnapshot(
-            pcs_gpio.StatsSnapshot(86, 12, 0, False, False, 0, "Offline", 0, None),
+            pcs_gpio.StatsSnapshot(
+                86, 12, 0, False, False, 0, "Offline", 0, None, aprs_status="ok"
+            ),
             96,
             False,
             2,
@@ -654,7 +693,9 @@ class PcsGpioTests(unittest.TestCase):
 
         matrix = FakeMatrix()
         health = pcs_gpio.MatrixHealthSnapshot(
-            pcs_gpio.StatsSnapshot(39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs"),
+            pcs_gpio.StatsSnapshot(
+                39, 12, 7, True, False, 5, "WiFi", 1, "EN91qs", aprs_status="ok"
+            ),
             20,
             True,
             0,
@@ -673,7 +714,9 @@ class PcsGpioTests(unittest.TestCase):
 
     def test_led_status_has_one_stable_responsibility_per_pixel(self):
         health = pcs_gpio.MatrixHealthSnapshot(
-            pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs"),
+            pcs_gpio.StatsSnapshot(
+                39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+            ),
             20,
             True,
             0,
@@ -695,7 +738,10 @@ class PcsGpioTests(unittest.TestCase):
 
     def test_led_status_uses_fault_warning_and_unknown_colors(self):
         health = pcs_gpio.MatrixHealthSnapshot(
-            pcs_gpio.StatsSnapshot(86, 12, None, None, False, None, "Offline", 0, None),
+            pcs_gpio.StatsSnapshot(
+                86, 12, None, None, False, None, "Offline", 0, None,
+                aprs_status="ok",
+            ),
             90,
             False,
             2,
@@ -721,7 +767,10 @@ class PcsGpioTests(unittest.TestCase):
                 pass
 
         health = pcs_gpio.MatrixHealthSnapshot(
-            pcs_gpio.StatsSnapshot(39, 12, 21, True, True, 14, "Cellular", 1, "EN91qs"),
+            pcs_gpio.StatsSnapshot(
+                39, 12, 21, True, True, 14, "Cellular", 1, "EN91qs",
+                aprs_status="ok",
+            ),
             20,
             True,
             0,

@@ -187,7 +187,10 @@ Activation installs shared support services and a Dire Wolf override:
    on loopback or `eth0` from `10.42.0.0/24` and drops both ports elsewhere.
 4. `pcs-aprs-ptt-safe.service` owns GPIO6 as an output low with a pull-down
    whenever neither APRS engine is running. Both engine overrides conflict with
-   the guard and start it again after an engine stops.
+   the guard and start it again after an engine stops. The guard is enabled as a
+   boot target only in the staged/no-engine state. With Dire Wolf selected it
+   remains explicitly startable for safe handoffs, but is boot-disabled so it
+   cannot race Dire Wolf through `multi-user.target`.
 5. `direwolf.service` starts after the radio/audio/firewall services, gpsd,
    sound, and
    `network-online.target`. Its pre-start hooks reapply both the radio and audio

@@ -1746,9 +1746,13 @@ restart_direwolf_with_ptt_guard() {
     sudo systemctl stop direwolf.service
     sudo systemctl start pcs-aprs-ptt-safe.service
     sudo "${PTT_SAFE_DST}" --check
+    # A disabled guard can still be started explicitly by this handoff and by
+    # ExecStopPost.  It must not also compete with the selected engine through
+    # multi-user.target on the next boot.
+    sudo systemctl disable pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
     sudo systemctl stop pcs-aprs-ptt-safe.service
     if ! sudo systemctl start direwolf.service; then
-        sudo systemctl start pcs-aprs-ptt-safe.service || true
+        sudo systemctl enable --now pcs-aprs-ptt-safe.service || true
         return 1
     fi
 }
