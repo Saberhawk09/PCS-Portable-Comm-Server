@@ -232,9 +232,10 @@ shared `pcs-gpio-startup.service`. At boot the LCD shows `PCS Booting Up` and
 lights every pixel before checkerboard frames. Boot states remain for at most
 90 seconds while the ordinary health inputs settle. The service hands off
 early when no alerts remain and always hands off on timeout so persistent
-faults stay visible. When the optional buzzer is active, a successful early
-healthy handoff requests one OK chime. The chime is intentionally suppressed
-when the grace period expires or a boot-indicator write failed.
+faults stay visible. When the optional buzzer is active, it waits independently
+for the first fresh all-clear health snapshot to remain stable for five seconds
+and then plays one OK chime. This still works when readiness arrives after the
+90-second visual handoff, and later routine recoveries do not replay the chime.
 
 The installers also register the device with `pcs-gpio-shutdown.service`. The
 shutdown service is ordered before the startup and normal display daemons,

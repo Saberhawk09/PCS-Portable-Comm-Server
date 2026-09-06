@@ -13,8 +13,9 @@ All notable user-facing PCS changes are recorded here.
 - active-low GPIO13 passive-buzzer service with named POST/OK/WARN/BAD/low-
   voltage patterns, priority arbitration, web/API mute controls, and debounced
   responses to every warning/critical condition used by the visual indicators
-- one-shot pleasant OK chime when boot health reaches the fully ready handoff;
-  timeout or indicator-write failure paths remain silent
+- one-shot pleasant OK chime after the first fresh all-clear health state has
+  remained stable for five seconds, including readiness after the boot grace
+  period; later routine fault recoveries do not replay the boot chime
 - power health and countdown data in the public/admin dashboards, Stats API,
   status output, and optional-aware self-test
 

@@ -99,15 +99,15 @@ def read_json(path: Path) -> dict:
         return {}
 
 
-def raw_health_pattern(now: float | None = None) -> str:
+def read_health_pattern(now: float | None = None) -> str | None:
     now = time.time() if now is None else now
     health = read_json(HEALTH_PATH)
     updated = health.get("updated_at_epoch")
     if not isinstance(updated, (int, float)) or updated > now + 5 or now - updated > HEALTH_MAX_AGE_SECONDS:
-        return "silent"
+        return None
     alerts = health.get("alerts")
     if not isinstance(alerts, list):
-        return "silent"
+        return None
     severities = {
         alert.get("severity")
         for alert in alerts
@@ -118,6 +118,10 @@ def raw_health_pattern(now: float | None = None) -> str:
     if "warning" in severities:
         return "warn"
     return "silent"
+
+
+def raw_health_pattern(now: float | None = None) -> str:
+    return read_health_pattern(now) or "silent"
 
 
 @dataclass
@@ -133,6 +137,25 @@ class HealthDebouncer:
         elif pattern != self.confirmed and now - self.candidate_since >= HEALTH_DEBOUNCE_SECONDS:
             self.confirmed = pattern
         return self.confirmed
+
+
+@dataclass
+class OnlineChimeGuard:
+    pending: bool = True
+    healthy_since: float | None = None
+
+    def should_play(self, *, health_available: bool, raw_health: str, effective_pattern: str, now: float) -> bool:
+        if not self.pending:
+            return False
+        if health_available and raw_health == "silent" and effective_pattern == "silent":
+            if self.healthy_since is None:
+                self.healthy_since = now
+            elif now - self.healthy_since >= HEALTH_DEBOUNCE_SECONDS:
+                self.pending = False
+                return True
+        else:
+            self.healthy_since = None
+        return False
 
 
 def requested_pattern(now: float | None = None, health_pattern: str = "silent") -> str:
@@ -167,12 +190,19 @@ def play(output: Output, pattern: str, *, sleeper: Callable[[float], None] = tim
 def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> None:
     stopped = False
     health = HealthDebouncer()
+    online_chime = OnlineChimeGuard()
+    health_available = False
+    raw_health = "silent"
     def stop(_signum, _frame):
         nonlocal stopped
         stopped = True
     def current_pattern() -> str:
+        nonlocal health_available, raw_health
         now = time.time()
-        confirmed_health = health.update(raw_health_pattern(now), now)
+        sample = read_health_pattern(now)
+        health_available = sample is not None
+        raw_health = sample or "silent"
+        confirmed_health = health.update(raw_health, now)
         return requested_pattern(now, confirmed_health)
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
@@ -181,6 +211,16 @@ def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> N
         last = "silent"
         while not stopped:
             pattern = current_pattern()
+            now = time.time()
+            if online_chime.should_play(
+                health_available=health_available,
+                raw_health=raw_health,
+                effective_pattern=pattern,
+                now=now,
+            ):
+                play(output, "ok", sleeper=sleeper, interrupted=lambda: stopped)
+                last = "ok"
+                continue
             if pattern in {"low_voltage", "bad", "warn"}:
                 play(output, pattern, sleeper=sleeper, interrupted=lambda: stopped or PRIORITY[current_pattern()] > PRIORITY[pattern])
             elif pattern in {"ok", "post"} and pattern != last:
