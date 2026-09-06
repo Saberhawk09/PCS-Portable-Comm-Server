@@ -72,6 +72,10 @@ also unfinished.
 - Reliable unattended startup after power-on or reboot, with bounded GPIO boot indicators before live health alerts
 - Public PCS status homepage and password-protected administration at `10.42.0.1`
 - Pi-side self-test and status scripts
+- Optional dual-INA226 input/5V monitoring, estimated non-5V load, and guarded
+  nominal-12V low-voltage shutdown software (hardware calibration/acceptance pending)
+- Optional active-low GPIO13 passive-buzzer patterns with alarm priority and mute
+  control (external pull-up and supervised audible acceptance pending)
 - USB primary Samba share with SD-card backup mirror
 - GPS NMEA from `/dev/ttyUSB1` through gpsd and Chrony to LAN clients
 - Installer-selectable manual cellular control or automatic Wi-Fi-to-cellular

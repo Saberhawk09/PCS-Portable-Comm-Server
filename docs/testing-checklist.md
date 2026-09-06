@@ -928,6 +928,29 @@ protection. If an admin token is available for the test, pass it through a
 temporary environment variable with `--token-env`; never place it in the
 command line, shell history, or a test log.
 
+## INA226 and buzzer acceptance (supervised)
+
+Do not enable either optional service from unverified example values. With PCS
+RF transmit paths kept in their already-approved state, verify the actual I2C
+addresses and shunt markings/wiring, then compare each channel against a trusted
+meter at idle and a representative load. Confirm input power is upstream of all
+PCS conversion, the 5V monitor is on the 5V rail, and the displayed non-5V value
+is labeled as an estimate that includes conversion loss.
+
+Exercise low voltage with a current-limited adjustable 12V source: one bad
+sample must not alarm, three consecutive samples below 11.5V must start the
+alarm/countdown, recovery at or above 11.8V must reset it, and a normal 24V
+source must not be classified as low. First perform this with `allow_shutdown`
+false. Arm shutdown only after those readings are correct, then repeat once and
+confirm a controlled poweroff after 90 continuous seconds below threshold.
+
+With the external approximately 10k pull-up installed, confirm silence through
+boot/pin initialization and distinguish POST, OK, WARN, BAD, and low-voltage
+patterns. Confirm WARN/BAD mute leaves visual status unchanged and does not mute
+low voltage. Finally reboot several times and confirm the LCD and MAX7219 always
+initialize; inspect their service journals for retry warnings and watch for
+blank/garbled frames throughout a representative run.
+
 ## Service Status Test
 
 On the Pi:
@@ -938,6 +961,8 @@ systemctl status chrony
 systemctl status gpsd
 systemctl status cockpit
 systemctl status pcs-gpio-stats.service  # when selected
+systemctl status pcs-power-monitor.service  # when selected
+systemctl status pcs-buzzer.service  # when selected
 ```
 
 If PCS services are installed:

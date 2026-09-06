@@ -48,6 +48,8 @@ PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-no}"
 PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-no}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-no}"
+PCS_SETUP_POWER_MONITOR="${PCS_SETUP_POWER_MONITOR:-no}"
+PCS_SETUP_BUZZER="${PCS_SETUP_BUZZER:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_AUDIO_INPUT="${PCS_APRS_AUDIO_INPUT:-auto}"
 PCS_APRS_AUDIO_OUTPUT="${PCS_APRS_AUDIO_OUTPUT:-null}"
@@ -230,6 +232,31 @@ if [[ -n "${I2CDETECT_BIN}" ]]; then
     sudo "${I2CDETECT_BIN}" -y 1
 else
     echo "i2c-tools not installed"
+fi
+echo
+echo "--- INA226 PCS Power Monitoring ---"
+echo "PCS state: ${PCS_SETUP_POWER_MONITOR}"
+if [[ "${PCS_SETUP_POWER_MONITOR}" == "yes" ]]; then
+    echo "Service active:  $(systemctl is-active pcs-power-monitor.service 2>/dev/null || true)"
+    echo "Service enabled: $(systemctl is-enabled pcs-power-monitor.service 2>/dev/null || true)"
+    if [[ -r /run/pcs-power-monitor/status.json ]]; then
+        python3 -m json.tool /run/pcs-power-monitor/status.json || true
+    else
+        echo "Runtime snapshot: unavailable"
+    fi
+else
+    echo "Dual INA226 power monitoring is not selected."
+fi
+echo
+echo "--- Passive Buzzer Status ---"
+echo "PCS state: ${PCS_SETUP_BUZZER}"
+if [[ "${PCS_SETUP_BUZZER}" == "yes" ]]; then
+    echo "GPIO / polarity: GPIO13 / active-low"
+    echo "Service active:  $(systemctl is-active pcs-buzzer.service 2>/dev/null || true)"
+    echo "Service enabled: $(systemctl is-enabled pcs-buzzer.service 2>/dev/null || true)"
+    echo "Mute state:      $([[ -e /run/pcs-buzzer/muted ]] && echo muted || echo audible)"
+else
+    echo "Passive buzzer status is not selected."
 fi
 echo
 echo "--- WWAN / Cellular ---"

@@ -246,3 +246,39 @@ Before this file is treated as an as-built electrical record, capture and verify
 - measured 12 V and 5 V rail voltage under idle and peak load
 - peak current draw and converter temperature
 - AC terminal guarding, strain relief, and protective-earth bonding
+## Software Power Monitoring (Hardware Validation Pending)
+
+PCS now has optional software support for two INA226 monitors on I2C1. This is
+not an as-built claim: module addresses, shunt values, polarity, current range,
+and physical placement must be confirmed before enabling the service.
+
+The intended roles are:
+
+- `input` (`0x40` in the example): upstream of PCS conversion and authoritative
+  for source voltage, total current, and total PCS input power.
+- `rail_5v` (`0x41` in the example): 5V voltage, current, and power.
+
+The reported non-5V value is `input power - 5V power`. It is explicitly an
+estimate that includes DC/DC conversion losses, not an exact 12V rail reading.
+The JSON configuration leaves the monitor map extensible for a later dedicated
+12V sensor.
+
+Low-voltage protection defaults to 11.5V with 0.3V recovery hysteresis, three
+consecutive low samples, and a 90-second countdown. In `auto` source mode the
+first plausible reading classifies a source at or above 18V as nominal 24V and
+does not apply the nominal-12V cutoff to it. Controlled shutdown is separately
+gated by `allow_shutdown`; the example leaves it `false` until supervised
+hardware validation demonstrates correct addresses, scaling, polarity,
+recovery cancellation, and shutdown behavior.
+
+Install or inspect locally on the Pi with:
+
+```bash
+./scripts/setup-power-audio.sh --install-power
+./scripts/setup-power-audio.sh --check
+```
+
+The installer copies `config/power-monitor.example.json` only when no live
+configuration exists, and does not overwrite an operator-calibrated file. Its
+shunt/current values are deliberate non-runnable placeholders; the service is
+not enabled until they are replaced and configuration validation passes.

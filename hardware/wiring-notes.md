@@ -25,6 +25,27 @@ regulated 12 V bus -> Mean Well PSD-30A-5
 PSD-30A-5 -> regulated 5 V bus -> Raspberry Pi / WWAN adapter / USB storage
 ```
 
+## Pending Power-Monitor and Buzzer Additions
+
+These are intended connections for the newly implemented optional software,
+not verified as-built wiring:
+
+```text
+INA226 input monitor: upstream of PCS DC conversion, I2C1 address to verify
+INA226 5V monitor:    on the regulated 5V rail, unique I2C1 address to verify
+Both modules:         SDA GPIO2/pin 3, SCL GPIO3/pin 5, shared with the RTC
+
+Passive buzzer SIG:   GPIO13/pin 33, active-low
+Passive buzzer VCC:   3.3V
+Passive buzzer GND:   GND
+Required pull-up:     approximately 10k from SIG to 3.3V
+```
+
+Before installation, record both modules' actual address straps, shunt
+resistances, current direction, current range, and safe common-ground path.
+Never place a monitor shunt where its rating, PCB trace capacity, or grounding
+cannot carry the protected branch current.
+
 ## Source Selector
 
 Documented switch: 6-pin DPDT center-off toggle.
@@ -91,6 +112,9 @@ Record these values from the physical PCS before treating this file as final:
 | Idle 12 V / 5 V rail measurements | Not yet recorded |
 | Peak-load 12 V / 5 V rail measurements | Not yet recorded |
 | Protective-earth bonding points | Not yet recorded |
+| Input INA226 address/shunt/polarity | Not installed / not yet recorded |
+| 5V INA226 address/shunt/polarity | Not installed / not yet recorded |
+| GPIO13 buzzer pull-up and polarity | Not installed / not yet recorded |
 
 ## Converter Notes
 

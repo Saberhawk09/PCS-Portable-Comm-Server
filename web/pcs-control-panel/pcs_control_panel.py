@@ -68,6 +68,8 @@ ACTIONS = [
     ("restart-chrony", "Restart Chrony", "Restart Chrony only."),
     ("restart-gpsd", "Restart GPSD", "Reassert WWAN NMEA mode and restart gpsd."),
     ("restart-logs", "View Restart Logs", "Show recent PCS restart service logs."),
+    ("buzzer-mute", "Mute Audible Warnings", "Mute repeating WARN/BAD sounds without changing visual status; low voltage remains audible."),
+    ("buzzer-unmute", "Enable Audible Warnings", "Re-enable repeating WARN/BAD sounds."),
     ("reboot-system", "Reboot PCS", "Restart the Raspberry Pi."),
     ("shutdown-system", "Shutdown PCS", "Shut down Pi-Star when paired, then power off PCS."),
 ]
@@ -89,7 +91,7 @@ ACTION_GROUPS = [
     ("Storage", ["sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb"]),
     ("Services", ["restart-services", "restart-samba", "restart-modemmanager"]),
     ("Time / GPS", ["sync-time", "restart-chrony", "restart-gpsd"]),
-    ("Power", ["reboot-system", "shutdown-system"]),
+    ("Power", ["buzzer-mute", "buzzer-unmute", "reboot-system", "shutdown-system"]),
 ]
 DANGEROUS_ACTIONS = {
     "mount-new-usb",
@@ -331,6 +333,13 @@ PUBLIC_FIELDS = {
         "keep_backup_history", "backup_history_count",
     },
     "services": {"status", "homepage_available", "file_sharing_available", "cockpit_available", "gpsd_lan_enabled"},
+    "power": {
+        "configured", "status", "input_online", "input_voltage",
+        "input_current", "input_power", "rail_5v_online",
+        "rail_5v_voltage", "rail_5v_current", "rail_5v_power",
+        "estimated_non_5v_power", "low_voltage_active",
+        "shutdown_remaining_seconds",
+    },
     "pistar": {"configured", "online", "url"},
     "aprs": {
         "configured", "status", "service", "callsign", "role", "frequency", "modem",
@@ -452,6 +461,7 @@ def dashboard_error(message: str, public: bool) -> dict:
             "gnss": {"status": "warn"},
             "storage": {"status": "warn"},
             "services": {"status": "warn"},
+            "power": {"configured": False},
             "pistar": {"configured": False},
             "aprs": {"configured": False},
             "meshtastic": {"configured": False},
@@ -636,6 +646,7 @@ def render_public_page(data: dict) -> bytes:
     gnss = data.get("gnss", {})
     storage = data.get("storage", {})
     services = data.get("services", {})
+    power = data.get("power", {})
 
     cards = [
         public_card("System", system, [
@@ -689,6 +700,21 @@ def render_public_page(data: dict) -> bytes:
             ("Retained snapshots", "backup_history_count", 0),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),
     ])
+
+    if power.get("configured"):
+        cards.append(public_card("PCS Power", power, [
+            ("Input monitor", "input_online", False),
+            ("Input voltage", "input_voltage", "unavailable"),
+            ("Total input current", "input_current", "unavailable"),
+            ("Total PCS input power", "input_power", "unavailable"),
+            ("5V monitor", "rail_5v_online", False),
+            ("5V rail voltage", "rail_5v_voltage", "unavailable"),
+            ("5V rail current", "rail_5v_current", "unavailable"),
+            ("5V rail power", "rail_5v_power", "unavailable"),
+            ("Estimated non-5V load", "estimated_non_5v_power", "unavailable"),
+            ("Low voltage alarm", "low_voltage_active", False),
+            ("Shutdown countdown (s)", "shutdown_remaining_seconds", "inactive"),
+        ]).replace(">True<", ">Yes<").replace(">False<", ">No<"))
 
     pistar = data.get("pistar", {})
     if pistar.get("configured"):

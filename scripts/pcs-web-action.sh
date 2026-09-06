@@ -46,7 +46,7 @@ dispatch_host_namespace_action() {
     local dispatcher
 
     case "${ACTION}" in
-        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read) ;;
+        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute) ;;
         *) return 0 ;;
     esac
 
@@ -145,6 +145,8 @@ Allowed actions:
   restart-gpsd
   restart-meshtastic
   restart-logs
+  buzzer-mute
+  buzzer-unmute
   reboot-system
   shutdown-system
 EOF
@@ -568,6 +570,7 @@ APRS_AGENT_HELPER = "/usr/local/sbin/pcs-aprs-agent"
 APRS_AGENT_CONFIG = "/etc/pcs/aprs-agent.conf"
 APRS_AGENT_STATUS_FILE = "/run/pcs-aprs-agent/status.json"
 MESHTASTIC_STATUS_FILE = "/var/lib/pcs-meshtastic/status.json"
+POWER_STATUS_FILE = "/run/pcs-power-monitor/status.json"
 MESHTASTIC_ENV_FILE = "/etc/pcs/meshtastic.env"
 CELLULAR_PROFILE_DEFAULT = "pcs-cellular-profile"
 LEGACY_CELLULAR_PROFILE = "pcs-cellular-tmobile"
@@ -613,6 +616,7 @@ MESHTASTIC_STATE = CONFIG.get("PCS_SETUP_MESHTASTIC", "no").lower()
 MESHTASTIC_STAGED = MESHTASTIC_STATE == "staged"
 MESHTASTIC_CONFIGURED = MESHTASTIC_STATE == "yes"
 MESHTASTIC_PREPARED = MESHTASTIC_STAGED or MESHTASTIC_CONFIGURED
+POWER_CONFIGURED = CONFIG.get("PCS_SETUP_POWER_MONITOR", "no").lower() == "yes"
 
 def environment_config(path):
     config = {}
@@ -2588,6 +2592,19 @@ network_status = (
 
 meshtastic_env = environment_config(MESHTASTIC_ENV_FILE)
 meshtastic_runtime = json_object(MESHTASTIC_STATUS_FILE)
+power_runtime = json_object(POWER_STATUS_FILE) if POWER_CONFIGURED else {}
+power_age = epoch_age(power_runtime.get("collected_at_epoch")) if power_runtime else None
+power_fresh = power_age is not None and power_age <= 15
+power_monitors = power_runtime.get("monitors", {}) if isinstance(power_runtime.get("monitors"), dict) else {}
+power_input = power_monitors.get("input", {}) if isinstance(power_monitors.get("input"), dict) else {}
+power_5v = power_monitors.get("rail_5v", {}) if isinstance(power_monitors.get("rail_5v"), dict) else {}
+power_status = str(power_runtime.get("status", "warn")) if power_fresh else "warn"
+if power_status not in {"ok", "warn", "bad"}:
+    power_status = "warn"
+low_voltage = power_runtime.get("low_voltage", {}) if isinstance(power_runtime.get("low_voltage"), dict) else {}
+def power_value(value, suffix):
+    number = number_value(value)
+    return f"{number:.3f} {suffix}" if number is not None else "unavailable"
 meshtastic_gateway = meshtastic_runtime.get("gateway", {})
 if not isinstance(meshtastic_gateway, dict):
     meshtastic_gateway = {}
@@ -3083,6 +3100,34 @@ if MESHTASTIC_PREPARED:
         ],
     })
 
+if POWER_CONFIGURED:
+    countdown = low_voltage.get("remaining_seconds")
+    cards.append({
+        "id": "power",
+        "title": "PCS Power",
+        "status": power_status,
+        "summary": (
+            f"LOW INPUT VOLTAGE - shutdown in {countdown}s" if low_voltage.get("active") and countdown is not None
+            else "Dual INA226 monitoring online" if power_status == "ok"
+            else "Power monitoring needs attention"
+        ),
+        "items": [
+            {"label": "Input monitor", "value": "online" if power_input.get("online") else "offline"},
+            {"label": "Input voltage", "value": power_value(power_input.get("voltage"), "V")},
+            {"label": "Total input current", "value": power_value(power_input.get("current"), "A")},
+            {"label": "Total PCS input power", "value": power_value(power_input.get("power"), "W")},
+            {"label": "5V monitor", "value": "online" if power_5v.get("online") else "offline"},
+            {"label": "5V rail voltage", "value": power_value(power_5v.get("voltage"), "V")},
+            {"label": "5V rail current", "value": power_value(power_5v.get("current"), "A")},
+            {"label": "5V rail power", "value": power_value(power_5v.get("power"), "W")},
+            {"label": "Estimated non-5V load", "value": power_value(power_runtime.get("estimated_non_5v_power"), "W")},
+            {"label": "Estimate scope", "value": "Includes conversion losses; not exact 12V rail power"},
+            {"label": "Low-voltage protection", "value": "active" if low_voltage.get("active") else "normal"},
+            {"label": "Shutdown countdown", "value": f"{countdown} seconds" if countdown is not None else "inactive"},
+            {"label": "Snapshot age", "value": age_label(power_age)},
+        ],
+    })
+
 card_order = [
     "system-stats",
     "services",
@@ -3097,6 +3142,7 @@ card_order = [
     "client-lan",
     "time",
     "gps",
+    "power",
     "aprs",
     "aprs-mailbox",
     "meshtastic",
@@ -3259,6 +3305,21 @@ if PUBLIC_VIEW:
             "cockpit_available": web_admin["cockpit_active"] and web_admin["port_9090"],
             "gpsd_lan_enabled": CONFIG.get("PCS_SETUP_GPSD_LAN", "auto").lower() != "no",
         },
+        "power": {
+            "configured": POWER_CONFIGURED,
+            "status": power_status,
+            "input_online": bool(power_input.get("online")),
+            "input_voltage": power_input.get("voltage"),
+            "input_current": power_input.get("current"),
+            "input_power": power_input.get("power"),
+            "rail_5v_online": bool(power_5v.get("online")),
+            "rail_5v_voltage": power_5v.get("voltage"),
+            "rail_5v_current": power_5v.get("current"),
+            "rail_5v_power": power_5v.get("power"),
+            "estimated_non_5v_power": power_runtime.get("estimated_non_5v_power"),
+            "low_voltage_active": bool(low_voltage.get("active")),
+            "shutdown_remaining_seconds": low_voltage.get("remaining_seconds"),
+        },
         "pistar": {
             "configured": PI_STAR_CONFIGURED,
             "online": bool(pi_star.get("reachable")) if PI_STAR_CONFIGURED else False,
@@ -3382,6 +3443,23 @@ restart_meshtastic_action() {
     fi
     sleep 3
     meshtastic_status_action
+}
+
+buzzer_state_action() {
+    local command="$1"
+    if [[ "${PCS_SETUP_BUZZER:-no}" != "yes" ]]; then
+        echo "ERROR: The PCS buzzer is not configured." >&2
+        return 1
+    fi
+    if [[ ! -x /usr/local/sbin/pcs-buzzer ]]; then
+        echo "ERROR: The PCS buzzer controller is not installed." >&2
+        return 1
+    fi
+    /usr/local/sbin/pcs-buzzer "${command}"
+    echo "PCS audible WARN/BAD alerts are now $([[ "${command}" == "mute" ]] && echo muted || echo enabled)."
+    if [[ "${command}" == "mute" ]]; then
+        echo "Low-voltage alarms remain audible and visual status is unchanged."
+    fi
 }
 
 require_root
@@ -4185,6 +4263,14 @@ case "${ACTION}" in
 
     restart-meshtastic)
         restart_meshtastic_action
+        ;;
+
+    buzzer-mute)
+        buzzer_state_action mute
+        ;;
+
+    buzzer-unmute)
+        buzzer_state_action unmute
         ;;
 
     aprs-mailbox-read)

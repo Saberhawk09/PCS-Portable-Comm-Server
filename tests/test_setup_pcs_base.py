@@ -127,6 +127,14 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('./scripts/setup-gpio-fan.sh --install', self.source)
         self.assertIn('PCS_SETUP_GPIO_FAN="no"', self.source)
 
+    def test_power_monitor_and_buzzer_are_optional_and_persisted(self):
+        for name in ("PCS_SETUP_POWER_MONITOR", "PCS_SETUP_BUZZER"):
+            self.assertIn(f'{name}="${{{name}:-ask}}"', self.source)
+            self.assertIn(f'printf "{name}=%q\\n"', self.source)
+            self.assertIn(f'{name}="no"', self.source)
+        self.assertIn('./scripts/setup-power-audio.sh --install-power', self.source)
+        self.assertIn('./scripts/setup-power-audio.sh --install-buzzer', self.source)
+
     def test_file_share_discovery_is_a_repeatable_base_step(self):
         backup = self.source.index('run_step "Configure automatic PCS backups"')
         discovery = self.source.index('run_step "Configure LAN file-share discovery"')

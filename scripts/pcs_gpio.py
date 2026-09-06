@@ -42,6 +42,7 @@ PIN_ASSIGNMENTS: tuple[PinAssignment, ...] = (
     PinAssignment("MAX7219 CS", 8, 24, "Linux SPI0", "installed and bench-tested"),
     PinAssignment("MAX7219 DIN", 10, 19, "Linux SPI0", "installed and bench-tested"),
     PinAssignment("MAX7219 CLK", 11, 23, "Linux SPI0", "installed and bench-tested"),
+    PinAssignment("Passive buzzer", 13, 33, "pcs-buzzer", "software ready; hardware validation pending"),
     PinAssignment("SA818 UART TX", 14, 8, "pcs-sa818", "installed and tested at 9600 8N1"),
     PinAssignment("SA818 UART RX", 15, 10, "pcs-sa818", "installed and tested at 9600 8N1"),
     PinAssignment("LCD E", 17, 11, "pcs_gpio", "installed and bench-tested"),
@@ -95,7 +96,10 @@ FAN_CURVE: tuple[tuple[int, int], ...] = (
 )
 MAX7219_SPI_BUS = 0
 MAX7219_SPI_DEVICE = 0
-MAX7219_SPI_HZ = 500_000
+# A deliberately conservative clock improves margin through the installed
+# level shifter and enclosure wiring. Every complete frame is also latched
+# twice below to recover from an occasional power-up or SPI framing upset.
+MAX7219_SPI_HZ = 250_000
 MAX7219_INTENSITY = 3
 SHUTDOWN_MATRIX_INTENSITY = 1
 SHUTDOWN_LCD_LINES = ("PCS Offline", "Shutting Down")
@@ -251,11 +255,13 @@ class Max7219:
         self.spi.open(MAX7219_SPI_BUS, MAX7219_SPI_DEVICE)
         self.spi.max_speed_hz = MAX7219_SPI_HZ
         self.spi.mode = 0
+        self.spi.no_cs = False
         for register, value in (
             (0x0F, 0),
             (0x09, 0),
             (0x0B, 7),
             (0x0A, MAX7219_INTENSITY),
+            (0x0C, 0),
             (0x0C, 1),
         ):
             self._write(register, value)
@@ -267,8 +273,10 @@ class Max7219:
     def rows(self, rows: Sequence[int]) -> None:
         if len(rows) != 8 or any(not 0 <= row <= 0xFF for row in rows):
             raise ValueError("MAX7219 rows must contain exactly eight byte values")
-        for register, value in enumerate(rows, start=1):
-            self._write(register, value)
+        for _latch in range(2):
+            for register, value in enumerate(rows, start=1):
+                self._write(register, value)
+            time.sleep(0.001)
 
     def intensity(self, value: int) -> None:
         if not 0 <= value <= 15:

@@ -16,6 +16,7 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | MAX7219 CS/LOAD | GPIO8 | 24 | Installed and bench-tested | SPI0 CE0 through one channel of the 74AHCT125. |
 | MAX7219 DIN | GPIO10 | 19 | Installed and bench-tested | SPI0 MOSI through one channel of the 74AHCT125. |
 | MAX7219 CLK | GPIO11 | 23 | Installed and bench-tested | SPI0 SCLK through one channel of the 74AHCT125. |
+| Passive buzzer SIG | GPIO13 | 33 | Software implemented / hardware validation pending | Active-low PNP module; external approximately 10k pull-up from SIG to 3.3V required before use. |
 | SA818S UART TX | GPIO14 | 8 | Installed / tested | `/dev/serial0` Pi TX to SA818S RXD at 9600 8N1; managed by `pcs-sa818.service`. |
 | SA818S UART RX | GPIO15 | 10 | Installed / tested | `/dev/serial0` Pi RX from SA818S TXD at 9600 8N1; managed by `pcs-sa818.service`. |
 | LCD E | GPIO17 | 11 | Installed and bench-tested | HD44780 enable. |
@@ -26,12 +27,19 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | LCD D6 | GPIO23 | 16 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 | LCD D7 | GPIO24 | 18 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 
+GPIO2 (pin 3) and GPIO3 (pin 5) remain the kernel-managed I2C1 bus. Optional
+dual INA226 monitoring shares this bus with the RTC at unique configured
+addresses. The example reserves `0x40` for total input and `0x41` for the 5V
+rail; those addresses, shunt resistances, and current ranges must be verified
+against the actual modules before installation.
+
 ## Bus and Ownership Boundaries
 
 - The RTC remains owned by the Linux I2C stack and `setup-rtc.sh`.
 - The MAX7219 uses SPI0 CE0, MOSI, and SCLK. GPIO9/MISO is not connected by this
   write-only display path. The installed PCS matrix was successfully exercised
-  at 500 kHz with global intensity register value `0x03` on August 19, 2026.
+  at 500 kHz with global intensity register value `0x03` on August 19, 2026;
+  software now uses 250 kHz for additional wiring margin.
 - Dire Wolf owns GPIO6 when an RF transmit profile is deliberately activated.
   The general GPIO commissioning utility never toggles PTT.
   Guarded TX validation rejects a stale local GPIO17 setting left by an older
@@ -170,6 +178,20 @@ no active uplink, and unavailable GPS fix. The OpenWrt fault uses the Wi-Fi
 symbol and critical severity; Pi-Star uses a dedicated raspberry symbol and
 warning severity. Local systemd failures remain critical. Detailed live values
 remain on the LCD.
+
+To improve recovery from intermittent blank or garbled power-up states, the
+driver now uses a conservative 250 kHz SPI clock, explicitly cycles shutdown
+during initialization, and writes every complete 8-row frame twice. The boot
+runner independently retries both LCD and matrix initialization three times;
+persistent errors still fail open so normal status services can take over.
+
+## Passive Buzzer
+
+`scripts/pcs_buzzer.py` owns active-low GPIO13 and centralizes the named
+`post`, `ok`, `warn`, `bad`, and `low_voltage` patterns. One daemon arbitrates
+their priority, so patterns never overlap. WARN and BAD may be muted without
+changing visual health; low voltage always overrides that mute. Hardware use
+requires the external pull-up described above and supervised audible testing.
 Unread APRS mail alternates a letter/envelope icon with the normal checkmark
 when the system is otherwise healthy. Both use intensity 1. When a real warning
 or fault exists, the envelope precedes the alert frames and the healthy

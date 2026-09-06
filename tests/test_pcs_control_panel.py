@@ -30,6 +30,7 @@ PUBLIC_DATA = {
     "gnss": {"status": "ok", "receiver_active": True, "fix": "3D fix", "satellites": "8 used", "coordinates": "38.123456, -77.123456", "grid_square": "FM18kc"},
     "storage": {"status": "ok", "usb_mounted": True, "primary_share_available": True, "backup_share_available": True, "usb_free_gb": "40 GB", "backup_free_gb": "8 GB"},
     "services": {"status": "ok", "gpsd_lan_enabled": True},
+    "power": {"configured": False},
     "pistar": {"configured": False},
     "aprs": {"configured": False},
     "meshtastic": {"configured": False},
@@ -99,6 +100,23 @@ class SessionTests(unittest.TestCase):
 
 
 class PublicDataTests(unittest.TestCase):
+    def test_power_card_is_hidden_until_configured_and_labels_estimate(self):
+        hidden = pcs.render_public_page(pcs.sanitize_public_dashboard(PUBLIC_DATA)).decode("utf-8")
+        self.assertNotIn("PCS Power", hidden)
+        value = deepcopy(PUBLIC_DATA)
+        value["power"] = {
+            "configured": True, "status": "warn", "input_online": True,
+            "input_voltage": 13.8, "input_current": 1.4, "input_power": 19.3,
+            "rail_5v_online": True, "rail_5v_voltage": 5.12,
+            "rail_5v_current": 0.8, "rail_5v_power": 4.1,
+            "estimated_non_5v_power": 15.2, "low_voltage_active": False,
+            "shutdown_remaining_seconds": None, "secret": "must-not-render",
+        }
+        page = pcs.render_public_page(pcs.sanitize_public_dashboard(value)).decode("utf-8")
+        self.assertIn("PCS Power", page)
+        self.assertIn("Estimated non-5V load", page)
+        self.assertNotIn("must-not-render", page)
+
     def test_warning_and_fault_summaries_are_shown_in_both_headers(self):
         public = deepcopy(PUBLIC_DATA)
         public["overall"] = "bad"

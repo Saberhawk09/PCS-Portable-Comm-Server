@@ -386,6 +386,27 @@ missing temperature data, or daemon failure leave the PWM channel enabled at
 100% duty. The hardware has no tachometer feedback, so configured duty and CPU
 temperature are observable but actual fan RPM is not measured.
 
+### pcs_power_monitor.py / pcs_buzzer.py
+
+`setup-power-audio.sh` installs or inspects the optional dual-INA226 power
+collector and active-low GPIO13 passive-buzzer controller:
+
+```bash
+./scripts/setup-power-audio.sh --install-power
+./scripts/setup-power-audio.sh --install-buzzer
+./scripts/setup-power-audio.sh --check
+```
+
+Power installation requires verified unique I2C addresses and shunt
+calibrations. The example uses input `0x40` and 5V `0x41` address reservations
+but deliberately invalid calibration placeholders. Once configured, the
+collector publishes an atomic snapshot under `/run/pcs-power-monitor` and
+keeps controlled shutdown disarmed until `allow_shutdown` is explicitly
+enabled after supervised acceptance.
+The buzzer daemon keeps active-low GPIO13 off during initialization, owns all
+named tone generation, and arbitrates low-voltage, BAD, WARN, and informational
+patterns without overlap. The web/API mute action affects WARN/BAD only.
+
 ## Dire Wolf / APRS
 
 The base installer records `PCS_APRS_ENGINE` as `direwolf` or `graywolf` and
@@ -967,6 +988,7 @@ Includes:
 - Dire Wolf / APRS staged or active state
 - Meshtastic gateway, MQTT, GPSD position, and public-map policy state
 - GPIO display, indicator, matrix, and fan state when installed
+- INA226 input/5V power and passive-buzzer state when installed
 - Client access info
 
 The script describes the commissioned OpenWrt AP/switch topology while retaining
@@ -976,7 +998,9 @@ the system `i2cdetect` path directly when an unprivileged shell omits
 
 ### pcs-self-test.sh
 
-Runs a Pi-side validation test.
+Runs the concise, optional-aware Pi-side validation screen. Disabled components
+are hidden; warning and failure details are collected at the end. Full command
+output is retained in the timestamped log shown by the result.
 
 ```bash
 ./scripts/pcs-self-test.sh
@@ -985,8 +1009,10 @@ Runs a Pi-side validation test.
 Expected healthy result:
 
 ```text
-PCS Pi-side self-test PASSED.
+PCS STATUS: OK
 ```
+
+Use `./scripts/pcs-self-test.sh --verbose` for the legacy detailed stream.
 
 This is the main quick test after setup, reboot, or major changes.
 

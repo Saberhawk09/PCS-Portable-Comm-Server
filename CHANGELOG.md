@@ -2,6 +2,26 @@
 
 All notable user-facing PCS changes are recorded here.
 
+## [Unreleased]
+
+### Added
+
+- optional dual-INA226 monitoring for authoritative PCS input and 5V rail
+  voltage/current/power, plus an explicitly estimated non-5V load
+- persistent, hysteretic nominal-12V low-voltage alarm and guarded 90-second
+  controlled-shutdown countdown, with normal 24V-source discrimination
+- active-low GPIO13 passive-buzzer service with named POST/OK/WARN/BAD/low-
+  voltage patterns, priority arbitration, and web/API mute controls
+- power health and countdown data in the public/admin dashboards, Stats API,
+  status output, and optional-aware self-test
+
+### Changed
+
+- replace the normal self-test wall of text with a compact per-section
+  PASS/WARN/FAIL report while retaining full diagnostics in a timestamped log
+- harden LCD/MAX7219 boot initialization with bounded retries; lower MAX7219
+  SPI to 250 kHz and latch each full frame twice to improve noise recovery
+
 ## [1.7.1] - 2026-09-03
 
 ### Fixed

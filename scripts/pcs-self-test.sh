@@ -79,6 +79,8 @@ PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-no}"
 PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-no}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-no}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-no}"
+PCS_SETUP_POWER_MONITOR="${PCS_SETUP_POWER_MONITOR:-no}"
+PCS_SETUP_BUZZER="${PCS_SETUP_BUZZER:-no}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-no}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
@@ -132,6 +134,21 @@ cleanup_temp_files() {
 }
 
 trap cleanup_temp_files EXIT
+
+PCS_SELF_TEST_FORMAT="${PCS_SELF_TEST_FORMAT:-concise}"
+if [[ "${1:-}" == "--verbose" ]]; then
+    PCS_SELF_TEST_FORMAT="verbose"
+elif [[ -n "${1:-}" ]]; then
+    echo "Usage: ./scripts/pcs-self-test.sh [--verbose]" >&2
+    exit 2
+fi
+PCS_SELF_TEST_LOG_DIR="${PCS_SELF_TEST_LOG_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/pcs}"
+PCS_SELF_TEST_LOG="${PCS_SELF_TEST_LOG_DIR}/self-test-$(date -u +%Y%m%dT%H%M%SZ)-${BASHPID}.log"
+if [[ "${PCS_SELF_TEST_FORMAT}" == "concise" ]]; then
+    mkdir -p "${PCS_SELF_TEST_LOG_DIR}"
+    exec 3>&1 4>&2
+    exec >"${PCS_SELF_TEST_LOG}" 2>&1
+fi
 
 
 echo
@@ -1891,22 +1908,108 @@ else
 fi
 
 
-section "Summary"
-
-echo "Pass: ${PASS_COUNT}"
-echo "Warn: ${WARN_COUNT}"
-echo "Fail: ${FAIL_COUNT}"
-echo "Skip: ${SKIP_COUNT}"
-
-if [[ "${FAIL_COUNT}" -eq 0 ]]; then
-    echo
-    echo "PCS Pi-side self-test PASSED."
-    if [[ "${WARN_COUNT}" -gt 0 ]]; then
-        echo "Warnings were present; review them, but no hard failures occurred."
-    fi
-    exit 0
+section "INA226 Power Monitoring"
+if [[ "${PCS_SETUP_POWER_MONITOR}" != "yes" ]]; then
+    skip "Dual INA226 power monitoring is not configured"
+elif [[ ! -x /usr/local/sbin/pcs-power-monitor ]]; then
+    warn "Power monitoring is configured but the collector is not installed"
+elif [[ ! -r /run/pcs-power-monitor/status.json ]]; then
+    warn "Power monitoring is configured but no runtime snapshot is available"
 else
-    echo
-    echo "PCS Pi-side self-test FAILED."
-    exit 1
+    POWER_CHECK="$(python3 - <<'PY'
+import json, time
+from pathlib import Path
+try:
+    value = json.loads(Path('/run/pcs-power-monitor/status.json').read_text(encoding='utf-8'))
+    age = time.time() - float(value['collected_at_epoch'])
+    monitors = value['monitors']
+    assert value.get('version') == 1 and 0 <= age <= 15
+    assert set(monitors) >= {'input', 'rail_5v'}
+    for name in ('input', 'rail_5v'):
+        item = monitors[name]
+        assert item.get('online') is True
+        for field in ('voltage', 'current', 'power'):
+            assert isinstance(item.get(field), (int, float)) and not isinstance(item.get(field), bool)
+    print('low' if value.get('low_voltage', {}).get('active') else value.get('status', 'warn'))
+except Exception:
+    print('unavailable')
+PY
+)"
+    case "${POWER_CHECK}" in
+        ok) pass "Both INA226 monitors communicate and report plausible readings" ;;
+        low) fail "Confirmed low input voltage; controlled-shutdown countdown is active" ;;
+        bad) fail "INA226 power readings report a critical condition" ;;
+        *) warn "One or both configured INA226 monitors are missing, stale, or implausible" ;;
+    esac
 fi
+
+section "Passive Buzzer"
+if [[ "${PCS_SETUP_BUZZER}" != "yes" ]]; then
+    skip "Passive buzzer is not configured"
+elif [[ ! -x /usr/local/sbin/pcs-buzzer ]]; then
+    warn "Passive buzzer is configured but its controller is not installed"
+elif service_enabled pcs-buzzer.service && service_active pcs-buzzer.service; then
+    pass "Passive-buzzer controller is enabled and active"
+    if [[ -e /run/pcs-buzzer/muted ]]; then
+        pass "Audible WARN/BAD alerts are acknowledged; low voltage remains audible"
+    else
+        pass "Audible WARN/BAD alerts are enabled"
+    fi
+else
+    warn "Passive-buzzer controller is configured but not enabled and active"
+fi
+
+if [[ "${FAIL_COUNT}" -gt 0 ]]; then
+    PCS_SELF_TEST_STATUS="BAD"
+    PCS_SELF_TEST_PATTERN="bad"
+    PCS_SELF_TEST_EXIT=1
+elif [[ "${WARN_COUNT}" -gt 0 ]]; then
+    PCS_SELF_TEST_STATUS="WARN"
+    PCS_SELF_TEST_PATTERN="warn"
+    PCS_SELF_TEST_EXIT=0
+else
+    PCS_SELF_TEST_STATUS="OK"
+    PCS_SELF_TEST_PATTERN="ok"
+    PCS_SELF_TEST_EXIT=0
+fi
+
+if [[ "${PCS_SETUP_BUZZER}" == "yes" && -x /usr/local/sbin/pcs-buzzer ]]; then
+    /usr/local/sbin/pcs-buzzer request "${PCS_SELF_TEST_PATTERN}" 2>/dev/null || true
+fi
+
+if [[ "${PCS_SELF_TEST_FORMAT}" == "concise" ]]; then
+    exec 1>&3 2>&4
+    echo "PCS SELF TEST"
+    echo "--------------------------------"
+    awk '
+        function emit() { if (name != "" && seen) printf "%-24s %s\n", name, state }
+        /^--- .* ---$/ { emit(); name=$0; sub(/^--- /,"",name); sub(/ ---$/,"",name); state="OK"; seen=0; next }
+        /^\[PASS\]/ { seen=1 }
+        /^\[WARN\]/ { seen=1; if (state != "FAIL") state="WARN" }
+        /^\[FAIL\]/ { seen=1; state="FAIL" }
+        END { emit() }
+    ' "${PCS_SELF_TEST_LOG}"
+    echo "--------------------------------"
+    if [[ "${FAIL_COUNT}" -gt 0 ]]; then
+        echo "${FAIL_COUNT} FAILURE(S), ${WARN_COUNT} WARNING(S)"
+    elif [[ "${WARN_COUNT}" -gt 0 ]]; then
+        echo "${WARN_COUNT} WARNING(S)"
+    else
+        echo "ALL ENABLED CHECKS PASSED"
+    fi
+    if [[ "${WARN_COUNT}" -gt 0 || "${FAIL_COUNT}" -gt 0 ]]; then
+        echo
+        grep -E '^\[(WARN|FAIL)\]' "${PCS_SELF_TEST_LOG}" || true
+    fi
+    echo
+    echo "PCS STATUS: ${PCS_SELF_TEST_STATUS}"
+    echo "Detailed log: ${PCS_SELF_TEST_LOG}"
+else
+    section "Summary"
+    echo "Pass: ${PASS_COUNT}"
+    echo "Warn: ${WARN_COUNT}"
+    echo "Fail: ${FAIL_COUNT}"
+    echo "Skip: ${SKIP_COUNT}"
+    echo "PCS STATUS: ${PCS_SELF_TEST_STATUS}"
+fi
+exit "${PCS_SELF_TEST_EXIT}"

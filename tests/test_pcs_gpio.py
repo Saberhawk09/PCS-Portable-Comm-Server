@@ -68,7 +68,7 @@ class PcsGpioTests(unittest.TestCase):
     def test_max7219_uses_the_proven_pcs_spi_settings(self):
         self.assertEqual(pcs_gpio.MAX7219_SPI_BUS, 0)
         self.assertEqual(pcs_gpio.MAX7219_SPI_DEVICE, 0)
-        self.assertEqual(pcs_gpio.MAX7219_SPI_HZ, 500_000)
+        self.assertEqual(pcs_gpio.MAX7219_SPI_HZ, 250_000)
         self.assertEqual(pcs_gpio.MAX7219_INTENSITY, 3)
 
     def test_fan_uses_gpio18_hardware_pwm_at_vendor_frequency(self):

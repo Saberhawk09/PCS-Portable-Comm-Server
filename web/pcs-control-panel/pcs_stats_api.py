@@ -115,6 +115,8 @@ ACTION_GROUPS = {
         "restart-gpsd": ("Restart GPSD", "Reassert WWAN NMEA mode and restart gpsd."),
     },
     "power": {
+        "buzzer-mute": ("Mute Audible Warnings", "Mute repeating WARN/BAD sounds without changing visual status; low voltage remains audible."),
+        "buzzer-unmute": ("Enable Audible Warnings", "Re-enable repeating WARN/BAD sounds."),
         "reboot-system": ("Reboot PCS", "Restart the Raspberry Pi."),
         "shutdown-system": ("Shutdown PCS", "Shut down Pi-Star when paired, then power off PCS."),
     },
@@ -143,6 +145,7 @@ RESOURCE_CARD_IDS = {
     "pistar": set(),
     "storage": {"storage", "backup-health", "samba"},
     "services": {"services", "web-admin"},
+    "power": {"power"},
 }
 
 # This is intentionally a second allowlist, independent of the public web
@@ -180,6 +183,13 @@ API_FIELDS = {
     "services": {
         "status", "homepage_available", "file_sharing_available",
         "cockpit_available", "gpsd_lan_enabled",
+    },
+    "power": {
+        "configured", "status", "input_online", "input_voltage",
+        "input_current", "input_power", "rail_5v_online",
+        "rail_5v_voltage", "rail_5v_current", "rail_5v_power",
+        "estimated_non_5v_power", "low_voltage_active",
+        "shutdown_remaining_seconds",
     },
     "pistar": {"configured", "online"},
     "aprs": {
