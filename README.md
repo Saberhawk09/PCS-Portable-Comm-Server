@@ -74,8 +74,9 @@ also unfinished.
 - Pi-side self-test and status scripts
 - Optional dual-INA226 input/5V monitoring, estimated non-5V load, and guarded
   nominal-12V low-voltage shutdown software (hardware calibration/acceptance pending)
-- Optional active-low GPIO13 passive-buzzer patterns with alarm priority and mute
-  control (external pull-up and supervised audible acceptance pending)
+- Optional active-low GPIO13 passive-buzzer patterns with alarm priority,
+  debounced visual-health alert mirroring, and mute control (external pull-up;
+  supervised POST/OK playback validated, live alarm acceptance pending)
 - USB primary Samba share with SD-card backup mirror
 - GPS NMEA from `/dev/ttyUSB1` through gpsd and Chrony to LAN clients
 - Installer-selectable manual cellular control or automatic Wi-Fi-to-cellular

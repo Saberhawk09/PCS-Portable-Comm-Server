@@ -17,6 +17,9 @@ GPIO = 13
 REQUEST_PATH = Path(os.environ.get("PCS_BUZZER_REQUEST", "/run/pcs-buzzer/request.json"))
 POWER_PATH = Path(os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/status.json"))
 MUTE_PATH = Path(os.environ.get("PCS_BUZZER_MUTE", "/run/pcs-buzzer/muted"))
+HEALTH_PATH = Path(os.environ.get("PCS_BUZZER_HEALTH", "/run/pcs-buzzer/health.json"))
+HEALTH_MAX_AGE_SECONDS = 30
+HEALTH_DEBOUNCE_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -96,7 +99,44 @@ def read_json(path: Path) -> dict:
         return {}
 
 
-def requested_pattern(now: float = time.time()) -> str:
+def raw_health_pattern(now: float | None = None) -> str:
+    now = time.time() if now is None else now
+    health = read_json(HEALTH_PATH)
+    updated = health.get("updated_at_epoch")
+    if not isinstance(updated, (int, float)) or updated > now + 5 or now - updated > HEALTH_MAX_AGE_SECONDS:
+        return "silent"
+    alerts = health.get("alerts")
+    if not isinstance(alerts, list):
+        return "silent"
+    severities = {
+        alert.get("severity")
+        for alert in alerts
+        if isinstance(alert, dict)
+    }
+    if "critical" in severities:
+        return "bad"
+    if "warning" in severities:
+        return "warn"
+    return "silent"
+
+
+@dataclass
+class HealthDebouncer:
+    candidate: str = "silent"
+    candidate_since: float = 0.0
+    confirmed: str = "silent"
+
+    def update(self, pattern: str, now: float) -> str:
+        if pattern != self.candidate:
+            self.candidate = pattern
+            self.candidate_since = now
+        elif pattern != self.confirmed and now - self.candidate_since >= HEALTH_DEBOUNCE_SECONDS:
+            self.confirmed = pattern
+        return self.confirmed
+
+
+def requested_pattern(now: float | None = None, health_pattern: str = "silent") -> str:
+    now = time.time() if now is None else now
     power = read_json(POWER_PATH)
     if power.get("low_voltage", {}).get("active") is True:
         return "low_voltage"
@@ -104,7 +144,9 @@ def requested_pattern(now: float = time.time()) -> str:
     pattern = str(request.get("pattern", "silent"))
     expires = request.get("expires_at_epoch")
     if pattern not in PRIORITY or (isinstance(expires, (int, float)) and now > expires):
-        return "silent"
+        pattern = "silent"
+    if health_pattern in {"warn", "bad"} and PRIORITY[health_pattern] > PRIORITY[pattern]:
+        pattern = health_pattern
     if MUTE_PATH.exists() and pattern in {"warn", "bad"}:
         return "silent"
     return pattern
@@ -124,18 +166,23 @@ def play(output: Output, pattern: str, *, sleeper: Callable[[float], None] = tim
 
 def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> None:
     stopped = False
+    health = HealthDebouncer()
     def stop(_signum, _frame):
         nonlocal stopped
         stopped = True
+    def current_pattern() -> str:
+        now = time.time()
+        confirmed_health = health.update(raw_health_pattern(now), now)
+        return requested_pattern(now, confirmed_health)
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     try:
         play(output, "post", sleeper=sleeper, interrupted=lambda: stopped)
         last = "silent"
         while not stopped:
-            pattern = requested_pattern()
+            pattern = current_pattern()
             if pattern in {"low_voltage", "bad", "warn"}:
-                play(output, pattern, sleeper=sleeper, interrupted=lambda: stopped or PRIORITY[requested_pattern()] > PRIORITY[pattern])
+                play(output, pattern, sleeper=sleeper, interrupted=lambda: stopped or PRIORITY[current_pattern()] > PRIORITY[pattern])
             elif pattern in {"ok", "post"} and pattern != last:
                 play(output, pattern, sleeper=sleeper, interrupted=lambda: stopped)
             else:

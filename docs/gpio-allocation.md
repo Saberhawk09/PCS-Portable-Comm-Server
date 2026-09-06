@@ -190,8 +190,13 @@ persistent errors still fail open so normal status services can take over.
 `scripts/pcs_buzzer.py` owns active-low GPIO13 and centralizes the named
 `post`, `ok`, `warn`, `bad`, and `low_voltage` patterns. One daemon arbitrates
 their priority, so patterns never overlap. WARN and BAD may be muted without
-changing visual health; low voltage always overrides that mute. Hardware use
-requires the external pull-up described above and supervised audible testing.
+changing visual health; low voltage always overrides that mute. The live LCD,
+MAX7219, and WS2812 loops publish the same centralized alert snapshot they use
+for visual status. A warning sustained for five seconds requests WARN and a
+critical alert requests BAD; recovery is debounced for the same interval.
+Snapshots older than 30 seconds are ignored instead of creating a false alarm.
+Hardware use requires the external pull-up described above and supervised
+audible testing.
 The buzzer and boot/live/shutdown LCD writers force gpiozero's `lgpio` backend
 from private writable runtime directories. This prevents a hardened systemd
 unit from silently falling back to gpiozero's experimental native backend when

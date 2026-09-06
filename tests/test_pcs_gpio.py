@@ -494,6 +494,21 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(failed_service_led.state, "failed")
         self.assertEqual(failed_service_led.color, pcs_gpio.LED_CRITICAL)
 
+    def test_visual_alert_snapshot_is_published_for_the_buzzer(self):
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 0, False, False, 0, "WiFi", 1, None, aprs_status="ok"
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, True, True)
+        alerts = pcs_gpio.matrix_alerts(health)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "health.json"
+            pcs_gpio.write_buzzer_health(health, alerts, path)
+            document = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(document["version"], 1)
+        self.assertIsInstance(document["updated_at_epoch"], int)
+        self.assertEqual(document["alerts"], [{"name": "gps_fix", "severity": "warning"}])
+        self.assertEqual(document["health"], health.as_dict())
+
     def test_offline_openwrt_router_faults_on_all_gpio_displays(self):
         stats = pcs_gpio.StatsSnapshot(
             39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"

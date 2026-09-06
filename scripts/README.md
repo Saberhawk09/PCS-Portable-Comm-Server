@@ -406,6 +406,9 @@ enabled after supervised acceptance.
 The buzzer daemon keeps active-low GPIO13 off during initialization, owns all
 named tone generation, and arbitrates low-voltage, BAD, WARN, and informational
 patterns without overlap. The web/API mute action affects WARN/BAD only.
+The LCD, MAX7219, and WS2812 health loops publish their shared warning/critical
+classification under `/run/pcs-buzzer/health.json`; the buzzer applies a
+five-second assertion/recovery debounce before mirroring those visual states.
 
 ## Dire Wolf / APRS
 

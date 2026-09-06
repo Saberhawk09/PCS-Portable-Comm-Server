@@ -51,6 +51,40 @@ class BuzzerTests(unittest.TestCase):
             with mock.patch.object(buzzer, "POWER_PATH", power_path), mock.patch.object(buzzer, "REQUEST_PATH", request_path), mock.patch.object(buzzer, "MUTE_PATH", mute_path):
                 self.assertEqual(buzzer.requested_pattern(), "low_voltage")
 
+    def test_visual_warning_and_fault_map_to_audible_patterns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            health_path = Path(directory) / "health.json"
+            with mock.patch.object(buzzer, "HEALTH_PATH", health_path):
+                health_path.write_text(json.dumps({
+                    "updated_at_epoch": 100,
+                    "alerts": [{"name": "gps_fix", "severity": "warning"}],
+                }), encoding="utf-8")
+                self.assertEqual(buzzer.raw_health_pattern(101), "warn")
+                health_path.write_text(json.dumps({
+                    "updated_at_epoch": 102,
+                    "alerts": [{"name": "router", "severity": "critical"}],
+                }), encoding="utf-8")
+                self.assertEqual(buzzer.raw_health_pattern(103), "bad")
+                self.assertEqual(buzzer.raw_health_pattern(200), "silent")
+
+    def test_health_debounce_requires_a_stable_condition_and_recovery(self):
+        guard = buzzer.HealthDebouncer()
+        self.assertEqual(guard.update("warn", 10.0), "silent")
+        self.assertEqual(guard.update("warn", 14.9), "silent")
+        self.assertEqual(guard.update("warn", 15.0), "warn")
+        self.assertEqual(guard.update("silent", 16.0), "warn")
+        self.assertEqual(guard.update("silent", 21.0), "silent")
+
+    def test_health_fault_overrides_an_informational_request_and_respects_mute(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request_path, power_path, mute_path = root / "request.json", root / "power.json", root / "muted"
+            request_path.write_text(json.dumps({"pattern": "ok"}), encoding="utf-8")
+            with mock.patch.object(buzzer, "REQUEST_PATH", request_path), mock.patch.object(buzzer, "POWER_PATH", power_path), mock.patch.object(buzzer, "MUTE_PATH", mute_path):
+                self.assertEqual(buzzer.requested_pattern(100, "bad"), "bad")
+                mute_path.touch()
+                self.assertEqual(buzzer.requested_pattern(100, "bad"), "silent")
+
 
 if __name__ == "__main__":
     unittest.main()

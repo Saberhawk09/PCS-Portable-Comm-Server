@@ -19,6 +19,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -83,6 +84,9 @@ FAN_PWM_PERIOD_NS = 1_000_000_000 // FAN_PWM_FREQUENCY_HZ
 FAN_PWM_CHIP_PATH = Path("/sys/class/pwm/pwmchip0")
 FAN_STATUS_PATH = Path("/run/pcs-gpio-fan/status.json")
 APRS_STATUS_PATH = Path("/run/pcs-aprs-agent/status.json")
+BUZZER_HEALTH_PATH = Path(
+    os.environ.get("PCS_BUZZER_HEALTH", "/run/pcs-buzzer/health.json")
+)
 APRS_STATUS_MAX_AGE_SECONDS = 15
 FAN_FAILSAFE_DUTY = 100
 FAN_HYSTERESIS_C = 3
@@ -1335,6 +1339,39 @@ def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
     return tuple(sorted(alerts, key=lambda alert: 0 if alert.severity == "critical" else 1))
 
 
+def write_buzzer_health(
+    snapshot: MatrixHealthSnapshot,
+    alerts: Sequence[MatrixAlert],
+    path: Path = BUZZER_HEALTH_PATH,
+) -> None:
+    """Publish the visual alert source of truth for the optional buzzer."""
+    if not path.parent.is_dir():
+        return
+    document = {
+        "version": 1,
+        "updated_at_epoch": int(time.time()),
+        "health": snapshot.as_dict(),
+        "alerts": [alert.as_dict() for alert in alerts],
+    }
+    temporary_name: str | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(prefix=".health.", dir=path.parent)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, separators=(",", ":"))
+            handle.write("\n")
+        os.chmod(temporary_name, 0o644)
+        os.replace(temporary_name, path)
+    except OSError:
+        # The buzzer is optional; visual status must continue if it is absent.
+        pass
+    finally:
+        if temporary_name is not None:
+            try:
+                os.unlink(temporary_name)
+            except FileNotFoundError:
+                pass
+
+
 def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator, ...]:
     """Map the six installed status pixels to stable, documented PCS conditions."""
     temperature = snapshot.stats.temperature_c
@@ -1414,6 +1451,7 @@ def run_led_status(
     once: bool = False,
     poll_seconds: float = WS2812_POLL_SECONDS,
     collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
+    health_writer: Callable[[MatrixHealthSnapshot, Sequence[MatrixAlert]], None] = write_buzzer_health,
     sleeper: Callable[[float], None] = time.sleep,
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
@@ -1421,6 +1459,7 @@ def run_led_status(
     previous_colors: tuple[tuple[int, int, int], ...] | None = None
     while not should_stop():
         snapshot = collector()
+        health_writer(snapshot, matrix_alerts(snapshot))
         indicators = led_status_indicators(snapshot)
         colors = tuple(indicator.color for indicator in indicators)
         unread = snapshot.stats.aprs_mailbox_unread or 0
@@ -1476,6 +1515,7 @@ def run_matrix_alerts(
     frame_seconds: float = 0.7,
     cycle_pause: float = 2.5,
     collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
+    health_writer: Callable[[MatrixHealthSnapshot, Sequence[MatrixAlert]], None] = write_buzzer_health,
     sleeper: Callable[[float], None] = time.sleep,
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
@@ -1483,6 +1523,7 @@ def run_matrix_alerts(
     while not should_stop():
         snapshot = collector()
         alerts = matrix_alerts(snapshot)
+        health_writer(snapshot, alerts)
         frames = matrix_alert_frames(alerts, snapshot.stats.aprs_mailbox_unread or 0)
         summary = json.dumps(
             {
@@ -1512,6 +1553,7 @@ def run_lcd_status(
     once: bool = False,
     page_seconds: float = 3.0,
     collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
+    health_writer: Callable[[MatrixHealthSnapshot, Sequence[MatrixAlert]], None] = write_buzzer_health,
     uptime_reader: Callable[[], int | None] = read_uptime_seconds,
     sleeper: Callable[[float], None] = time.sleep,
     should_stop: Callable[[], bool] = lambda: False,
@@ -1519,6 +1561,7 @@ def run_lcd_status(
     while not should_stop():
         snapshot = collector()
         alerts = matrix_alerts(snapshot)
+        health_writer(snapshot, alerts)
         pages = lcd_health_pages(snapshot, uptime_reader())
         print(
             json.dumps(

@@ -947,7 +947,11 @@ confirm a controlled poweroff after 90 continuous seconds below threshold.
 With the external approximately 10k pull-up installed, confirm silence through
 boot/pin initialization and distinguish POST, OK, WARN, BAD, and low-voltage
 patterns. Confirm WARN/BAD mute leaves visual status unchanged and does not mute
-low voltage. Finally reboot several times and confirm the LCD and MAX7219 always
+low voltage. Induce one supervised visual warning (for example, remove the GNSS
+antenna and wait for the receiver to actually lose its fix), confirm WARN begins
+only after the five-second debounce, restore the condition, and confirm the
+alarm clears. Confirm a critical visual fault requests BAD without overlapping
+WARN. Finally reboot several times and confirm the LCD and MAX7219 always
 initialize; inspect their service journals for retry warnings and watch for
 blank/garbled frames throughout a representative run.
 

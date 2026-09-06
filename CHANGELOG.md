@@ -11,7 +11,8 @@ All notable user-facing PCS changes are recorded here.
 - persistent, hysteretic nominal-12V low-voltage alarm and guarded 90-second
   controlled-shutdown countdown, with normal 24V-source discrimination
 - active-low GPIO13 passive-buzzer service with named POST/OK/WARN/BAD/low-
-  voltage patterns, priority arbitration, and web/API mute controls
+  voltage patterns, priority arbitration, web/API mute controls, and debounced
+  responses to every warning/critical condition used by the visual indicators
 - power health and countdown data in the public/admin dashboards, Stats API,
   status output, and optional-aware self-test
 
