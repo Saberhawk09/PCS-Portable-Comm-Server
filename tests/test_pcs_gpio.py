@@ -906,6 +906,7 @@ class PcsGpioTests(unittest.TestCase):
         service = SHUTDOWN_SERVICE.read_text(encoding="utf-8")
         self.assertIn("DefaultDependencies=no", service)
         self.assertIn("Conflicts=shutdown.target", service)
+        self.assertIn("After=local-fs.target pcs-buzzer.service", service)
         self.assertIn(
             "Before=pcs-gpio-startup.service pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target",
             service,
@@ -914,6 +915,7 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("RuntimeDirectory=pcs-gpio-shutdown", service)
         self.assertIn("WorkingDirectory=/run/pcs-gpio-shutdown", service)
         self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
+        self.assertIn("ExecStop=-/usr/local/sbin/pcs-buzzer shutdown-chime", service)
         self.assertIn("shutdown-state lcd --hardware --apply", service)
         self.assertIn("shutdown-state leds --hardware --apply", service)
         self.assertIn("shutdown-state matrix --hardware --apply", service)

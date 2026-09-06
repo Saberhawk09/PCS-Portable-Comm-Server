@@ -16,6 +16,8 @@ All notable user-facing PCS changes are recorded here.
 - one-shot pleasant OK chime after the first fresh all-clear health state has
   remained stable for five seconds, including readiness after the boot grace
   period; later routine fault recoveries do not replay the boot chime
+- a short descending shutdown/reboot chime ordered ahead of buzzer GPIO release
+  and the existing latched LCD/WS2812/MAX7219 shutdown presentation
 - power health and countdown data in the public/admin dashboards, Stats API,
   status output, and optional-aware self-test
 

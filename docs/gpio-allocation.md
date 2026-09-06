@@ -201,6 +201,10 @@ The buzzer and boot/live/shutdown LCD writers force gpiozero's `lgpio` backend
 from private writable runtime directories. This prevents a hardened systemd
 unit from silently falling back to gpiozero's experimental native backend when
 `lgpio` cannot create its notification pipe.
+During an orderly shutdown or reboot, the shared shutdown-state unit requests
+one short high-to-low buzzer chime before the buzzer daemon releases GPIO13.
+That chime takes priority over active alarms and is unavailable during abrupt
+power removal because Linux has no shutdown interval in that case.
 Unread APRS mail alternates a letter/envelope icon with the normal checkmark
 when the system is otherwise healthy. Both use intensity 1. When a real warning
 or fault exists, the envelope precedes the alert frames and the healthy

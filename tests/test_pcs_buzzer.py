@@ -29,7 +29,7 @@ class BuzzerTests(unittest.TestCase):
         self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
 
     def test_patterns_are_named_and_distinct(self):
-        self.assertEqual(set(buzzer.PATTERNS), {"post", "ok", "warn", "bad", "low_voltage"})
+        self.assertEqual(set(buzzer.PATTERNS), {"post", "ok", "shutdown", "warn", "bad", "low_voltage"})
         self.assertGreater(buzzer.PRIORITY["low_voltage"], buzzer.PRIORITY["bad"])
         self.assertGreater(buzzer.PRIORITY["bad"], buzzer.PRIORITY["warn"])
         self.assertEqual(buzzer.PATTERNS["post"][0].duty, 0.24)
@@ -37,6 +37,8 @@ class BuzzerTests(unittest.TestCase):
         self.assertEqual([tone.duty for tone in buzzer.PATTERNS["warn"] if tone.frequency], [0.125, 0.125])
         self.assertEqual([tone.duty for tone in buzzer.PATTERNS["bad"] if tone.frequency], [0.425, 0.425])
         self.assertEqual([tone.duty for tone in buzzer.PATTERNS["low_voltage"] if tone.frequency], [0.625])
+        self.assertEqual([tone.frequency for tone in buzzer.PATTERNS["shutdown"]], [760, 520, 360])
+        self.assertGreater(buzzer.PRIORITY["shutdown"], buzzer.PRIORITY["low_voltage"])
 
     def test_play_always_finishes_off(self):
         output = FakeOutput()
@@ -96,6 +98,25 @@ class BuzzerTests(unittest.TestCase):
                 self.assertEqual(buzzer.requested_pattern(100, "bad"), "bad")
                 mute_path.touch()
                 self.assertEqual(buzzer.requested_pattern(100, "bad"), "silent")
+
+    def test_shutdown_chime_requests_highest_priority_pattern_and_waits_for_playback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            request_path = Path(directory) / "request.json"
+            with mock.patch.object(buzzer, "REQUEST_PATH", request_path), mock.patch.object(buzzer.time, "time", return_value=100), mock.patch.object(buzzer.time, "sleep") as sleeper:
+                self.assertEqual(buzzer.main(("shutdown-chime",)), 0)
+            document = json.loads(request_path.read_text(encoding="utf-8"))
+        self.assertEqual(document, {"version": 1, "pattern": "shutdown", "expires_at_epoch": 105})
+        sleeper.assert_called_once_with(buzzer.SHUTDOWN_CHIME_WAIT_SECONDS)
+
+    def test_shutdown_chime_overrides_low_voltage_and_mute(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request_path, power_path, mute_path = root / "request.json", root / "power.json", root / "muted"
+            request_path.write_text(json.dumps({"pattern": "shutdown"}), encoding="utf-8")
+            power_path.write_text(json.dumps({"low_voltage": {"active": True}}), encoding="utf-8")
+            mute_path.touch()
+            with mock.patch.object(buzzer, "REQUEST_PATH", request_path), mock.patch.object(buzzer, "POWER_PATH", power_path), mock.patch.object(buzzer, "MUTE_PATH", mute_path):
+                self.assertEqual(buzzer.requested_pattern(100, "bad"), "shutdown")
 
 
 if __name__ == "__main__":

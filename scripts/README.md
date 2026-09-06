@@ -409,6 +409,9 @@ patterns without overlap. The web/API mute action affects WARN/BAD only.
 The LCD, MAX7219, and WS2812 health loops publish their shared warning/critical
 classification under `/run/pcs-buzzer/health.json`; the buzzer applies a
 five-second assertion/recovery debounce before mirroring those visual states.
+The shared shutdown-state unit invokes `pcs-buzzer shutdown-chime` before the
+buzzer service stops, producing one short descending tone sequence on orderly
+shutdown and reboot without taking GPIO ownership from the daemon.
 
 ## Dire Wolf / APRS
 

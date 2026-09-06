@@ -780,7 +780,9 @@ The three driver commands above are simulations and report
 `"writes_performed": false`. After the next supervised normal shutdown,
 confirm that the LCD reads `PCS Offline` / `Shutting Down`, all six status
 pixels are blue, and the matrix shows the bed/ZZZ icon while PCS remains
-powered. A full removal of power blanks the displays by design.
+powered. Confirm the buzzer plays one short descending chime before GPIO13 is
+released on both an orderly shutdown and reboot. A full removal of power blanks
+the displays and cannot play the chime by design.
 
 ## APRS Engine Safety Test
 

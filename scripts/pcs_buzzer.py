@@ -20,6 +20,7 @@ MUTE_PATH = Path(os.environ.get("PCS_BUZZER_MUTE", "/run/pcs-buzzer/muted"))
 HEALTH_PATH = Path(os.environ.get("PCS_BUZZER_HEALTH", "/run/pcs-buzzer/health.json"))
 HEALTH_MAX_AGE_SECONDS = 30
 HEALTH_DEBOUNCE_SECONDS = 5.0
+SHUTDOWN_CHIME_WAIT_SECONDS = 0.75
 
 
 @dataclass(frozen=True)
@@ -33,11 +34,12 @@ SILENCE = Tone(0, 0.10, 0.0)
 PATTERNS: dict[str, tuple[Tone, ...]] = {
     "post": (Tone(880, 0.10, 0.24),),
     "ok": (Tone(360, 0.18, 0.20), Tone(520, 0.16, 0.20), Tone(760, 0.12, 0.20)),
+    "shutdown": (Tone(760, 0.12, 0.20), Tone(520, 0.16, 0.20), Tone(360, 0.20, 0.20)),
     "warn": (Tone(760, 0.10, 0.125), SILENCE, Tone(760, 0.10, 0.125), Tone(0, 2.7, 0)),
     "bad": (Tone(520, 0.42, 0.425), SILENCE, Tone(420, 0.42, 0.425), Tone(0, 1.3, 0)),
     "low_voltage": (Tone(700, 1.0, 0.625), Tone(0, 1.0, 0)),
 }
-PRIORITY = {"silent": 0, "ok": 1, "post": 1, "warn": 2, "bad": 3, "low_voltage": 4}
+PRIORITY = {"silent": 0, "ok": 1, "post": 1, "warn": 2, "bad": 3, "low_voltage": 4, "shutdown": 5}
 
 
 class Output(Protocol):
@@ -160,14 +162,16 @@ class OnlineChimeGuard:
 
 def requested_pattern(now: float | None = None, health_pattern: str = "silent") -> str:
     now = time.time() if now is None else now
-    power = read_json(POWER_PATH)
-    if power.get("low_voltage", {}).get("active") is True:
-        return "low_voltage"
     request = read_json(REQUEST_PATH)
     pattern = str(request.get("pattern", "silent"))
     expires = request.get("expires_at_epoch")
     if pattern not in PRIORITY or (isinstance(expires, (int, float)) and now > expires):
         pattern = "silent"
+    if pattern == "shutdown":
+        return pattern
+    power = read_json(POWER_PATH)
+    if power.get("low_voltage", {}).get("active") is True:
+        return "low_voltage"
     if health_pattern in {"warn", "bad"} and PRIORITY[health_pattern] > PRIORITY[pattern]:
         pattern = health_pattern
     if MUTE_PATH.exists() and pattern in {"warn", "bad"}:
@@ -223,7 +227,7 @@ def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> N
                 continue
             if pattern in {"low_voltage", "bad", "warn"}:
                 play(output, pattern, sleeper=sleeper, interrupted=lambda: stopped or PRIORITY[current_pattern()] > PRIORITY[pattern])
-            elif pattern in {"ok", "post"} and pattern != last:
+            elif pattern in {"ok", "post", "shutdown"} and pattern != last:
                 play(output, pattern, sleeper=sleeper, interrupted=lambda: stopped)
             else:
                 output.off()
@@ -233,7 +237,7 @@ def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> N
         output.close()
 
 
-def main() -> int:
+def main(argv: list[str] | tuple[str, ...] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     play_parser = sub.add_parser("play")
@@ -244,9 +248,18 @@ def main() -> int:
     request.add_argument("--seconds", type=int, default=0, help="expire after N seconds; zero persists until replaced")
     sub.add_parser("mute")
     sub.add_parser("unmute")
+    sub.add_parser("shutdown-chime")
     service = sub.add_parser("service")
     service.add_argument("--simulate", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.command == "shutdown-chime":
+        atomic_json(REQUEST_PATH, {
+            "version": 1,
+            "pattern": "shutdown",
+            "expires_at_epoch": int(time.time()) + 5,
+        })
+        time.sleep(SHUTDOWN_CHIME_WAIT_SECONDS)
+        return 0
     if args.command == "request":
         value = {"version": 1, "pattern": args.pattern}
         if args.seconds > 0:

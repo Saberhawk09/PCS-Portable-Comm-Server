@@ -1,7 +1,7 @@
 [Unit]
 Description=PCS latched offline display state during shutdown
 DefaultDependencies=no
-After=local-fs.target
+After=local-fs.target pcs-buzzer.service
 Before=pcs-gpio-startup.service pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target
 Conflicts=shutdown.target
 
@@ -9,6 +9,7 @@ Conflicts=shutdown.target
 Type=oneshot
 ExecStart=/usr/bin/true
 RemainAfterExit=yes
+ExecStop=-/usr/local/sbin/pcs-buzzer shutdown-chime
 ExecStop=-/usr/local/sbin/pcs-gpio shutdown-state lcd --hardware --apply
 ExecStop=-/opt/pcs-gpio-leds/bin/python /usr/local/sbin/pcs-gpio shutdown-state leds --hardware --apply
 ExecStop=-/usr/local/sbin/pcs-gpio shutdown-state matrix --hardware --apply
