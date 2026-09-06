@@ -32,6 +32,8 @@ class BuzzerTests(unittest.TestCase):
         self.assertEqual(set(buzzer.PATTERNS), {"post", "ok", "warn", "bad", "low_voltage"})
         self.assertGreater(buzzer.PRIORITY["low_voltage"], buzzer.PRIORITY["bad"])
         self.assertGreater(buzzer.PRIORITY["bad"], buzzer.PRIORITY["warn"])
+        self.assertEqual(buzzer.PATTERNS["post"][0].duty, 0.24)
+        self.assertTrue(all(tone.duty == 0.20 for tone in buzzer.PATTERNS["ok"]))
 
     def test_play_always_finishes_off(self):
         output = FakeOutput()

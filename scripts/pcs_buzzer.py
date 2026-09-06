@@ -28,8 +28,8 @@ class Tone:
 
 SILENCE = Tone(0, 0.10, 0.0)
 PATTERNS: dict[str, tuple[Tone, ...]] = {
-    "post": (Tone(880, 0.10, 0.18),),
-    "ok": (Tone(360, 0.18, 0.14), Tone(520, 0.16, 0.14), Tone(760, 0.12, 0.14)),
+    "post": (Tone(880, 0.10, 0.24),),
+    "ok": (Tone(360, 0.18, 0.20), Tone(520, 0.16, 0.20), Tone(760, 0.12, 0.20)),
     "warn": (Tone(760, 0.10, 0.10), SILENCE, Tone(760, 0.10, 0.10), Tone(0, 2.7, 0)),
     "bad": (Tone(520, 0.42, 0.34), SILENCE, Tone(420, 0.42, 0.34), Tone(0, 1.3, 0)),
     "low_voltage": (Tone(700, 1.0, 0.50), Tone(0, 1.0, 0)),
