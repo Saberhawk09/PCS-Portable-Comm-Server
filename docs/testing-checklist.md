@@ -758,9 +758,9 @@ by...`, all six pixels continuously cycle at a clearly visible pace through
 red, orange, yellow, green, cyan, blue, violet, magenta, and white until
 handoff, and the matrix lights all 64 pixels before its checkerboard frames.
 Normal health displays must take over within 90 seconds; they may take over
-earlier when no alert condition remains. If the buzzer is installed and the
-first fresh all-clear health state remains stable for five seconds, confirm one
-pleasant OK chime. If a warning persists beyond the 90-second visual handoff,
+earlier when no alert condition remains. If the buzzer is installed, confirm
+one pleasant OK chime immediately after the first fresh all-clear health state.
+If a warning persists beyond the 90-second visual handoff,
 confirm the chime waits until that warning clears and does not replay after
 later routine fault recoveries.
 

@@ -144,19 +144,13 @@ class HealthDebouncer:
 @dataclass
 class OnlineChimeGuard:
     pending: bool = True
-    healthy_since: float | None = None
 
     def should_play(self, *, health_available: bool, raw_health: str, effective_pattern: str, now: float) -> bool:
         if not self.pending:
             return False
         if health_available and raw_health == "silent" and effective_pattern == "silent":
-            if self.healthy_since is None:
-                self.healthy_since = now
-            elif now - self.healthy_since >= HEALTH_DEBOUNCE_SECONDS:
-                self.pending = False
-                return True
-        else:
-            self.healthy_since = None
+            self.pending = False
+            return True
         return False
 
 

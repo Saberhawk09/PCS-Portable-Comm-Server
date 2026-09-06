@@ -80,13 +80,11 @@ class BuzzerTests(unittest.TestCase):
         self.assertEqual(guard.update("silent", 16.0), "warn")
         self.assertEqual(guard.update("silent", 21.0), "silent")
 
-    def test_online_chime_waits_for_stable_fresh_health_and_plays_only_once(self):
+    def test_online_chime_plays_on_first_fresh_all_clear_health_and_only_once(self):
         guard = buzzer.OnlineChimeGuard()
         self.assertFalse(guard.should_play(health_available=False, raw_health="silent", effective_pattern="silent", now=1.0))
         self.assertFalse(guard.should_play(health_available=True, raw_health="warn", effective_pattern="warn", now=2.0))
-        self.assertFalse(guard.should_play(health_available=True, raw_health="silent", effective_pattern="silent", now=10.0))
-        self.assertFalse(guard.should_play(health_available=True, raw_health="silent", effective_pattern="silent", now=14.9))
-        self.assertTrue(guard.should_play(health_available=True, raw_health="silent", effective_pattern="silent", now=15.0))
+        self.assertTrue(guard.should_play(health_available=True, raw_health="silent", effective_pattern="silent", now=10.0))
         self.assertFalse(guard.should_play(health_available=True, raw_health="silent", effective_pattern="silent", now=30.0))
 
     def test_health_fault_overrides_an_informational_request_and_respects_mute(self):
