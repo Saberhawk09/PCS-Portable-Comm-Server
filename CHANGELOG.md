@@ -19,8 +19,10 @@ All notable user-facing PCS changes are recorded here.
 
 - replace the normal self-test wall of text with a compact per-section
   PASS/WARN/FAIL report while retaining full diagnostics in a timestamped log
-- harden LCD/MAX7219 boot initialization with bounded retries; lower MAX7219
-  SPI to 250 kHz and latch each full frame twice to improve noise recovery
+- harden LCD/MAX7219 boot initialization with bounded retries; keep gpiozero
+  LCD/buzzer users on `lgpio` from writable runtime directories instead of a
+  silent native-backend fallback; lower MAX7219 SPI to 250 kHz and latch each
+  full frame twice to improve noise recovery
 
 ## [1.7.1] - 2026-09-03
 

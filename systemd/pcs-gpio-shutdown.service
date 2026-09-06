@@ -15,6 +15,10 @@ ExecStop=-/usr/local/sbin/pcs-gpio shutdown-state matrix --hardware --apply
 TimeoutStopSec=15
 User=root
 Group=root
+RuntimeDirectory=pcs-gpio-shutdown
+RuntimeDirectoryMode=0755
+WorkingDirectory=/run/pcs-gpio-shutdown
+Environment=GPIOZERO_PIN_FACTORY=lgpio
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict

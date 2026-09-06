@@ -59,7 +59,7 @@ install_power() {
 install_buzzer() {
     require_normal_user
     sudo apt-get update
-    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y python3-gpiozero
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y python3-gpiozero python3-lgpio
     sudo install -o root -g root -m 0755 "${REPO_DIR}/scripts/pcs_buzzer.py" /usr/local/sbin/pcs-buzzer
     sudo install -o root -g root -m 0644 "${REPO_DIR}/systemd/pcs-buzzer.service" /etc/systemd/system/pcs-buzzer.service
     sudo systemctl daemon-reload

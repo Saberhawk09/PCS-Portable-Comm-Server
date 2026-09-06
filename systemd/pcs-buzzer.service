@@ -8,6 +8,8 @@ User=root
 Group=gpio
 RuntimeDirectory=pcs-buzzer
 RuntimeDirectoryMode=0775
+WorkingDirectory=/run/pcs-buzzer
+Environment=GPIOZERO_PIN_FACTORY=lgpio
 ExecStart=/usr/local/sbin/pcs-buzzer service
 ExecStopPost=/usr/local/sbin/pcs-buzzer request silent --seconds 1
 Restart=on-failure

@@ -29,9 +29,9 @@ check_state() {
     echo "=== PCS GPIO LCD ==="
     test -x "${DRIVER_TARGET}" && echo "Driver: installed" || echo "Driver: missing"
     test -e /dev/gpiochip0 && echo "GPIO chip: available" || echo "GPIO chip: missing"
-    python3 -c 'import gpiozero' 2>/dev/null \
-        && echo "Python gpiozero: available" \
-        || echo "Python gpiozero: missing"
+    python3 -c 'import gpiozero, lgpio' 2>/dev/null \
+        && echo "Python gpiozero/lgpio: available" \
+        || echo "Python gpiozero/lgpio: missing"
     systemctl is-enabled pcs-gpio-lcd.service 2>/dev/null || true
     systemctl is-active pcs-gpio-lcd.service 2>/dev/null || true
     systemctl is-enabled pcs-gpio-startup.service 2>/dev/null || true
@@ -54,14 +54,14 @@ install_service() {
     [[ -f "${STARTUP_UNIT_SOURCE}" ]] || { echo "ERROR: Missing ${STARTUP_UNIT_SOURCE}"; exit 1; }
     [[ -f "${SHUTDOWN_UNIT_SOURCE}" ]] || { echo "ERROR: Missing ${SHUTDOWN_UNIT_SOURCE}"; exit 1; }
 
-    if ! python3 -c 'import gpiozero' 2>/dev/null; then
-        echo "Installing Python gpiozero support..."
+    if ! python3 -c 'import gpiozero, lgpio' 2>/dev/null; then
+        echo "Installing Python gpiozero/lgpio support..."
         sudo apt-get update
-        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y python3-gpiozero
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y python3-gpiozero python3-lgpio
     fi
 
     [[ -e /dev/gpiochip0 ]] || { echo "ERROR: /dev/gpiochip0 is unavailable."; exit 1; }
-    python3 -c 'import gpiozero' || { echo "ERROR: Python gpiozero is unavailable."; exit 1; }
+    python3 -c 'import gpiozero, lgpio' || { echo "ERROR: Python gpiozero/lgpio is unavailable."; exit 1; }
     getent group gpio >/dev/null || { echo "ERROR: Raspberry Pi gpio group is unavailable."; exit 1; }
 
     sudo install -o root -g root -m 0755 "${DRIVER_SOURCE}" "${DRIVER_TARGET}"

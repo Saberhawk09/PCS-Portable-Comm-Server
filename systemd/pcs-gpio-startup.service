@@ -11,6 +11,10 @@ RemainAfterExit=yes
 TimeoutStartSec=150
 User=root
 Group=root
+RuntimeDirectory=pcs-gpio-startup
+RuntimeDirectoryMode=0755
+WorkingDirectory=/run/pcs-gpio-startup
+Environment=GPIOZERO_PIN_FACTORY=lgpio
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict

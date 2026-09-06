@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
+SERVICE = ROOT / "systemd" / "pcs-buzzer.service"
 spec = importlib.util.spec_from_file_location("pcs_buzzer", ROOT / "scripts" / "pcs_buzzer.py")
 buzzer = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = buzzer
@@ -21,6 +22,12 @@ class FakeOutput:
 
 
 class BuzzerTests(unittest.TestCase):
+    def test_service_uses_writable_lgpio_runtime_directory(self):
+        service = SERVICE.read_text(encoding="utf-8")
+        self.assertIn("RuntimeDirectory=pcs-buzzer", service)
+        self.assertIn("WorkingDirectory=/run/pcs-buzzer", service)
+        self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
+
     def test_patterns_are_named_and_distinct(self):
         self.assertEqual(set(buzzer.PATTERNS), {"post", "ok", "warn", "bad", "low_voltage"})
         self.assertGreater(buzzer.PRIORITY["low_voltage"], buzzer.PRIORITY["bad"])

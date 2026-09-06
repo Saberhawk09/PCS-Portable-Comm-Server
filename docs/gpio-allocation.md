@@ -192,6 +192,10 @@ persistent errors still fail open so normal status services can take over.
 their priority, so patterns never overlap. WARN and BAD may be muted without
 changing visual health; low voltage always overrides that mute. Hardware use
 requires the external pull-up described above and supervised audible testing.
+The buzzer and boot/live/shutdown LCD writers force gpiozero's `lgpio` backend
+from private writable runtime directories. This prevents a hardened systemd
+unit from silently falling back to gpiozero's experimental native backend when
+`lgpio` cannot create its notification pipe.
 Unread APRS mail alternates a letter/envelope icon with the normal checkmark
 when the system is otherwise healthy. Both use intensity 1. When a real warning
 or fault exists, the envelope precedes the alert frames and the healthy

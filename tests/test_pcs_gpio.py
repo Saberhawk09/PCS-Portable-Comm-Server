@@ -854,11 +854,12 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("SupplementaryGroups=gpio", service)
         self.assertIn("RuntimeDirectory=pcs-gpio-lcd", service)
         self.assertIn("WorkingDirectory=/run/pcs-gpio-lcd", service)
+        self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
         self.assertIn("NoNewPrivileges=yes", service)
         self.assertNotIn("spidev", service)
         self.assertNotIn("PTT", service)
         self.assertIn("systemctl enable --now pcs-gpio-lcd.service", setup)
-        self.assertIn("apt-get install -y python3-gpiozero", setup)
+        self.assertIn("apt-get install -y python3-gpiozero python3-lgpio", setup)
 
     def test_fan_service_uses_hardware_pwm_and_full_duty_stop_failsafe(self):
         service = FAN_SERVICE.read_text(encoding="utf-8")
@@ -895,6 +896,9 @@ class PcsGpioTests(unittest.TestCase):
             service,
         )
         self.assertIn("RemainAfterExit=yes", service)
+        self.assertIn("RuntimeDirectory=pcs-gpio-shutdown", service)
+        self.assertIn("WorkingDirectory=/run/pcs-gpio-shutdown", service)
+        self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
         self.assertIn("shutdown-state lcd --hardware --apply", service)
         self.assertIn("shutdown-state leds --hardware --apply", service)
         self.assertIn("shutdown-state matrix --hardware --apply", service)
@@ -909,6 +913,9 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("After=local-fs.target pcs-gpio-shutdown.service", service)
         self.assertIn("TimeoutStartSec=150", service)
         self.assertIn("RemainAfterExit=yes", service)
+        self.assertIn("RuntimeDirectory=pcs-gpio-startup", service)
+        self.assertIn("WorkingDirectory=/run/pcs-gpio-startup", service)
+        self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
         self.assertIn("DeviceAllow=/dev/gpiochip0 rw", service)
         self.assertIn("DeviceAllow=/dev/spidev0.0 rw", service)
         self.assertIn("DeviceAllow=/dev/mem rw", service)
