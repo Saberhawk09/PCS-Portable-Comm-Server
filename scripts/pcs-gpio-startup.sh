@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 DRIVER="${PCS_GPIO_DRIVER:-/usr/local/sbin/pcs-gpio}"
 LED_PYTHON="${PCS_GPIO_LED_PYTHON:-/opt/pcs-gpio-leds/bin/python}"
+BUZZER="${PCS_BUZZER_DRIVER:-/usr/local/sbin/pcs-buzzer}"
 MARKER_DIR="${PCS_GPIO_MARKER_DIR:-/etc/pcs/gpio-shutdown}"
 TIMEOUT_SECONDS="${PCS_GPIO_STARTUP_TIMEOUT_SECONDS:-90}"
 POLL_SECONDS="${PCS_GPIO_STARTUP_POLL_SECONDS:-2}"
@@ -34,6 +35,19 @@ retry_indicator() {
         sleep 0.4
     done
     return 1
+}
+
+play_online_chime() {
+    if (( write_failures != 0 )); then
+        return 0
+    fi
+    if [[ -x "${BUZZER}" ]] && systemctl is-active --quiet pcs-buzzer.service; then
+        if "${BUZZER}" request ok --seconds 10; then
+            echo "PCS fully online chime requested."
+        else
+            echo "WARNING: PCS reached ready state but the online chime request failed." >&2
+        fi
+    fi
 }
 
 stop_led_animation() {
@@ -89,6 +103,7 @@ deadline=$((SECONDS + TIMEOUT_SECONDS))
 while (( SECONDS < deadline )); do
     if "${DRIVER}" startup-ready >/dev/null; then
         echo "PCS indicator health inputs are ready; handing off to normal status services."
+        play_online_chime
         exit "${write_failures}"
     fi
     sleep "${POLL_SECONDS}"

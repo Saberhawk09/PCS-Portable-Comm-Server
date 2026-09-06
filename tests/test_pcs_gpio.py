@@ -942,6 +942,11 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn('kill "${led_animation_pid}"', script)
         self.assertIn('wait "${led_animation_pid}"', script)
         self.assertIn('"${DRIVER}" startup-ready', script)
+        self.assertIn('BUZZER="${PCS_BUZZER_DRIVER:-/usr/local/sbin/pcs-buzzer}"', script)
+        self.assertIn('systemctl is-active --quiet pcs-buzzer.service', script)
+        self.assertIn('"${BUZZER}" request ok --seconds 10', script)
+        self.assertEqual(script.count("play_online_chime"), 2)
+        self.assertLess(script.index("play_online_chime\n        exit"), script.index("startup grace period expired"))
         self.assertIn("persistent alerts remain visible", script)
 
     def test_normal_indicator_services_wait_for_startup_handoff(self):

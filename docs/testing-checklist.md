@@ -758,7 +758,9 @@ by...`, all six pixels continuously cycle at a clearly visible pace through
 red, orange, yellow, green, cyan, blue, violet, magenta, and white until
 handoff, and the matrix lights all 64 pixels before its checkerboard frames.
 Normal health displays must take over within 90 seconds; they may take over
-earlier when no alert condition remains.
+earlier when no alert condition remains. If the buzzer is installed and the
+handoff is healthy, confirm one pleasant OK chime at that transition. A
+90-second timeout or failed display write must not produce the online chime.
 
 When any LCD, WS2812, or matrix option is selected, verify that the shared
 shutdown unit is armed and that each fitted display has a marker:
