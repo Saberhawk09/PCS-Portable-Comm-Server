@@ -399,8 +399,9 @@ collector and active-low GPIO13 passive-buzzer controller:
 ```
 
 Power installation requires verified unique I2C addresses and shunt
-calibrations. The example uses input `0x40` and 5V `0x41` address reservations
-but deliberately invalid calibration placeholders. Once configured, the
+calibrations. The generic example deliberately contains invalid calibration
+placeholders; the PCS as-built configuration records input `0x40` and 5V
+`0x4c` in `config/power-monitor.pcs.json`. Once configured, the
 collector publishes an atomic snapshot under `/run/pcs-power-monitor` and
 keeps controlled shutdown disarmed until `allow_shutdown` is explicitly
 enabled after supervised acceptance.

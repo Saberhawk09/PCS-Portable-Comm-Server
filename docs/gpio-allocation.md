@@ -29,9 +29,10 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 
 GPIO2 (pin 3) and GPIO3 (pin 5) remain the kernel-managed I2C1 bus. The
 commissioned input INA226 shares this bus with the RTC at `0x40`; it has an
-`R002` 2 milliohm shunt and a 20 A advertised range. The second INA226 and its
-5V rail placement remain physically pending, with `0x41` reserved in the
-example until its address and calibration are verified.
+`R002` 2 milliohm shunt and a 20 A advertised range. The commissioned 5V rail
+INA226 shares the bus at `0x4c` and uses the same shunt and advertised range.
+Both devices returned the expected TI manufacturer and INA226 die IDs during
+commissioning.
 
 ## Bus and Ownership Boundaries
 

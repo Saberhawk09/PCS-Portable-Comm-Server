@@ -107,6 +107,21 @@ class PowerTests(unittest.TestCase):
         self.assertIsNone(value["estimated_non_5v_power"])
         self.assertEqual(value["detected_nominal_source"], "24v")
 
+    def test_5v_status_accepts_commissioned_rail_voltage(self):
+        monitor = power.MonitorConfig("rail_5v", 0x4C, 0.002, 20)
+        self.assertEqual(
+            power.reading_status("rail_5v", power.Reading(True, 5.228, 1.565, 8.179), monitor),
+            "ok",
+        )
+        self.assertEqual(
+            power.reading_status("rail_5v", power.Reading(True, 5.26, 1.565, 8.228), monitor),
+            "warn",
+        )
+        self.assertEqual(
+            power.reading_status("rail_5v", power.Reading(True, 5.36, 1.565, 8.385), monitor),
+            "bad",
+        )
+
     def test_low_voltage_requires_persistence_and_resets_with_hysteresis(self):
         guard = power.LowVoltageGuard(config())
         self.assertEqual(guard.update(11.4, 0), (False, None))

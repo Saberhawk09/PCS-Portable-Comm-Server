@@ -253,17 +253,21 @@ address `0x40` with an `R002` 2 milliohm shunt and advertised 20 A range. Its
 TI manufacturer and INA226 die IDs matched, and live readings were stable near
 23.96 V, 0.9 A, and 22 W. Those readings are plausible but still require a
 trusted-meter comparison before being treated as calibrated physical evidence.
-The second INA226 and its 5V rail placement remain physically pending.
+The 5V rail INA226 was commissioned on September 7, 2026 at address `0x4c`
+with the same `R002` 2 milliohm shunt and advertised 20 A range. Its identity
+registers matched the input monitor and its initial bus-voltage sample was
+5.22 V. Both monitors still require comparison with a trusted meter before
+their current and power readings are treated as calibrated physical evidence.
 
 The intended roles are:
 
 - `input` (`0x40`, commissioned): upstream of PCS conversion and authoritative
   for source voltage, total current, and total PCS input power.
-- `rail_5v` (`0x41` reserved in the example): 5V voltage, current, and power.
+- `rail_5v` (`0x4c`, commissioned): 5V voltage, current, and power.
 
-The input monitor may be commissioned by itself while the 5V monitor remains
-physically pending. In that interim state input measurements and low-voltage
-status are available, while the 5V and estimated non-5V fields are explicitly
+The input monitor may also be commissioned by itself if the 5V monitor is
+temporarily removed. In that state input measurements and low-voltage status
+remain available, while the 5V and estimated non-5V fields are explicitly
 reported as not commissioned rather than as a monitor fault.
 
 The reported non-5V value is `input power - 5V power`. It is explicitly an

@@ -169,7 +169,7 @@ def reading_status(name: str, reading: Reading, monitor: MonitorConfig, low_thre
     if name == "rail_5v":
         if reading.voltage < 4.65 or reading.voltage > 5.35:
             return "bad"
-        if reading.voltage < 4.85 or reading.voltage > 5.20:
+        if reading.voltage < 4.85 or reading.voltage > 5.25:
             return "warn"
     if reading.current > monitor.max_current_amps:
         return "bad"
