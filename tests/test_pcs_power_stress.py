@@ -46,6 +46,8 @@ class PowerStressTests(unittest.TestCase):
         self.assertIn("finally:\n        stress.cleanup()", source)
         self.assertNotIn("shell=True", source)
         self.assertIn('"low input voltage detected; ending stress immediately"', source)
+        self.assertIn('/opt/pcs-gpio-leds/bin/python', source)
+        self.assertIn('"--_ws2812-worker"', source)
 
 
 if __name__ == "__main__":
