@@ -108,6 +108,15 @@ class PowerStressTests(unittest.TestCase):
         logger.minimum_voltages["input"] = 12.5
         self.assertEqual(11.8, logger.arm_baseline_sag_limit())
 
+    def test_sampler_tolerates_one_error_but_aborts_after_three_consecutive(self):
+        logger = stress.HighRatePowerLogger()
+        logger._sample_failed(OSError(5, "Input/output error"))
+        self.assertIsNone(logger.abort_reason)
+        logger._sample_failed(OSError(5, "Input/output error"))
+        self.assertIsNone(logger.abort_reason)
+        logger._sample_failed(OSError(5, "Input/output error"))
+        self.assertIn("3 consecutive times", logger.abort_reason)
+
 
 if __name__ == "__main__":
     unittest.main()
