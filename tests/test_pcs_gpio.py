@@ -680,6 +680,13 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn('fail "OpenWrt AP does not respond', self_test)
         self.assertNotIn('warn "OpenWrt AP does not respond', self_test)
 
+    def test_self_test_buzzer_result_expires(self):
+        self_test = PCS_SELF_TEST.read_text(encoding="utf-8")
+        self.assertIn(
+            'pcs-buzzer request "${PCS_SELF_TEST_PATTERN}" --seconds 10',
+            self_test,
+        )
+
     def test_lcd_hard_faults_replace_normal_status_pages(self):
         stats = pcs_gpio.StatsSnapshot(
             86, 12, 0, False, False, 0, "Offline", 0, None, aprs_status="ok"
