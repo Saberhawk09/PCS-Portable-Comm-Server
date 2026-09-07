@@ -46,16 +46,17 @@ dispatch_host_namespace_action() {
     local dispatcher
 
     case "${ACTION}" in
-        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute) ;;
+        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute|shutdown-system) ;;
         *) return 0 ;;
     esac
 
     # ProtectSystem=strict gives the API service a private mount namespace.
     # Mount operations performed there can succeed without changing the real
     # PCS host, and status collectors can consequently report stale mounts.
-    # Re-enter only the fixed dashboard/status collectors and storage actions
-    # through PID 1; the marker prevents recursion in the transient host
-    # service. This also keeps backup reads aligned after USB hotplug events.
+    # Re-enter only the fixed dashboard/status collectors, storage actions, and
+    # coordinated shutdown through PID 1; the marker prevents recursion in the
+    # transient host service. This also gives the low-voltage guard access to
+    # the Pi-Star pairing state hidden by ProtectHome=yes.
     if [[ "${PCS_HOST_NAMESPACE_ACTION:-0}" == "1" ]]; then
         return 0
     fi

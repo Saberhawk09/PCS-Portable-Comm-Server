@@ -3,6 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -141,6 +142,29 @@ class PowerTests(unittest.TestCase):
         self.assertEqual(guard.update(24.0, 0), (False, None))
         self.assertEqual(guard.nominal, "24v")
         self.assertEqual(guard.update(24.0, 100), (False, None))
+
+    def test_shutdown_uses_coordinated_dispatcher(self):
+        completed = mock.Mock(returncode=0)
+        with mock.patch.object(power.subprocess, "run", return_value=completed) as run:
+            power.request_coordinated_shutdown()
+        run.assert_called_once_with(
+            [power.SHUTDOWN_DISPATCHER, "shutdown-system"], check=False
+        )
+
+    def test_shutdown_falls_back_when_dispatcher_fails(self):
+        failed = mock.Mock(returncode=1)
+        completed = mock.Mock(returncode=0)
+        with mock.patch.object(
+            power.subprocess, "run", side_effect=[failed, completed]
+        ) as run:
+            power.request_coordinated_shutdown()
+        self.assertEqual(
+            run.call_args_list,
+            [
+                mock.call([power.SHUTDOWN_DISPATCHER, "shutdown-system"], check=False),
+                mock.call(["systemctl", "poweroff"], check=False),
+            ],
+        )
 
 
 if __name__ == "__main__":

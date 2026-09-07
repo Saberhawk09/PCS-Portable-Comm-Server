@@ -279,9 +279,12 @@ Low-voltage protection defaults to 11.5V with 0.3V recovery hysteresis, three
 consecutive low samples, and a 90-second countdown. In `auto` source mode the
 first plausible reading classifies a source at or above 18V as nominal 24V and
 does not apply the nominal-12V cutoff to it. Controlled shutdown is separately
-gated by `allow_shutdown`; the live dual-monitor installation leaves it
-`false` until supervised hardware validation demonstrates correct scaling,
-polarity, recovery cancellation, and shutdown behavior.
+gated by `allow_shutdown`; it was armed only after supervised hardware
+validation demonstrated correct scaling, polarity, recovery cancellation, and
+shutdown behavior. When the countdown expires, the guard invokes the standard
+coordinated shutdown dispatcher so a paired Pi-Star receives its clean
+poweroff request before PCS powers off. A direct PCS poweroff is retained only
+as a fail-safe fallback if that dispatcher itself cannot run.
 
 The normal 16x2 LCD rotation includes one compact power page. Its first row
 shows input voltage and total input watts, and its second row shows 5V rail

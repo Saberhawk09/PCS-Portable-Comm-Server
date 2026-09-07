@@ -12,6 +12,7 @@ import json
 import math
 import os
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass
@@ -20,6 +21,7 @@ from typing import Callable, Protocol
 
 CONFIG_PATH = Path(os.environ.get("PCS_POWER_CONFIG", "/etc/pcs/power-monitor.json"))
 STATUS_PATH = Path(os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/status.json"))
+SHUTDOWN_DISPATCHER = os.environ.get("PCS_SHUTDOWN_DISPATCHER", "/usr/local/sbin/pcs-web-action")
 CONVERSION_SETTLE_SECONDS = 0.05
 
 
@@ -267,7 +269,26 @@ def collect(bus: Bus, config: dict, guard: LowVoltageGuard, now: float) -> dict:
     }
 
 
-def run_service(config: dict, *, status_path: Path = STATUS_PATH, bus_factory: Callable[[], Bus] = open_bus, sleeper: Callable[[float], None] = time.sleep) -> None:
+def request_coordinated_shutdown() -> None:
+    """Use the standard PCS shutdown path so a paired Pi-Star stops first."""
+    try:
+        result = subprocess.run([SHUTDOWN_DISPATCHER, "shutdown-system"], check=False)
+    except OSError as error:
+        print(f"WARNING: coordinated shutdown dispatcher failed: {error}", file=sys.stderr)
+        result = None
+    if result is None or result.returncode != 0:
+        print("WARNING: falling back to direct PCS poweroff", file=sys.stderr)
+        subprocess.run(["systemctl", "poweroff"], check=False)
+
+
+def run_service(
+    config: dict,
+    *,
+    status_path: Path = STATUS_PATH,
+    bus_factory: Callable[[], Bus] = open_bus,
+    sleeper: Callable[[float], None] = time.sleep,
+    shutdown_requester: Callable[[], None] = request_coordinated_shutdown,
+) -> None:
     guard = LowVoltageGuard(config)
     shutdown_requested = False
     bus = bus_factory()
@@ -280,7 +301,7 @@ def run_service(config: dict, *, status_path: Path = STATUS_PATH, bus_factory: C
             remaining = status["low_voltage"]["remaining_seconds"]
             if remaining == 0 and config["allow_shutdown"] and not shutdown_requested:
                 shutdown_requested = True
-                subprocess.run(["systemctl", "poweroff"], check=False)
+                shutdown_requester()
             if not status["low_voltage"]["active"]:
                 shutdown_requested = False
             sleeper(float(config.get("poll_seconds", 2.0)))
