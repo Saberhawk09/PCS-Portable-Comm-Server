@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "source_mode": "auto",
+  "low_voltage_threshold": 11.5,
+  "low_voltage_hysteresis": 0.3,
+  "confirm_samples": 3,
+  "shutdown_delay_seconds": 90,
+  "poll_seconds": 2,
+  "allow_shutdown": false,
+  "monitors": {
+    "input": {"address": "0x40", "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS", "max_current_amps": "REPLACE_WITH_RATED_AMPS"},
+    "rail_5v": {"address": "0x41", "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS", "max_current_amps": "REPLACE_WITH_RATED_AMPS"}
+  }
+}

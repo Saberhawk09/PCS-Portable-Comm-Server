@@ -667,6 +667,10 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn('-v interval="1800"', setup)
         self.assertIn('value == "yes" && !interval_replaced', setup)
 
+        self_test = (ROOT / "scripts" / "pcs-self-test.sh").read_text(encoding="utf-8")
+        self.assertIn('PCS_MESHTASTIC_POSITION_INTERVAL="${MESHTASTIC_POSITION_INTERVAL}"', self_test)
+        self.assertIn('<= configured_interval + 60', self_test)
+
     def test_mqtt_import_quotes_environment_values_without_printing_secrets(self):
         self.assertEqual(meshtastic_import_mqtt.quote_environment_value("mesh"), '"mesh"')
         self.assertEqual(

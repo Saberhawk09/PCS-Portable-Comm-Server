@@ -16,6 +16,7 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | MAX7219 CS/LOAD | GPIO8 | 24 | Installed and bench-tested | SPI0 CE0 through one channel of the 74AHCT125. |
 | MAX7219 DIN | GPIO10 | 19 | Installed and bench-tested | SPI0 MOSI through one channel of the 74AHCT125. |
 | MAX7219 CLK | GPIO11 | 23 | Installed and bench-tested | SPI0 SCLK through one channel of the 74AHCT125. |
+| Passive buzzer SIG | GPIO13 | 33 | Installed and audible-tested | Active-low PNP module; external approximately 10k pull-up from SIG to 3.3V remains an as-built requirement. |
 | SA818S UART TX | GPIO14 | 8 | Installed / tested | `/dev/serial0` Pi TX to SA818S RXD at 9600 8N1; managed by `pcs-sa818.service`. |
 | SA818S UART RX | GPIO15 | 10 | Installed / tested | `/dev/serial0` Pi RX from SA818S TXD at 9600 8N1; managed by `pcs-sa818.service`. |
 | LCD E | GPIO17 | 11 | Installed and bench-tested | HD44780 enable. |
@@ -26,12 +27,20 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | LCD D6 | GPIO23 | 16 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 | LCD D7 | GPIO24 | 18 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 
+GPIO2 (pin 3) and GPIO3 (pin 5) remain the kernel-managed I2C1 bus. The
+commissioned input INA226 shares this bus with the RTC at `0x40`; it has an
+`R002` 2 milliohm shunt and a 20 A advertised range. The commissioned 5V rail
+INA226 shares the bus at `0x4c` and uses the same shunt and advertised range.
+Both devices returned the expected TI manufacturer and INA226 die IDs during
+commissioning.
+
 ## Bus and Ownership Boundaries
 
 - The RTC remains owned by the Linux I2C stack and `setup-rtc.sh`.
 - The MAX7219 uses SPI0 CE0, MOSI, and SCLK. GPIO9/MISO is not connected by this
   write-only display path. The installed PCS matrix was successfully exercised
-  at 500 kHz with global intensity register value `0x03` on August 19, 2026.
+  at 500 kHz with global intensity register value `0x03` on August 19, 2026;
+  software now uses 250 kHz for additional wiring margin.
 - Dire Wolf owns GPIO6 when an RF transmit profile is deliberately activated.
   The general GPIO commissioning utility never toggles PTT.
   Guarded TX validation rejects a stale local GPIO17 setting left by an older
@@ -132,7 +141,7 @@ the Pi-side `DATA IN` end:
 | 0 | Pi CPU temperature | Green | Amber at 75 C; red at 85 C |
 | 1 | Root filesystem use | Green | Amber at 85%; red at 95% |
 | 2 | Primary USB storage | Green when mounted | Amber when missing |
-| 3 | Local services, APRS agent, and configured Pi-Star dependency | Green when local services and APRS are healthy and Pi-Star is reachable or not configured | Amber when configured Pi-Star is unreachable; red when APRS reports an error or one or more local systemd units fail |
+| 3 | Local services, power protection, APRS agent, and configured Pi-Star dependency | Green when local services, power, and APRS are healthy and Pi-Star is reachable or not configured | Amber for a power warning or unreachable configured Pi-Star; red for low voltage, critical power state, APRS error, or failed local systemd unit |
 | 4 | Active network uplink / OpenWrt AP | Green for Cellular or WiFi when the AP is reachable | Amber when the uplink is offline; red when the OpenWrt AP is offline |
 | 5 | GPS fix | Green when locked | Amber for no fix |
 
@@ -164,12 +173,41 @@ indicates normal operation. Every warning shows an `!` followed by the
 affected subsystem icon; every critical fault shows an `X` followed by the
 subsystem icon. Alert sources are CPU temperature (75/85 C warning/critical),
 root-disk use (85/95 percent), missing primary USB storage, failed systemd units,
-an unavailable or unhealthy APRS agent,
+an unavailable or unhealthy APRS agent, INA226 power warnings, and confirmed
+low input voltage,
 an unreachable OpenWrt AP/switch, a configured but unreachable Pi-Star hotspot,
 no active uplink, and unavailable GPS fix. The OpenWrt fault uses the Wi-Fi
 symbol and critical severity; Pi-Star uses a dedicated raspberry symbol and
 warning severity. Local systemd failures remain critical. Detailed live values
-remain on the LCD.
+remain on the LCD. A confirmed low-voltage countdown shows a critical `X`
+followed by a lightning-bolt power symbol until voltage recovery or shutdown.
+
+To improve recovery from intermittent blank or garbled power-up states, the
+driver now uses a conservative 250 kHz SPI clock, explicitly cycles shutdown
+during initialization, and writes every complete 8-row frame twice. The boot
+runner independently retries both LCD and matrix initialization three times;
+persistent errors still fail open so normal status services can take over.
+
+## Passive Buzzer
+
+`scripts/pcs_buzzer.py` owns active-low GPIO13 and centralizes the named
+`post`, `ok`, `warn`, `bad`, and `low_voltage` patterns. One daemon arbitrates
+their priority, so patterns never overlap. WARN and BAD may be muted without
+changing visual health; low voltage always overrides that mute. The live LCD,
+MAX7219, and WS2812 loops publish the same centralized alert snapshot they use
+for visual status. A warning sustained for five seconds requests WARN and a
+critical alert requests BAD; recovery is debounced for the same interval.
+Snapshots older than 30 seconds are ignored instead of creating a false alarm.
+Hardware use requires the external pull-up described above and supervised
+audible testing.
+The buzzer and boot/live/shutdown LCD writers force gpiozero's `lgpio` backend
+from private writable runtime directories. This prevents a hardened systemd
+unit from silently falling back to gpiozero's experimental native backend when
+`lgpio` cannot create its notification pipe.
+During an orderly shutdown or reboot, the shared shutdown-state unit requests
+one short high-to-low buzzer chime before the buzzer daemon releases GPIO13.
+That chime takes priority over active alarms and is unavailable during abrupt
+power removal because Linux has no shutdown interval in that case.
 Unread APRS mail alternates a letter/envelope icon with the normal checkmark
 when the system is otherwise healthy. Both use intensity 1. When a real warning
 or fault exists, the envelope precedes the alert frames and the healthy
@@ -198,10 +236,16 @@ leave it disabled.
 Each LCD, WS2812, or matrix installer also registers that device with the
 shared `pcs-gpio-startup.service`. At boot the LCD shows `PCS Booting Up` and
 `Stand by...`, the six pixels cycle through the color spectrum, and the matrix
-lights every pixel before checkerboard frames. Boot states remain for at most
+runs its all-pixel/checkerboard test once before holding the startup arrow.
+Reasserting the complete MAX7219 state and arrow in the background recovers a
+missed write-only power-up command without visibly replaying the test pattern.
+Boot states remain for at most
 90 seconds while the ordinary health inputs settle. The service hands off
 early when no alerts remain and always hands off on timeout so persistent
-faults stay visible.
+faults stay visible. When the optional buzzer is active, it waits independently
+for the first fresh all-clear health snapshot and immediately plays one OK
+chime. This still works when readiness arrives after the
+90-second visual handoff, and later routine recoveries do not replay the chime.
 
 The installers also register the device with `pcs-gpio-shutdown.service`. The
 shutdown service is ordered before the startup and normal display daemons,

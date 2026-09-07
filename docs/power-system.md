@@ -246,3 +246,84 @@ Before this file is treated as an as-built electrical record, capture and verify
 - measured 12 V and 5 V rail voltage under idle and peak load
 - peak current draw and converter temperature
 - AC terminal guarding, strain relief, and protective-earth bonding
+## INA226 Power Monitoring
+
+The upstream PCS input monitor was commissioned on September 7, 2026 at I2C
+address `0x40` with an `R002` 2 milliohm shunt and advertised 20 A range. Its
+TI manufacturer and INA226 die IDs matched, and live readings were stable near
+23.96 V, 0.9 A, and 22 W. Those readings are plausible but still require a
+trusted-meter comparison before being treated as calibrated physical evidence.
+The 5V rail INA226 was commissioned on September 7, 2026 at address `0x4c`
+with the same `R002` 2 milliohm shunt and advertised 20 A range. Its identity
+registers matched the input monitor and its initial bus-voltage sample was
+5.22 V. Both monitors still require comparison with a trusted meter before
+their current and power readings are treated as calibrated physical evidence.
+
+The intended roles are:
+
+- `input` (`0x40`, commissioned): upstream of PCS conversion and authoritative
+  for source voltage, total current, and total PCS input power.
+- `rail_5v` (`0x4c`, commissioned): 5V voltage, current, and power.
+
+The input monitor may also be commissioned by itself if the 5V monitor is
+temporarily removed. In that state input measurements and low-voltage status
+remain available, while the 5V and estimated non-5V fields are explicitly
+reported as not commissioned rather than as a monitor fault.
+
+The reported non-5V value is `input power - 5V power`. It is explicitly an
+estimate that includes DC/DC conversion losses, not an exact 12V rail reading.
+The JSON configuration leaves the monitor map extensible for a later dedicated
+12V sensor.
+
+Low-voltage protection defaults to 11.5V with 0.3V recovery hysteresis, three
+consecutive low samples, and a 90-second countdown. In `auto` source mode the
+first plausible reading classifies a source at or above 18V as nominal 24V and
+does not apply the nominal-12V cutoff to it. Controlled shutdown is separately
+gated by `allow_shutdown`; it was armed only after supervised hardware
+validation demonstrated correct scaling, polarity, recovery cancellation, and
+shutdown behavior. When the countdown expires, the guard invokes the standard
+coordinated shutdown dispatcher so a paired Pi-Star receives its clean
+poweroff request before PCS powers off. A direct PCS poweroff is retained only
+as a fail-safe fallback if that dispatcher itself cannot run.
+
+The normal 16x2 LCD rotation includes one compact power page. Its first row
+shows input voltage and total input watts, and its second row shows 5V rail
+voltage and watts. A second `Total PWR Usage` page shows total PCS input charge
+in Ah and energy in Wh since boot. The standard concise self-test reports separate Input Power,
+5V Rail, and Power Protection rows with live measurements. The public and
+authenticated web status views expose the full voltage, current, power,
+since-boot mAh/Wh totals, per-monitor health, low-voltage state, and explicitly
+labeled non-5V estimate.
+The commissioned 5V policy treats readings through 5.30V as normal, readings
+above 5.30V as WARN, and readings above 5.35V as BAD. The narrow warning band
+preserves advance notice before the critical boundary.
+
+Confirmed low voltage is a critical status everywhere: the LCD replaces its
+normal rotation with input voltage and remaining shutdown time, the MAX7219
+alternates its critical `X` with the power symbol, and the shared-services
+WS2812 pixel turns red. The public/admin web card and app API expose BAD health,
+alarm activity, whether automatic shutdown is armed, and the remaining
+countdown. Voltage recovery clears all of these without hiding unrelated
+warnings. The low-voltage buzzer uses a symmetric 50% drive waveform to reduce
+audible distortion while retaining its loud one-second cadence. Pattern
+priority is checked every 20ms; before the shutdown chime changes frequency,
+the active-low buzzer input is held off for 25ms so the alarm cannot end on a
+clipped PWM edge.
+
+Charge and energy use trapezoidal integration of consecutive INA226 current and
+power samples. Tracking resets on a real boot, survives service restarts during
+that boot, and deliberately does not bridge intervals where a monitor is
+offline. These are measured-load estimates and inherit the commissioned
+INA226/shunt current-calibration accuracy; they are not billing-grade values.
+
+Install or inspect locally on the Pi with:
+
+```bash
+./scripts/setup-power-audio.sh --install-power
+./scripts/setup-power-audio.sh --check
+```
+
+The installer copies `config/power-monitor.example.json` only when no live
+configuration exists, and does not overwrite an operator-calibrated file. Its
+shunt/current values are deliberate non-runnable placeholders; the service is
+not enabled until they are replaced and configuration validation passes.

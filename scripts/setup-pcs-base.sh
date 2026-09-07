@@ -48,6 +48,8 @@ PCS_SETUP_GPIO_LCD="${PCS_SETUP_GPIO_LCD:-ask}"
 PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-ask}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"
+PCS_SETUP_POWER_MONITOR="${PCS_SETUP_POWER_MONITOR:-ask}"
+PCS_SETUP_BUZZER="${PCS_SETUP_BUZZER:-ask}"
 PCS_APRS_CONFIG_VERSION="${PCS_APRS_CONFIG_VERSION:-3}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
@@ -290,6 +292,8 @@ write_install_config() {
         printf "PCS_SETUP_GPIO_LEDS=%q\n" "${PCS_SETUP_GPIO_LEDS}"
         printf "PCS_SETUP_GPIO_STATS=%q\n" "${PCS_SETUP_GPIO_STATS}"
         printf "PCS_SETUP_GPIO_FAN=%q\n" "${PCS_SETUP_GPIO_FAN}"
+        printf "PCS_SETUP_POWER_MONITOR=%q\n" "${PCS_SETUP_POWER_MONITOR}"
+        printf "PCS_SETUP_BUZZER=%q\n" "${PCS_SETUP_BUZZER}"
         printf "PCS_APRS_CONFIG_VERSION=%q\n" "${PCS_APRS_CONFIG_VERSION}"
         printf "PCS_APRS_ACTIVE_MODE=%q\n" "${PCS_APRS_ACTIVE_MODE}"
         printf "PCS_APRS_ROLE=%q\n" "${PCS_APRS_ROLE}"
@@ -439,6 +443,8 @@ collect_install_answers() {
     local gpio_leds_default
     local gpio_stats_default
     local gpio_fan_default
+    local power_monitor_default
+    local buzzer_default
     local cellular_fallback_default
 
     case "${PCS_SETUP_MODE}" in
@@ -466,6 +472,8 @@ collect_install_answers() {
             PCS_SETUP_GPIO_LEDS="no"
             PCS_SETUP_GPIO_STATS="no"
             PCS_SETUP_GPIO_FAN="no"
+            PCS_SETUP_POWER_MONITOR="no"
+            PCS_SETUP_BUZZER="no"
             ;;
         ALL)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -493,6 +501,8 @@ collect_install_answers() {
             gpio_leds_default="${PCS_SETUP_GPIO_LEDS}"
             gpio_stats_default="${PCS_SETUP_GPIO_STATS}"
             gpio_fan_default="${PCS_SETUP_GPIO_FAN}"
+            power_monitor_default="${PCS_SETUP_POWER_MONITOR}"
+            buzzer_default="${PCS_SETUP_BUZZER}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
             [[ "${gpsd_lan_default}" == "ask" ]] && gpsd_lan_default="no"
@@ -506,6 +516,8 @@ collect_install_answers() {
             [[ "${gpio_leds_default}" == "ask" ]] && gpio_leds_default="no"
             [[ "${gpio_stats_default}" == "ask" ]] && gpio_stats_default="no"
             [[ "${gpio_fan_default}" == "ask" ]] && gpio_fan_default="no"
+            [[ "${power_monitor_default}" == "ask" ]] && power_monitor_default="no"
+            [[ "${buzzer_default}" == "ask" ]] && buzzer_default="no"
             PCS_SETUP_USB_PRIMARY="$(ask_yes_no "Configure detected USB storage as PCS-Share primary storage?" "${usb_default}")"
             if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" ]]; then
                 PCS_SETUP_USB_DEVICE="$(ask_value "USB storage device or UUID" "${PCS_SETUP_USB_DEVICE}")"
@@ -528,6 +540,8 @@ collect_install_answers() {
             PCS_SETUP_GPIO_LEDS="$(ask_yes_no "Install and start the optional six-pixel WS2812 status indicators?" "${gpio_leds_default}")"
             PCS_SETUP_GPIO_STATS="$(ask_yes_no "Install and start the optional MAX7219 LED matrix statistics display?" "${gpio_stats_default}")"
             PCS_SETUP_GPIO_FAN="$(ask_yes_no "Install GPIO18 hardware PWM thermal fan control?" "${gpio_fan_default}")"
+            PCS_SETUP_POWER_MONITOR="$(ask_yes_no "Install optional dual INA226 power monitoring (calibration required)?" "${power_monitor_default}")"
+            PCS_SETUP_BUZZER="$(ask_yes_no "Install optional active-low GPIO13 audible status?" "${buzzer_default}")"
             ;;
         ASK)
             PCS_CELLULAR_PROFILE="$(ask_value "Cellular profile name" "${PCS_CELLULAR_PROFILE}")"
@@ -551,6 +565,8 @@ collect_install_answers() {
             PCS_SETUP_GPIO_LEDS="ask"
             PCS_SETUP_GPIO_STATS="ask"
             PCS_SETUP_GPIO_FAN="ask"
+            PCS_SETUP_POWER_MONITOR="ask"
+            PCS_SETUP_BUZZER="ask"
             pistar_default="${PCS_SETUP_PISTAR}"
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
@@ -587,6 +603,8 @@ collect_install_answers() {
     export PCS_SETUP_GPIO_LEDS
     export PCS_SETUP_GPIO_STATS
     export PCS_SETUP_GPIO_FAN
+    export PCS_SETUP_POWER_MONITOR
+    export PCS_SETUP_BUZZER
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
         unset PCS_ROUTER_WAN_SHARE_CONFIRM
@@ -628,6 +646,8 @@ confirm_install_answers() {
     echo "  WS2812 indicators:   ${PCS_SETUP_GPIO_LEDS}"
     echo "  MAX7219 LED matrix: ${PCS_SETUP_GPIO_STATS}"
     echo "  GPIO18 PWM fan:     ${PCS_SETUP_GPIO_FAN}"
+    echo "  INA226 monitoring:  ${PCS_SETUP_POWER_MONITOR}"
+    echo "  GPIO13 buzzer:      ${PCS_SETUP_BUZZER}"
     echo
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
@@ -777,6 +797,9 @@ ensure_executable "scripts/setup-gpio-lcd.sh"
 ensure_executable "scripts/setup-gpio-leds.sh"
 ensure_executable "scripts/setup-gpio-stats.sh"
 ensure_executable "scripts/setup-gpio-fan.sh"
+ensure_executable "scripts/setup-power-audio.sh"
+ensure_executable "scripts/pcs_power_monitor.py"
+ensure_executable "scripts/pcs_buzzer.py"
 ensure_executable "scripts/pcs-gpio-startup.sh"
 ensure_executable "scripts/pcs-aprs-kiss-firewall.sh"
 ensure_executable "scripts/pcs-aprs-audio.sh"
@@ -1186,6 +1209,49 @@ case "${gpio_fan_answer}" in
         echo "  ./scripts/setup-gpio-fan.sh --install"
         ;;
 esac
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Install dual INA226 PCS power monitoring"
+echo "============================================================"
+echo
+echo "This requires verified unique I2C addresses, shunt values, polarity, and"
+echo "current ranges. The generated example keeps automatic shutdown disarmed."
+echo
+if [[ "${PCS_SETUP_POWER_MONITOR}" == "yes" || "${PCS_SETUP_POWER_MONITOR}" == "no" ]]; then
+    power_monitor_answer="${PCS_SETUP_POWER_MONITOR}"
+else
+    power_monitor_answer="$(ask_yes_no "Install dual INA226 power monitoring?" "no")"
+fi
+PCS_SETUP_POWER_MONITOR="${power_monitor_answer}"
+export PCS_SETUP_POWER_MONITOR
+write_install_config
+if [[ "${power_monitor_answer}" == "yes" ]]; then
+    run_optional_step "Install dual INA226 power monitoring" "./scripts/setup-power-audio.sh --install-power"
+else
+    echo "Skipping dual INA226 power monitoring."
+fi
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Install active-low GPIO13 audible status"
+echo "============================================================"
+echo
+echo "Install only after confirming the external approximately 10k SIG-to-3.3V pull-up."
+echo
+if [[ "${PCS_SETUP_BUZZER}" == "yes" || "${PCS_SETUP_BUZZER}" == "no" ]]; then
+    buzzer_answer="${PCS_SETUP_BUZZER}"
+else
+    buzzer_answer="$(ask_yes_no "Install GPIO13 passive-buzzer status?" "no")"
+fi
+PCS_SETUP_BUZZER="${buzzer_answer}"
+export PCS_SETUP_BUZZER
+write_install_config
+if [[ "${buzzer_answer}" == "yes" ]]; then
+    run_optional_step "Install GPIO13 audible status" "./scripts/setup-power-audio.sh --install-buzzer"
+else
+    echo "Skipping GPIO13 audible status."
+fi
 
 echo
 echo "============================================================"

@@ -74,11 +74,11 @@ Pi-Star:         http://10.42.0.3 (when selected during setup)
 
 ## Documentation Status
 
-The software, network, storage, WWAN/GNSS, Pi-Star, managed Dire Wolf/APRS, and
-Meshtastic documents describe the commissioned system as of August 24, 2026.
-The Pi-side wipe/rebuild path was most recently verified on August 18, 2026;
-the synchronized current stack passed 133 live self-tests without warnings or
-failures on August 24.
+The software, network, storage, WWAN/GNSS, Pi-Star, managed Dire Wolf/APRS,
+Meshtastic, dual-INA226 power monitoring, and GPIO13 buzzer documents describe
+the commissioned system through PCS v1.8 on September 7, 2026. The Pi-side
+wipe/rebuild path was most recently verified on August 18, 2026; current live
+validation is recorded in the release checklist and changelog.
 
 The current documentation uses these status boundaries:
 
@@ -99,8 +99,8 @@ remain operator checkpoints.
 Current documentation priorities:
 
 - capture exact enclosure dimensions, mounting locations, and CAD/export references
-- reconcile power and wiring notes with the physical build
-- record measured rail voltage, current draw, fuse sizes, wire gauge, and thermal results
+- complete the detailed power wiring, fuse, wire-gauge, grounding, and thermal
+  record around the commissioned rail measurements
 - characterize Meshtastic range beyond the commissioned RF-to-map test and establish a referenced sensor baseline
 - preserve the deployed RAK4631 USB transport, NeoMesh proxy, 30-minute GPSD position cadence, hourly map reporting, and 15-bit public position policy
 - extend the general testing and release checklists for the guarded APRS workflow

@@ -205,7 +205,8 @@
     "/api/v1/meshtastic": {"get": {"operationId": "getMeshtastic", "tags": ["Stats"], "x-pcs-resource": "meshtastic", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
     "/api/v1/pistar": {"get": {"operationId": "getPistar", "tags": ["Stats"], "x-pcs-resource": "pistar", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
     "/api/v1/storage": {"get": {"operationId": "getStorage", "tags": ["Stats"], "x-pcs-resource": "storage", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
-    "/api/v1/services": {"get": {"operationId": "getServices", "tags": ["Stats"], "x-pcs-resource": "services", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}}
+    "/api/v1/services": {"get": {"operationId": "getServices", "tags": ["Stats"], "x-pcs-resource": "services", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}},
+    "/api/v1/power": {"get": {"operationId": "getPower", "tags": ["Stats"], "x-pcs-resource": "power", "security": [{}, {"bearerAuth": []}], "responses": {"200": {"$ref": "#/components/responses/StatsResponse"}, "401": {"$ref": "#/components/responses/Unauthorized"}, "429": {"$ref": "#/components/responses/RateLimited"}, "503": {"$ref": "#/components/responses/CollectorUnavailable"}, "504": {"$ref": "#/components/responses/CollectorTimeout"}}}}
   },
   "components": {
     "securitySchemes": {
@@ -246,7 +247,7 @@
         "properties": {
           "api_version": {"const": "v1"},
           "schema_version": {"const": "1.0"},
-          "resource": {"type": "string", "enum": ["status", "network", "cellular", "time", "gps", "aprs", "meshtastic", "pistar", "storage", "services"]},
+          "resource": {"type": "string", "enum": ["status", "network", "cellular", "time", "gps", "aprs", "meshtastic", "pistar", "storage", "services", "power"]},
           "generated_at": {"type": ["string", "null"], "format": "date-time"},
           "health": {"$ref": "#/components/schemas/Health"},
           "access": {"type": "string", "enum": ["public", "authenticated"]},
@@ -291,7 +292,7 @@
       },
       "ActionName": {
         "type": "string",
-        "enum": ["status", "self-test", "storage-status", "restart-logs", "wifi-status", "wifi-connect", "wifi-disconnect", "cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test", "meshtastic-status", "restart-meshtastic", "aprs-mailbox-read", "sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb", "restart-services", "restart-samba", "restart-modemmanager", "sync-time", "restart-chrony", "restart-gpsd", "reboot-system", "shutdown-system"]
+        "enum": ["status", "self-test", "storage-status", "restart-logs", "wifi-status", "wifi-connect", "wifi-disconnect", "cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test", "meshtastic-status", "restart-meshtastic", "aprs-mailbox-read", "sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb", "restart-services", "restart-samba", "restart-modemmanager", "sync-time", "restart-chrony", "restart-gpsd", "buzzer-mute", "buzzer-unmute", "reboot-system", "shutdown-system"]
       },
       "ConfirmedActionRequest": {
         "type": "object",

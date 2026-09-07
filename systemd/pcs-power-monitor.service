@@ -1,0 +1,25 @@
+[Unit]
+Description=PCS dual INA226 power monitor and low-voltage guard
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+RuntimeDirectory=pcs-power-monitor
+RuntimeDirectoryPreserve=restart
+ExecStart=/usr/local/sbin/pcs-power-monitor service
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadOnlyPaths=/etc/pcs/power-monitor.json
+DevicePolicy=closed
+DeviceAllow=/dev/i2c-1 rw
+
+[Install]
+WantedBy=multi-user.target

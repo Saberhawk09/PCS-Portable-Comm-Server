@@ -342,7 +342,8 @@ The LCD, WS2812, and matrix installers also install and enable the shared
 `pcs-gpio-startup.service`. At boot it writes `PCS Booting Up` / `Stand by...`
 to the LCD, continuously cycles all six WS2812 pixels through a slower dim color
 spectrum with a 0.35-second per-color dwell until handoff, and runs an
-all-pixels/checkerboard MAX7219 self-test.
+all-pixels/checkerboard MAX7219 self-test once before holding the arrow. It
+silently reasserts the write-only controller state and arrow until handoff.
 It waits up to 90 seconds for the normal indicator health snapshot to become
 alert-free. Healthy systems hand off early. A timeout always hands off to the
 normal daemons so a persistent warning or fault is not hidden.
@@ -385,6 +386,34 @@ It uses 3 C downshift hysteresis and polls every five seconds. Startup, shutdown
 missing temperature data, or daemon failure leave the PWM channel enabled at
 100% duty. The hardware has no tachometer feedback, so configured duty and CPU
 temperature are observable but actual fan RPM is not measured.
+
+### pcs_power_monitor.py / pcs_buzzer.py
+
+`setup-power-audio.sh` installs or inspects the optional dual-INA226 power
+collector and active-low GPIO13 passive-buzzer controller:
+
+```bash
+./scripts/setup-power-audio.sh --install-power
+./scripts/setup-power-audio.sh --install-buzzer
+./scripts/setup-power-audio.sh --check
+```
+
+Power installation requires verified unique I2C addresses and shunt
+calibrations. The generic example deliberately contains invalid calibration
+placeholders; the PCS as-built configuration records input `0x40` and 5V
+`0x4c` in `config/power-monitor.pcs.json`. Once configured, the
+collector publishes an atomic snapshot under `/run/pcs-power-monitor` and
+keeps controlled shutdown disarmed until `allow_shutdown` is explicitly
+enabled after supervised acceptance.
+The buzzer daemon keeps active-low GPIO13 off during initialization, owns all
+named tone generation, and arbitrates low-voltage, BAD, WARN, and informational
+patterns without overlap. The web/API mute action affects WARN/BAD only.
+The LCD, MAX7219, and WS2812 health loops publish their shared warning/critical
+classification under `/run/pcs-buzzer/health.json`; the buzzer applies a
+five-second assertion/recovery debounce before mirroring those visual states.
+The shared shutdown-state unit invokes `pcs-buzzer shutdown-chime` before the
+buzzer service stops, producing one short descending tone sequence on orderly
+shutdown and reboot without taking GPIO ownership from the daemon.
 
 ## Dire Wolf / APRS
 
@@ -967,6 +996,7 @@ Includes:
 - Dire Wolf / APRS staged or active state
 - Meshtastic gateway, MQTT, GPSD position, and public-map policy state
 - GPIO display, indicator, matrix, and fan state when installed
+- INA226 input/5V power and passive-buzzer state when installed
 - Client access info
 
 The script describes the commissioned OpenWrt AP/switch topology while retaining
@@ -976,7 +1006,9 @@ the system `i2cdetect` path directly when an unprivileged shell omits
 
 ### pcs-self-test.sh
 
-Runs a Pi-side validation test.
+Runs the concise, optional-aware Pi-side validation screen. Disabled components
+are hidden; warning and failure details are collected at the end. Full command
+output is retained in the timestamped log shown by the result.
 
 ```bash
 ./scripts/pcs-self-test.sh
@@ -985,8 +1017,10 @@ Runs a Pi-side validation test.
 Expected healthy result:
 
 ```text
-PCS Pi-side self-test PASSED.
+PCS STATUS: OK
 ```
+
+Use `./scripts/pcs-self-test.sh --verbose` for the legacy detailed stream.
 
 This is the main quick test after setup, reboot, or major changes.
 

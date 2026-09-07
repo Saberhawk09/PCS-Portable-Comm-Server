@@ -10,6 +10,7 @@ Group=pi
 SupplementaryGroups=gpio
 RuntimeDirectory=pcs-gpio-lcd
 WorkingDirectory=/run/pcs-gpio-lcd
+Environment=GPIOZERO_PIN_FACTORY=lgpio
 ExecStart=/usr/local/sbin/pcs-gpio lcd-status --hardware --apply
 Restart=on-failure
 RestartSec=3

@@ -756,9 +756,15 @@ systemctl is-active pcs-gpio-startup.service
 After a supervised reboot, confirm the LCD reads `PCS Booting Up` / `Stand
 by...`, all six pixels continuously cycle at a clearly visible pace through
 red, orange, yellow, green, cyan, blue, violet, magenta, and white until
-handoff, and the matrix lights all 64 pixels before its checkerboard frames.
+handoff, and the matrix runs its all-pixel/checkerboard frames once before
+holding the arrow until handoff without remaining blank after a missed power-up
+initialization.
 Normal health displays must take over within 90 seconds; they may take over
-earlier when no alert condition remains.
+earlier when no alert condition remains. If the buzzer is installed, confirm
+one pleasant OK chime immediately after the first fresh all-clear health state.
+If a warning persists beyond the 90-second visual handoff,
+confirm the chime waits until that warning clears and does not replay after
+later routine fault recoveries.
 
 When any LCD, WS2812, or matrix option is selected, verify that the shared
 shutdown unit is armed and that each fitted display has a marker:
@@ -776,7 +782,9 @@ The three driver commands above are simulations and report
 `"writes_performed": false`. After the next supervised normal shutdown,
 confirm that the LCD reads `PCS Offline` / `Shutting Down`, all six status
 pixels are blue, and the matrix shows the bed/ZZZ icon while PCS remains
-powered. A full removal of power blanks the displays by design.
+powered. Confirm the buzzer plays one short descending chime before GPIO13 is
+released on both an orderly shutdown and reboot. A full removal of power blanks
+the displays and cannot play the chime by design.
 
 ## APRS Engine Safety Test
 
@@ -928,6 +936,52 @@ protection. If an admin token is available for the test, pass it through a
 temporary environment variable with `--token-env`; never place it in the
 command line, shell history, or a test log.
 
+## INA226 and buzzer acceptance (supervised)
+
+Do not enable either optional service from unverified example values. With PCS
+RF transmit paths kept in their already-approved state, verify the actual I2C
+addresses and shunt markings/wiring, then compare each channel against a trusted
+meter at idle and a representative load. Confirm input power is upstream of all
+PCS conversion, the 5V monitor is on the 5V rail, and the displayed non-5V value
+is labeled as an estimate that includes conversion loss.
+
+Exercise low voltage with a current-limited adjustable 12V source: one bad
+sample must not alarm, three consecutive samples below 11.5V must start the
+alarm/countdown, recovery at or above 11.8V must reset it, and a normal 24V
+source must not be classified as low. First perform this with `allow_shutdown`
+false. Arm shutdown only after those readings are correct, then repeat once and
+confirm a controlled poweroff after 90 continuous seconds below threshold.
+When Pi-Star shutdown pairing is configured, verify Pi-Star accepts its clean
+poweroff request before PCS powers off; a PCS-only shutdown is a failed test.
+During the countdown confirm the LCD shows the voltage and remaining time, the
+MAX7219 alternates a critical `X` and power symbol, the shared-services WS2812
+pixel is red, and both the web status and app power resource report BAD with
+`low_voltage_active`, `shutdown_armed`, and the countdown. Confirm every
+indicator recovers after raising the input to at least 11.8V.
+
+After several minutes at a stable load, confirm both since-boot mAh and Wh
+totals increase plausibly on the LCD, web card, self-test, and `/api/v1/power`.
+Restart only `pcs-power-monitor.service` and confirm the totals do not reset;
+then perform a normal reboot and confirm both channels begin again near zero.
+
+With the external approximately 10k pull-up installed, confirm silence through
+boot/pin initialization and distinguish POST, OK, WARN, BAD, and low-voltage
+patterns. Confirm WARN/BAD mute leaves visual status unchanged and does not mute
+low voltage. Induce one supervised visual warning (for example, remove the GNSS
+antenna and wait for the receiver to actually lose its fix), confirm WARN begins
+only after the five-second debounce, restore the condition, and confirm the
+alarm clears. Confirm a critical visual fault requests BAD without overlapping
+WARN. Finally reboot several times and confirm the LCD and MAX7219 always
+initialize; inspect their service journals for retry warnings and watch for
+blank/garbled frames throughout a representative run.
+
+With both commissioned monitors online, confirm the LCD rotation contains one
+page formatted like `IN 24.0V 21.0W` / `5V 5.23V 7.4W`. Run `pcs-self-test`
+and confirm its concise table contains Input Power, 5V Rail, and Power
+Protection rows with current readings. Confirm the PCS Power web card shows
+both monitors as `online / OK`, includes both voltage/current/power triplets,
+and labels the input-minus-5V value as an estimate including conversion loss.
+
 ## Service Status Test
 
 On the Pi:
@@ -938,6 +992,8 @@ systemctl status chrony
 systemctl status gpsd
 systemctl status cockpit
 systemctl status pcs-gpio-stats.service  # when selected
+systemctl status pcs-power-monitor.service  # when selected
+systemctl status pcs-buzzer.service  # when selected
 ```
 
 If PCS services are installed:

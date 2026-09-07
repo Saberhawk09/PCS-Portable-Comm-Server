@@ -21,6 +21,21 @@ fi
 echo "Showing PCS boot indicators."
 write_failures=0
 led_animation_pid=""
+matrix_animation_pid=""
+
+retry_indicator() {
+    local label="$1"
+    shift
+    local attempt
+    for attempt in 1 2 3; do
+        if "$@"; then
+            return 0
+        fi
+        echo "WARNING: ${label} initialization attempt ${attempt}/3 failed." >&2
+        sleep 0.4
+    done
+    return 1
+}
 
 stop_led_animation() {
     if [[ -n "${led_animation_pid}" ]]; then
@@ -30,9 +45,18 @@ stop_led_animation() {
     fi
 }
 
+stop_matrix_animation() {
+    if [[ -n "${matrix_animation_pid}" ]]; then
+        kill "${matrix_animation_pid}" 2>/dev/null || true
+        wait "${matrix_animation_pid}" 2>/dev/null || true
+        matrix_animation_pid=""
+    fi
+}
+
 on_exit() {
     result=$?
     stop_led_animation
+    stop_matrix_animation
     trap - EXIT
     exit "${result}"
 }
@@ -42,7 +66,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ -f "${MARKER_DIR}/lcd" ]]; then
-    if ! "${DRIVER}" startup-state lcd --hardware --apply; then
+    if ! retry_indicator "LCD" "${DRIVER}" startup-state lcd --hardware --apply; then
         echo "ERROR: LCD boot indicator failed; normal display services will still be released." >&2
         write_failures=1
     fi
@@ -65,9 +89,15 @@ if [[ -n "${led_animation_pid}" ]] && ! kill -0 "${led_animation_pid}" 2>/dev/nu
     led_animation_pid=""
 fi
 if [[ -f "${MARKER_DIR}/matrix" ]]; then
-    if ! "${DRIVER}" startup-state matrix --hardware --apply; then
-        echo "ERROR: matrix boot indicator failed; normal display services will still be released." >&2
-        write_failures=1
+    "${DRIVER}" startup-state matrix --repeat --hardware --apply &
+    matrix_animation_pid=$!
+    sleep 0.1
+    if ! kill -0 "${matrix_animation_pid}" 2>/dev/null; then
+        if ! wait "${matrix_animation_pid}"; then
+            echo "ERROR: matrix boot indicator failed; normal display services will still be released." >&2
+            write_failures=1
+        fi
+        matrix_animation_pid=""
     fi
 fi
 

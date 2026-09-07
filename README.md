@@ -34,7 +34,8 @@ PCS software is currently beta-quality but working. Pi-side installs are repeata
 
 The PCS hardware is an operational v1 prototype. The AC/DC source selector,
 cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas,
-HD44780 LCD, MAX7219 matrix, WS2812 indicators, and APRS subsystem are installed.
+HD44780 LCD, MAX7219 matrix, WS2812 indicators, dual INA226 power monitors,
+passive buzzer, and APRS subsystem are installed.
 
 The SA818S, stock Easy Digi, GPIO6 PTT, USB audio, 144.5500 MHz RF path, GNSS
 beaconing, two-way APRS-IS, messaging, and WIDE1-1 fill-in operation have been
@@ -56,7 +57,9 @@ also unfinished.
 - DS1307 I2C RTC for a sane boot-time reference
 - Removable USB primary storage with an SD-card backup mirror
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
-- Operational AC/DC power system with source selector switch; as-built electrical measurements and wiring records remain pending
+- Operational AC/DC power system with source selector switch and commissioned
+  input/5V INA226 instrumentation; full as-built wiring and thermal records
+  remain pending
 - HD44780 16x2 LCD, MAX7219 8x8 annunciator, and six-pixel WS2812 status chain
 - GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
 - SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
@@ -72,6 +75,11 @@ also unfinished.
 - Reliable unattended startup after power-on or reboot, with bounded GPIO boot indicators before live health alerts
 - Public PCS status homepage and password-protected administration at `10.42.0.1`
 - Pi-side self-test and status scripts
+- Commissioned dual-INA226 input/5V monitoring, estimated non-5V load,
+  since-boot mAh/Wh totals, and guarded nominal-12V low-voltage shutdown
+- Active-low GPIO13 passive-buzzer patterns with alarm priority, debounced
+  visual-health alert mirroring, mute control, and validated startup,
+  shutdown, warning, fault, and low-voltage behavior
 - USB primary Samba share with SD-card backup mirror
 - GPS NMEA from `/dev/ttyUSB1` through gpsd and Chrony to LAN clients
 - Installer-selectable manual cellular control or automatic Wi-Fi-to-cellular
@@ -87,15 +95,16 @@ also unfinished.
   dashboard status, guarded restart, broker/proxy policy validation, GPSD
   position delivery, public-map forwarding status, and local environment telemetry
 - PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; the
-  current `main` stack was synchronized and passed 137 live self-tests with no
-  warnings or failures on August 24, 2026; credentials, external-device
-  recovery, and RF checks remain manual
+  v1.8 power/alarm/shutdown stack completed supervised appliance acceptance on
+  September 7, 2026; credentials, external-device recovery, and RF checks
+  remain manual
 
 ### Current Finish Work
 
 - Capture final enclosure dimensions, mounting details, photos, and CAD references
 - Reconcile the power and wiring documents with the physical as-built system
-- Record measured rail voltages, current draw, fuse values, and thermal behavior
+- Complete the detailed as-built power wiring, fuse, and thermal record; add a
+  second reference-load point if tighter current calibration is needed
 - Characterize Meshtastic range beyond the commissioned RF-to-map test and
   establish a referenced case temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
@@ -139,6 +148,13 @@ numbered replies, and bounded retries through the request's original path.
 Mailbox state is available through the public and administrator dashboards,
 API, LCD, WS2812 indicators, and MAX7219 matrix. Supervised testing with a Yaesu
 FT3DR verified the complete RF request, ACK, `PONG`, and reply-ACK exchange.
+
+PCS v1.8 commissions the input and 5V INA226 monitors, since-boot Ah/Wh
+tracking, low-voltage alarms and coordinated PCS/Pi-Star shutdown, and the
+GPIO13 audible-status system. Power health and readings are integrated across
+self-test, web/API/Android status, the LCD, and the physical indicators.
+Supervised bench tests verified warning, recovery, shutdown, Pi-Star handoff,
+and all audible patterns.
 
 ## Hardware Setup
 
@@ -405,6 +421,7 @@ Installed and tested hardware:
 - Armor Lite cooler with GPIO18 hardware-PWM fan control
 - SA818S V1.2, stock Easy Digi, C-Media USB audio, GPIO6 PTT, and managed Dire Wolf APRS
 - RAK4631 Meshtastic node over USB with NeoMesh MQTT, GPSD position, and public-map forwarding
+- Dual INA226 input/5V power monitoring and GPIO13 passive buzzer
 
 Installed with as-built records or measurements pending:
 
@@ -412,7 +429,8 @@ Installed with as-built records or measurements pending:
 
 Remaining documentation and validation:
 
-- Record the exact as-built power components, fuses, wiring, grounding, rail measurements, and thermal results
+- Complete the exact as-built power-component, fuse, wiring, grounding, and
+  thermal record; retain the measured rail and load references already captured
 - Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
 - Characterize Meshtastic range beyond the completed IJC2 RF-to-map test and establish a referenced case-sensor baseline
 

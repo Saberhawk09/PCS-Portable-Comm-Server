@@ -31,6 +31,8 @@ forwarded through PCS and appeared on that map, demonstrating the remote
 RF-to-map gateway path. Broader RF coverage and the local environment sensor's
 accuracy remain operator checkpoints. The exact as-built power, wiring,
 grounding, thermal, enclosure, and mounting records are also still pending.
+Dual INA226 input/5V monitoring, since-boot energy totals, audible status, and
+coordinated low-voltage shutdown are commissioned and bench-validated.
 
 Current focus:
 
@@ -58,6 +60,7 @@ Current tested hardware includes:
 - Armor Lite cooler with GPIO18 hardware-PWM fan control
 - SA818S, stock Easy Digi, Sabrent/C-Media USB audio, and GPIO6 APRS PTT path
 - RAK4631 USB Meshtastic gateway with demonstrated NeoMesh/public-map forwarding
+- Dual INA226 input/5V power monitors and GPIO13 passive buzzer
 
 Installed with as-built records or measurements pending:
 
@@ -234,16 +237,17 @@ The working build is operational. Remaining work is primarily documentation, mea
 
 - capture final enclosure dimensions, mounting details, photos, and CAD references
 - reconcile the documented power architecture with the physical as-built wiring
-- record actual fuse values, wire gauge, rail voltage, current draw, and thermal results
+- complete the fuse, wire-gauge, grounding, and thermal record around the
+  commissioned rail-voltage/current measurements
 - finish permanent external LTE and GNSS antenna labeling and mounting documentation
 - preserve operator-supervised RF activation after any APRS hardware or profile change
 - characterize Meshtastic range beyond the commissioned RF-to-map test and establish a referenced sensor baseline
-- consider battery voltage monitoring and low-voltage safe shutdown hardware
+- characterize a second input-current reference point if tighter calibration is needed
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
 
 The PCS Pi SD-card wipe/rebuild was most recently verified on August 18, 2026.
-The deployed stack was synchronized to current `main` and passed 133 live
-self-tests with no warnings or failures on August 24, 2026. Credential entry,
+The deployed stack was synchronized for PCS v1.8 and passed its live power,
+alarm, and shutdown acceptance on September 7, 2026. Credential entry,
 external-appliance recovery, radio identity, firmware flashing, and on-air RF
 checks intentionally remain manual.
 

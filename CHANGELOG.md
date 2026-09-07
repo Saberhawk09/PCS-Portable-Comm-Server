@@ -2,6 +2,50 @@
 
 All notable user-facing PCS changes are recorded here.
 
+## [Unreleased]
+
+## [1.8] - 2026-09-07
+
+### Added
+
+- commissioned dual-INA226 monitoring at `0x40` (PCS input) and `0x4c` (5V
+  rail), using the installed 2 milliohm shunts for voltage, current, power, and
+  an explicitly estimated non-5V load
+- since-boot input and 5V charge/energy totals in mAh/Wh, with boot-aware state
+  recovery that survives service restarts without integrating offline gaps
+- persistent, hysteretic nominal-12V low-voltage alarm and guarded 90-second
+  controlled-shutdown countdown, with normal 24V-source discrimination
+- active-low GPIO13 passive-buzzer service with named POST/OK/WARN/BAD/low-
+  voltage patterns, priority arbitration, web/API mute controls, and debounced
+  responses to every warning/critical condition used by the visual indicators
+- one-shot pleasant OK chime immediately on the first fresh all-clear health
+  state, including readiness after the boot grace period; later routine fault
+  recoveries do not replay the boot chime
+- a short descending shutdown/reboot chime ordered ahead of buzzer GPIO release
+  and the existing latched LCD/WS2812/MAX7219 shutdown presentation
+- power health and countdown data in the public/admin dashboards, Stats API,
+  Android companion, status output, LCD, visual indicators, and optional-aware
+  self-test
+- coordinated undervoltage shutdown that asks the paired Pi-Star hotspot to
+  halt before PCS completes its own controlled shutdown
+
+### Changed
+
+- refresh the MAX7219 controller setup and steady startup arrow until normal
+  status handoff, recovering intermittent blank screens without visibly
+  replaying the pixel-test pattern
+- wait for the INA226 averaged conversion after applying calibration so the
+  first published current and power values are valid
+- replace the normal self-test wall of text with a compact per-section
+  PASS/WARN/FAIL report while retaining full diagnostics in a timestamped log
+- harden LCD/MAX7219 boot initialization with bounded retries; keep gpiozero
+  LCD/buzzer users on `lgpio` from writable runtime directories instead of a
+  silent native-backend fallback; lower MAX7219 SPI to 250 kHz and latch each
+  full frame twice to improve noise recovery
+- raise the commissioned 5V warning/critical ceilings to 5.30V/5.35V and
+  smooth buzzer pattern transitions so PWM always settles inactive between
+  tones and before GPIO release
+
 ## [1.7.1] - 2026-09-03
 
 ### Fixed
@@ -446,7 +490,11 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.5...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8...HEAD
+[1.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7.1...v1.8
+[1.7.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7...v1.7.1
+[1.7]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.6...v1.7
+[1.6]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.5...v1.6
 [1.5]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4.1...v1.5
 [1.4.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.4...v1.4.1
 [1.4]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.3.2...v1.4

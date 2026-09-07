@@ -30,6 +30,14 @@ PCS_SELF_TEST = ROOT / "scripts" / "pcs-self-test.sh"
 
 
 class PcsGpioTests(unittest.TestCase):
+    def test_self_test_reports_both_commissioned_power_channels(self):
+        source = PCS_SELF_TEST.read_text(encoding="utf-8")
+        self.assertIn('section "Input Power"', source)
+        self.assertIn('section "5V Rail"', source)
+        self.assertIn('section "Power Protection"', source)
+        self.assertIn('summary_value "${POWER_INPUT_VALUE}"', source)
+        self.assertIn('summary_value "${POWER_5V_VALUE}"', source)
+
     def test_final_schematic_assignments_have_no_gpio_conflicts(self):
         gpio_lines = [pin.gpio for pin in pcs_gpio.PIN_ASSIGNMENTS]
         self.assertEqual(len(gpio_lines), len(set(gpio_lines)))
@@ -68,7 +76,7 @@ class PcsGpioTests(unittest.TestCase):
     def test_max7219_uses_the_proven_pcs_spi_settings(self):
         self.assertEqual(pcs_gpio.MAX7219_SPI_BUS, 0)
         self.assertEqual(pcs_gpio.MAX7219_SPI_DEVICE, 0)
-        self.assertEqual(pcs_gpio.MAX7219_SPI_HZ, 500_000)
+        self.assertEqual(pcs_gpio.MAX7219_SPI_HZ, 250_000)
         self.assertEqual(pcs_gpio.MAX7219_INTENSITY, 3)
 
     def test_fan_uses_gpio18_hardware_pwm_at_vendor_frequency(self):
@@ -164,6 +172,42 @@ class PcsGpioTests(unittest.TestCase):
             leds.frames[len(pcs_gpio.STARTUP_LED_SEQUENCE)],
             (pcs_gpio.STARTUP_LED_SEQUENCE[0],) * pcs_gpio.WS2812_COUNT,
         )
+
+    def test_startup_matrix_repeat_reinitializes_and_refreshes_only_arrow(self):
+        class StopAnimation(Exception):
+            pass
+
+        class FakeMatrix:
+            def __init__(self):
+                self.frames = []
+                self.intensities = []
+
+            def rows(self, rows):
+                self.frames.append(tuple(rows))
+
+            def intensity(self, value):
+                self.intensities.append(value)
+
+        matrix = FakeMatrix()
+        initializations = []
+
+        def stop_after_repeat(_seconds):
+            if len(matrix.frames) > len(pcs_gpio.STARTUP_MATRIX_FRAMES) + 1:
+                raise StopAnimation
+
+        with self.assertRaises(StopAnimation):
+            pcs_gpio.run_startup_matrix(
+                matrix,
+                repeat=True,
+                reinitialize=lambda: initializations.append(True),
+                sleeper=stop_after_repeat,
+            )
+        self.assertEqual(len(initializations), 2)
+        self.assertEqual(
+            matrix.frames[len(pcs_gpio.STARTUP_MATRIX_FRAMES) + 1],
+            pcs_gpio.STARTUP_MATRIX_LATCH,
+        )
+        self.assertEqual(matrix.intensities[-1], 1)
 
     def test_startup_readiness_is_healthy_only_when_alerts_are_absent(self):
         healthy = pcs_gpio.MatrixHealthSnapshot(
@@ -434,6 +478,105 @@ class PcsGpioTests(unittest.TestCase):
             ("APRS Stats: MSG", "Pkt:123 Msgs:9"),
         )
 
+    def test_power_snapshot_reader_and_single_lcd_page(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "power.json"
+            path.write_text(json.dumps({
+                "version": 1,
+                "collected_at_epoch": 1000,
+                "status": "ok",
+                "monitors": {
+                    "input": {
+                        "online": True, "voltage": 23.951,
+                        "current": 0.876, "power": 20.996,
+                        "charge_since_boot_mah": 123.4,
+                        "energy_since_boot_wh": 2.96,
+                    },
+                    "rail_5v": {
+                        "online": True, "voltage": 5.234,
+                        "current": 1.406, "power": 7.355,
+                        "charge_since_boot_mah": 198.7,
+                        "energy_since_boot_wh": 1.04,
+                    },
+                },
+                "energy_tracking": {"elapsed_seconds": 505},
+                "low_voltage": {"active": False, "remaining_seconds": None},
+            }), encoding="utf-8")
+            power = pcs_gpio.read_power_status(path, now=lambda: 1005)
+
+        self.assertIsNotNone(power)
+        self.assertEqual(pcs_gpio.lcd_power_page(power), (
+            "IN 24.0V 21.0W",
+            "5V 5.23V 7.4W",
+        ))
+        stats = pcs_gpio.StatsSnapshot(None, None, None, None)
+        pages = pcs_gpio.lcd_status_pages(stats, 60, power)
+        self.assertEqual(pages[1], pcs_gpio.lcd_power_page(power))
+        self.assertEqual(pages[2], ("Total PWR Usage", "0.12Ah - 2.96Wh"))
+        self.assertTrue(all(len(line) <= 16 for page in pages[1:3] for line in page))
+        self.assertEqual(power.energy_tracking_elapsed_seconds, 505)
+
+    def test_stale_or_faulted_power_snapshot_is_an_lcd_warning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "power.json"
+            path.write_text(json.dumps({
+                "version": 1, "collected_at_epoch": 900,
+                "status": "ok", "monitors": {},
+            }), encoding="utf-8")
+            power = pcs_gpio.read_power_status(path, now=lambda: 1000)
+
+        self.assertIsNotNone(power)
+        self.assertEqual(power.status, "warn")
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, True, True)
+        self.assertEqual(
+            pcs_gpio.lcd_health_pages(health, 60, power)[-1],
+            ("WARNING", "POWER MONITOR"),
+        )
+
+    def test_low_voltage_replaces_normal_lcd_pages(self):
+        power = pcs_gpio.PowerSnapshot(
+            "bad", True, 11.2, 1.0, 11.2, True, 5.1, 1.0, 5.1,
+            low_voltage_active=True, shutdown_remaining_seconds=72,
+        )
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, True, True)
+        self.assertEqual(
+            pcs_gpio.lcd_health_pages(health, 60, power),
+            (("LOW INPUT VOLTS", "11.2V OFF IN 72s"),),
+        )
+
+    def test_low_voltage_faults_matrix_and_local_services_pixel(self):
+        power = pcs_gpio.PowerSnapshot(
+            "bad", True, 11.2, 1.0, 11.2, True, 5.1, 1.0, 5.1,
+            low_voltage_active=True, shutdown_remaining_seconds=72,
+            shutdown_armed=True,
+        )
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(
+            stats, 20, True, 0, True, True, power,
+        )
+        alerts = pcs_gpio.matrix_alerts(health)
+        self.assertEqual(
+            [(alert.name, alert.severity, alert.icon) for alert in alerts],
+            [("low_voltage", "critical", pcs_gpio.POWER_ICON)],
+        )
+        self.assertEqual(
+            [frame.rows for frame in pcs_gpio.matrix_alert_frames(alerts)],
+            [pcs_gpio.X_ICON, pcs_gpio.POWER_ICON],
+        )
+        service_led = pcs_gpio.led_status_indicators(health)[3]
+        self.assertEqual(
+            (service_led.state, service_led.color),
+            ("power_critical", pcs_gpio.LED_CRITICAL),
+        )
+
     def test_aprs_status_reader_accepts_only_fresh_aggregate_schema(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "status.json"
@@ -493,6 +636,21 @@ class PcsGpioTests(unittest.TestCase):
         failed_service_led = pcs_gpio.led_status_indicators(local_failure)[3]
         self.assertEqual(failed_service_led.state, "failed")
         self.assertEqual(failed_service_led.color, pcs_gpio.LED_CRITICAL)
+
+    def test_visual_alert_snapshot_is_published_for_the_buzzer(self):
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 0, False, False, 0, "WiFi", 1, None, aprs_status="ok"
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, True, True)
+        alerts = pcs_gpio.matrix_alerts(health)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "health.json"
+            pcs_gpio.write_buzzer_health(health, alerts, path)
+            document = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(document["version"], 1)
+        self.assertIsInstance(document["updated_at_epoch"], int)
+        self.assertEqual(document["alerts"], [{"name": "gps_fix", "severity": "warning"}])
+        self.assertEqual(document["health"], health.as_dict())
 
     def test_offline_openwrt_router_faults_on_all_gpio_displays(self):
         stats = pcs_gpio.StatsSnapshot(
@@ -558,6 +716,7 @@ class PcsGpioTests(unittest.TestCase):
                 lcd,
                 once=True,
                 collector=lambda: snapshot,
+                power_reader=lambda: None,
                 uptime_reader=lambda: 93784,
                 sleeper=lambda _: None,
             )
@@ -854,11 +1013,12 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("SupplementaryGroups=gpio", service)
         self.assertIn("RuntimeDirectory=pcs-gpio-lcd", service)
         self.assertIn("WorkingDirectory=/run/pcs-gpio-lcd", service)
+        self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
         self.assertIn("NoNewPrivileges=yes", service)
         self.assertNotIn("spidev", service)
         self.assertNotIn("PTT", service)
         self.assertIn("systemctl enable --now pcs-gpio-lcd.service", setup)
-        self.assertIn("apt-get install -y python3-gpiozero", setup)
+        self.assertIn("apt-get install -y python3-gpiozero python3-lgpio", setup)
 
     def test_fan_service_uses_hardware_pwm_and_full_duty_stop_failsafe(self):
         service = FAN_SERVICE.read_text(encoding="utf-8")
@@ -890,11 +1050,16 @@ class PcsGpioTests(unittest.TestCase):
         service = SHUTDOWN_SERVICE.read_text(encoding="utf-8")
         self.assertIn("DefaultDependencies=no", service)
         self.assertIn("Conflicts=shutdown.target", service)
+        self.assertIn("After=local-fs.target pcs-buzzer.service", service)
         self.assertIn(
             "Before=pcs-gpio-startup.service pcs-gpio-lcd.service pcs-gpio-leds.service pcs-gpio-stats.service shutdown.target",
             service,
         )
         self.assertIn("RemainAfterExit=yes", service)
+        self.assertIn("RuntimeDirectory=pcs-gpio-shutdown", service)
+        self.assertIn("WorkingDirectory=/run/pcs-gpio-shutdown", service)
+        self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
+        self.assertIn("ExecStop=-/usr/local/sbin/pcs-buzzer shutdown-chime", service)
         self.assertIn("shutdown-state lcd --hardware --apply", service)
         self.assertIn("shutdown-state leds --hardware --apply", service)
         self.assertIn("shutdown-state matrix --hardware --apply", service)
@@ -909,16 +1074,21 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn("After=local-fs.target pcs-gpio-shutdown.service", service)
         self.assertIn("TimeoutStartSec=150", service)
         self.assertIn("RemainAfterExit=yes", service)
+        self.assertIn("RuntimeDirectory=pcs-gpio-startup", service)
+        self.assertIn("WorkingDirectory=/run/pcs-gpio-startup", service)
+        self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
         self.assertIn("DeviceAllow=/dev/gpiochip0 rw", service)
         self.assertIn("DeviceAllow=/dev/spidev0.0 rw", service)
         self.assertIn("DeviceAllow=/dev/mem rw", service)
         self.assertIn('TIMEOUT_SECONDS="${PCS_GPIO_STARTUP_TIMEOUT_SECONDS:-90}"', script)
         self.assertIn("startup-state lcd --hardware --apply", script)
         self.assertIn("startup-state leds --repeat --hardware --apply", script)
-        self.assertIn("startup-state matrix --hardware --apply", script)
+        self.assertIn("startup-state matrix --repeat --hardware --apply", script)
         self.assertIn("trap on_exit EXIT", script)
         self.assertIn('kill "${led_animation_pid}"', script)
         self.assertIn('wait "${led_animation_pid}"', script)
+        self.assertIn('kill "${matrix_animation_pid}"', script)
+        self.assertIn('wait "${matrix_animation_pid}"', script)
         self.assertIn('"${DRIVER}" startup-ready', script)
         self.assertIn("persistent alerts remain visible", script)
 

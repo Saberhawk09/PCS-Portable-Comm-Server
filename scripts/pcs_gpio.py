@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import os
 import platform
 import re
@@ -19,6 +20,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -42,6 +44,7 @@ PIN_ASSIGNMENTS: tuple[PinAssignment, ...] = (
     PinAssignment("MAX7219 CS", 8, 24, "Linux SPI0", "installed and bench-tested"),
     PinAssignment("MAX7219 DIN", 10, 19, "Linux SPI0", "installed and bench-tested"),
     PinAssignment("MAX7219 CLK", 11, 23, "Linux SPI0", "installed and bench-tested"),
+    PinAssignment("Passive buzzer", 13, 33, "pcs-buzzer", "installed and audible-tested"),
     PinAssignment("SA818 UART TX", 14, 8, "pcs-sa818", "installed and tested at 9600 8N1"),
     PinAssignment("SA818 UART RX", 15, 10, "pcs-sa818", "installed and tested at 9600 8N1"),
     PinAssignment("LCD E", 17, 11, "pcs_gpio", "installed and bench-tested"),
@@ -82,7 +85,14 @@ FAN_PWM_PERIOD_NS = 1_000_000_000 // FAN_PWM_FREQUENCY_HZ
 FAN_PWM_CHIP_PATH = Path("/sys/class/pwm/pwmchip0")
 FAN_STATUS_PATH = Path("/run/pcs-gpio-fan/status.json")
 APRS_STATUS_PATH = Path("/run/pcs-aprs-agent/status.json")
+POWER_STATUS_PATH = Path(
+    os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/status.json")
+)
+BUZZER_HEALTH_PATH = Path(
+    os.environ.get("PCS_BUZZER_HEALTH", "/run/pcs-buzzer/health.json")
+)
 APRS_STATUS_MAX_AGE_SECONDS = 15
+POWER_STATUS_MAX_AGE_SECONDS = 15
 FAN_FAILSAFE_DUTY = 100
 FAN_HYSTERESIS_C = 3
 FAN_POLL_SECONDS = 5.0
@@ -95,13 +105,17 @@ FAN_CURVE: tuple[tuple[int, int], ...] = (
 )
 MAX7219_SPI_BUS = 0
 MAX7219_SPI_DEVICE = 0
-MAX7219_SPI_HZ = 500_000
+# A deliberately conservative clock improves margin through the installed
+# level shifter and enclosure wiring. Every complete frame is also latched
+# twice below to recover from an occasional power-up or SPI framing upset.
+MAX7219_SPI_HZ = 250_000
 MAX7219_INTENSITY = 3
 SHUTDOWN_MATRIX_INTENSITY = 1
 SHUTDOWN_LCD_LINES = ("PCS Offline", "Shutting Down")
 STARTUP_LCD_LINES = ("PCS Booting Up", "Stand by...")
 STARTUP_MATRIX_INTENSITY = 2
 STARTUP_FRAME_SECONDS = 0.18
+STARTUP_MATRIX_REFRESH_SECONDS = 2.0
 STARTUP_LED_FRAME_SECONDS = 0.35
 STARTUP_LED_SEQUENCE = (
     (255, 0, 0),
@@ -251,15 +265,22 @@ class Max7219:
         self.spi.open(MAX7219_SPI_BUS, MAX7219_SPI_DEVICE)
         self.spi.max_speed_hz = MAX7219_SPI_HZ
         self.spi.mode = 0
+        self.spi.no_cs = False
+        self.initialize()
+
+    def initialize(self, *, clear: bool = True) -> None:
+        """Reassert the complete write-only controller state."""
         for register, value in (
             (0x0F, 0),
             (0x09, 0),
             (0x0B, 7),
             (0x0A, MAX7219_INTENSITY),
+            (0x0C, 0),
             (0x0C, 1),
         ):
             self._write(register, value)
-        self.rows([0] * 8)
+        if clear:
+            self.rows([0] * 8)
 
     def _write(self, register: int, value: int) -> None:
         self.spi.xfer2([register & 0x0F, value & 0xFF])
@@ -267,8 +288,10 @@ class Max7219:
     def rows(self, rows: Sequence[int]) -> None:
         if len(rows) != 8 or any(not 0 <= row <= 0xFF for row in rows):
             raise ValueError("MAX7219 rows must contain exactly eight byte values")
-        for register, value in enumerate(rows, start=1):
-            self._write(register, value)
+        for _latch in range(2):
+            for register, value in enumerate(rows, start=1):
+                self._write(register, value)
+            time.sleep(0.001)
 
     def intensity(self, value: int) -> None:
         if not 0 <= value <= 15:
@@ -430,6 +453,7 @@ SERVICE_ICON = (0x24, 0x7E, 0xDB, 0xBD, 0xBD, 0xDB, 0x7E, 0x24)
 PISTAR_ICON = (0x66, 0x3C, 0x7E, 0xFF, 0xFF, 0x7E, 0x3C, 0x18)
 ROUTER_ICON = (0x7E, 0x81, 0x81, 0x3C, 0x42, 0x42, 0x18, 0x18)
 LETTER_ICON = (0xFF, 0x81, 0xC3, 0xA5, 0x99, 0x81, 0x81, 0xFF)
+POWER_ICON = (0x08, 0x18, 0x30, 0x7E, 0x0C, 0x18, 0x10, 0x00)
 TEMPERATURE_WARNING_C = 75
 TEMPERATURE_CRITICAL_C = 85
 DISK_WARNING_PERCENT = 85
@@ -454,6 +478,30 @@ class StatsSnapshot:
     aprs_mailbox_unread: int | None = None
 
     def as_dict(self) -> dict[str, int | bool | str | None]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class PowerSnapshot:
+    status: str
+    input_online: bool
+    input_voltage: float | None
+    input_current: float | None
+    input_power: float | None
+    rail_5v_online: bool
+    rail_5v_voltage: float | None
+    rail_5v_current: float | None
+    rail_5v_power: float | None
+    low_voltage_active: bool = False
+    shutdown_remaining_seconds: int | None = None
+    shutdown_armed: bool = False
+    input_charge_since_boot_mah: float | None = None
+    input_energy_since_boot_wh: float | None = None
+    rail_5v_charge_since_boot_mah: float | None = None
+    rail_5v_energy_since_boot_wh: float | None = None
+    energy_tracking_elapsed_seconds: float | None = None
+
+    def as_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
@@ -493,6 +541,7 @@ class MatrixHealthSnapshot:
     failed_services: int | None
     pistar_online: bool | None = None
     router_online: bool | None = None
+    power: PowerSnapshot | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -502,6 +551,7 @@ class MatrixHealthSnapshot:
             "failed_services": self.failed_services,
             "pistar_online": self.pistar_online,
             "router_online": self.router_online,
+            "power": self.power.as_dict() if self.power is not None else None,
         }
 
 
@@ -589,16 +639,28 @@ def run_startup_leds(
 def run_startup_matrix(
     matrix: MatrixDisplay,
     *,
+    repeat: bool = False,
+    reinitialize: Callable[[], None] = lambda: None,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Exercise every MAX7219 pixel, then latch a low-intensity boot glyph."""
+    """Exercise every MAX7219 pixel and continuously refresh while booting."""
 
+    # Show the visible pixel/framing test once, then leave the arrow steady.
+    reinitialize()
     matrix.intensity(STARTUP_MATRIX_INTENSITY)
     for frame in STARTUP_MATRIX_FRAMES:
         matrix.rows(frame)
         sleeper(STARTUP_FRAME_SECONDS)
     matrix.intensity(1)
     matrix.rows(STARTUP_MATRIX_LATCH)
+    while repeat:
+        sleeper(STARTUP_MATRIX_REFRESH_SECONDS)
+        # MAX7219 is write-only, so a power-up command cannot be acknowledged.
+        # Reassert its full state and arrow without replaying visible test
+        # frames, repairing a missed wake-up before normal daemon handoff.
+        reinitialize()
+        matrix.intensity(1)
+        matrix.rows(STARTUP_MATRIX_LATCH)
 
 
 def render_two_digits(value: int | None) -> tuple[int, ...]:
@@ -1005,6 +1067,77 @@ def read_aprs_status(
         return None, None, None, None, None
 
 
+def read_power_status(
+    path: Path = POWER_STATUS_PATH,
+    now: Callable[[], float] = time.time,
+) -> PowerSnapshot | None:
+    """Read the fresh aggregate power snapshot without touching the I2C bus."""
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, TypeError, json.JSONDecodeError):
+        return PowerSnapshot("warn", False, None, None, None, False, None, None, None)
+
+    try:
+        if not isinstance(payload, dict) or payload.get("version") != 1:
+            raise ValueError("invalid power status schema")
+        age = now() - float(payload["collected_at_epoch"])
+        if not 0 <= age <= POWER_STATUS_MAX_AGE_SECONDS:
+            raise ValueError("stale power status")
+        status = str(payload.get("status", "warn"))
+        if status not in {"ok", "warn", "bad"}:
+            status = "warn"
+        monitors = payload.get("monitors")
+        if not isinstance(monitors, dict):
+            raise ValueError("invalid monitor map")
+        input_monitor = monitors.get("input", {})
+        rail_5v = monitors.get("rail_5v", {})
+        if not isinstance(input_monitor, dict) or not isinstance(rail_5v, dict):
+            raise ValueError("invalid monitor record")
+        low_voltage = payload.get("low_voltage", {})
+        if not isinstance(low_voltage, dict):
+            low_voltage = {}
+
+        def number(record: dict[str, object], name: str) -> float | None:
+            value = record.get(name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return None
+            converted = float(value)
+            return converted if math.isfinite(converted) else None
+
+        remaining = low_voltage.get("remaining_seconds")
+        if isinstance(remaining, bool) or not isinstance(remaining, int) or remaining < 0:
+            remaining = None
+        return PowerSnapshot(
+            status=status,
+            input_online=input_monitor.get("online") is True,
+            input_voltage=number(input_monitor, "voltage"),
+            input_current=number(input_monitor, "current"),
+            input_power=number(input_monitor, "power"),
+            rail_5v_online=rail_5v.get("online") is True,
+            rail_5v_voltage=number(rail_5v, "voltage"),
+            rail_5v_current=number(rail_5v, "current"),
+            rail_5v_power=number(rail_5v, "power"),
+            low_voltage_active=low_voltage.get("active") is True,
+            shutdown_remaining_seconds=remaining,
+            shutdown_armed=low_voltage.get("shutdown_armed") is True,
+            input_charge_since_boot_mah=number(input_monitor, "charge_since_boot_mah"),
+            input_energy_since_boot_wh=number(input_monitor, "energy_since_boot_wh"),
+            rail_5v_charge_since_boot_mah=number(rail_5v, "charge_since_boot_mah"),
+            rail_5v_energy_since_boot_wh=number(rail_5v, "energy_since_boot_wh"),
+            energy_tracking_elapsed_seconds=number(
+                payload.get("energy_tracking", {})
+                if isinstance(payload.get("energy_tracking"), dict)
+                else {},
+                "elapsed_seconds",
+            ),
+        )
+    except (KeyError, TypeError, ValueError):
+        return PowerSnapshot("warn", False, None, None, None, False, None, None, None)
+
+
 def collect_stats() -> StatsSnapshot:
     cellular_online, cellular_quality = read_cellular_status()
     gps_satellites, gps_satellites_used, gps_locked, grid_square = read_gps_details()
@@ -1052,9 +1185,76 @@ def compact_counter(value: int | None) -> str:
     return f"{min(999, value // 1000)}K"
 
 
+def lcd_power_page(power: PowerSnapshot) -> tuple[str, str]:
+    """Fit both commissioned rails and their present power onto one 16x2 page."""
+
+    input_line = (
+        f"IN {power.input_voltage:.1f}V {power.input_power:.1f}W"
+        if power.input_online and power.input_voltage is not None and power.input_power is not None
+        else "IN --.-V --.-W"
+    )
+    rail_5v_line = (
+        f"5V {power.rail_5v_voltage:.2f}V {power.rail_5v_power:.1f}W"
+        if power.rail_5v_online and power.rail_5v_voltage is not None and power.rail_5v_power is not None
+        else "5V --.--V --.-W"
+    )
+    return input_line[:LCD_COLUMNS], rail_5v_line[:LCD_COLUMNS]
+
+
+def compact_amp_hours(value: float | None) -> str:
+    if value is None:
+        return "--Ah"
+    amp_hours = value / 1000.0
+    if amp_hours < 10:
+        return f"{amp_hours:.2f}Ah"
+    if amp_hours < 100:
+        return f"{amp_hours:.1f}Ah"
+    return f"{amp_hours:.0f}Ah"
+
+
+def compact_energy(value: float | None) -> str:
+    if value is None:
+        return "--Wh"
+    if value < 10:
+        return f"{value:.2f}Wh"
+    if value < 100:
+        return f"{value:.1f}Wh"
+    return f"{value:.0f}Wh"
+
+
+def lcd_energy_page(power: PowerSnapshot) -> tuple[str, str] | None:
+    """Show total PCS input charge and energy accumulated this boot."""
+    if power.input_charge_since_boot_mah is None and power.input_energy_since_boot_wh is None:
+        return None
+    return (
+        "Total PWR Usage",
+        (
+            f"{compact_amp_hours(power.input_charge_since_boot_mah)} - "
+            f"{compact_energy(power.input_energy_since_boot_wh)}"
+        )[:LCD_COLUMNS],
+    )
+
+
+def lcd_power_alert_page(power: PowerSnapshot) -> tuple[str, str] | None:
+    if power.low_voltage_active:
+        voltage = "--.-" if power.input_voltage is None else f"{power.input_voltage:.1f}"
+        countdown = (
+            ""
+            if power.shutdown_remaining_seconds is None
+            else f" OFF IN {power.shutdown_remaining_seconds}s"
+        )
+        return "LOW INPUT VOLTS", f"{voltage}V{countdown}"[:LCD_COLUMNS]
+    if power.status == "bad":
+        return "HARD FAULT", "POWER MONITOR"
+    if power.status == "warn":
+        return "WARNING", "POWER MONITOR"
+    return None
+
+
 def lcd_status_pages(
     snapshot: StatsSnapshot,
     uptime_seconds: int | None,
+    power: PowerSnapshot | None = None,
 ) -> tuple[tuple[str, str], ...]:
     if snapshot.temperature_c is None:
         temperature_line = "--°C / --°F"
@@ -1088,7 +1288,7 @@ def lcd_status_pages(
     aprs_counts = f"Pkt RX:{packet_count} Msgs:{message_count}"
     if len(aprs_counts) > LCD_COLUMNS:
         aprs_counts = f"Pkt:{packet_count} Msgs:{message_count}"
-    return (
+    pages: tuple[tuple[str, str], ...] = (
         ("PCS Online", format_uptime(uptime_seconds)),
         ("Pi CPU Temp", temperature_line),
         ("Network Uplink", network_uplink),
@@ -1097,6 +1297,13 @@ def lcd_status_pages(
         (f"AP Clients: {ap_clients}", f"GridSq: {grid_square}"),
         (f"APRS Stats: {aprs_state}", aprs_counts),
     )
+    if power is not None:
+        power_pages = (lcd_power_page(power),)
+        energy_page = lcd_energy_page(power)
+        if energy_page is not None:
+            power_pages += (energy_page,)
+        pages = pages[:1] + power_pages + pages[1:]
+    return pages
 
 
 def lcd_alert_page(
@@ -1130,13 +1337,21 @@ def lcd_alert_page(
 def lcd_health_pages(
     snapshot: MatrixHealthSnapshot,
     uptime_seconds: int | None,
+    power: PowerSnapshot | None = None,
 ) -> tuple[tuple[str, str], ...]:
+    power = power if power is not None else snapshot.power
     alerts = matrix_alerts(snapshot)
+    alerts = tuple(alert for alert in alerts if alert.name not in {"low_voltage", "power_monitor"})
     critical = tuple(alert for alert in alerts if alert.severity == "critical")
-    if critical:
-        return tuple(lcd_alert_page(snapshot, alert) for alert in critical)
+    power_alert = lcd_power_alert_page(power) if power is not None else None
+    power_critical = power_alert if power is not None and (power.status == "bad" or power.low_voltage_active) else None
+    if critical or power_critical is not None:
+        pages = tuple(lcd_alert_page(snapshot, alert) for alert in critical)
+        return pages + ((power_critical,) if power_critical is not None else ())
     warning_pages = tuple(lcd_alert_page(snapshot, alert) for alert in alerts)
-    return lcd_status_pages(snapshot.stats, uptime_seconds) + warning_pages
+    if power_alert is not None:
+        warning_pages += (power_alert,)
+    return lcd_status_pages(snapshot.stats, uptime_seconds, power) + warning_pages
 
 
 def stats_frames(snapshot: StatsSnapshot) -> tuple[StatsFrame, ...]:
@@ -1293,6 +1508,7 @@ def collect_matrix_health() -> MatrixHealthSnapshot:
         failed_services=read_failed_service_count(),
         pistar_online=read_pistar_online(),
         router_online=read_router_online(),
+        power=read_power_status(),
     )
 
 
@@ -1324,7 +1540,47 @@ def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
         alerts.append(MatrixAlert("network_uplink", "warning", SIGNAL_ICON))
     if snapshot.stats.gps_locked is not True:
         alerts.append(MatrixAlert("gps_fix", "warning", SATELLITE_DISH_ICON))
+    if snapshot.power is not None:
+        if snapshot.power.low_voltage_active:
+            alerts.append(MatrixAlert("low_voltage", "critical", POWER_ICON))
+        elif snapshot.power.status == "bad":
+            alerts.append(MatrixAlert("power_monitor", "critical", POWER_ICON))
+        elif snapshot.power.status == "warn":
+            alerts.append(MatrixAlert("power_monitor", "warning", POWER_ICON))
     return tuple(sorted(alerts, key=lambda alert: 0 if alert.severity == "critical" else 1))
+
+
+def write_buzzer_health(
+    snapshot: MatrixHealthSnapshot,
+    alerts: Sequence[MatrixAlert],
+    path: Path = BUZZER_HEALTH_PATH,
+) -> None:
+    """Publish the visual alert source of truth for the optional buzzer."""
+    if not path.parent.is_dir():
+        return
+    document = {
+        "version": 1,
+        "updated_at_epoch": int(time.time()),
+        "health": snapshot.as_dict(),
+        "alerts": [alert.as_dict() for alert in alerts],
+    }
+    temporary_name: str | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(prefix=".health.", dir=path.parent)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, separators=(",", ":"))
+            handle.write("\n")
+        os.chmod(temporary_name, 0o644)
+        os.replace(temporary_name, path)
+    except OSError:
+        # The buzzer is optional; visual status must continue if it is absent.
+        pass
+    finally:
+        if temporary_name is not None:
+            try:
+                os.unlink(temporary_name)
+            except FileNotFoundError:
+                pass
 
 
 def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator, ...]:
@@ -1356,7 +1612,13 @@ def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator,
     else:
         primary_usb = ("missing", LED_WARNING)
 
-    if snapshot.stats.aprs_status != "ok":
+    if snapshot.power is not None and (
+        snapshot.power.low_voltage_active or snapshot.power.status == "bad"
+    ):
+        services = ("power_critical", LED_CRITICAL)
+    elif snapshot.power is not None and snapshot.power.status == "warn":
+        services = ("power_warning", LED_WARNING)
+    elif snapshot.stats.aprs_status != "ok":
         services = ("aprs_error", LED_CRITICAL)
     elif snapshot.failed_services is None:
         services = ("unknown", LED_UNKNOWN)
@@ -1406,6 +1668,7 @@ def run_led_status(
     once: bool = False,
     poll_seconds: float = WS2812_POLL_SECONDS,
     collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
+    health_writer: Callable[[MatrixHealthSnapshot, Sequence[MatrixAlert]], None] = write_buzzer_health,
     sleeper: Callable[[float], None] = time.sleep,
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
@@ -1413,6 +1676,7 @@ def run_led_status(
     previous_colors: tuple[tuple[int, int, int], ...] | None = None
     while not should_stop():
         snapshot = collector()
+        health_writer(snapshot, matrix_alerts(snapshot))
         indicators = led_status_indicators(snapshot)
         colors = tuple(indicator.color for indicator in indicators)
         unread = snapshot.stats.aprs_mailbox_unread or 0
@@ -1468,6 +1732,7 @@ def run_matrix_alerts(
     frame_seconds: float = 0.7,
     cycle_pause: float = 2.5,
     collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
+    health_writer: Callable[[MatrixHealthSnapshot, Sequence[MatrixAlert]], None] = write_buzzer_health,
     sleeper: Callable[[float], None] = time.sleep,
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
@@ -1475,6 +1740,7 @@ def run_matrix_alerts(
     while not should_stop():
         snapshot = collector()
         alerts = matrix_alerts(snapshot)
+        health_writer(snapshot, alerts)
         frames = matrix_alert_frames(alerts, snapshot.stats.aprs_mailbox_unread or 0)
         summary = json.dumps(
             {
@@ -1504,18 +1770,23 @@ def run_lcd_status(
     once: bool = False,
     page_seconds: float = 3.0,
     collector: Callable[[], MatrixHealthSnapshot] = collect_matrix_health,
+    power_reader: Callable[[], PowerSnapshot | None] = read_power_status,
+    health_writer: Callable[[MatrixHealthSnapshot, Sequence[MatrixAlert]], None] = write_buzzer_health,
     uptime_reader: Callable[[], int | None] = read_uptime_seconds,
     sleeper: Callable[[float], None] = time.sleep,
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
     while not should_stop():
         snapshot = collector()
+        power = snapshot.power if snapshot.power is not None else power_reader()
         alerts = matrix_alerts(snapshot)
-        pages = lcd_health_pages(snapshot, uptime_reader())
+        health_writer(snapshot, alerts)
+        pages = lcd_health_pages(snapshot, uptime_reader(), power)
         print(
             json.dumps(
                 {
                     "health": snapshot.as_dict(),
+                    "power": power.as_dict() if power is not None else None,
                     "alerts": [alert.as_dict() for alert in alerts],
                     "pages": [list(page) for page in pages],
                 },
@@ -1620,7 +1891,7 @@ def startup_readiness(
     }
 
 
-def apply_startup_state(target: str, *, repeat_leds: bool = False) -> None:
+def apply_startup_state(target: str, *, repeat: bool = False) -> None:
     if target == "lcd":
         lcd: HD44780 | None = None
         try:
@@ -1635,7 +1906,7 @@ def apply_startup_state(target: str, *, repeat_leds: bool = False) -> None:
         leds: Ws2812 | None = None
         try:
             leds = Ws2812()
-            run_startup_leds(leds, repeat=repeat_leds)
+            run_startup_leds(leds, repeat=repeat)
         finally:
             if leds is not None:
                 leds.close(clear=False)
@@ -1645,7 +1916,11 @@ def apply_startup_state(target: str, *, repeat_leds: bool = False) -> None:
         matrix: Max7219 | None = None
         try:
             matrix = Max7219()
-            run_startup_matrix(matrix)
+            run_startup_matrix(
+                matrix,
+                repeat=repeat,
+                reinitialize=lambda: matrix.initialize(clear=False),
+            )
         finally:
             if matrix is not None:
                 matrix.close(clear=False)
@@ -1859,10 +2134,10 @@ def main(argv: Iterable[str] | None = None) -> int:
         return 0
 
     if args.command == "startup-state":
-        if args.repeat and args.target != "leds":
-            raise SystemExit("ERROR: --repeat is valid only for the startup LED target")
+        if args.repeat and args.target not in {"leds", "matrix"}:
+            raise SystemExit("ERROR: --repeat is valid only for the startup LED and matrix targets")
         plan = startup_state_plan(args.target)
-        if args.target == "leds":
+        if args.target in {"leds", "matrix"}:
             plan["repeat"] = bool(args.repeat)
         if not args.hardware:
             plan["backend"] = "simulation"
@@ -1876,7 +2151,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             print(json.dumps(plan, indent=2))
             return 0
         try:
-            apply_startup_state(args.target, repeat_leds=args.repeat)
+            apply_startup_state(args.target, repeat=args.repeat)
         except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
             raise SystemExit(f"ERROR: {error}") from error
         plan["backend"] = "hardware"
@@ -2077,12 +2352,14 @@ def main(argv: Iterable[str] | None = None) -> int:
             raise SystemExit("ERROR: --page-seconds cannot be negative")
         if not args.hardware:
             snapshot = collect_matrix_health()
+            power = read_power_status()
             alerts = matrix_alerts(snapshot)
             print(json.dumps({
                 "backend": "simulation",
                 "health": snapshot.as_dict(),
+                "power": power.as_dict() if power is not None else None,
                 "alerts": [alert.as_dict() for alert in alerts],
-                "pages": [list(page) for page in lcd_health_pages(snapshot, read_uptime_seconds())],
+                "pages": [list(page) for page in lcd_health_pages(snapshot, read_uptime_seconds(), power)],
                 "writes_performed": False,
             }, indent=2))
             return 0
