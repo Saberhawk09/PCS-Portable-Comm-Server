@@ -3484,8 +3484,8 @@ buzzer_state_action() {
 }
 
 require_root
-ensure_repo
 dispatch_host_namespace_action
+ensure_repo
 
 cellular_data_iface() {
     local gsm_dev

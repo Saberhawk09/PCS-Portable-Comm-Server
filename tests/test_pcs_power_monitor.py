@@ -166,6 +166,17 @@ class PowerTests(unittest.TestCase):
             ],
         )
 
+    def test_dispatcher_enters_host_namespace_before_repository_check(self):
+        source = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            "require_root\ndispatch_host_namespace_action\nensure_repo",
+            source,
+        )
+        namespace_actions = source.split("dispatch_host_namespace_action()", 1)[1].split(
+            "request_pistar_poweroff()", 1
+        )[0]
+        self.assertIn("shutdown-system", namespace_actions)
+
 
 if __name__ == "__main__":
     unittest.main()
