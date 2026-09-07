@@ -495,6 +495,11 @@ class PowerSnapshot:
     low_voltage_active: bool = False
     shutdown_remaining_seconds: int | None = None
     shutdown_armed: bool = False
+    input_charge_since_boot_mah: float | None = None
+    input_energy_since_boot_wh: float | None = None
+    rail_5v_charge_since_boot_mah: float | None = None
+    rail_5v_energy_since_boot_wh: float | None = None
+    energy_tracking_elapsed_seconds: float | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -1118,6 +1123,16 @@ def read_power_status(
             low_voltage_active=low_voltage.get("active") is True,
             shutdown_remaining_seconds=remaining,
             shutdown_armed=low_voltage.get("shutdown_armed") is True,
+            input_charge_since_boot_mah=number(input_monitor, "charge_since_boot_mah"),
+            input_energy_since_boot_wh=number(input_monitor, "energy_since_boot_wh"),
+            rail_5v_charge_since_boot_mah=number(rail_5v, "charge_since_boot_mah"),
+            rail_5v_energy_since_boot_wh=number(rail_5v, "energy_since_boot_wh"),
+            energy_tracking_elapsed_seconds=number(
+                payload.get("energy_tracking", {})
+                if isinstance(payload.get("energy_tracking"), dict)
+                else {},
+                "elapsed_seconds",
+            ),
         )
     except (KeyError, TypeError, ValueError):
         return PowerSnapshot("warn", False, None, None, None, False, None, None, None)
@@ -1186,6 +1201,38 @@ def lcd_power_page(power: PowerSnapshot) -> tuple[str, str]:
     return input_line[:LCD_COLUMNS], rail_5v_line[:LCD_COLUMNS]
 
 
+def compact_charge(value: float | None) -> str:
+    if value is None:
+        return "--mAh"
+    return f"{value:.0f}mAh" if value < 1000 else f"{value / 1000:.1f}Ah"
+
+
+def compact_energy(value: float | None) -> str:
+    if value is None:
+        return "--Wh"
+    if value < 10:
+        return f"{value:.2f}Wh"
+    if value < 100:
+        return f"{value:.1f}Wh"
+    return f"{value:.0f}Wh"
+
+
+def lcd_energy_page(power: PowerSnapshot) -> tuple[str, str] | None:
+    """Show charge and energy accumulated by both rails during this boot."""
+    values = (
+        power.input_charge_since_boot_mah,
+        power.input_energy_since_boot_wh,
+        power.rail_5v_charge_since_boot_mah,
+        power.rail_5v_energy_since_boot_wh,
+    )
+    if all(value is None for value in values):
+        return None
+    return (
+        f"IN {compact_charge(values[0])} {compact_energy(values[1])}"[:LCD_COLUMNS],
+        f"5V {compact_charge(values[2])} {compact_energy(values[3])}"[:LCD_COLUMNS],
+    )
+
+
 def lcd_power_alert_page(power: PowerSnapshot) -> tuple[str, str] | None:
     if power.low_voltage_active:
         voltage = "--.-" if power.input_voltage is None else f"{power.input_voltage:.1f}"
@@ -1249,7 +1296,11 @@ def lcd_status_pages(
         (f"APRS Stats: {aprs_state}", aprs_counts),
     )
     if power is not None:
-        pages = pages[:1] + (lcd_power_page(power),) + pages[1:]
+        power_pages = (lcd_power_page(power),)
+        energy_page = lcd_energy_page(power)
+        if energy_page is not None:
+            power_pages += (energy_page,)
+        pages = pages[:1] + power_pages + pages[1:]
     return pages
 
 

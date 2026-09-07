@@ -1953,6 +1953,10 @@ try:
         if state not in {'ok', 'warn', 'bad'}:
             state = 'warn'
         reading = f"{item['voltage']:.2f} V / {item['current']:.2f} A / {item['power']:.2f} W"
+        charge = item.get('charge_since_boot_mah')
+        energy = item.get('energy_since_boot_wh')
+        if all(isinstance(field, (int, float)) and not isinstance(field, bool) for field in (charge, energy)):
+            reading += f" / boot {charge:.1f} mAh / {energy:.3f} Wh"
         return 'yes', state, reading
 
     input_present, input_state, input_value = monitor('input')

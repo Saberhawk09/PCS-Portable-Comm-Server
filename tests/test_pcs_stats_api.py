@@ -48,10 +48,13 @@ PUBLIC_DASHBOARD = {
     "power": {
         "configured": True, "status": "bad", "input_online": True,
         "input_voltage": 11.2, "input_current": 2.0, "input_power": 22.4,
+        "input_charge_since_boot_mah": 250.0, "input_energy_since_boot_wh": 3.2,
         "rail_5v_online": True, "rail_5v_voltage": 5.2,
         "rail_5v_current": 1.5, "rail_5v_power": 7.8,
+        "rail_5v_charge_since_boot_mah": 180.0, "rail_5v_energy_since_boot_wh": 0.94,
         "estimated_non_5v_power": 14.6, "low_voltage_active": True,
-        "shutdown_armed": True, "shutdown_remaining_seconds": 72,
+        "energy_tracking_elapsed_seconds": 600, "shutdown_armed": True,
+        "shutdown_remaining_seconds": 72,
     },
     "pistar": {"configured": True, "online": True, "url": "must-not-render"},
     "aprs": {
@@ -103,6 +106,10 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(document["data"]["low_voltage_active"])
         self.assertTrue(document["data"]["shutdown_armed"])
         self.assertEqual(document["data"]["shutdown_remaining_seconds"], 72)
+        self.assertEqual(document["data"]["input_charge_since_boot_mah"], 250.0)
+        self.assertEqual(document["data"]["input_energy_since_boot_wh"], 3.2)
+        self.assertEqual(document["data"]["rail_5v_energy_since_boot_wh"], 0.94)
+        self.assertEqual(document["data"]["energy_tracking_elapsed_seconds"], 600)
 
     def test_tls_handshakes_are_deferred_to_bounded_worker_threads(self):
         self.assertTrue(api.ReusableThreadingHTTPServer.daemon_threads)

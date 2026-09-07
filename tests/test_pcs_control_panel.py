@@ -107,10 +107,13 @@ class PublicDataTests(unittest.TestCase):
         value["power"] = {
             "configured": True, "status": "warn", "input_online": True,
             "input_voltage": 13.8, "input_current": 1.4, "input_power": 19.3,
+            "input_charge_since_boot_mah": 245.6, "input_energy_since_boot_wh": 3.39,
             "rail_5v_online": True, "rail_5v_voltage": 5.12,
             "rail_5v_current": 0.8, "rail_5v_power": 4.1,
+            "rail_5v_charge_since_boot_mah": 140.2, "rail_5v_energy_since_boot_wh": 0.73,
             "estimated_non_5v_power": 15.2, "low_voltage_active": False,
-            "shutdown_armed": True, "shutdown_remaining_seconds": 72,
+            "energy_tracking_elapsed_seconds": 630, "shutdown_armed": True,
+            "shutdown_remaining_seconds": 72,
             "secret": "must-not-render",
         }
         page = pcs.render_public_page(pcs.sanitize_public_dashboard(value)).decode("utf-8")
@@ -118,6 +121,8 @@ class PublicDataTests(unittest.TestCase):
         self.assertIn("Estimated non-5V load", page)
         self.assertIn("Automatic shutdown", page)
         self.assertIn("72", page)
+        self.assertIn("Input energy since boot", page)
+        self.assertIn("5V energy since boot", page)
         self.assertNotIn("must-not-render", page)
 
         collector = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")

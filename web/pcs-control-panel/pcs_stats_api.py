@@ -188,9 +188,11 @@ API_FIELDS = {
     "power": {
         "configured", "status", "input_online", "input_voltage",
         "input_current", "input_power", "rail_5v_online",
+        "input_charge_since_boot_mah", "input_energy_since_boot_wh",
         "rail_5v_voltage", "rail_5v_current", "rail_5v_power",
+        "rail_5v_charge_since_boot_mah", "rail_5v_energy_since_boot_wh",
         "estimated_non_5v_power", "low_voltage_active",
-        "shutdown_armed", "shutdown_remaining_seconds",
+        "energy_tracking_elapsed_seconds", "shutdown_armed", "shutdown_remaining_seconds",
     },
     "pistar": {"configured", "online"},
     "aprs": {

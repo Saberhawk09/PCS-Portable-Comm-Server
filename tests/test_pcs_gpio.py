@@ -489,12 +489,17 @@ class PcsGpioTests(unittest.TestCase):
                     "input": {
                         "online": True, "voltage": 23.951,
                         "current": 0.876, "power": 20.996,
+                        "charge_since_boot_mah": 123.4,
+                        "energy_since_boot_wh": 2.96,
                     },
                     "rail_5v": {
                         "online": True, "voltage": 5.234,
                         "current": 1.406, "power": 7.355,
+                        "charge_since_boot_mah": 198.7,
+                        "energy_since_boot_wh": 1.04,
                     },
                 },
+                "energy_tracking": {"elapsed_seconds": 505},
                 "low_voltage": {"active": False, "remaining_seconds": None},
             }), encoding="utf-8")
             power = pcs_gpio.read_power_status(path, now=lambda: 1005)
@@ -507,7 +512,9 @@ class PcsGpioTests(unittest.TestCase):
         stats = pcs_gpio.StatsSnapshot(None, None, None, None)
         pages = pcs_gpio.lcd_status_pages(stats, 60, power)
         self.assertEqual(pages[1], pcs_gpio.lcd_power_page(power))
-        self.assertTrue(all(len(line) <= 16 for line in pages[1]))
+        self.assertEqual(pages[2], ("IN 123mAh 2.96Wh", "5V 199mAh 1.04Wh"))
+        self.assertTrue(all(len(line) <= 16 for page in pages[1:3] for line in page))
+        self.assertEqual(power.energy_tracking_elapsed_seconds, 505)
 
     def test_stale_or_faulted_power_snapshot_is_an_lcd_warning(self):
         with tempfile.TemporaryDirectory() as temp_dir:

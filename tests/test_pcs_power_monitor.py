@@ -38,6 +38,10 @@ def config():
 
 
 class PowerTests(unittest.TestCase):
+    def test_runtime_directory_preserves_energy_totals_across_service_restart(self):
+        service = (ROOT / "systemd" / "pcs-power-monitor.service").read_text(encoding="utf-8")
+        self.assertIn("RuntimeDirectoryPreserve=restart", service)
+
     def test_repository_example_cannot_enable_unverified_calibration(self):
         with self.assertRaises((TypeError, ValueError)):
             power.load_config(ROOT / "config" / "power-monitor.example.json")
@@ -90,6 +94,59 @@ class PowerTests(unittest.TestCase):
         self.assertAlmostEqual(value["monitors"]["rail_5v"]["voltage"], 5.0, places=2)
         self.assertGreater(value["estimated_non_5v_power"], 15)
         self.assertIn("conversion losses", value["estimated_non_5v_note"])
+
+    def test_energy_tracker_integrates_charge_and_energy_trapezoidally(self):
+        tracker = power.EnergyTracker(["input"], boot_id="boot-1", started_at_epoch=100)
+        tracker.update({"input": power.Reading(True, 12.0, 1.0, 10.0)}, 10.0)
+        tracker.update({"input": power.Reading(True, 12.0, 3.0, 14.0)}, 3610.0)
+        self.assertEqual(tracker.fields("input"), {
+            "charge_since_boot_mah": 2000.0,
+            "energy_since_boot_wh": 12.0,
+        })
+        self.assertEqual(tracker.elapsed_seconds, 3600.0)
+
+    def test_energy_tracker_does_not_bridge_an_offline_interval(self):
+        tracker = power.EnergyTracker(["input"])
+        tracker.update({"input": power.Reading(True, 12.0, 2.0, 20.0)}, 0.0)
+        tracker.update({"input": power.Reading(False)}, 3600.0)
+        tracker.update({"input": power.Reading(True, 12.0, 2.0, 20.0)}, 7200.0)
+        self.assertEqual(tracker.fields("input"), {
+            "charge_since_boot_mah": 0.0,
+            "energy_since_boot_wh": 0.0,
+        })
+
+    def test_energy_tracker_resumes_only_for_same_boot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "status.json"
+            path.write_text(json.dumps({
+                "energy_tracking": {
+                    "boot_id": "boot-1", "started_at_epoch": 100,
+                    "elapsed_seconds": 50,
+                },
+                "monitors": {
+                    "input": {
+                        "charge_since_boot_mah": 12.5,
+                        "energy_since_boot_wh": 0.15,
+                    },
+                },
+            }), encoding="utf-8")
+            resumed = power.EnergyTracker.resume(path, ["input"], "boot-1")
+            reset = power.EnergyTracker.resume(path, ["input"], "boot-2")
+        self.assertEqual(resumed.fields("input")["charge_since_boot_mah"], 12.5)
+        self.assertEqual(resumed.started_at_epoch, 100)
+        self.assertEqual(reset.fields("input")["charge_since_boot_mah"], 0.0)
+
+    def test_collect_publishes_boot_scoped_energy_fields(self):
+        bus = FakeBus({
+            (0x40, 0x02): 11040, (0x40, 0x04): 3277, (0x40, 0x03): 2621,
+            (0x41, 0x02): 4000, (0x41, 0x04): 1638, (0x41, 0x03): 328,
+        })
+        tracker = power.EnergyTracker(["input", "rail_5v"], boot_id="boot-1")
+        value = power.collect(bus, config(), power.LowVoltageGuard(config()), 10, tracker)
+        self.assertEqual(value["energy_tracking"]["scope"], "since_boot")
+        self.assertEqual(value["energy_tracking"]["boot_id"], "boot-1")
+        self.assertEqual(value["monitors"]["input"]["charge_since_boot_mah"], 0.0)
+        self.assertEqual(value["monitors"]["rail_5v"]["energy_since_boot_wh"], 0.0)
 
     def test_input_only_collection_omits_unavailable_estimate_without_warning(self):
         cfg = config()

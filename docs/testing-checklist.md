@@ -959,6 +959,11 @@ pixel is red, and both the web status and app power resource report BAD with
 `low_voltage_active`, `shutdown_armed`, and the countdown. Confirm every
 indicator recovers after raising the input to at least 11.8V.
 
+After several minutes at a stable load, confirm both since-boot mAh and Wh
+totals increase plausibly on the LCD, web card, self-test, and `/api/v1/power`.
+Restart only `pcs-power-monitor.service` and confirm the totals do not reset;
+then perform a normal reboot and confirm both channels begin again near zero.
+
 With the external approximately 10k pull-up installed, confirm silence through
 boot/pin initialization and distinguish POST, OK, WARN, BAD, and low-voltage
 patterns. Confirm WARN/BAD mute leaves visual status unchanged and does not mute

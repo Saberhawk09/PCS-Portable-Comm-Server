@@ -22,6 +22,7 @@ from typing import Callable, Protocol
 CONFIG_PATH = Path(os.environ.get("PCS_POWER_CONFIG", "/etc/pcs/power-monitor.json"))
 STATUS_PATH = Path(os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/status.json"))
 SHUTDOWN_DISPATCHER = os.environ.get("PCS_SHUTDOWN_DISPATCHER", "/usr/local/sbin/pcs-web-action")
+BOOT_ID_PATH = Path(os.environ.get("PCS_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id"))
 CONVERSION_SETTLE_SECONDS = 0.05
 
 
@@ -54,6 +55,99 @@ class Reading:
     current: float | None = None
     power: float | None = None
     error: str | None = None
+
+
+@dataclass
+class EnergyTotal:
+    charge_mah: float = 0.0
+    energy_wh: float = 0.0
+    previous_current: float | None = None
+    previous_power: float | None = None
+
+
+class EnergyTracker:
+    """Trapezoidal charge/energy integration scoped to the current boot."""
+
+    def __init__(
+        self,
+        monitor_names: list[str],
+        *,
+        boot_id: str | None = None,
+        started_at_epoch: int | None = None,
+        elapsed_seconds: float = 0.0,
+        totals: dict[str, tuple[float, float]] | None = None,
+    ) -> None:
+        self.boot_id = boot_id
+        self.started_at_epoch = int(time.time()) if started_at_epoch is None else started_at_epoch
+        self.elapsed_seconds = max(0.0, elapsed_seconds)
+        self.last_monotonic: float | None = None
+        totals = totals or {}
+        self.monitors = {
+            name: EnergyTotal(*totals.get(name, (0.0, 0.0)))
+            for name in monitor_names
+        }
+
+    def update(self, readings: dict[str, Reading], now: float) -> None:
+        elapsed = None if self.last_monotonic is None else max(0.0, now - self.last_monotonic)
+        if elapsed is not None:
+            self.elapsed_seconds += elapsed
+        for name, total in self.monitors.items():
+            reading = readings.get(name)
+            current = self._measurement(reading.current if reading and reading.online else None)
+            power = self._measurement(reading.power if reading and reading.online else None)
+            if elapsed is not None and current is not None and total.previous_current is not None:
+                total.charge_mah += (total.previous_current + current) * 0.5 * elapsed / 3.6
+            if elapsed is not None and power is not None and total.previous_power is not None:
+                total.energy_wh += (total.previous_power + power) * 0.5 * elapsed / 3600.0
+            total.previous_current = current
+            total.previous_power = power
+        self.last_monotonic = now
+
+    @staticmethod
+    def _measurement(value: float | None) -> float | None:
+        if value is None or not math.isfinite(value):
+            return None
+        return max(0.0, value)
+
+    def fields(self, name: str) -> dict[str, float]:
+        total = self.monitors[name]
+        return {
+            "charge_since_boot_mah": round(total.charge_mah, 3),
+            "energy_since_boot_wh": round(total.energy_wh, 4),
+        }
+
+    @classmethod
+    def resume(cls, status_path: Path, monitor_names: list[str], boot_id: str | None) -> "EnergyTracker":
+        try:
+            prior = json.loads(status_path.read_text(encoding="utf-8"))
+            tracking = prior["energy_tracking"]
+            if not isinstance(tracking, dict) or tracking.get("boot_id") != boot_id:
+                raise ValueError("energy snapshot belongs to another boot")
+            monitors = prior["monitors"]
+            totals = {
+                name: (
+                    float(monitors[name]["charge_since_boot_mah"]),
+                    float(monitors[name]["energy_since_boot_wh"]),
+                )
+                for name in monitor_names
+            }
+            return cls(
+                monitor_names,
+                boot_id=boot_id,
+                started_at_epoch=int(tracking["started_at_epoch"]),
+                elapsed_seconds=float(tracking["elapsed_seconds"]),
+                totals=totals,
+            )
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return cls(monitor_names, boot_id=boot_id)
+
+
+def read_boot_id(path: Path = BOOT_ID_PATH) -> str | None:
+    try:
+        value = path.read_text(encoding="ascii").strip()
+        return value or None
+    except OSError:
+        return None
 
 
 class Ina226:
@@ -237,8 +331,16 @@ def atomic_json(path: Path, value: dict) -> None:
             pass
 
 
-def collect(bus: Bus, config: dict, guard: LowVoltageGuard, now: float) -> dict:
+def collect(
+    bus: Bus,
+    config: dict,
+    guard: LowVoltageGuard,
+    now: float,
+    energy: EnergyTracker | None = None,
+) -> dict:
     readings = {name: safe_read(bus, monitor) for name, monitor in config["monitors"].items()}
+    if energy is not None:
+        energy.update(readings, now)
     low, remaining = guard.update(readings["input"].voltage, now)
     estimated = None
     rail_5v = readings.get("rail_5v")
@@ -256,7 +358,25 @@ def collect(bus: Bus, config: dict, guard: LowVoltageGuard, now: float) -> dict:
         "source_mode": config["source_mode"],
         "detected_nominal_source": guard.nominal,
         "configured_roles": list(readings),
-        "monitors": {name: {**asdict(value), "status": states[name], "address": f"0x{config['monitors'][name].address:02x}"} for name, value in readings.items()},
+        "monitors": {
+            name: {
+                **asdict(value),
+                "status": states[name],
+                "address": f"0x{config['monitors'][name].address:02x}",
+                **(energy.fields(name) if energy is not None else {}),
+            }
+            for name, value in readings.items()
+        },
+        "energy_tracking": (
+            {
+                "scope": "since_boot",
+                "boot_id": energy.boot_id,
+                "started_at_epoch": energy.started_at_epoch,
+                "elapsed_seconds": round(energy.elapsed_seconds, 3),
+            }
+            if energy is not None
+            else None
+        ),
         "estimated_non_5v_power": estimated,
         "estimated_non_5v_note": "Estimate includes DC/DC conversion losses; not an exact 12V rail measurement.",
         "low_voltage": {
@@ -290,12 +410,13 @@ def run_service(
     shutdown_requester: Callable[[], None] = request_coordinated_shutdown,
 ) -> None:
     guard = LowVoltageGuard(config)
+    energy = EnergyTracker.resume(status_path, list(config["monitors"]), read_boot_id())
     shutdown_requested = False
     bus = bus_factory()
     try:
         while True:
             now = time.monotonic()
-            status = collect(bus, config, guard, now)
+            status = collect(bus, config, guard, now, energy)
             status["collected_at_epoch"] = int(time.time())
             atomic_json(status_path, status)
             remaining = status["low_voltage"]["remaining_seconds"]

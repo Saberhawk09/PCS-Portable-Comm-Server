@@ -2599,6 +2599,7 @@ power_fresh = power_age is not None and power_age <= 15
 power_monitors = power_runtime.get("monitors", {}) if isinstance(power_runtime.get("monitors"), dict) else {}
 power_input = power_monitors.get("input", {}) if isinstance(power_monitors.get("input"), dict) else {}
 power_5v = power_monitors.get("rail_5v", {}) if isinstance(power_monitors.get("rail_5v"), dict) else {}
+power_energy = power_runtime.get("energy_tracking", {}) if isinstance(power_runtime.get("energy_tracking"), dict) else {}
 power_status = str(power_runtime.get("status", "warn")) if power_fresh else "warn"
 if power_status not in {"ok", "warn", "bad"}:
     power_status = "warn"
@@ -3113,6 +3114,8 @@ if POWER_CONFIGURED:
         {"label": "Input voltage", "value": power_value(power_input.get("voltage"), "V")},
         {"label": "Total input current", "value": power_value(power_input.get("current"), "A")},
         {"label": "Total PCS input power", "value": power_value(power_input.get("power"), "W")},
+        {"label": "Input charge since boot", "value": power_value(power_input.get("charge_since_boot_mah"), "mAh", 1)},
+        {"label": "Input energy since boot", "value": power_value(power_input.get("energy_since_boot_wh"), "Wh", 3)},
     ]
     if "rail_5v" in power_monitors:
         power_items.extend([
@@ -3120,6 +3123,8 @@ if POWER_CONFIGURED:
             {"label": "5V rail voltage", "value": power_value(power_5v.get("voltage"), "V")},
             {"label": "5V rail current", "value": power_value(power_5v.get("current"), "A")},
             {"label": "5V rail power", "value": power_value(power_5v.get("power"), "W")},
+            {"label": "5V charge since boot", "value": power_value(power_5v.get("charge_since_boot_mah"), "mAh", 1)},
+            {"label": "5V energy since boot", "value": power_value(power_5v.get("energy_since_boot_wh"), "Wh", 3)},
             {"label": "Estimated non-5V load", "value": power_value(power_runtime.get("estimated_non_5v_power"), "W")},
             {"label": "Estimate scope", "value": "Includes conversion losses; not exact 12V rail power"},
         ])
@@ -3332,10 +3337,15 @@ if PUBLIC_VIEW:
             "input_voltage": power_input.get("voltage"),
             "input_current": power_input.get("current"),
             "input_power": power_input.get("power"),
+            "input_charge_since_boot_mah": power_input.get("charge_since_boot_mah"),
+            "input_energy_since_boot_wh": power_input.get("energy_since_boot_wh"),
             "rail_5v_online": bool(power_5v.get("online")),
             "rail_5v_voltage": power_5v.get("voltage"),
             "rail_5v_current": power_5v.get("current"),
             "rail_5v_power": power_5v.get("power"),
+            "rail_5v_charge_since_boot_mah": power_5v.get("charge_since_boot_mah"),
+            "rail_5v_energy_since_boot_wh": power_5v.get("energy_since_boot_wh"),
+            "energy_tracking_elapsed_seconds": power_energy.get("elapsed_seconds"),
             "estimated_non_5v_power": power_runtime.get("estimated_non_5v_power"),
             "low_voltage_active": bool(low_voltage.get("active")),
             "shutdown_armed": bool(low_voltage.get("shutdown_armed")),

@@ -288,10 +288,12 @@ as a fail-safe fallback if that dispatcher itself cannot run.
 
 The normal 16x2 LCD rotation includes one compact power page. Its first row
 shows input voltage and total input watts, and its second row shows 5V rail
-voltage and watts. The standard concise self-test reports separate Input Power,
+voltage and watts. A second page shows since-boot charge (mAh, compacting to Ah)
+and energy (Wh) for both channels. The standard concise self-test reports separate Input Power,
 5V Rail, and Power Protection rows with live measurements. The public and
 authenticated web status views expose the full voltage, current, power,
-per-monitor health, low-voltage state, and explicitly labeled non-5V estimate.
+since-boot mAh/Wh totals, per-monitor health, low-voltage state, and explicitly
+labeled non-5V estimate.
 The commissioned 5V policy treats readings through 5.30V as normal, readings
 above 5.30V as WARN, and readings above 5.35V as BAD. The narrow warning band
 preserves advance notice before the critical boundary.
@@ -307,6 +309,12 @@ audible distortion while retaining its loud one-second cadence. Pattern
 priority is checked every 20ms; before the shutdown chime changes frequency,
 the active-low buzzer input is held off for 25ms so the alarm cannot end on a
 clipped PWM edge.
+
+Charge and energy use trapezoidal integration of consecutive INA226 current and
+power samples. Tracking resets on a real boot, survives service restarts during
+that boot, and deliberately does not bridge intervals where a monitor is
+offline. These are measured-load estimates and inherit the commissioned
+INA226/shunt current-calibration accuracy; they are not billing-grade values.
 
 Install or inspect locally on the Pi with:
 

@@ -6,6 +6,7 @@ After=local-fs.target
 Type=simple
 User=root
 RuntimeDirectory=pcs-power-monitor
+RuntimeDirectoryPreserve=restart
 ExecStart=/usr/local/sbin/pcs-power-monitor service
 Restart=on-failure
 RestartSec=3
