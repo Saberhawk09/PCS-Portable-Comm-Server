@@ -29,6 +29,7 @@ STRESS_MIN_INPUT_VOLTAGE = 11.8
 STRESS_MIN_5V_VOLTAGE = 4.75
 MAX_INPUT_SAG_FRACTION = 0.15
 POWER_SAMPLE_SECONDS = 0.05
+MAX_CONSECUTIVE_SAMPLE_ERRORS = 3
 STAGE_SETTLE_SECONDS = 2.0
 DISPLAY_SERVICES = ("pcs-gpio-leds.service", "pcs-gpio-stats.service")
 FAN_SERVICE = "pcs-gpio-fan.service"
@@ -180,6 +181,7 @@ class HighRatePowerLogger:
         self.maximum_currents: dict[str, float] = {}
         self.latest_readings: dict[str, dict[str, object]] = {}
         self.input_abort_floor = STRESS_MIN_INPUT_VOLTAGE
+        self.consecutive_sample_errors = 0
 
     def start(self) -> None:
         sys.path.insert(0, str(REPO_DIR / "scripts"))
@@ -262,6 +264,7 @@ class HighRatePowerLogger:
             self._throttled = self._read_throttled()
             self._last_throttled_check = now
         self._record({"type": "sample", "rails": readings, "pi_throttled": self._throttled})
+        self.consecutive_sample_errors = 0
         input_voltage = readings["input"]["voltage"]
         rail_5v_voltage = readings["rail_5v"]["voltage"]
         if isinstance(input_voltage, (int, float)) and input_voltage < self.input_abort_floor:
@@ -272,16 +275,31 @@ class HighRatePowerLogger:
             self._record({"type": "abort", "reason": self.abort_reason})
             self._stop.set()
 
+    def _sample_failed(self, error: Exception) -> None:
+        self.consecutive_sample_errors += 1
+        detail = f"{type(error).__name__}: {error}"
+        self._record({
+            "type": "sample_error",
+            "error": detail,
+            "consecutive_errors": self.consecutive_sample_errors,
+        })
+        if self.consecutive_sample_errors >= MAX_CONSECUTIVE_SAMPLE_ERRORS:
+            self.abort_reason = (
+                "high-rate INA226 sampling failed "
+                f"{self.consecutive_sample_errors} consecutive times: {detail}"
+            )
+            self._record({"type": "abort", "reason": self.abort_reason})
+            self._stop.set()
+
     def _run(self) -> None:
         deadline = time.monotonic()
         while not self._stop.is_set():
             try:
                 self._sample()
             except (OSError, RuntimeError, ValueError, AssertionError) as error:
-                self.abort_reason = f"high-rate INA226 sampling failed: {type(error).__name__}: {error}"
-                self._record({"type": "abort", "reason": self.abort_reason})
-                self._stop.set()
-                break
+                self._sample_failed(error)
+                if self.abort_reason:
+                    break
             deadline += self.interval
             self._stop.wait(max(0.0, deadline - time.monotonic()))
 

@@ -426,6 +426,8 @@ the run it samples both INA226s every 50 ms in their fastest continuous mode,
 records Raspberry Pi throttling flags once per second, and flushes every JSONL
 record to persistent storage under `/var/log/pcs/power-stress/`. The regular
 power-monitor service remains active for LCD, web, buzzer, and shutdown status.
+An isolated I2C transaction error is recorded without discarding the run;
+three consecutive failed samples abort it in approximately 150 ms.
 
 After the baseline stage, the test arms an input cutoff at no more than 15%
 below the measured baseline and never below 11.8V (before the commissioned
