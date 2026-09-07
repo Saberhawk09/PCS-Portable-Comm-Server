@@ -114,7 +114,11 @@ class PowerTests(unittest.TestCase):
             "ok",
         )
         self.assertEqual(
-            power.reading_status("rail_5v", power.Reading(True, 5.26, 1.565, 8.228), monitor),
+            power.reading_status("rail_5v", power.Reading(True, 5.29, 1.565, 8.275), monitor),
+            "ok",
+        )
+        self.assertEqual(
+            power.reading_status("rail_5v", power.Reading(True, 5.31, 1.565, 8.307), monitor),
             "warn",
         )
         self.assertEqual(

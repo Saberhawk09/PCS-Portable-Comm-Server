@@ -289,6 +289,9 @@ voltage and watts. The standard concise self-test reports separate Input Power,
 5V Rail, and Power Protection rows with live measurements. The public and
 authenticated web status views expose the full voltage, current, power,
 per-monitor health, low-voltage state, and explicitly labeled non-5V estimate.
+The commissioned 5V policy treats readings through 5.30V as normal, readings
+above 5.30V as WARN, and readings above 5.35V as BAD. The narrow warning band
+preserves advance notice before the critical boundary.
 
 Install or inspect locally on the Pi with:
 
