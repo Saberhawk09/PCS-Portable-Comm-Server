@@ -30,6 +30,14 @@ PCS_SELF_TEST = ROOT / "scripts" / "pcs-self-test.sh"
 
 
 class PcsGpioTests(unittest.TestCase):
+    def test_self_test_reports_both_commissioned_power_channels(self):
+        source = PCS_SELF_TEST.read_text(encoding="utf-8")
+        self.assertIn('section "Input Power"', source)
+        self.assertIn('section "5V Rail"', source)
+        self.assertIn('section "Power Protection"', source)
+        self.assertIn('summary_value "${POWER_INPUT_VALUE}"', source)
+        self.assertIn('summary_value "${POWER_5V_VALUE}"', source)
+
     def test_final_schematic_assignments_have_no_gpio_conflicts(self):
         gpio_lines = [pin.gpio for pin in pcs_gpio.PIN_ASSIGNMENTS]
         self.assertEqual(len(gpio_lines), len(set(gpio_lines)))
@@ -468,6 +476,71 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(
             pcs_gpio.lcd_status_pages(snapshot, 60)[-1],
             ("APRS Stats: MSG", "Pkt:123 Msgs:9"),
+        )
+
+    def test_power_snapshot_reader_and_single_lcd_page(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "power.json"
+            path.write_text(json.dumps({
+                "version": 1,
+                "collected_at_epoch": 1000,
+                "status": "ok",
+                "monitors": {
+                    "input": {
+                        "online": True, "voltage": 23.951,
+                        "current": 0.876, "power": 20.996,
+                    },
+                    "rail_5v": {
+                        "online": True, "voltage": 5.234,
+                        "current": 1.406, "power": 7.355,
+                    },
+                },
+                "low_voltage": {"active": False, "remaining_seconds": None},
+            }), encoding="utf-8")
+            power = pcs_gpio.read_power_status(path, now=lambda: 1005)
+
+        self.assertIsNotNone(power)
+        self.assertEqual(pcs_gpio.lcd_power_page(power), (
+            "IN 24.0V 21.0W",
+            "5V 5.23V 7.4W",
+        ))
+        stats = pcs_gpio.StatsSnapshot(None, None, None, None)
+        pages = pcs_gpio.lcd_status_pages(stats, 60, power)
+        self.assertEqual(pages[1], pcs_gpio.lcd_power_page(power))
+        self.assertTrue(all(len(line) <= 16 for line in pages[1]))
+
+    def test_stale_or_faulted_power_snapshot_is_an_lcd_warning(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "power.json"
+            path.write_text(json.dumps({
+                "version": 1, "collected_at_epoch": 900,
+                "status": "ok", "monitors": {},
+            }), encoding="utf-8")
+            power = pcs_gpio.read_power_status(path, now=lambda: 1000)
+
+        self.assertIsNotNone(power)
+        self.assertEqual(power.status, "warn")
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, True, True)
+        self.assertEqual(
+            pcs_gpio.lcd_health_pages(health, 60, power)[-1],
+            ("WARNING", "POWER MONITOR"),
+        )
+
+    def test_low_voltage_replaces_normal_lcd_pages(self):
+        power = pcs_gpio.PowerSnapshot(
+            "bad", True, 11.2, 1.0, 11.2, True, 5.1, 1.0, 5.1,
+            low_voltage_active=True, shutdown_remaining_seconds=72,
+        )
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(stats, 20, True, 0, True, True)
+        self.assertEqual(
+            pcs_gpio.lcd_health_pages(health, 60, power),
+            (("LOW INPUT VOLTS", "11.2V OFF IN 72s"),),
         )
 
     def test_aprs_status_reader_accepts_only_fresh_aggregate_schema(self):

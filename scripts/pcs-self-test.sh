@@ -170,6 +170,10 @@ warn() {
     WARN_COUNT=$((WARN_COUNT + 1))
 }
 
+summary_value() {
+    echo "[VALUE] $1"
+}
+
 skip() {
     echo "[SKIP] $1"
     SKIP_COUNT=$((SKIP_COUNT + 1))
@@ -1426,12 +1430,15 @@ case "${PCS_SETUP_MESHTASTIC}" in
             fi
 
             MESHTASTIC_GPSD_POSITION="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_GPSD_POSITION" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
+            MESHTASTIC_POSITION_INTERVAL="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_POSITION_INTERVAL" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
+            MESHTASTIC_POSITION_INTERVAL="${MESHTASTIC_POSITION_INTERVAL:-1800}"
             MESHTASTIC_PORT="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_PORT" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
             MESHTASTIC_MAP_MQTT_HOST="$(sudo -n awk -F= '$1 == "PCS_MESHTASTIC_MAP_MQTT_HOST" { print $2; exit }' /etc/pcs/meshtastic.env 2>/dev/null || true)"
             EXPECTED_MESHTASTIC_TRANSPORT="bluetooth-le"
             [[ -n "${MESHTASTIC_PORT}" ]] && EXPECTED_MESHTASTIC_TRANSPORT="usb-serial"
 
             if PCS_MESHTASTIC_GPSD_POSITION="${MESHTASTIC_GPSD_POSITION}" \
+                PCS_MESHTASTIC_POSITION_INTERVAL="${MESHTASTIC_POSITION_INTERVAL}" \
                 PCS_MESHTASTIC_MAP_MQTT_HOST="${MESHTASTIC_MAP_MQTT_HOST}" \
                 EXPECTED_MESHTASTIC_TRANSPORT="${EXPECTED_MESHTASTIC_TRANSPORT}" \
                 python3 -c '
@@ -1466,7 +1473,8 @@ assert status["privacy"]["channel_keys_stored"] is False
 if os.environ.get("PCS_MESHTASTIC_GPSD_POSITION", "").lower() == "yes":
     assert status["gateway"]["position_source"] == "gpsd"
     assert status["gateway"]["counters"]["position_updates"] > 0
-    assert 0 <= time.time() - status["gateway"]["last_position_update_at_epoch"] <= 900
+    configured_interval = int(os.environ.get("PCS_MESHTASTIC_POSITION_INTERVAL", "1800"))
+    assert 0 <= time.time() - status["gateway"]["last_position_update_at_epoch"] <= configured_interval + 60
 ' 2>/dev/null; then
                 pass "Meshtastic radio, Client Proxy, broker mapping, GPSD, and privacy-safe runtime status are healthy"
             else
@@ -1908,15 +1916,21 @@ else
 fi
 
 
-section "INA226 Power Monitoring"
-if [[ "${PCS_SETUP_POWER_MONITOR}" != "yes" ]]; then
-    skip "Dual INA226 power monitoring is not configured"
-elif [[ ! -x /usr/local/sbin/pcs-power-monitor ]]; then
-    warn "Power monitoring is configured but the collector is not installed"
-elif [[ ! -r /run/pcs-power-monitor/status.json ]]; then
-    warn "Power monitoring is configured but no runtime snapshot is available"
-else
-    POWER_CHECK="$(python3 - <<'PY'
+POWER_SNAPSHOT_STATE="unavailable"
+POWER_INPUT_PRESENT="no"
+POWER_INPUT_STATE="warn"
+POWER_INPUT_VALUE="unavailable"
+POWER_5V_PRESENT="no"
+POWER_5V_STATE="warn"
+POWER_5V_VALUE="unavailable"
+POWER_ESTIMATE_VALUE="unavailable"
+POWER_LOW_ACTIVE="no"
+POWER_LOW_COUNTDOWN=""
+
+if [[ "${PCS_SETUP_POWER_MONITOR}" == "yes" \
+    && -x /usr/local/sbin/pcs-power-monitor \
+    && -r /run/pcs-power-monitor/status.json ]]; then
+    mapfile -t POWER_FIELDS < <(python3 - <<'PY'
 import json, time
 from pathlib import Path
 try:
@@ -1924,23 +1938,107 @@ try:
     age = time.time() - float(value['collected_at_epoch'])
     monitors = value['monitors']
     assert value.get('version') == 1 and 0 <= age <= 15
-    assert 'input' in monitors
-    for name in monitors:
+    assert isinstance(monitors, dict)
+
+    def monitor(name):
+        if name not in monitors:
+            return 'no', 'warn', 'not commissioned'
         item = monitors[name]
-        assert item.get('online') is True
+        assert isinstance(item, dict)
+        if item.get('online') is not True:
+            return 'yes', 'warn', 'offline'
         for field in ('voltage', 'current', 'power'):
             assert isinstance(item.get(field), (int, float)) and not isinstance(item.get(field), bool)
-    print('low' if value.get('low_voltage', {}).get('active') else value.get('status', 'warn'))
+        state = str(item.get('status', 'warn'))
+        if state not in {'ok', 'warn', 'bad'}:
+            state = 'warn'
+        reading = f"{item['voltage']:.2f} V / {item['current']:.2f} A / {item['power']:.2f} W"
+        return 'yes', state, reading
+
+    input_present, input_state, input_value = monitor('input')
+    rail_present, rail_state, rail_value = monitor('rail_5v')
+    low = value.get('low_voltage', {})
+    assert isinstance(low, dict)
+    countdown = low.get('remaining_seconds')
+    estimate = value.get('estimated_non_5v_power')
+    estimate_value = (
+        f"{estimate:.2f} W incl conversion loss"
+        if isinstance(estimate, (int, float)) and not isinstance(estimate, bool)
+        else 'unavailable'
+    )
+    overall = str(value.get('status', 'warn'))
+    if overall not in {'ok', 'warn', 'bad'}:
+        overall = 'warn'
+    print(overall)
+    print(input_present)
+    print(input_state)
+    print(input_value)
+    print(rail_present)
+    print(rail_state)
+    print(rail_value)
+    print(estimate_value)
+    print('yes' if low.get('active') is True else 'no')
+    print('' if countdown is None else int(countdown))
 except Exception:
     print('unavailable')
 PY
-)"
-    case "${POWER_CHECK}" in
-        ok) pass "All configured INA226 monitors communicate and report plausible readings" ;;
-        low) fail "Confirmed low input voltage; controlled-shutdown countdown is active" ;;
-        bad) fail "INA226 power readings report a critical condition" ;;
-        *) warn "One or more configured INA226 monitors are missing, stale, or implausible" ;;
+)
+    POWER_SNAPSHOT_STATE="${POWER_FIELDS[0]:-unavailable}"
+    POWER_INPUT_PRESENT="${POWER_FIELDS[1]:-no}"
+    POWER_INPUT_STATE="${POWER_FIELDS[2]:-warn}"
+    POWER_INPUT_VALUE="${POWER_FIELDS[3]:-unavailable}"
+    POWER_5V_PRESENT="${POWER_FIELDS[4]:-no}"
+    POWER_5V_STATE="${POWER_FIELDS[5]:-warn}"
+    POWER_5V_VALUE="${POWER_FIELDS[6]:-unavailable}"
+    POWER_ESTIMATE_VALUE="${POWER_FIELDS[7]:-unavailable}"
+    POWER_LOW_ACTIVE="${POWER_FIELDS[8]:-no}"
+    POWER_LOW_COUNTDOWN="${POWER_FIELDS[9]:-}"
+fi
+
+section "Input Power"
+if [[ "${PCS_SETUP_POWER_MONITOR}" != "yes" ]]; then
+    skip "INA226 power monitoring is not configured"
+elif [[ ! -x /usr/local/sbin/pcs-power-monitor ]]; then
+    warn "Power monitoring is configured but the collector is not installed"
+elif [[ "${POWER_INPUT_PRESENT}" != "yes" || "${POWER_SNAPSHOT_STATE}" == "unavailable" ]]; then
+    warn "Input INA226 is missing, stale, or unavailable"
+else
+    case "${POWER_INPUT_STATE}" in
+        ok) pass "Input INA226 communicates and reports plausible readings" ;;
+        bad) fail "Input INA226 reports a critical reading" ;;
+        *) warn "Input INA226 reports a warning reading" ;;
     esac
+    summary_value "${POWER_INPUT_VALUE}"
+fi
+
+section "5V Rail"
+if [[ "${PCS_SETUP_POWER_MONITOR}" != "yes" ]]; then
+    skip "INA226 power monitoring is not configured"
+elif [[ "${POWER_5V_PRESENT}" != "yes" ]]; then
+    skip "5V rail INA226 is not commissioned"
+elif [[ "${POWER_SNAPSHOT_STATE}" == "unavailable" ]]; then
+    warn "5V rail INA226 snapshot is stale or unavailable"
+else
+    case "${POWER_5V_STATE}" in
+        ok) pass "5V rail INA226 communicates and reports plausible readings" ;;
+        bad) fail "5V rail INA226 reports a critical reading" ;;
+        *) warn "5V rail INA226 reports a warning reading" ;;
+    esac
+    summary_value "${POWER_5V_VALUE}"
+fi
+
+section "Power Protection"
+if [[ "${PCS_SETUP_POWER_MONITOR}" != "yes" ]]; then
+    skip "INA226 power monitoring is not configured"
+elif ! service_enabled pcs-power-monitor.service || ! service_active pcs-power-monitor.service; then
+    warn "Power-monitor collector is not enabled and active"
+elif [[ "${POWER_LOW_ACTIVE}" == "yes" ]]; then
+    fail "Confirmed low input voltage; controlled-shutdown countdown is active (${POWER_LOW_COUNTDOWN:-unknown}s remaining)"
+else
+    pass "Power-monitor collector is healthy and low-voltage protection is normal"
+    if [[ "${POWER_ESTIMATE_VALUE}" != "unavailable" ]]; then
+        summary_value "Non-5V ${POWER_ESTIMATE_VALUE}"
+    fi
 fi
 
 section "Passive Buzzer"
@@ -1982,11 +2080,17 @@ if [[ "${PCS_SELF_TEST_FORMAT}" == "concise" ]]; then
     echo "PCS SELF TEST"
     echo "--------------------------------"
     awk '
-        function emit() { if (name != "" && seen) printf "%-24s %s\n", name, state }
-        /^--- .* ---$/ { emit(); name=$0; sub(/^--- /,"",name); sub(/ ---$/,"",name); state="OK"; seen=0; next }
+        function emit() {
+            if (name != "" && seen) {
+                if (value != "") printf "%-24s %-36s %s\n", name, value, state
+                else printf "%-24s %s\n", name, state
+            }
+        }
+        /^--- .* ---$/ { emit(); name=$0; sub(/^--- /,"",name); sub(/ ---$/,"",name); state="OK"; value=""; seen=0; next }
         /^\[PASS\]/ { seen=1 }
         /^\[WARN\]/ { seen=1; if (state != "FAIL") state="WARN" }
         /^\[FAIL\]/ { seen=1; state="FAIL" }
+        /^\[VALUE\]/ { value=$0; sub(/^\[VALUE\] /,"",value) }
         END { emit() }
     ' "${PCS_SELF_TEST_LOG}"
     echo "--------------------------------"

@@ -16,7 +16,7 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | MAX7219 CS/LOAD | GPIO8 | 24 | Installed and bench-tested | SPI0 CE0 through one channel of the 74AHCT125. |
 | MAX7219 DIN | GPIO10 | 19 | Installed and bench-tested | SPI0 MOSI through one channel of the 74AHCT125. |
 | MAX7219 CLK | GPIO11 | 23 | Installed and bench-tested | SPI0 SCLK through one channel of the 74AHCT125. |
-| Passive buzzer SIG | GPIO13 | 33 | Software implemented / hardware validation pending | Active-low PNP module; external approximately 10k pull-up from SIG to 3.3V required before use. |
+| Passive buzzer SIG | GPIO13 | 33 | Installed and audible-tested | Active-low PNP module; external approximately 10k pull-up from SIG to 3.3V remains an as-built requirement. |
 | SA818S UART TX | GPIO14 | 8 | Installed / tested | `/dev/serial0` Pi TX to SA818S RXD at 9600 8N1; managed by `pcs-sa818.service`. |
 | SA818S UART RX | GPIO15 | 10 | Installed / tested | `/dev/serial0` Pi RX from SA818S TXD at 9600 8N1; managed by `pcs-sa818.service`. |
 | LCD E | GPIO17 | 11 | Installed and bench-tested | HD44780 enable. |

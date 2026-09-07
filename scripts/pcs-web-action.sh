@@ -2602,9 +2602,14 @@ power_status = str(power_runtime.get("status", "warn")) if power_fresh else "war
 if power_status not in {"ok", "warn", "bad"}:
     power_status = "warn"
 low_voltage = power_runtime.get("low_voltage", {}) if isinstance(power_runtime.get("low_voltage"), dict) else {}
-def power_value(value, suffix):
+def power_value(value, suffix, decimals=2):
     number = number_value(value)
-    return f"{number:.3f} {suffix}" if number is not None else "unavailable"
+    return f"{number:.{decimals}f} {suffix}" if number is not None else "unavailable"
+def power_monitor_state(monitor):
+    if monitor.get("online") is not True:
+        return "offline"
+    state = str(monitor.get("status", "unknown"))
+    return f"online / {state.upper()}" if state in {"ok", "warn", "bad"} else "online / UNKNOWN"
 meshtastic_gateway = meshtastic_runtime.get("gateway", {})
 if not isinstance(meshtastic_gateway, dict):
     meshtastic_gateway = {}
@@ -3103,14 +3108,14 @@ if MESHTASTIC_PREPARED:
 if POWER_CONFIGURED:
     countdown = low_voltage.get("remaining_seconds")
     power_items = [
-        {"label": "Input monitor", "value": "online" if power_input.get("online") else "offline"},
+        {"label": "Input monitor", "value": power_monitor_state(power_input)},
         {"label": "Input voltage", "value": power_value(power_input.get("voltage"), "V")},
         {"label": "Total input current", "value": power_value(power_input.get("current"), "A")},
         {"label": "Total PCS input power", "value": power_value(power_input.get("power"), "W")},
     ]
     if "rail_5v" in power_monitors:
         power_items.extend([
-            {"label": "5V monitor", "value": "online" if power_5v.get("online") else "offline"},
+            {"label": "5V monitor", "value": power_monitor_state(power_5v)},
             {"label": "5V rail voltage", "value": power_value(power_5v.get("voltage"), "V")},
             {"label": "5V rail current", "value": power_value(power_5v.get("current"), "A")},
             {"label": "5V rail power", "value": power_value(power_5v.get("power"), "W")},
@@ -3130,6 +3135,11 @@ if POWER_CONFIGURED:
         "status": power_status,
         "summary": (
             f"LOW INPUT VOLTAGE - shutdown in {countdown}s" if low_voltage.get("active") and countdown is not None
+            else (
+                f"{power_value(power_input.get('voltage'), 'V')} input / "
+                f"{power_value(power_5v.get('voltage'), 'V')} 5V / "
+                f"{power_value(power_input.get('power'), 'W')} total"
+            ) if power_status == "ok" and "rail_5v" in power_monitors
             else "INA226 monitoring online" if power_status == "ok"
             else "Power monitoring needs attention"
         ),

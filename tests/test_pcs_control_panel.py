@@ -117,6 +117,10 @@ class PublicDataTests(unittest.TestCase):
         self.assertIn("Estimated non-5V load", page)
         self.assertNotIn("must-not-render", page)
 
+        collector = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")
+        self.assertIn('return f"online / {state.upper()}"', collector)
+        self.assertIn("power_value(power_input.get('power'), 'W')", collector)
+
     def test_warning_and_fault_summaries_are_shown_in_both_headers(self):
         public = deepcopy(PUBLIC_DATA)
         public["overall"] = "bad"

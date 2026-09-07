@@ -963,6 +963,13 @@ WARN. Finally reboot several times and confirm the LCD and MAX7219 always
 initialize; inspect their service journals for retry warnings and watch for
 blank/garbled frames throughout a representative run.
 
+With both commissioned monitors online, confirm the LCD rotation contains one
+page formatted like `IN 24.0V 21.0W` / `5V 5.23V 7.4W`. Run `pcs-self-test`
+and confirm its concise table contains Input Power, 5V Rail, and Power
+Protection rows with current readings. Confirm the PCS Power web card shows
+both monitors as `online / OK`, includes both voltage/current/power triplets,
+and labels the input-minus-5V value as an estimate including conversion loss.
+
 ## Service Status Test
 
 On the Pi:

@@ -246,7 +246,7 @@ Before this file is treated as an as-built electrical record, capture and verify
 - measured 12 V and 5 V rail voltage under idle and peak load
 - peak current draw and converter temperature
 - AC terminal guarding, strain relief, and protective-earth bonding
-## Staged INA226 Power Monitoring
+## INA226 Power Monitoring
 
 The upstream PCS input monitor was commissioned on September 7, 2026 at I2C
 address `0x40` with an `R002` 2 milliohm shunt and advertised 20 A range. Its
@@ -279,10 +279,16 @@ Low-voltage protection defaults to 11.5V with 0.3V recovery hysteresis, three
 consecutive low samples, and a 90-second countdown. In `auto` source mode the
 first plausible reading classifies a source at or above 18V as nominal 24V and
 does not apply the nominal-12V cutoff to it. Controlled shutdown is separately
-gated by `allow_shutdown`; the live input-only installation leaves it `false`
-until supervised
-hardware validation demonstrates correct addresses, scaling, polarity,
-recovery cancellation, and shutdown behavior.
+gated by `allow_shutdown`; the live dual-monitor installation leaves it
+`false` until supervised hardware validation demonstrates correct scaling,
+polarity, recovery cancellation, and shutdown behavior.
+
+The normal 16x2 LCD rotation includes one compact power page. Its first row
+shows input voltage and total input watts, and its second row shows 5V rail
+voltage and watts. The standard concise self-test reports separate Input Power,
+5V Rail, and Power Protection rows with live measurements. The public and
+authenticated web status views expose the full voltage, current, power,
+per-monitor health, low-voltage state, and explicitly labeled non-5V estimate.
 
 Install or inspect locally on the Pi with:
 
