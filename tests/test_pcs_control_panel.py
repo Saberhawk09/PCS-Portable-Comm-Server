@@ -110,11 +110,14 @@ class PublicDataTests(unittest.TestCase):
             "rail_5v_online": True, "rail_5v_voltage": 5.12,
             "rail_5v_current": 0.8, "rail_5v_power": 4.1,
             "estimated_non_5v_power": 15.2, "low_voltage_active": False,
-            "shutdown_remaining_seconds": None, "secret": "must-not-render",
+            "shutdown_armed": True, "shutdown_remaining_seconds": 72,
+            "secret": "must-not-render",
         }
         page = pcs.render_public_page(pcs.sanitize_public_dashboard(value)).decode("utf-8")
         self.assertIn("PCS Power", page)
         self.assertIn("Estimated non-5V load", page)
+        self.assertIn("Automatic shutdown", page)
+        self.assertIn("72", page)
         self.assertNotIn("must-not-render", page)
 
         collector = (ROOT / "scripts" / "pcs-web-action.sh").read_text(encoding="utf-8")

@@ -293,6 +293,15 @@ The commissioned 5V policy treats readings through 5.30V as normal, readings
 above 5.30V as WARN, and readings above 5.35V as BAD. The narrow warning band
 preserves advance notice before the critical boundary.
 
+Confirmed low voltage is a critical status everywhere: the LCD replaces its
+normal rotation with input voltage and remaining shutdown time, the MAX7219
+alternates its critical `X` with the power symbol, and the shared-services
+WS2812 pixel turns red. The public/admin web card and app API expose BAD health,
+alarm activity, whether automatic shutdown is armed, and the remaining
+countdown. Voltage recovery clears all of these without hiding unrelated
+warnings. The low-voltage buzzer uses a symmetric 50% drive waveform to reduce
+audible distortion while retaining its loud one-second cadence.
+
 Install or inspect locally on the Pi with:
 
 ```bash

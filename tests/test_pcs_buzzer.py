@@ -36,7 +36,7 @@ class BuzzerTests(unittest.TestCase):
         self.assertTrue(all(tone.duty == 0.20 for tone in buzzer.PATTERNS["ok"]))
         self.assertEqual([tone.duty for tone in buzzer.PATTERNS["warn"] if tone.frequency], [0.125, 0.125])
         self.assertEqual([tone.duty for tone in buzzer.PATTERNS["bad"] if tone.frequency], [0.425, 0.425])
-        self.assertEqual([tone.duty for tone in buzzer.PATTERNS["low_voltage"] if tone.frequency], [0.625])
+        self.assertEqual([tone.duty for tone in buzzer.PATTERNS["low_voltage"] if tone.frequency], [0.50])
         self.assertEqual([tone.frequency for tone in buzzer.PATTERNS["shutdown"]], [760, 520, 360])
         self.assertGreater(buzzer.PRIORITY["shutdown"], buzzer.PRIORITY["low_voltage"])
 

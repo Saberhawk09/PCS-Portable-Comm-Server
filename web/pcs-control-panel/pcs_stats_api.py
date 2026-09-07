@@ -68,6 +68,7 @@ RESOURCE_SECTIONS = {
     "pistar": "pistar",
     "storage": "storage",
     "services": "services",
+    "power": "power",
 }
 
 RESOURCE_PATHS = {
@@ -189,7 +190,7 @@ API_FIELDS = {
         "input_current", "input_power", "rail_5v_online",
         "rail_5v_voltage", "rail_5v_current", "rail_5v_power",
         "estimated_non_5v_power", "low_voltage_active",
-        "shutdown_remaining_seconds",
+        "shutdown_armed", "shutdown_remaining_seconds",
     },
     "pistar": {"configured", "online"},
     "aprs": {

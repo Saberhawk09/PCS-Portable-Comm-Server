@@ -37,7 +37,9 @@ PATTERNS: dict[str, tuple[Tone, ...]] = {
     "shutdown": (Tone(760, 0.12, 0.20), Tone(520, 0.16, 0.20), Tone(360, 0.20, 0.20)),
     "warn": (Tone(760, 0.10, 0.125), SILENCE, Tone(760, 0.10, 0.125), Tone(0, 2.7, 0)),
     "bad": (Tone(520, 0.42, 0.425), SILENCE, Tone(420, 0.42, 0.425), Tone(0, 1.3, 0)),
-    "low_voltage": (Tone(700, 1.0, 0.625), Tone(0, 1.0, 0)),
+    # A symmetric drive keeps the passive transducer's loud alarm cleaner
+    # than the former 62.5% waveform without reducing its one-second cadence.
+    "low_voltage": (Tone(700, 1.0, 0.50), Tone(0, 1.0, 0)),
 }
 PRIORITY = {"silent": 0, "ok": 1, "post": 1, "warn": 2, "bad": 3, "low_voltage": 4, "shutdown": 5}
 

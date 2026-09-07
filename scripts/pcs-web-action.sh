@@ -3126,6 +3126,7 @@ if POWER_CONFIGURED:
         power_items.append({"label": "5V monitor", "value": "not commissioned"})
     power_items.extend([
         {"label": "Low-voltage protection", "value": "active" if low_voltage.get("active") else "normal"},
+        {"label": "Automatic shutdown", "value": "armed" if low_voltage.get("shutdown_armed") else "disarmed"},
         {"label": "Shutdown countdown", "value": f"{countdown} seconds" if countdown is not None else "inactive"},
         {"label": "Snapshot age", "value": age_label(power_age)},
     ])
@@ -3336,6 +3337,7 @@ if PUBLIC_VIEW:
             "rail_5v_power": power_5v.get("power"),
             "estimated_non_5v_power": power_runtime.get("estimated_non_5v_power"),
             "low_voltage_active": bool(low_voltage.get("active")),
+            "shutdown_armed": bool(low_voltage.get("shutdown_armed")),
             "shutdown_remaining_seconds": low_voltage.get("remaining_seconds"),
         },
         "pistar": {

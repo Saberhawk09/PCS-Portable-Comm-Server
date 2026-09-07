@@ -951,6 +951,11 @@ alarm/countdown, recovery at or above 11.8V must reset it, and a normal 24V
 source must not be classified as low. First perform this with `allow_shutdown`
 false. Arm shutdown only after those readings are correct, then repeat once and
 confirm a controlled poweroff after 90 continuous seconds below threshold.
+During the countdown confirm the LCD shows the voltage and remaining time, the
+MAX7219 alternates a critical `X` and power symbol, the shared-services WS2812
+pixel is red, and both the web status and app power resource report BAD with
+`low_voltage_active`, `shutdown_armed`, and the countdown. Confirm every
+indicator recovers after raising the input to at least 11.8V.
 
 With the external approximately 10k pull-up installed, confirm silence through
 boot/pin initialization and distinguish POST, OK, WARN, BAD, and low-voltage

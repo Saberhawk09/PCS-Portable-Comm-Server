@@ -543,6 +543,33 @@ class PcsGpioTests(unittest.TestCase):
             (("LOW INPUT VOLTS", "11.2V OFF IN 72s"),),
         )
 
+    def test_low_voltage_faults_matrix_and_local_services_pixel(self):
+        power = pcs_gpio.PowerSnapshot(
+            "bad", True, 11.2, 1.0, 11.2, True, 5.1, 1.0, 5.1,
+            low_voltage_active=True, shutdown_remaining_seconds=72,
+            shutdown_armed=True,
+        )
+        stats = pcs_gpio.StatsSnapshot(
+            39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs", aprs_status="ok"
+        )
+        health = pcs_gpio.MatrixHealthSnapshot(
+            stats, 20, True, 0, True, True, power,
+        )
+        alerts = pcs_gpio.matrix_alerts(health)
+        self.assertEqual(
+            [(alert.name, alert.severity, alert.icon) for alert in alerts],
+            [("low_voltage", "critical", pcs_gpio.POWER_ICON)],
+        )
+        self.assertEqual(
+            [frame.rows for frame in pcs_gpio.matrix_alert_frames(alerts)],
+            [pcs_gpio.X_ICON, pcs_gpio.POWER_ICON],
+        )
+        service_led = pcs_gpio.led_status_indicators(health)[3]
+        self.assertEqual(
+            (service_led.state, service_led.color),
+            ("power_critical", pcs_gpio.LED_CRITICAL),
+        )
+
     def test_aprs_status_reader_accepts_only_fresh_aggregate_schema(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "status.json"

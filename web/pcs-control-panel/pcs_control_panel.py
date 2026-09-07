@@ -338,7 +338,7 @@ PUBLIC_FIELDS = {
         "input_current", "input_power", "rail_5v_online",
         "rail_5v_voltage", "rail_5v_current", "rail_5v_power",
         "estimated_non_5v_power", "low_voltage_active",
-        "shutdown_remaining_seconds",
+        "shutdown_armed", "shutdown_remaining_seconds",
     },
     "pistar": {"configured", "online", "url"},
     "aprs": {
@@ -713,6 +713,7 @@ def render_public_page(data: dict) -> bytes:
             ("5V rail power", "rail_5v_power", "unavailable"),
             ("Estimated non-5V load", "estimated_non_5v_power", "unavailable"),
             ("Low voltage alarm", "low_voltage_active", False),
+            ("Automatic shutdown", "shutdown_armed", False),
             ("Shutdown countdown (s)", "shutdown_remaining_seconds", "inactive"),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"))
 

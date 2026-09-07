@@ -45,6 +45,14 @@ PUBLIC_DASHBOARD = {
     "gnss": {"status": "ok", "fix": "3D fix", "grid_square": "FM18", "coordinates": "38.1,-77.1"},
     "storage": {"status": "ok", "usb_mounted": True},
     "services": {"status": "ok", "homepage_available": True},
+    "power": {
+        "configured": True, "status": "bad", "input_online": True,
+        "input_voltage": 11.2, "input_current": 2.0, "input_power": 22.4,
+        "rail_5v_online": True, "rail_5v_voltage": 5.2,
+        "rail_5v_current": 1.5, "rail_5v_power": 7.8,
+        "estimated_non_5v_power": 14.6, "low_voltage_active": True,
+        "shutdown_armed": True, "shutdown_remaining_seconds": 72,
+    },
     "pistar": {"configured": True, "online": True, "url": "must-not-render"},
     "aprs": {
         "configured": True, "status": "ok", "callsign": "N0CALL-10",
@@ -89,6 +97,13 @@ ADMIN_DASHBOARD = {
 
 
 class ContractTests(unittest.TestCase):
+    def test_power_resource_exposes_alarm_and_shutdown_state(self):
+        document = api.api_document("power", PUBLIC_DASHBOARD)
+        self.assertEqual(document["health"]["severity"], "bad")
+        self.assertTrue(document["data"]["low_voltage_active"])
+        self.assertTrue(document["data"]["shutdown_armed"])
+        self.assertEqual(document["data"]["shutdown_remaining_seconds"], 72)
+
     def test_tls_handshakes_are_deferred_to_bounded_worker_threads(self):
         self.assertTrue(api.ReusableThreadingHTTPServer.daemon_threads)
         self.assertGreaterEqual(api.ReusableThreadingHTTPServer.request_queue_size, 16)

@@ -453,6 +453,7 @@ SERVICE_ICON = (0x24, 0x7E, 0xDB, 0xBD, 0xBD, 0xDB, 0x7E, 0x24)
 PISTAR_ICON = (0x66, 0x3C, 0x7E, 0xFF, 0xFF, 0x7E, 0x3C, 0x18)
 ROUTER_ICON = (0x7E, 0x81, 0x81, 0x3C, 0x42, 0x42, 0x18, 0x18)
 LETTER_ICON = (0xFF, 0x81, 0xC3, 0xA5, 0x99, 0x81, 0x81, 0xFF)
+POWER_ICON = (0x08, 0x18, 0x30, 0x7E, 0x0C, 0x18, 0x10, 0x00)
 TEMPERATURE_WARNING_C = 75
 TEMPERATURE_CRITICAL_C = 85
 DISK_WARNING_PERCENT = 85
@@ -493,6 +494,7 @@ class PowerSnapshot:
     rail_5v_power: float | None
     low_voltage_active: bool = False
     shutdown_remaining_seconds: int | None = None
+    shutdown_armed: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -534,6 +536,7 @@ class MatrixHealthSnapshot:
     failed_services: int | None
     pistar_online: bool | None = None
     router_online: bool | None = None
+    power: PowerSnapshot | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -543,6 +546,7 @@ class MatrixHealthSnapshot:
             "failed_services": self.failed_services,
             "pistar_online": self.pistar_online,
             "router_online": self.router_online,
+            "power": self.power.as_dict() if self.power is not None else None,
         }
 
 
@@ -1113,6 +1117,7 @@ def read_power_status(
             rail_5v_power=number(rail_5v, "power"),
             low_voltage_active=low_voltage.get("active") is True,
             shutdown_remaining_seconds=remaining,
+            shutdown_armed=low_voltage.get("shutdown_armed") is True,
         )
     except (KeyError, TypeError, ValueError):
         return PowerSnapshot("warn", False, None, None, None, False, None, None, None)
@@ -1281,7 +1286,9 @@ def lcd_health_pages(
     uptime_seconds: int | None,
     power: PowerSnapshot | None = None,
 ) -> tuple[tuple[str, str], ...]:
+    power = power if power is not None else snapshot.power
     alerts = matrix_alerts(snapshot)
+    alerts = tuple(alert for alert in alerts if alert.name not in {"low_voltage", "power_monitor"})
     critical = tuple(alert for alert in alerts if alert.severity == "critical")
     power_alert = lcd_power_alert_page(power) if power is not None else None
     power_critical = power_alert if power is not None and (power.status == "bad" or power.low_voltage_active) else None
@@ -1448,6 +1455,7 @@ def collect_matrix_health() -> MatrixHealthSnapshot:
         failed_services=read_failed_service_count(),
         pistar_online=read_pistar_online(),
         router_online=read_router_online(),
+        power=read_power_status(),
     )
 
 
@@ -1479,6 +1487,13 @@ def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
         alerts.append(MatrixAlert("network_uplink", "warning", SIGNAL_ICON))
     if snapshot.stats.gps_locked is not True:
         alerts.append(MatrixAlert("gps_fix", "warning", SATELLITE_DISH_ICON))
+    if snapshot.power is not None:
+        if snapshot.power.low_voltage_active:
+            alerts.append(MatrixAlert("low_voltage", "critical", POWER_ICON))
+        elif snapshot.power.status == "bad":
+            alerts.append(MatrixAlert("power_monitor", "critical", POWER_ICON))
+        elif snapshot.power.status == "warn":
+            alerts.append(MatrixAlert("power_monitor", "warning", POWER_ICON))
     return tuple(sorted(alerts, key=lambda alert: 0 if alert.severity == "critical" else 1))
 
 
@@ -1544,7 +1559,13 @@ def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator,
     else:
         primary_usb = ("missing", LED_WARNING)
 
-    if snapshot.stats.aprs_status != "ok":
+    if snapshot.power is not None and (
+        snapshot.power.low_voltage_active or snapshot.power.status == "bad"
+    ):
+        services = ("power_critical", LED_CRITICAL)
+    elif snapshot.power is not None and snapshot.power.status == "warn":
+        services = ("power_warning", LED_WARNING)
+    elif snapshot.stats.aprs_status != "ok":
         services = ("aprs_error", LED_CRITICAL)
     elif snapshot.failed_services is None:
         services = ("unknown", LED_UNKNOWN)
@@ -1704,7 +1725,7 @@ def run_lcd_status(
 ) -> None:
     while not should_stop():
         snapshot = collector()
-        power = power_reader()
+        power = snapshot.power if snapshot.power is not None else power_reader()
         alerts = matrix_alerts(snapshot)
         health_writer(snapshot, alerts)
         pages = lcd_health_pages(snapshot, uptime_reader(), power)
