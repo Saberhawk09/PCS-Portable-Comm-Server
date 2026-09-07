@@ -420,9 +420,11 @@ shutdown and reboot without taking GPIO ownership from the daemon.
 `pcs_power_stress.py` is a bounded manual load test for the commissioned power
 system. Applied mode drives every Pi CPU, uploads explicitly through cellular,
 holds the fan at full duty, lights every MAX7219 pixel at intensity 15, and
-drives all six WS2812 pixels full-white at brightness 255. It stops on low
-input voltage and restores services after normal exit, error, Ctrl+C, or
-termination.
+drives all six WS2812 pixels full-white at brightness 255. It aborts below
+11.8V input—before the commissioned 11.5V shutdown threshold—and restores
+services after normal exit, error, Ctrl+C, or termination. Cellular activation
+is a single bounded NetworkManager attempt; modem recovery is deliberately not
+part of a power test.
 
 Preview without changing PCS, then run the non-RF load:
 

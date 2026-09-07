@@ -23,6 +23,7 @@ class PowerStressTests(unittest.TestCase):
         self.assertEqual("full duty", plan["fan"])
         self.assertIn("255/255", plan["ws2812"])
         self.assertEqual(5, plan["sa818s_ptt_seconds"])
+        self.assertEqual(11.8, plan["abort_below_input_voltage"])
         self.assertFalse(plan["writes_performed"])
 
     def test_apply_and_rf_have_separate_exact_confirmations(self):
@@ -46,6 +47,8 @@ class PowerStressTests(unittest.TestCase):
         self.assertIn("finally:\n        stress.cleanup()", source)
         self.assertNotIn("shell=True", source)
         self.assertIn('"low input voltage detected; ending stress immediately"', source)
+        self.assertNotIn('"cellular-connect"', source)
+        self.assertIn('"--wait", "20", "connection", "up"', source)
         self.assertIn('/opt/pcs-gpio-leds/bin/python', source)
         self.assertIn('"--_ws2812-worker"', source)
 

@@ -23,6 +23,7 @@ POWER_STATUS = Path("/run/pcs-power-monitor/status.json")
 UPLOAD_URL = "https://speed.cloudflare.com/__up"
 APPLY_CONFIRMATION = "PCS-POWER-STRESS"
 RF_CONFIRMATION = "KEY-SA818S-W8IJC-10"
+STRESS_MIN_INPUT_VOLTAGE = 11.8
 DISPLAY_SERVICES = ("pcs-gpio-leds.service", "pcs-gpio-stats.service")
 FAN_SERVICE = "pcs-gpio-fan.service"
 FALLBACK_SERVICE = "pcs-cellular-fallback.service"
@@ -35,8 +36,10 @@ def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-def run(command: Sequence[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, text=True, check=check)
+def run(
+    command: Sequence[str], *, check: bool = True, timeout: float = 30
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(command, text=True, check=check, timeout=timeout)
 
 
 def service_active(name: str) -> bool:
@@ -85,6 +88,7 @@ def plan(args: argparse.Namespace) -> dict[str, object]:
         "max7219": "all pixels, intensity 15/15",
         "ws2812": "six white pixels, brightness 255/255",
         "sa818s_ptt_seconds": args.rf_seconds,
+        "abort_below_input_voltage": STRESS_MIN_INPUT_VOLTAGE,
         "writes_performed": False,
     }
 
@@ -110,7 +114,22 @@ def gsm_state() -> tuple[str, str] | None:
     return None
 
 
-def wait_for_cellular(timeout: float = 35.0) -> tuple[str, str]:
+def gsm_profile() -> str:
+    result = subprocess.run(
+        ("nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"),
+        text=True, capture_output=True, check=True, timeout=5,
+    )
+    profiles = []
+    for line in result.stdout.splitlines():
+        name, separator, connection_type = line.rpartition(":")
+        if separator and connection_type == "gsm" and name:
+            profiles.append(name.replace(r"\:", ":"))
+    if len(profiles) != 1:
+        raise RuntimeError(f"expected one configured GSM profile, found {len(profiles)}")
+    return profiles[0]
+
+
+def wait_for_cellular(timeout: float = 10.0) -> tuple[str, str]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         state = gsm_state()
@@ -188,6 +207,7 @@ class StressRun:
         self.args = args
         self.original_active: dict[str, bool] = {}
         self.cellular_started = False
+        self.cellular_profile: str | None = None
         self.buzzer_was_muted = Path("/run/pcs-buzzer/muted").exists()
         self.cpu_workers: list[subprocess.Popen[bytes]] = []
         self.dd_process: subprocess.Popen[bytes] | None = None
@@ -209,7 +229,11 @@ class StressRun:
         if self.original_active.get(FALLBACK_SERVICE):
             run(("systemctl", "stop", FALLBACK_SERVICE))
         if initial[1] != "connected":
-            run(("/usr/local/sbin/pcs-web-action", "cellular-connect"))
+            self.cellular_profile = gsm_profile()
+            run(
+                ("nmcli", "--wait", "20", "connection", "up", self.cellular_profile),
+                timeout=25,
+            )
             self.cellular_started = True
         _device, iface = wait_for_cellular()
         print(f"Cellular upload interface: {iface}", flush=True)
@@ -309,7 +333,11 @@ class StressRun:
             if self.cellular_started:
                 safely(
                     "cellular disconnect",
-                    lambda: run(("/usr/local/sbin/pcs-web-action", "cellular-disconnect"), check=False),
+                    lambda: run(
+                        ("nmcli", "--wait", "10", "connection", "down", self.cellular_profile or ""),
+                        check=False,
+                        timeout=15,
+                    ),
                 )
             if self.original_active.get(FALLBACK_SERVICE):
                 safely(
@@ -351,6 +379,7 @@ class StressRun:
                 power = json.loads(POWER_STATUS.read_text(encoding="utf-8"))
                 low = power.get("low_voltage", {})
                 monitor = power.get("monitors", {}).get("input", {})
+                input_voltage = monitor.get("voltage")
                 print(
                     f"Input {monitor.get('voltage', '--')}V {monitor.get('current', '--')}A "
                     f"{monitor.get('power', '--')}W; {max(0, int(deadline - time.monotonic()))}s left",
@@ -358,6 +387,10 @@ class StressRun:
                 )
                 if low.get("active"):
                     raise RuntimeError("low input voltage detected; ending stress immediately")
+                if isinstance(input_voltage, (int, float)) and input_voltage < STRESS_MIN_INPUT_VOLTAGE:
+                    raise RuntimeError(
+                        f"input fell below the stress safety floor ({STRESS_MIN_INPUT_VOLTAGE:.1f}V)"
+                    )
             except FileNotFoundError:
                 raise RuntimeError("PCS power snapshot disappeared during stress") from None
             time.sleep(2)
