@@ -512,7 +512,7 @@ class PcsGpioTests(unittest.TestCase):
         stats = pcs_gpio.StatsSnapshot(None, None, None, None)
         pages = pcs_gpio.lcd_status_pages(stats, 60, power)
         self.assertEqual(pages[1], pcs_gpio.lcd_power_page(power))
-        self.assertEqual(pages[2], ("IN 123mAh 2.96Wh", "5V 199mAh 1.04Wh"))
+        self.assertEqual(pages[2], ("Total PWR Usage", "0.12Ah - 2.96Wh"))
         self.assertTrue(all(len(line) <= 16 for page in pages[1:3] for line in page))
         self.assertEqual(power.energy_tracking_elapsed_seconds, 505)
 

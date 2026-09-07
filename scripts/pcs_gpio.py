@@ -1201,10 +1201,15 @@ def lcd_power_page(power: PowerSnapshot) -> tuple[str, str]:
     return input_line[:LCD_COLUMNS], rail_5v_line[:LCD_COLUMNS]
 
 
-def compact_charge(value: float | None) -> str:
+def compact_amp_hours(value: float | None) -> str:
     if value is None:
-        return "--mAh"
-    return f"{value:.0f}mAh" if value < 1000 else f"{value / 1000:.1f}Ah"
+        return "--Ah"
+    amp_hours = value / 1000.0
+    if amp_hours < 10:
+        return f"{amp_hours:.2f}Ah"
+    if amp_hours < 100:
+        return f"{amp_hours:.1f}Ah"
+    return f"{amp_hours:.0f}Ah"
 
 
 def compact_energy(value: float | None) -> str:
@@ -1218,18 +1223,15 @@ def compact_energy(value: float | None) -> str:
 
 
 def lcd_energy_page(power: PowerSnapshot) -> tuple[str, str] | None:
-    """Show charge and energy accumulated by both rails during this boot."""
-    values = (
-        power.input_charge_since_boot_mah,
-        power.input_energy_since_boot_wh,
-        power.rail_5v_charge_since_boot_mah,
-        power.rail_5v_energy_since_boot_wh,
-    )
-    if all(value is None for value in values):
+    """Show total PCS input charge and energy accumulated this boot."""
+    if power.input_charge_since_boot_mah is None and power.input_energy_since_boot_wh is None:
         return None
     return (
-        f"IN {compact_charge(values[0])} {compact_energy(values[1])}"[:LCD_COLUMNS],
-        f"5V {compact_charge(values[2])} {compact_energy(values[3])}"[:LCD_COLUMNS],
+        "Total PWR Usage",
+        (
+            f"{compact_amp_hours(power.input_charge_since_boot_mah)} - "
+            f"{compact_energy(power.input_energy_since_boot_wh)}"
+        )[:LCD_COLUMNS],
     )
 
 
