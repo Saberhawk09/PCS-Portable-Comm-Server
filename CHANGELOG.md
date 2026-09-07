@@ -4,6 +4,12 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- bounded manual PCS power-stress utility for full CPU/fan/display load,
+  cellular upload, optional independently confirmed SA818S PTT, continuous
+  input-power reporting, low-voltage abort, and fail-safe service restoration
+
 ## [1.8] - 2026-09-07
 
 ### Added
