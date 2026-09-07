@@ -12,6 +12,7 @@ import signal
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from typing import Sequence
 from urllib.parse import urlparse
@@ -20,10 +21,14 @@ from urllib.parse import urlparse
 REPO_DIR = Path(__file__).resolve().parent.parent
 INSTALL_CONFIG = REPO_DIR / "config" / "pcs-install.conf"
 POWER_STATUS = Path("/run/pcs-power-monitor/status.json")
+POWER_LOG_DIR = Path(os.environ.get("PCS_POWER_STRESS_LOG_DIR", "/var/log/pcs/power-stress"))
 UPLOAD_URL = "https://speed.cloudflare.com/__up"
 APPLY_CONFIRMATION = "PCS-POWER-STRESS"
 RF_CONFIRMATION = "KEY-SA818S-W8IJC-10"
 STRESS_MIN_INPUT_VOLTAGE = 11.8
+STRESS_MIN_5V_VOLTAGE = 4.75
+POWER_SAMPLE_SECONDS = 0.05
+STAGE_SETTLE_SECONDS = 2.0
 DISPLAY_SERVICES = ("pcs-gpio-leds.service", "pcs-gpio-stats.service")
 FAN_SERVICE = "pcs-gpio-fan.service"
 FALLBACK_SERVICE = "pcs-cellular-fallback.service"
@@ -89,6 +94,10 @@ def plan(args: argparse.Namespace) -> dict[str, object]:
         "ws2812": "six white pixels, brightness 255/255",
         "sa818s_ptt_seconds": args.rf_seconds,
         "abort_below_input_voltage": STRESS_MIN_INPUT_VOLTAGE,
+        "abort_below_5v_voltage": STRESS_MIN_5V_VOLTAGE,
+        "power_sample_interval_ms": round(POWER_SAMPLE_SECONDS * 1000),
+        "persistent_jsonl_log_directory": str(POWER_LOG_DIR),
+        "load_sequence": ["baseline", "displays_and_fan", "cellular_upload", "full_cpu"],
         "writes_performed": False,
     }
 
@@ -144,6 +153,164 @@ def wait_for_cellular(timeout: float = 10.0) -> tuple[str, str]:
                 return device, iface
         time.sleep(1)
     raise RuntimeError("cellular interface did not become connected with an IP interface")
+
+
+class HighRatePowerLogger:
+    """Own both INA226s during stress and durably record fast rail samples."""
+
+    FAST_INA226_CONFIG = 0x4007  # 1 average, 140 us bus/shunt, continuous mode.
+
+    def __init__(self, *, interval: float = POWER_SAMPLE_SECONDS) -> None:
+        self.interval = interval
+        self.stage = "initializing"
+        self.abort_reason: str | None = None
+        self.path: Path | None = None
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._lock = threading.Lock()
+        self._handle = None
+        self._bus = None
+        self._monitors = {}
+        self._started_monotonic = 0.0
+        self._last_throttled_check = 0.0
+        self._throttled = None
+        self.minimum_voltages: dict[str, float] = {}
+        self.maximum_currents: dict[str, float] = {}
+        self.latest_readings: dict[str, dict[str, object]] = {}
+
+    def start(self) -> None:
+        sys.path.insert(0, str(REPO_DIR / "scripts"))
+        import pcs_power_monitor  # pylint: disable=import-outside-toplevel
+
+        config = pcs_power_monitor.load_config()
+        monitor_configs = config["monitors"]
+        if not {"input", "rail_5v"}.issubset(monitor_configs):
+            raise RuntimeError("stress logging requires input and rail_5v INA226 monitors")
+        POWER_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        self.path = POWER_LOG_DIR / f"power-stress-{stamp}-{os.getpid()}.jsonl"
+        self._handle = self.path.open("x", encoding="utf-8", buffering=1)
+        os.chmod(self.path, 0o644)
+        self._bus = pcs_power_monitor.open_bus()
+        try:
+            for name in ("input", "rail_5v"):
+                monitor = pcs_power_monitor.Ina226(self._bus, monitor_configs[name])
+                monitor._write(0x00, self.FAST_INA226_CONFIG)  # pylint: disable=protected-access
+                self._monitors[name] = monitor
+            time.sleep(0.01)
+            self._started_monotonic = time.monotonic()
+            self._record({"type": "start", "sample_interval_ms": round(self.interval * 1000)})
+            self._thread = threading.Thread(target=self._run, name="pcs-power-sampler", daemon=True)
+            self._thread.start()
+        except Exception:
+            self.close()
+            raise
+
+    def _record(self, fields: dict[str, object]) -> None:
+        if self._handle is None:
+            return
+        document = {
+            "time_epoch": round(time.time(), 6),
+            "elapsed_seconds": round(max(0.0, time.monotonic() - self._started_monotonic), 6),
+            "stage": self.stage,
+            **fields,
+        }
+        with self._lock:
+            self._handle.write(json.dumps(document, separators=(",", ":")) + "\n")
+            self._handle.flush()
+            os.fsync(self._handle.fileno())
+
+    def set_stage(self, stage: str) -> None:
+        self.stage = stage
+        self._record({"type": "stage"})
+
+    @staticmethod
+    def _read_throttled() -> str | None:
+        try:
+            result = subprocess.run(
+                ("vcgencmd", "get_throttled"), text=True, capture_output=True,
+                check=False, timeout=0.5,
+            )
+            value = result.stdout.strip()
+            return value.partition("=")[2] if value.startswith("throttled=") else None
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    def _sample(self) -> None:
+        readings: dict[str, dict[str, object]] = {}
+        for name, monitor in self._monitors.items():
+            # The regular monitor intentionally restores its averaged mode.
+            # Reassert fast conversion before each diagnostic sample so both
+            # processes can coexist and normal LCD/web/buzzer protection stays live.
+            monitor._write(0x00, self.FAST_INA226_CONFIG)  # pylint: disable=protected-access
+            time.sleep(0.001)
+            reading = monitor.reading()
+            readings[name] = {
+                "voltage": reading.voltage,
+                "current": reading.current,
+                "power": reading.power,
+            }
+            assert reading.voltage is not None and reading.current is not None
+            self.minimum_voltages[name] = min(self.minimum_voltages.get(name, reading.voltage), reading.voltage)
+            self.maximum_currents[name] = max(self.maximum_currents.get(name, reading.current), reading.current)
+        self.latest_readings = readings
+        now = time.monotonic()
+        if now - self._last_throttled_check >= 1.0:
+            self._throttled = self._read_throttled()
+            self._last_throttled_check = now
+        self._record({"type": "sample", "rails": readings, "pi_throttled": self._throttled})
+        input_voltage = readings["input"]["voltage"]
+        rail_5v_voltage = readings["rail_5v"]["voltage"]
+        if isinstance(input_voltage, (int, float)) and input_voltage < STRESS_MIN_INPUT_VOLTAGE:
+            self.abort_reason = f"input fell below {STRESS_MIN_INPUT_VOLTAGE:.2f}V ({input_voltage:.3f}V)"
+        elif isinstance(rail_5v_voltage, (int, float)) and rail_5v_voltage < STRESS_MIN_5V_VOLTAGE:
+            self.abort_reason = f"5V rail fell below {STRESS_MIN_5V_VOLTAGE:.2f}V ({rail_5v_voltage:.3f}V)"
+        if self.abort_reason:
+            self._record({"type": "abort", "reason": self.abort_reason})
+            self._stop.set()
+
+    def _run(self) -> None:
+        deadline = time.monotonic()
+        while not self._stop.is_set():
+            try:
+                self._sample()
+            except (OSError, RuntimeError, ValueError, AssertionError) as error:
+                self.abort_reason = f"high-rate INA226 sampling failed: {type(error).__name__}: {error}"
+                self._record({"type": "abort", "reason": self.abort_reason})
+                self._stop.set()
+                break
+            deadline += self.interval
+            self._stop.wait(max(0.0, deadline - time.monotonic()))
+
+    def raise_if_abort(self) -> None:
+        if self.abort_reason:
+            raise RuntimeError(self.abort_reason)
+
+    def wait(self, seconds: float) -> None:
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            self.raise_if_abort()
+            self._stop.wait(min(0.05, max(0.0, deadline - time.monotonic())))
+        self.raise_if_abort()
+
+    def close(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+            self._thread = None
+        if self._handle is not None:
+            self._record({
+                "type": "stop",
+                "abort_reason": self.abort_reason,
+                "minimum_voltages": self.minimum_voltages,
+                "maximum_currents": self.maximum_currents,
+            })
+        if self._bus is not None:
+            self._bus.close()
+            self._bus = None
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
 
 
 class DisplayLoad:
@@ -215,6 +382,7 @@ class StressRun:
         self.ptt_process: subprocess.Popen[bytes] | None = None
         self.radio_handoff = False
         self.display = DisplayLoad()
+        self.power_logger = HighRatePowerLogger()
         self.stopping = False
         self.cleanup_errors: list[str] = []
 
@@ -324,6 +492,7 @@ class StressRun:
         try:
             safely("display clear", self.display.close)
         finally:
+            safely("power logger", self.power_logger.close)
             for service in (*DISPLAY_SERVICES, FAN_SERVICE):
                 if self.original_active.get(service):
                     safely(service, lambda service=service: run(("systemctl", "start", service), check=False))
@@ -361,39 +530,43 @@ class StressRun:
             run(("systemctl", "stop", FAN_SERVICE))
         if not self.buzzer_was_muted:
             run(("/usr/local/sbin/pcs-buzzer", "mute"), check=False)
+        self.power_logger.start()
+        print(f"Persistent 20 Hz power log: {self.power_logger.path}", flush=True)
+        self.power_logger.set_stage("baseline")
+        self.power_logger.wait(STAGE_SETTLE_SECONDS)
         self.display.start()
+        self.power_logger.set_stage("displays_and_fan")
+        self.power_logger.wait(STAGE_SETTLE_SECONDS)
+        self.power_logger.set_stage("cellular_connect")
         iface = self.start_cellular()
         self.start_upload(iface)
+        self.power_logger.set_stage("cellular_upload")
+        self.power_logger.wait(STAGE_SETTLE_SECONDS)
         self.start_cpu()
+        self.power_logger.set_stage("full_cpu")
         self.key_radio()
         started = time.monotonic()
         rf_deadline = started + self.args.rf_seconds
         deadline = started + self.args.duration
+        next_report = started
         while time.monotonic() < deadline:
+            self.power_logger.raise_if_abort()
             if self.ptt_process is not None and time.monotonic() >= rf_deadline:
                 self.release_radio()
                 print("SA818S PTT released and guard verified", flush=True)
             if self.curl_process is not None and self.curl_process.poll() is not None:
                 raise RuntimeError(f"cellular upload exited early with status {self.curl_process.returncode}")
-            try:
-                power = json.loads(POWER_STATUS.read_text(encoding="utf-8"))
-                low = power.get("low_voltage", {})
-                monitor = power.get("monitors", {}).get("input", {})
-                input_voltage = monitor.get("voltage")
+            if time.monotonic() >= next_report:
+                input_rail = self.power_logger.latest_readings.get("input", {})
+                rail_5v = self.power_logger.latest_readings.get("rail_5v", {})
                 print(
-                    f"Input {monitor.get('voltage', '--')}V {monitor.get('current', '--')}A "
-                    f"{monitor.get('power', '--')}W; {max(0, int(deadline - time.monotonic()))}s left",
+                    f"Input {input_rail.get('voltage', '--')}V {input_rail.get('current', '--')}A; "
+                    f"5V {rail_5v.get('voltage', '--')}V {rail_5v.get('current', '--')}A; "
+                    f"{max(0, int(deadline - time.monotonic()))}s left",
                     flush=True,
                 )
-                if low.get("active"):
-                    raise RuntimeError("low input voltage detected; ending stress immediately")
-                if isinstance(input_voltage, (int, float)) and input_voltage < STRESS_MIN_INPUT_VOLTAGE:
-                    raise RuntimeError(
-                        f"input fell below the stress safety floor ({STRESS_MIN_INPUT_VOLTAGE:.1f}V)"
-                    )
-            except FileNotFoundError:
-                raise RuntimeError("PCS power snapshot disappeared during stress") from None
-            time.sleep(2)
+                next_report += 1.0
+            self.power_logger.wait(min(0.25, max(0.0, deadline - time.monotonic())))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

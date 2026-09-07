@@ -420,11 +420,19 @@ shutdown and reboot without taking GPIO ownership from the daemon.
 `pcs_power_stress.py` is a bounded manual load test for the commissioned power
 system. Applied mode drives every Pi CPU, uploads explicitly through cellular,
 holds the fan at full duty, lights every MAX7219 pixel at intensity 15, and
-drives all six WS2812 pixels full-white at brightness 255. It aborts below
-11.8V input—before the commissioned 11.5V shutdown threshold—and restores
-services after normal exit, error, Ctrl+C, or termination. Cellular activation
-is a single bounded NetworkManager attempt; modem recovery is deliberately not
-part of a power test.
+drives all six WS2812 pixels full-white at brightness 255. Loads are introduced
+in named stages (baseline, displays/fan, cellular upload, then full CPU). During
+the run it samples both INA226s every 50 ms in their fastest continuous mode,
+records Raspberry Pi throttling flags once per second, and flushes every JSONL
+record to persistent storage under `/var/log/pcs/power-stress/`. The regular
+power-monitor service remains active for LCD, web, buzzer, and shutdown status.
+
+The test aborts below 11.8V input—before the commissioned 11.5V shutdown
+threshold—or below 4.75V on the 5V rail, and restores services after normal
+exit, error, Ctrl+C, or termination. Cellular activation is a single bounded
+NetworkManager attempt; modem recovery is deliberately not part of a power
+test. If PCS resets, inspect the final records in the newest JSONL file to see
+the last completed stage and rail samples before reboot.
 
 Preview without changing PCS, then run the non-RF load:
 
