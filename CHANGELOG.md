@@ -25,8 +25,9 @@ All notable user-facing PCS changes are recorded here.
 
 ### Changed
 
-- continuously refresh the MAX7219 boot animation and controller setup until
-  normal status handoff, recovering intermittent blank power-up screens
+- refresh the MAX7219 controller setup and steady startup arrow until normal
+  status handoff, recovering intermittent blank screens without visibly
+  replaying the pixel-test pattern
 - wait for the INA226 averaged conversion after applying calibration so the
   first published current and power values are valid
 

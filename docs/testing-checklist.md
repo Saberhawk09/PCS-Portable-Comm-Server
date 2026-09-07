@@ -756,8 +756,9 @@ systemctl is-active pcs-gpio-startup.service
 After a supervised reboot, confirm the LCD reads `PCS Booting Up` / `Stand
 by...`, all six pixels continuously cycle at a clearly visible pace through
 red, orange, yellow, green, cyan, blue, violet, magenta, and white until
-handoff, and the matrix continuously repeats its all-pixel/checkerboard frames
-until handoff without remaining blank after a missed power-up initialization.
+handoff, and the matrix runs its all-pixel/checkerboard frames once before
+holding the arrow until handoff without remaining blank after a missed power-up
+initialization.
 Normal health displays must take over within 90 seconds; they may take over
 earlier when no alert condition remains. If the buzzer is installed, confirm
 one pleasant OK chime immediately after the first fresh all-clear health state.

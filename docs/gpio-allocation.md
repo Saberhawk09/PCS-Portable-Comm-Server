@@ -233,8 +233,9 @@ leave it disabled.
 Each LCD, WS2812, or matrix installer also registers that device with the
 shared `pcs-gpio-startup.service`. At boot the LCD shows `PCS Booting Up` and
 `Stand by...`, the six pixels cycle through the color spectrum, and the matrix
-continuously repeats its all-pixel/checkerboard test. Reasserting the complete
-MAX7219 state on every cycle recovers a missed write-only power-up command.
+runs its all-pixel/checkerboard test once before holding the startup arrow.
+Reasserting the complete MAX7219 state and arrow in the background recovers a
+missed write-only power-up command without visibly replaying the test pattern.
 Boot states remain for at most
 90 seconds while the ordinary health inputs settle. The service hands off
 early when no alerts remain and always hands off on timeout so persistent

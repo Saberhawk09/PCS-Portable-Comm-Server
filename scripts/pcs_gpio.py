@@ -110,6 +110,7 @@ SHUTDOWN_LCD_LINES = ("PCS Offline", "Shutting Down")
 STARTUP_LCD_LINES = ("PCS Booting Up", "Stand by...")
 STARTUP_MATRIX_INTENSITY = 2
 STARTUP_FRAME_SECONDS = 0.18
+STARTUP_MATRIX_REFRESH_SECONDS = 2.0
 STARTUP_LED_FRAME_SECONDS = 0.35
 STARTUP_LED_SEQUENCE = (
     (255, 0, 0),
@@ -262,7 +263,7 @@ class Max7219:
         self.spi.no_cs = False
         self.initialize()
 
-    def initialize(self) -> None:
+    def initialize(self, *, clear: bool = True) -> None:
         """Reassert the complete write-only controller state."""
         for register, value in (
             (0x0F, 0),
@@ -273,7 +274,8 @@ class Max7219:
             (0x0C, 1),
         ):
             self._write(register, value)
-        self.rows([0] * 8)
+        if clear:
+            self.rows([0] * 8)
 
     def _write(self, register: int, value: int) -> None:
         self.spi.xfer2([register & 0x0F, value & 0xFF])
@@ -611,19 +613,22 @@ def run_startup_matrix(
 ) -> None:
     """Exercise every MAX7219 pixel and continuously refresh while booting."""
 
-    while True:
+    # Show the visible pixel/framing test once, then leave the arrow steady.
+    reinitialize()
+    matrix.intensity(STARTUP_MATRIX_INTENSITY)
+    for frame in STARTUP_MATRIX_FRAMES:
+        matrix.rows(frame)
+        sleeper(STARTUP_FRAME_SECONDS)
+    matrix.intensity(1)
+    matrix.rows(STARTUP_MATRIX_LATCH)
+    while repeat:
+        sleeper(STARTUP_MATRIX_REFRESH_SECONDS)
         # MAX7219 is write-only, so a power-up command cannot be acknowledged.
-        # Reassert its full state on each boot cycle so a missed wake-up is
-        # repaired before the normal health daemon takes ownership.
+        # Reassert its full state and arrow without replaying visible test
+        # frames, repairing a missed wake-up before normal daemon handoff.
         reinitialize()
-        matrix.intensity(STARTUP_MATRIX_INTENSITY)
-        for frame in STARTUP_MATRIX_FRAMES:
-            matrix.rows(frame)
-            sleeper(STARTUP_FRAME_SECONDS)
         matrix.intensity(1)
         matrix.rows(STARTUP_MATRIX_LATCH)
-        if not repeat:
-            break
 
 
 def render_two_digits(value: int | None) -> tuple[int, ...]:
@@ -1709,7 +1714,11 @@ def apply_startup_state(target: str, *, repeat: bool = False) -> None:
         matrix: Max7219 | None = None
         try:
             matrix = Max7219()
-            run_startup_matrix(matrix, repeat=repeat, reinitialize=matrix.initialize)
+            run_startup_matrix(
+                matrix,
+                repeat=repeat,
+                reinitialize=lambda: matrix.initialize(clear=False),
+            )
         finally:
             if matrix is not None:
                 matrix.close(clear=False)

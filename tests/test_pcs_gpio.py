@@ -165,7 +165,7 @@ class PcsGpioTests(unittest.TestCase):
             (pcs_gpio.STARTUP_LED_SEQUENCE[0],) * pcs_gpio.WS2812_COUNT,
         )
 
-    def test_startup_matrix_repeat_reinitializes_and_restarts_frames(self):
+    def test_startup_matrix_repeat_reinitializes_and_refreshes_only_arrow(self):
         class StopAnimation(Exception):
             pass
 
@@ -197,8 +197,9 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(len(initializations), 2)
         self.assertEqual(
             matrix.frames[len(pcs_gpio.STARTUP_MATRIX_FRAMES) + 1],
-            pcs_gpio.STARTUP_MATRIX_FRAMES[0],
+            pcs_gpio.STARTUP_MATRIX_LATCH,
         )
+        self.assertEqual(matrix.intensities[-1], 1)
 
     def test_startup_readiness_is_healthy_only_when_alerts_are_absent(self):
         healthy = pcs_gpio.MatrixHealthSnapshot(

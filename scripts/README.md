@@ -341,9 +341,9 @@ Raspberry Pi OS system Python environment.
 The LCD, WS2812, and matrix installers also install and enable the shared
 `pcs-gpio-startup.service`. At boot it writes `PCS Booting Up` / `Stand by...`
 to the LCD, continuously cycles all six WS2812 pixels through a slower dim color
-spectrum with a 0.35-second per-color dwell until handoff, and continuously
-repeats an all-pixels/checkerboard MAX7219 self-test while reasserting the
-write-only controller's complete state on every cycle.
+spectrum with a 0.35-second per-color dwell until handoff, and runs an
+all-pixels/checkerboard MAX7219 self-test once before holding the arrow. It
+silently reasserts the write-only controller state and arrow until handoff.
 It waits up to 90 seconds for the normal indicator health snapshot to become
 alert-free. Healthy systems hand off early. A timeout always hands off to the
 normal daemons so a persistent warning or fault is not hidden.
