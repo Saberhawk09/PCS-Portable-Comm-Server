@@ -1924,8 +1924,8 @@ try:
     age = time.time() - float(value['collected_at_epoch'])
     monitors = value['monitors']
     assert value.get('version') == 1 and 0 <= age <= 15
-    assert set(monitors) >= {'input', 'rail_5v'}
-    for name in ('input', 'rail_5v'):
+    assert 'input' in monitors
+    for name in monitors:
         item = monitors[name]
         assert item.get('online') is True
         for field in ('voltage', 'current', 'power'):
@@ -1936,10 +1936,10 @@ except Exception:
 PY
 )"
     case "${POWER_CHECK}" in
-        ok) pass "Both INA226 monitors communicate and report plausible readings" ;;
+        ok) pass "All configured INA226 monitors communicate and report plausible readings" ;;
         low) fail "Confirmed low input voltage; controlled-shutdown countdown is active" ;;
         bad) fail "INA226 power readings report a critical condition" ;;
-        *) warn "One or both configured INA226 monitors are missing, stale, or implausible" ;;
+        *) warn "One or more configured INA226 monitors are missing, stale, or implausible" ;;
     esac
 fi
 

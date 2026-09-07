@@ -3102,30 +3102,38 @@ if MESHTASTIC_PREPARED:
 
 if POWER_CONFIGURED:
     countdown = low_voltage.get("remaining_seconds")
-    cards.append({
-        "id": "power",
-        "title": "PCS Power",
-        "status": power_status,
-        "summary": (
-            f"LOW INPUT VOLTAGE - shutdown in {countdown}s" if low_voltage.get("active") and countdown is not None
-            else "Dual INA226 monitoring online" if power_status == "ok"
-            else "Power monitoring needs attention"
-        ),
-        "items": [
-            {"label": "Input monitor", "value": "online" if power_input.get("online") else "offline"},
-            {"label": "Input voltage", "value": power_value(power_input.get("voltage"), "V")},
-            {"label": "Total input current", "value": power_value(power_input.get("current"), "A")},
-            {"label": "Total PCS input power", "value": power_value(power_input.get("power"), "W")},
+    power_items = [
+        {"label": "Input monitor", "value": "online" if power_input.get("online") else "offline"},
+        {"label": "Input voltage", "value": power_value(power_input.get("voltage"), "V")},
+        {"label": "Total input current", "value": power_value(power_input.get("current"), "A")},
+        {"label": "Total PCS input power", "value": power_value(power_input.get("power"), "W")},
+    ]
+    if "rail_5v" in power_monitors:
+        power_items.extend([
             {"label": "5V monitor", "value": "online" if power_5v.get("online") else "offline"},
             {"label": "5V rail voltage", "value": power_value(power_5v.get("voltage"), "V")},
             {"label": "5V rail current", "value": power_value(power_5v.get("current"), "A")},
             {"label": "5V rail power", "value": power_value(power_5v.get("power"), "W")},
             {"label": "Estimated non-5V load", "value": power_value(power_runtime.get("estimated_non_5v_power"), "W")},
             {"label": "Estimate scope", "value": "Includes conversion losses; not exact 12V rail power"},
-            {"label": "Low-voltage protection", "value": "active" if low_voltage.get("active") else "normal"},
-            {"label": "Shutdown countdown", "value": f"{countdown} seconds" if countdown is not None else "inactive"},
-            {"label": "Snapshot age", "value": age_label(power_age)},
-        ],
+        ])
+    else:
+        power_items.append({"label": "5V monitor", "value": "not commissioned"})
+    power_items.extend([
+        {"label": "Low-voltage protection", "value": "active" if low_voltage.get("active") else "normal"},
+        {"label": "Shutdown countdown", "value": f"{countdown} seconds" if countdown is not None else "inactive"},
+        {"label": "Snapshot age", "value": age_label(power_age)},
+    ])
+    cards.append({
+        "id": "power",
+        "title": "PCS Power",
+        "status": power_status,
+        "summary": (
+            f"LOW INPUT VOLTAGE - shutdown in {countdown}s" if low_voltage.get("active") and countdown is not None
+            else "INA226 monitoring online" if power_status == "ok"
+            else "Power monitoring needs attention"
+        ),
+        "items": power_items,
     })
 
 card_order = [

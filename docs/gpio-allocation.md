@@ -27,11 +27,11 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | LCD D6 | GPIO23 | 16 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 | LCD D7 | GPIO24 | 18 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 
-GPIO2 (pin 3) and GPIO3 (pin 5) remain the kernel-managed I2C1 bus. Optional
-dual INA226 monitoring shares this bus with the RTC at unique configured
-addresses. The example reserves `0x40` for total input and `0x41` for the 5V
-rail; those addresses, shunt resistances, and current ranges must be verified
-against the actual modules before installation.
+GPIO2 (pin 3) and GPIO3 (pin 5) remain the kernel-managed I2C1 bus. The
+commissioned input INA226 shares this bus with the RTC at `0x40`; it has an
+`R002` 2 milliohm shunt and a 20 A advertised range. The second INA226 and its
+5V rail placement remain physically pending, with `0x41` reserved in the
+example until its address and calibration are verified.
 
 ## Bus and Ownership Boundaries
 
@@ -233,7 +233,9 @@ leave it disabled.
 Each LCD, WS2812, or matrix installer also registers that device with the
 shared `pcs-gpio-startup.service`. At boot the LCD shows `PCS Booting Up` and
 `Stand by...`, the six pixels cycle through the color spectrum, and the matrix
-lights every pixel before checkerboard frames. Boot states remain for at most
+continuously repeats its all-pixel/checkerboard test. Reasserting the complete
+MAX7219 state on every cycle recovers a missed write-only power-up command.
+Boot states remain for at most
 90 seconds while the ordinary health inputs settle. The service hands off
 early when no alerts remain and always hands off on timeout so persistent
 faults stay visible. When the optional buzzer is active, it waits independently

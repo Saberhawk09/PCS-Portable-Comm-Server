@@ -21,6 +21,7 @@ fi
 echo "Showing PCS boot indicators."
 write_failures=0
 led_animation_pid=""
+matrix_animation_pid=""
 
 retry_indicator() {
     local label="$1"
@@ -44,9 +45,18 @@ stop_led_animation() {
     fi
 }
 
+stop_matrix_animation() {
+    if [[ -n "${matrix_animation_pid}" ]]; then
+        kill "${matrix_animation_pid}" 2>/dev/null || true
+        wait "${matrix_animation_pid}" 2>/dev/null || true
+        matrix_animation_pid=""
+    fi
+}
+
 on_exit() {
     result=$?
     stop_led_animation
+    stop_matrix_animation
     trap - EXIT
     exit "${result}"
 }
@@ -79,9 +89,15 @@ if [[ -n "${led_animation_pid}" ]] && ! kill -0 "${led_animation_pid}" 2>/dev/nu
     led_animation_pid=""
 fi
 if [[ -f "${MARKER_DIR}/matrix" ]]; then
-    if ! retry_indicator "matrix" "${DRIVER}" startup-state matrix --hardware --apply; then
-        echo "ERROR: matrix boot indicator failed; normal display services will still be released." >&2
-        write_failures=1
+    "${DRIVER}" startup-state matrix --repeat --hardware --apply &
+    matrix_animation_pid=$!
+    sleep 0.1
+    if ! kill -0 "${matrix_animation_pid}" 2>/dev/null; then
+        if ! wait "${matrix_animation_pid}"; then
+            echo "ERROR: matrix boot indicator failed; normal display services will still be released." >&2
+            write_failures=1
+        fi
+        matrix_animation_pid=""
     fi
 fi
 

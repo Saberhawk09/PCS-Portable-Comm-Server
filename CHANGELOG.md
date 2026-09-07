@@ -8,6 +8,8 @@ All notable user-facing PCS changes are recorded here.
 
 - optional dual-INA226 monitoring for authoritative PCS input and 5V rail
   voltage/current/power, plus an explicitly estimated non-5V load
+- staged INA226 commissioning so the input monitor can operate cleanly while
+  the optional 5V monitor remains physically pending
 - persistent, hysteretic nominal-12V low-voltage alarm and guarded 90-second
   controlled-shutdown countdown, with normal 24V-source discrimination
 - active-low GPIO13 passive-buzzer service with named POST/OK/WARN/BAD/low-
@@ -22,6 +24,11 @@ All notable user-facing PCS changes are recorded here.
   status output, and optional-aware self-test
 
 ### Changed
+
+- continuously refresh the MAX7219 boot animation and controller setup until
+  normal status handoff, recovering intermittent blank power-up screens
+- wait for the INA226 averaged conversion after applying calibration so the
+  first published current and power values are valid
 
 - replace the normal self-test wall of text with a compact per-section
   PASS/WARN/FAIL report while retaining full diagnostics in a timestamped log

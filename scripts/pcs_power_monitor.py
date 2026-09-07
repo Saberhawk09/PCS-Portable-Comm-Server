@@ -20,6 +20,7 @@ from typing import Callable, Protocol
 
 CONFIG_PATH = Path(os.environ.get("PCS_POWER_CONFIG", "/etc/pcs/power-monitor.json"))
 STATUS_PATH = Path(os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/status.json"))
+CONVERSION_SETTLE_SECONDS = 0.05
 
 
 class Bus(Protocol):
@@ -54,7 +55,13 @@ class Reading:
 
 
 class Ina226:
-    def __init__(self, bus: Bus, config: MonitorConfig) -> None:
+    def __init__(
+        self,
+        bus: Bus,
+        config: MonitorConfig,
+        *,
+        sleeper: Callable[[float], None] = time.sleep,
+    ) -> None:
         self.bus = bus
         self.config = config
         self.current_lsb = config.max_current_amps / 32768.0
@@ -62,6 +69,7 @@ class Ina226:
         # 16 averages, 1.1 ms bus/shunt conversions, continuous shunt+bus.
         self._write(0x00, 0x4527)
         self._write(0x05, calibration)
+        sleeper(CONVERSION_SETTLE_SECONDS)
 
     def _read(self, register: int) -> int:
         return swap16(self.bus.read_word_data(self.config.address, register))
@@ -91,8 +99,8 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     if raw.get("version") != 1:
         raise ValueError("unsupported power-monitor configuration version")
     monitors = raw.get("monitors")
-    if not isinstance(monitors, dict) or not {"input", "rail_5v"}.issubset(monitors):
-        raise ValueError("input and rail_5v monitors are required")
+    if not isinstance(monitors, dict) or "input" not in monitors:
+        raise ValueError("input monitor is required")
     if not set(monitors).issubset({"input", "rail_5v", "rail_12v"}):
         raise ValueError("unsupported monitor role")
     parsed: dict[str, MonitorConfig] = {}
@@ -231,8 +239,9 @@ def collect(bus: Bus, config: dict, guard: LowVoltageGuard, now: float) -> dict:
     readings = {name: safe_read(bus, monitor) for name, monitor in config["monitors"].items()}
     low, remaining = guard.update(readings["input"].voltage, now)
     estimated = None
-    if readings["input"].power is not None and readings["rail_5v"].power is not None:
-        estimated = round(max(0.0, readings["input"].power - readings["rail_5v"].power), 3)
+    rail_5v = readings.get("rail_5v")
+    if readings["input"].power is not None and rail_5v is not None and rail_5v.power is not None:
+        estimated = round(max(0.0, readings["input"].power - rail_5v.power), 3)
     states = {
         name: reading_status(name, value, config["monitors"][name], config["low_voltage_threshold"])
         for name, value in readings.items()
@@ -244,6 +253,7 @@ def collect(bus: Bus, config: dict, guard: LowVoltageGuard, now: float) -> dict:
         "status": overall,
         "source_mode": config["source_mode"],
         "detected_nominal_source": guard.nominal,
+        "configured_roles": list(readings),
         "monitors": {name: {**asdict(value), "status": states[name], "address": f"0x{config['monitors'][name].address:02x}"} for name, value in readings.items()},
         "estimated_non_5v_power": estimated,
         "estimated_non_5v_note": "Estimate includes DC/DC conversion losses; not an exact 12V rail measurement.",

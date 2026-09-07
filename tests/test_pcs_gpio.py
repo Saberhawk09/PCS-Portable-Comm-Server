@@ -165,6 +165,41 @@ class PcsGpioTests(unittest.TestCase):
             (pcs_gpio.STARTUP_LED_SEQUENCE[0],) * pcs_gpio.WS2812_COUNT,
         )
 
+    def test_startup_matrix_repeat_reinitializes_and_restarts_frames(self):
+        class StopAnimation(Exception):
+            pass
+
+        class FakeMatrix:
+            def __init__(self):
+                self.frames = []
+                self.intensities = []
+
+            def rows(self, rows):
+                self.frames.append(tuple(rows))
+
+            def intensity(self, value):
+                self.intensities.append(value)
+
+        matrix = FakeMatrix()
+        initializations = []
+
+        def stop_after_repeat(_seconds):
+            if len(matrix.frames) > len(pcs_gpio.STARTUP_MATRIX_FRAMES) + 1:
+                raise StopAnimation
+
+        with self.assertRaises(StopAnimation):
+            pcs_gpio.run_startup_matrix(
+                matrix,
+                repeat=True,
+                reinitialize=lambda: initializations.append(True),
+                sleeper=stop_after_repeat,
+            )
+        self.assertEqual(len(initializations), 2)
+        self.assertEqual(
+            matrix.frames[len(pcs_gpio.STARTUP_MATRIX_FRAMES) + 1],
+            pcs_gpio.STARTUP_MATRIX_FRAMES[0],
+        )
+
     def test_startup_readiness_is_healthy_only_when_alerts_are_absent(self):
         healthy = pcs_gpio.MatrixHealthSnapshot(
             stats=pcs_gpio.StatsSnapshot(
@@ -939,10 +974,12 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIn('TIMEOUT_SECONDS="${PCS_GPIO_STARTUP_TIMEOUT_SECONDS:-90}"', script)
         self.assertIn("startup-state lcd --hardware --apply", script)
         self.assertIn("startup-state leds --repeat --hardware --apply", script)
-        self.assertIn("startup-state matrix --hardware --apply", script)
+        self.assertIn("startup-state matrix --repeat --hardware --apply", script)
         self.assertIn("trap on_exit EXIT", script)
         self.assertIn('kill "${led_animation_pid}"', script)
         self.assertIn('wait "${led_animation_pid}"', script)
+        self.assertIn('kill "${matrix_animation_pid}"', script)
+        self.assertIn('wait "${matrix_animation_pid}"', script)
         self.assertIn('"${DRIVER}" startup-ready', script)
         self.assertIn("persistent alerts remain visible", script)
 

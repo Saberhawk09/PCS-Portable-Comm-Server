@@ -260,6 +260,10 @@ class Max7219:
         self.spi.max_speed_hz = MAX7219_SPI_HZ
         self.spi.mode = 0
         self.spi.no_cs = False
+        self.initialize()
+
+    def initialize(self) -> None:
+        """Reassert the complete write-only controller state."""
         for register, value in (
             (0x0F, 0),
             (0x09, 0),
@@ -601,16 +605,25 @@ def run_startup_leds(
 def run_startup_matrix(
     matrix: MatrixDisplay,
     *,
+    repeat: bool = False,
+    reinitialize: Callable[[], None] = lambda: None,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> None:
-    """Exercise every MAX7219 pixel, then latch a low-intensity boot glyph."""
+    """Exercise every MAX7219 pixel and continuously refresh while booting."""
 
-    matrix.intensity(STARTUP_MATRIX_INTENSITY)
-    for frame in STARTUP_MATRIX_FRAMES:
-        matrix.rows(frame)
-        sleeper(STARTUP_FRAME_SECONDS)
-    matrix.intensity(1)
-    matrix.rows(STARTUP_MATRIX_LATCH)
+    while True:
+        # MAX7219 is write-only, so a power-up command cannot be acknowledged.
+        # Reassert its full state on each boot cycle so a missed wake-up is
+        # repaired before the normal health daemon takes ownership.
+        reinitialize()
+        matrix.intensity(STARTUP_MATRIX_INTENSITY)
+        for frame in STARTUP_MATRIX_FRAMES:
+            matrix.rows(frame)
+            sleeper(STARTUP_FRAME_SECONDS)
+        matrix.intensity(1)
+        matrix.rows(STARTUP_MATRIX_LATCH)
+        if not repeat:
+            break
 
 
 def render_two_digits(value: int | None) -> tuple[int, ...]:
@@ -1671,7 +1684,7 @@ def startup_readiness(
     }
 
 
-def apply_startup_state(target: str, *, repeat_leds: bool = False) -> None:
+def apply_startup_state(target: str, *, repeat: bool = False) -> None:
     if target == "lcd":
         lcd: HD44780 | None = None
         try:
@@ -1686,7 +1699,7 @@ def apply_startup_state(target: str, *, repeat_leds: bool = False) -> None:
         leds: Ws2812 | None = None
         try:
             leds = Ws2812()
-            run_startup_leds(leds, repeat=repeat_leds)
+            run_startup_leds(leds, repeat=repeat)
         finally:
             if leds is not None:
                 leds.close(clear=False)
@@ -1696,7 +1709,7 @@ def apply_startup_state(target: str, *, repeat_leds: bool = False) -> None:
         matrix: Max7219 | None = None
         try:
             matrix = Max7219()
-            run_startup_matrix(matrix)
+            run_startup_matrix(matrix, repeat=repeat, reinitialize=matrix.initialize)
         finally:
             if matrix is not None:
                 matrix.close(clear=False)
@@ -1910,10 +1923,10 @@ def main(argv: Iterable[str] | None = None) -> int:
         return 0
 
     if args.command == "startup-state":
-        if args.repeat and args.target != "leds":
-            raise SystemExit("ERROR: --repeat is valid only for the startup LED target")
+        if args.repeat and args.target not in {"leds", "matrix"}:
+            raise SystemExit("ERROR: --repeat is valid only for the startup LED and matrix targets")
         plan = startup_state_plan(args.target)
-        if args.target == "leds":
+        if args.target in {"leds", "matrix"}:
             plan["repeat"] = bool(args.repeat)
         if not args.hardware:
             plan["backend"] = "simulation"
@@ -1927,7 +1940,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             print(json.dumps(plan, indent=2))
             return 0
         try:
-            apply_startup_state(args.target, repeat_leds=args.repeat)
+            apply_startup_state(args.target, repeat=args.repeat)
         except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as error:
             raise SystemExit(f"ERROR: {error}") from error
         plan["backend"] = "hardware"

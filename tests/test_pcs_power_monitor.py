@@ -41,6 +41,16 @@ class PowerTests(unittest.TestCase):
         with self.assertRaises((TypeError, ValueError)):
             power.load_config(ROOT / "config" / "power-monitor.example.json")
 
+    def test_sensor_waits_for_averaged_conversion_after_calibration(self):
+        bus = FakeBus()
+        pauses = []
+        power.Ina226(
+            bus,
+            power.MonitorConfig("input", 0x40, 0.002, 20),
+            sleeper=pauses.append,
+        )
+        self.assertEqual(pauses, [power.CONVERSION_SETTLE_SECONDS])
+
     def test_config_requires_unique_addresses(self):
         value = {
             "version": 1, "monitors": {
@@ -54,6 +64,20 @@ class PowerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unique"):
                 power.load_config(path)
 
+    def test_input_only_interim_configuration_is_valid(self):
+        value = {
+            "version": 1,
+            "monitors": {
+                "input": {"address": "0x40", "shunt_ohms": 0.002, "max_current_amps": 20},
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "power.json"
+            path.write_text(json.dumps(value), encoding="utf-8")
+            loaded = power.load_config(path)
+        self.assertEqual(set(loaded["monitors"]), {"input"})
+        self.assertFalse(loaded["allow_shutdown"])
+
     def test_measurements_and_estimate(self):
         # Current LSB is 10/32768 A; power LSB is 25x that.
         bus = FakeBus({
@@ -65,6 +89,23 @@ class PowerTests(unittest.TestCase):
         self.assertAlmostEqual(value["monitors"]["rail_5v"]["voltage"], 5.0, places=2)
         self.assertGreater(value["estimated_non_5v_power"], 15)
         self.assertIn("conversion losses", value["estimated_non_5v_note"])
+
+    def test_input_only_collection_omits_unavailable_estimate_without_warning(self):
+        cfg = config()
+        cfg["source_mode"] = "auto"
+        cfg["monitors"] = {
+            "input": power.MonitorConfig("input", 0x40, 0.002, 20),
+        }
+        bus = FakeBus({
+            (0x40, 0x02): 19168,
+            (0x40, 0x04): 1527,
+            (0x40, 0x03): 60,
+        })
+        value = power.collect(bus, cfg, power.LowVoltageGuard(cfg), 10)
+        self.assertEqual(value["status"], "ok")
+        self.assertEqual(value["configured_roles"], ["input"])
+        self.assertIsNone(value["estimated_non_5v_power"])
+        self.assertEqual(value["detected_nominal_source"], "24v")
 
     def test_low_voltage_requires_persistence_and_resets_with_hysteresis(self):
         guard = power.LowVoltageGuard(config())
