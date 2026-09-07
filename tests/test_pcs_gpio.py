@@ -716,6 +716,7 @@ class PcsGpioTests(unittest.TestCase):
                 lcd,
                 once=True,
                 collector=lambda: snapshot,
+                power_reader=lambda: None,
                 uptime_reader=lambda: 93784,
                 sleeper=lambda _: None,
             )
