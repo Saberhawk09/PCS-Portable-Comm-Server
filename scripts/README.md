@@ -427,9 +427,10 @@ records Raspberry Pi throttling flags once per second, and flushes every JSONL
 record to persistent storage under `/var/log/pcs/power-stress/`. The regular
 power-monitor service remains active for LCD, web, buzzer, and shutdown status.
 
-The test aborts below 11.8V input—before the commissioned 11.5V shutdown
-threshold—or below 4.75V on the 5V rail, and restores services after normal
-exit, error, Ctrl+C, or termination. Cellular activation is a single bounded
+After the baseline stage, the test arms an input cutoff at no more than 15%
+below the measured baseline and never below 11.8V (before the commissioned
+11.5V shutdown threshold). It also aborts below 4.75V on the 5V rail and
+restores services after normal exit, error, Ctrl+C, or termination. Cellular activation is a single bounded
 NetworkManager attempt; modem recovery is deliberately not part of a power
 test. If PCS resets, inspect the final records in the newest JSONL file to see
 the last completed stage and rail samples before reboot.

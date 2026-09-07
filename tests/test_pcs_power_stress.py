@@ -27,6 +27,7 @@ class PowerStressTests(unittest.TestCase):
         self.assertEqual(5, plan["sa818s_ptt_seconds"])
         self.assertEqual(11.8, plan["abort_below_input_voltage"])
         self.assertEqual(4.75, plan["abort_below_5v_voltage"])
+        self.assertEqual(15, plan["maximum_input_sag_percent"])
         self.assertEqual(50, plan["power_sample_interval_ms"])
         self.assertEqual(
             ["baseline", "displays_and_fan", "cellular_upload", "full_cpu"],
@@ -98,6 +99,14 @@ class PowerStressTests(unittest.TestCase):
             self.assertIn("5V rail fell below", logger.abort_reason)
             self.assertEqual([(0, logger.FAST_INA226_CONFIG)], input_monitor.config_writes)
             self.assertEqual([(0, logger.FAST_INA226_CONFIG)], rail_monitor.config_writes)
+
+    def test_baseline_sag_limit_scales_for_18v_but_preserves_12v_floor(self):
+        logger = stress.HighRatePowerLogger()
+        logger.minimum_voltages["input"] = 17.2
+        self.assertAlmostEqual(14.62, logger.arm_baseline_sag_limit(), places=2)
+
+        logger.minimum_voltages["input"] = 12.5
+        self.assertEqual(11.8, logger.arm_baseline_sag_limit())
 
 
 if __name__ == "__main__":
