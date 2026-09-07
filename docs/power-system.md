@@ -303,7 +303,10 @@ WS2812 pixel turns red. The public/admin web card and app API expose BAD health,
 alarm activity, whether automatic shutdown is armed, and the remaining
 countdown. Voltage recovery clears all of these without hiding unrelated
 warnings. The low-voltage buzzer uses a symmetric 50% drive waveform to reduce
-audible distortion while retaining its loud one-second cadence.
+audible distortion while retaining its loud one-second cadence. Pattern
+priority is checked every 20ms; before the shutdown chime changes frequency,
+the active-low buzzer input is held off for 25ms so the alarm cannot end on a
+clipped PWM edge.
 
 Install or inspect locally on the Pi with:
 

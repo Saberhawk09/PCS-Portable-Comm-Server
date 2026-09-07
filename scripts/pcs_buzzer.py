@@ -21,6 +21,8 @@ HEALTH_PATH = Path(os.environ.get("PCS_BUZZER_HEALTH", "/run/pcs-buzzer/health.j
 HEALTH_MAX_AGE_SECONDS = 30
 HEALTH_DEBOUNCE_SECONDS = 5.0
 SHUTDOWN_CHIME_WAIT_SECONDS = 0.75
+INTERRUPT_POLL_SECONDS = 0.02
+PATTERN_TRANSITION_SETTLE_SECONDS = 0.025
 
 
 @dataclass(frozen=True)
@@ -176,15 +178,31 @@ def requested_pattern(now: float | None = None, health_pattern: str = "silent") 
 
 
 def play(output: Output, pattern: str, *, sleeper: Callable[[float], None] = time.sleep, interrupted: Callable[[], bool] = lambda: False) -> None:
+    was_interrupted = False
     for tone in PATTERNS[pattern]:
         if interrupted():
+            was_interrupted = True
             break
         if tone.frequency:
             output.tone(tone.frequency, tone.duty)
         else:
             output.off()
-        sleeper(tone.seconds)
+        remaining = tone.seconds
+        while remaining > 0:
+            interval = min(INTERRUPT_POLL_SECONDS, remaining)
+            sleeper(interval)
+            remaining -= interval
+            if interrupted():
+                was_interrupted = True
+                break
+        if was_interrupted:
+            break
     output.off()
+    if was_interrupted:
+        # Let the active-low input return fully high before the higher-priority
+        # pattern changes PWM frequency. This prevents a clipped edge from
+        # sounding like a distorted chirp at shutdown.
+        sleeper(PATTERN_TRANSITION_SETTLE_SECONDS)
 
 
 def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> None:

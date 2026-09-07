@@ -46,6 +46,23 @@ class BuzzerTests(unittest.TestCase):
         self.assertEqual(output.events[-1], (0, 0))
         self.assertEqual([event[0] for event in output.events if event[0]], [360, 520, 760])
 
+    def test_higher_priority_pattern_interrupts_pwm_and_settles_off(self):
+        output = FakeOutput()
+        sleeps = []
+        checks = iter((False, True))
+        buzzer.play(
+            output,
+            "low_voltage",
+            sleeper=sleeps.append,
+            interrupted=lambda: next(checks),
+        )
+        self.assertEqual(output.events[0], (700, 0.50))
+        self.assertEqual(output.events[-1], (0, 0))
+        self.assertEqual(
+            sleeps,
+            [buzzer.INTERRUPT_POLL_SECONDS, buzzer.PATTERN_TRANSITION_SETTLE_SECONDS],
+        )
+
     def test_low_voltage_overrides_muted_warning(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
