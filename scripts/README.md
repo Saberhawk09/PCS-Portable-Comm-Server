@@ -445,6 +445,16 @@ sudo ./scripts/pcs_power_stress.py --duration 60 \
   --apply --confirm PCS-POWER-STRESS
 ```
 
+For fault isolation, `--profile` selects `cpu`, `cellular`, `displays`,
+`cpu-cellular`, `cpu-displays`, `cellular-displays`, or `full`. Every profile
+keeps the fan at full duty and records CPU temperature as well as throttling
+flags. For example:
+
+```bash
+sudo ./scripts/pcs_power_stress.py --profile cpu --duration 60 \
+  --apply --confirm PCS-POWER-STRESS
+```
+
 Optional SA818S key-down is separately gated and limited to at most 60
 seconds. Confirm 144.550 MHz is clear, connect a suitable antenna or dummy
 load, and comply with identification and local band-plan requirements:

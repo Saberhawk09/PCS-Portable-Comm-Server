@@ -37,6 +37,15 @@ FALLBACK_SERVICE = "pcs-cellular-fallback.service"
 PTT_GUARD_SERVICE = "pcs-aprs-ptt-safe.service"
 RADIO_SERVICES = ("direwolf.service", "graywolf.service")
 WS2812_PYTHON = Path("/opt/pcs-gpio-leds/bin/python")
+PROFILE_COMPONENTS = {
+    "cpu": frozenset({"cpu"}),
+    "cellular": frozenset({"cellular"}),
+    "displays": frozenset({"displays"}),
+    "cpu-cellular": frozenset({"cpu", "cellular"}),
+    "cpu-displays": frozenset({"cpu", "displays"}),
+    "cellular-displays": frozenset({"cellular", "displays"}),
+    "full": frozenset({"cpu", "cellular", "displays"}),
+}
 
 
 def command_exists(name: str) -> bool:
@@ -58,11 +67,14 @@ def service_active(name: str) -> bool:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Stress all Pi CPUs, upload through the cellular interface, run the "
-            "fan at full duty, and illuminate the MAX7219 and WS2812 displays fully."
+            "Run a selectable, measured PCS power-load profile with the fan at full duty."
         )
     )
     parser.add_argument("--duration", type=int, default=60, help="test seconds (10-300; default 60)")
+    parser.add_argument(
+        "--profile", choices=tuple(PROFILE_COMPONENTS), default="full",
+        help="load combination to apply (default full)",
+    )
     parser.add_argument(
         "--rf-seconds", type=int, default=0,
         help="also key the commissioned SA818S for 1-60 seconds (default disabled)",
@@ -87,20 +99,29 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def plan(args: argparse.Namespace) -> dict[str, object]:
+    components = PROFILE_COMPONENTS[args.profile]
+    sequence = ["baseline"]
+    if "displays" in components:
+        sequence.append("displays_and_fan")
+    if "cellular" in components:
+        sequence.append("cellular_upload")
+    if "cpu" in components:
+        sequence.append("cpu")
     return {
+        "profile": args.profile,
         "duration_seconds": args.duration,
-        "cpu_workers": os.cpu_count() or 1,
-        "cellular_upload": args.upload_url,
+        "cpu_workers": (os.cpu_count() or 1) if "cpu" in components else 0,
+        "cellular_upload": args.upload_url if "cellular" in components else None,
         "fan": "full duty",
-        "max7219": "all pixels, intensity 15/15",
-        "ws2812": "six white pixels, brightness 255/255",
+        "max7219": "all pixels, intensity 15/15" if "displays" in components else "normal service",
+        "ws2812": "six white pixels, brightness 255/255" if "displays" in components else "normal service",
         "sa818s_ptt_seconds": args.rf_seconds,
         "abort_below_input_voltage": STRESS_MIN_INPUT_VOLTAGE,
         "abort_below_5v_voltage": STRESS_MIN_5V_VOLTAGE,
         "maximum_input_sag_percent": round(MAX_INPUT_SAG_FRACTION * 100),
         "power_sample_interval_ms": round(POWER_SAMPLE_SECONDS * 1000),
         "persistent_jsonl_log_directory": str(POWER_LOG_DIR),
-        "load_sequence": ["baseline", "displays_and_fan", "cellular_upload", "full_cpu"],
+        "load_sequence": sequence,
         "writes_performed": False,
     }
 
@@ -177,6 +198,7 @@ class HighRatePowerLogger:
         self._started_monotonic = 0.0
         self._last_throttled_check = 0.0
         self._throttled = None
+        self._cpu_temperature_c = None
         self.minimum_voltages: dict[str, float] = {}
         self.maximum_currents: dict[str, float] = {}
         self.latest_readings: dict[str, dict[str, object]] = {}
@@ -241,6 +263,18 @@ class HighRatePowerLogger:
         except (OSError, subprocess.SubprocessError):
             return None
 
+    @staticmethod
+    def _read_cpu_temperature() -> float | None:
+        try:
+            result = subprocess.run(
+                ("vcgencmd", "measure_temp"), text=True, capture_output=True,
+                check=False, timeout=0.5,
+            )
+            match = re.search(r"temp=([0-9]+(?:\.[0-9]+)?)", result.stdout)
+            return float(match.group(1)) if match else None
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+
     def _sample(self) -> None:
         readings: dict[str, dict[str, object]] = {}
         for name, monitor in self._monitors.items():
@@ -262,8 +296,14 @@ class HighRatePowerLogger:
         now = time.monotonic()
         if now - self._last_throttled_check >= 1.0:
             self._throttled = self._read_throttled()
+            self._cpu_temperature_c = self._read_cpu_temperature()
             self._last_throttled_check = now
-        self._record({"type": "sample", "rails": readings, "pi_throttled": self._throttled})
+        self._record({
+            "type": "sample",
+            "rails": readings,
+            "pi_throttled": self._throttled,
+            "cpu_temperature_c": self._cpu_temperature_c,
+        })
         self.consecutive_sample_errors = 0
         input_voltage = readings["input"]["voltage"]
         rail_5v_voltage = readings["rail_5v"]["voltage"]
@@ -559,10 +599,12 @@ class StressRun:
             print(f"WARNING: cleanup {error}", file=sys.stderr)
 
     def execute(self) -> None:
+        components = PROFILE_COMPONENTS[self.args.profile]
         self.snapshot_services()
-        for service in DISPLAY_SERVICES:
-            if self.original_active.get(service):
-                run(("systemctl", "stop", service))
+        if "displays" in components:
+            for service in DISPLAY_SERVICES:
+                if self.original_active.get(service):
+                    run(("systemctl", "stop", service))
         if self.original_active.get(FAN_SERVICE):
             run(("systemctl", "stop", FAN_SERVICE))
         if not self.buzzer_was_muted:
@@ -573,16 +615,21 @@ class StressRun:
         self.power_logger.wait(STAGE_SETTLE_SECONDS)
         input_floor = self.power_logger.arm_baseline_sag_limit()
         print(f"Dynamic input abort floor: {input_floor:.2f}V", flush=True)
-        self.display.start()
-        self.power_logger.set_stage("displays_and_fan")
-        self.power_logger.wait(STAGE_SETTLE_SECONDS)
-        self.power_logger.set_stage("cellular_connect")
-        iface = self.start_cellular()
-        self.start_upload(iface)
-        self.power_logger.set_stage("cellular_upload")
-        self.power_logger.wait(STAGE_SETTLE_SECONDS)
-        self.start_cpu()
-        self.power_logger.set_stage("full_cpu")
+        if "displays" in components:
+            self.display.start()
+            self.power_logger.set_stage("displays_and_fan")
+            self.power_logger.wait(STAGE_SETTLE_SECONDS)
+        if "cellular" in components:
+            self.power_logger.set_stage("cellular_connect")
+            iface = self.start_cellular()
+            self.start_upload(iface)
+            self.power_logger.set_stage("cellular_upload")
+            self.power_logger.wait(STAGE_SETTLE_SECONDS)
+        if "cpu" in components:
+            self.start_cpu()
+            self.power_logger.set_stage("cpu")
+        else:
+            self.power_logger.set_stage(self.args.profile)
         self.key_radio()
         started = time.monotonic()
         rf_deadline = started + self.args.rf_seconds

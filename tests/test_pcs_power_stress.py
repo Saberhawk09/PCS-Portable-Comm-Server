@@ -22,6 +22,7 @@ class PowerStressTests(unittest.TestCase):
         with mock.patch("sys.stdout", output):
             self.assertEqual(0, stress.main(("--duration", "30", "--rf-seconds", "5")))
         plan = json.loads(output.getvalue().split("\nApply with", 1)[0])
+        self.assertEqual("full", plan["profile"])
         self.assertEqual("full duty", plan["fan"])
         self.assertIn("255/255", plan["ws2812"])
         self.assertEqual(5, plan["sa818s_ptt_seconds"])
@@ -30,7 +31,7 @@ class PowerStressTests(unittest.TestCase):
         self.assertEqual(15, plan["maximum_input_sag_percent"])
         self.assertEqual(50, plan["power_sample_interval_ms"])
         self.assertEqual(
-            ["baseline", "displays_and_fan", "cellular_upload", "full_cpu"],
+            ["baseline", "displays_and_fan", "cellular_upload", "cpu"],
             plan["load_sequence"],
         )
         self.assertFalse(plan["writes_performed"])
@@ -66,7 +67,21 @@ class PowerStressTests(unittest.TestCase):
         self.assertIn('("vcgencmd", "get_throttled")', source)
         self.assertIn('set_stage("baseline")', source)
         self.assertIn('set_stage("cellular_upload")', source)
-        self.assertIn('set_stage("full_cpu")', source)
+        self.assertIn('set_stage("cpu")', source)
+
+    def test_selective_profiles_only_plan_requested_loads(self):
+        cpu = stress.plan(stress.parse_args(("--profile", "cpu")))
+        self.assertGreater(cpu["cpu_workers"], 0)
+        self.assertIsNone(cpu["cellular_upload"])
+        self.assertEqual("normal service", cpu["ws2812"])
+        self.assertEqual(["baseline", "cpu"], cpu["load_sequence"])
+
+        cellular_displays = stress.plan(
+            stress.parse_args(("--profile", "cellular-displays"))
+        )
+        self.assertEqual(0, cellular_displays["cpu_workers"])
+        self.assertIsNotNone(cellular_displays["cellular_upload"])
+        self.assertIn("255/255", cellular_displays["ws2812"])
 
     def test_fast_sampler_records_both_rails_and_aborts_on_low_5v(self):
         class FakeMonitor:
@@ -96,6 +111,7 @@ class PowerStressTests(unittest.TestCase):
             records = [json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()]
             self.assertEqual({"input", "rail_5v"}, set(records[0]["rails"]))
             self.assertEqual("0x0", records[0]["pi_throttled"])
+            self.assertIn("cpu_temperature_c", records[0])
             self.assertIn("5V rail fell below", logger.abort_reason)
             self.assertEqual([(0, logger.FAST_INA226_CONFIG)], input_monitor.config_writes)
             self.assertEqual([(0, logger.FAST_INA226_CONFIG)], rail_monitor.config_writes)
