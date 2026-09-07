@@ -83,7 +83,7 @@ is retained for seven days. The pending queue is capped at 100 messages.
 | --- | --- |
 | `PING` | `PONG` |
 | `STATUS` or `S` | `PCS OK/BAD | Uplink - LTE/WiFi/Down | GPS 3D/NoFX | Pi Temp - XXC` |
-| `POWER` | `POWER N/A` until monitoring hardware is installed |
+| `POWER` | `POWER N/A` (power telemetry is intentionally not exposed over APRS) |
 | `LTE` | `UP`, `STANDBY`, `NO MODEM`, or `UNKNOWN` |
 | `GPS` | `3D`, `2D`, `STALE`, `NO FIX`, or `UNAVAILABLE` |
 | `TEMP` | Raspberry Pi thermal-zone temperature |
@@ -92,7 +92,7 @@ is retained for seven days. The pending queue is capped at 100 messages.
 | `HELP` or `H` | Supported command names |
 | `MSG <text>` | Store a 1-63 character mailbox message and reply `MESSAGE STORED` |
 
-`STATUS` deliberately omits the not-yet-installed power monitor. APRS messaging
+`STATUS` deliberately omits detailed power-monitor telemetry. APRS messaging
 uses printable 7-bit text, so the radio reply uses `37C` rather than a degree
 symbol. An unrecognized command receives `COMMAND UNKNOWN | COMMAND LIST: HELP`,
 which cannot reasonably be mistaken for a distress request.

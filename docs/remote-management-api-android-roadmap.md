@@ -154,10 +154,9 @@ Every action needs:
 ## Phase 5: telemetry, power, and alerts
 
 Add history only for sensors that are physically installed and calibrated.
-The local/API dual-INA226 snapshot and thresholds are now implemented but stay
-hidden and default-off until the hardware, shunts, addressing, calibration, and
-measurements are verified. Remote history and push notification remain future
-work.
+The local/API dual-INA226 snapshot, thresholds, and since-boot energy totals
+are commissioned and visible in PCS v1.8. Long-term remote history and push
+notification remain future work.
 
 Local/VPN polling comes first. True push alerts while the phone and tunnel are
 asleep require an outbound notification relay such as an operator-selected
