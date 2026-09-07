@@ -415,6 +415,38 @@ The shared shutdown-state unit invokes `pcs-buzzer shutdown-chime` before the
 buzzer service stops, producing one short descending tone sequence on orderly
 shutdown and reboot without taking GPIO ownership from the daemon.
 
+### pcs_power_stress.py
+
+`pcs_power_stress.py` is a bounded manual load test for the commissioned power
+system. Applied mode drives every Pi CPU, uploads explicitly through cellular,
+holds the fan at full duty, lights every MAX7219 pixel at intensity 15, and
+drives all six WS2812 pixels full-white at brightness 255. It stops on low
+input voltage and restores services after normal exit, error, Ctrl+C, or
+termination.
+
+Preview without changing PCS, then run the non-RF load:
+
+```bash
+./scripts/pcs_power_stress.py --duration 60
+sudo ./scripts/pcs_power_stress.py --duration 60 \
+  --apply --confirm PCS-POWER-STRESS
+```
+
+Optional SA818S key-down is separately gated and limited to at most 60
+seconds. Confirm 144.550 MHz is clear, connect a suitable antenna or dummy
+load, and comply with identification and local band-plan requirements:
+
+```bash
+sudo ./scripts/pcs_power_stress.py --duration 60 --rf-seconds 10 \
+  --apply --confirm PCS-POWER-STRESS \
+  --confirm-rf KEY-SA818S-W8IJC-10
+```
+
+The script stops Dire Wolf before acquiring commissioned active-high GPIO6,
+releases PTT into the existing safety guard, verifies the guard, and only then
+restores the previously active APRS engine. Expected warning tones are muted;
+low-voltage alarms and the normal shutdown guard remain active.
+
 ## Dire Wolf / APRS
 
 The base installer records `PCS_APRS_ENGINE` as `direwolf` or `graywolf` and
