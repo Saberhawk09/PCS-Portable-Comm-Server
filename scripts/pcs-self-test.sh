@@ -2076,7 +2076,10 @@ else
 fi
 
 if [[ "${PCS_SETUP_BUZZER}" == "yes" && -x /usr/local/sbin/pcs-buzzer ]]; then
-    /usr/local/sbin/pcs-buzzer request "${PCS_SELF_TEST_PATTERN}" 2>/dev/null || true
+    # Self-test results are a point-in-time notification.  Keep repeating
+    # WARN/BAD briefly, but never leave a stale invisible alarm latched after
+    # a transient boot-time dependency recovers.
+    /usr/local/sbin/pcs-buzzer request "${PCS_SELF_TEST_PATTERN}" --seconds 10 2>/dev/null || true
 fi
 
 if [[ "${PCS_SELF_TEST_FORMAT}" == "concise" ]]; then
