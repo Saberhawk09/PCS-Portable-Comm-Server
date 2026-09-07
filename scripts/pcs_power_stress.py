@@ -28,6 +28,7 @@ FAN_SERVICE = "pcs-gpio-fan.service"
 FALLBACK_SERVICE = "pcs-cellular-fallback.service"
 PTT_GUARD_SERVICE = "pcs-aprs-ptt-safe.service"
 RADIO_SERVICES = ("direwolf.service", "graywolf.service")
+WS2812_PYTHON = Path("/opt/pcs-gpio-leds/bin/python")
 
 
 def command_exists(name: str) -> bool:
@@ -63,6 +64,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--confirm-rf", default="",
         help=f"required when --rf-seconds is nonzero: {RF_CONFIRMATION}",
     )
+    parser.add_argument("--_ws2812-worker", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if not 10 <= args.duration <= 300:
         parser.error("--duration must be from 10 to 300 seconds")
@@ -127,17 +129,18 @@ def wait_for_cellular(timeout: float = 35.0) -> tuple[str, str]:
 
 class DisplayLoad:
     def __init__(self) -> None:
-        self.leds = None
+        self.led_process: subprocess.Popen[bytes] | None = None
         self.matrix = None
 
     def start(self) -> None:
         sys.path.insert(0, str(REPO_DIR / "scripts"))
         import pcs_gpio  # pylint: disable=import-outside-toplevel
 
-        pcs_gpio.WS2812_BRIGHTNESS = 255
-        self.leds = pcs_gpio.Ws2812()
+        self.led_process = subprocess.Popen((str(WS2812_PYTHON), str(Path(__file__).resolve()), "--_ws2812-worker"))
+        time.sleep(0.5)
+        if self.led_process.poll() is not None:
+            raise RuntimeError("full-brightness WS2812 worker failed to start")
         self.matrix = pcs_gpio.Max7219()
-        self.leds.colors([(255, 255, 255)] * pcs_gpio.WS2812_COUNT)
         self.matrix.intensity(15)
         self.matrix.rows([0xFF] * 8)
 
@@ -147,11 +150,37 @@ class DisplayLoad:
                 self.matrix.close(clear=True)
         finally:
             self.matrix = None
-            if self.leds is not None:
+            if self.led_process is not None:
                 try:
-                    self.leds.close(clear=True)
+                    StressRun.terminate(self.led_process)
                 finally:
-                    self.leds = None
+                    self.led_process = None
+
+
+def ws2812_worker() -> int:
+    """Own full-white LEDs under the installed isolated WS2812 interpreter."""
+
+    sys.path.insert(0, str(REPO_DIR / "scripts"))
+    import pcs_gpio  # pylint: disable=import-outside-toplevel
+
+    stopping = False
+
+    def stop(_signum: int, _frame: object) -> None:
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
+    pcs_gpio.WS2812_BRIGHTNESS = 255
+    leds = pcs_gpio.Ws2812()
+    try:
+        leds.colors([(255, 255, 255)] * pcs_gpio.WS2812_COUNT)
+        print("WS2812 full-white load active", flush=True)
+        while not stopping:
+            time.sleep(0.2)
+    finally:
+        leds.close(clear=True)
+    return 0
 
 
 class StressRun:
@@ -336,6 +365,8 @@ class StressRun:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    if args._ws2812_worker:
+        return ws2812_worker()
     if not args.apply:
         print(json.dumps(plan(args), indent=2))
         print(f"Apply with --apply --confirm {APPLY_CONFIRMATION}")
@@ -348,6 +379,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(f"ERROR: RF key-down requires --confirm-rf {RF_CONFIRMATION}")
     if os.geteuid() != 0:
         raise SystemExit("ERROR: run the applied test with sudo")
+    if not WS2812_PYTHON.is_file():
+        raise SystemExit(f"ERROR: installed WS2812 Python runtime is unavailable: {WS2812_PYTHON}")
     for command in ("curl", "dd", "gpioset", "nmcli", "systemctl", "yes"):
         if not command_exists(command):
             raise SystemExit(f"ERROR: required command is unavailable: {command}")
