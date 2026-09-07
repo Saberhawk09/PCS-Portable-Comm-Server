@@ -27,6 +27,7 @@ APPLY_CONFIRMATION = "PCS-POWER-STRESS"
 RF_CONFIRMATION = "KEY-SA818S-W8IJC-10"
 STRESS_MIN_INPUT_VOLTAGE = 11.8
 STRESS_MIN_5V_VOLTAGE = 4.75
+MAX_INPUT_SAG_FRACTION = 0.15
 POWER_SAMPLE_SECONDS = 0.05
 STAGE_SETTLE_SECONDS = 2.0
 DISPLAY_SERVICES = ("pcs-gpio-leds.service", "pcs-gpio-stats.service")
@@ -95,6 +96,7 @@ def plan(args: argparse.Namespace) -> dict[str, object]:
         "sa818s_ptt_seconds": args.rf_seconds,
         "abort_below_input_voltage": STRESS_MIN_INPUT_VOLTAGE,
         "abort_below_5v_voltage": STRESS_MIN_5V_VOLTAGE,
+        "maximum_input_sag_percent": round(MAX_INPUT_SAG_FRACTION * 100),
         "power_sample_interval_ms": round(POWER_SAMPLE_SECONDS * 1000),
         "persistent_jsonl_log_directory": str(POWER_LOG_DIR),
         "load_sequence": ["baseline", "displays_and_fan", "cellular_upload", "full_cpu"],
@@ -177,6 +179,7 @@ class HighRatePowerLogger:
         self.minimum_voltages: dict[str, float] = {}
         self.maximum_currents: dict[str, float] = {}
         self.latest_readings: dict[str, dict[str, object]] = {}
+        self.input_abort_floor = STRESS_MIN_INPUT_VOLTAGE
 
     def start(self) -> None:
         sys.path.insert(0, str(REPO_DIR / "scripts"))
@@ -261,8 +264,8 @@ class HighRatePowerLogger:
         self._record({"type": "sample", "rails": readings, "pi_throttled": self._throttled})
         input_voltage = readings["input"]["voltage"]
         rail_5v_voltage = readings["rail_5v"]["voltage"]
-        if isinstance(input_voltage, (int, float)) and input_voltage < STRESS_MIN_INPUT_VOLTAGE:
-            self.abort_reason = f"input fell below {STRESS_MIN_INPUT_VOLTAGE:.2f}V ({input_voltage:.3f}V)"
+        if isinstance(input_voltage, (int, float)) and input_voltage < self.input_abort_floor:
+            self.abort_reason = f"input fell below {self.input_abort_floor:.2f}V ({input_voltage:.3f}V)"
         elif isinstance(rail_5v_voltage, (int, float)) and rail_5v_voltage < STRESS_MIN_5V_VOLTAGE:
             self.abort_reason = f"5V rail fell below {STRESS_MIN_5V_VOLTAGE:.2f}V ({rail_5v_voltage:.3f}V)"
         if self.abort_reason:
@@ -285,6 +288,22 @@ class HighRatePowerLogger:
     def raise_if_abort(self) -> None:
         if self.abort_reason:
             raise RuntimeError(self.abort_reason)
+
+    def arm_baseline_sag_limit(self) -> float:
+        baseline = self.minimum_voltages.get("input")
+        if baseline is None:
+            raise RuntimeError("no input-voltage baseline was captured")
+        self.input_abort_floor = max(
+            STRESS_MIN_INPUT_VOLTAGE,
+            baseline * (1.0 - MAX_INPUT_SAG_FRACTION),
+        )
+        self._record({
+            "type": "thresholds",
+            "input_abort_floor": round(self.input_abort_floor, 3),
+            "rail_5v_abort_floor": STRESS_MIN_5V_VOLTAGE,
+            "baseline_input_voltage": baseline,
+        })
+        return self.input_abort_floor
 
     def wait(self, seconds: float) -> None:
         deadline = time.monotonic() + seconds
@@ -534,6 +553,8 @@ class StressRun:
         print(f"Persistent 20 Hz power log: {self.power_logger.path}", flush=True)
         self.power_logger.set_stage("baseline")
         self.power_logger.wait(STAGE_SETTLE_SECONDS)
+        input_floor = self.power_logger.arm_baseline_sag_limit()
+        print(f"Dynamic input abort floor: {input_floor:.2f}V", flush=True)
         self.display.start()
         self.power_logger.set_stage("displays_and_fan")
         self.power_logger.wait(STAGE_SETTLE_SECONDS)
