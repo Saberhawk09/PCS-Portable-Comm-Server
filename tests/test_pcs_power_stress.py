@@ -70,6 +70,8 @@ class PowerStressTests(unittest.TestCase):
         self.assertIn('set_stage("cpu")', source)
         self.assertIn('"--upload-file", "-"', source)
         self.assertNotIn('"--data-binary", "@-"', source)
+        self.assertIn('run(("systemctl", "stop", POWER_SERVICE))', source)
+        self.assertIn('run(("systemctl", "start", POWER_SERVICE)', source)
 
     def test_selective_profiles_only_plan_requested_loads(self):
         cpu = stress.plan(stress.parse_args(("--profile", "cpu")))
