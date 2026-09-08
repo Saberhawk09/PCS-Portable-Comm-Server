@@ -68,6 +68,8 @@ class PowerStressTests(unittest.TestCase):
         self.assertIn('set_stage("baseline")', source)
         self.assertIn('set_stage("cellular_upload")', source)
         self.assertIn('set_stage("cpu")', source)
+        self.assertIn('"--upload-file", "-"', source)
+        self.assertNotIn('"--data-binary", "@-"', source)
 
     def test_selective_profiles_only_plan_requested_loads(self):
         cpu = stress.plan(stress.parse_args(("--profile", "cpu")))
@@ -82,6 +84,15 @@ class PowerStressTests(unittest.TestCase):
         self.assertEqual(0, cellular_displays["cpu_workers"])
         self.assertIsNotNone(cellular_displays["cellular_upload"])
         self.assertIn("255/255", cellular_displays["ws2812"])
+
+        cellular_idle = stress.plan(stress.parse_args(("--profile", "cellular-idle")))
+        self.assertIsNone(cellular_idle["cellular_upload"])
+        self.assertEqual(["baseline", "cellular_idle"], cellular_idle["load_sequence"])
+
+        wifi_upload = stress.plan(stress.parse_args(("--profile", "wifi-upload")))
+        self.assertIsNone(wifi_upload["cellular_upload"])
+        self.assertIsNotNone(wifi_upload["wifi_upload"])
+        self.assertEqual(["baseline", "wifi_upload"], wifi_upload["load_sequence"])
 
     def test_fast_sampler_records_both_rails_and_aborts_on_low_5v(self):
         class FakeMonitor:

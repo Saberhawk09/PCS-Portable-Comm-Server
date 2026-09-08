@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 POWER_CONFIG="${PCS_POWER_CONFIG:-/etc/pcs/power-monitor.json}"
+JOURNAL_CONFIG="/etc/systemd/journald.conf.d/90-pcs-persistent-diagnostics.conf"
 
 usage() {
     echo "Usage: ./scripts/setup-power-audio.sh --install-power|--install-buzzer|--check"
@@ -40,6 +41,11 @@ install_power() {
     [[ -e /dev/i2c-1 ]] || { echo "ERROR: /dev/i2c-1 is unavailable; reboot after enabling I2C, then rerun."; exit 1; }
     sudo install -o root -g root -m 0755 "${REPO_DIR}/scripts/pcs_power_monitor.py" /usr/local/sbin/pcs-power-monitor
     sudo install -o root -g root -m 0644 "${REPO_DIR}/systemd/pcs-power-monitor.service" /etc/systemd/system/pcs-power-monitor.service
+    sudo install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
+    sudo install -d -o root -g systemd-journal -m 2755 /var/log/journal
+    sudo install -o root -g root -m 0644 "${REPO_DIR}/config/pcs-journald-persistent.conf" "${JOURNAL_CONFIG}"
+    sudo systemctl restart systemd-journald.service
+    sudo journalctl --flush
     sudo install -d -o root -g root -m 0755 /etc/pcs
     if [[ ! -e "${POWER_CONFIG}" ]]; then
         sudo install -o root -g root -m 0644 "${REPO_DIR}/config/power-monitor.example.json" "${POWER_CONFIG}"
