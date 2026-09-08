@@ -424,8 +424,10 @@ drives all six WS2812 pixels full-white at brightness 255. Loads are introduced
 in named stages (baseline, displays/fan, cellular upload, then full CPU). During
 the run it samples both INA226s every 50 ms in their fastest continuous mode,
 records Raspberry Pi throttling flags once per second, and flushes every JSONL
-record to persistent storage under `/var/log/pcs/power-stress/`. The regular
-power-monitor service remains active for LCD, web, buzzer, and shutdown status.
+record to persistent storage under `/var/log/pcs/power-stress/`. The test stops
+the regular power-monitor daemon to give the 20 Hz logger exclusive INA226
+ownership, then restores it during fail-safe cleanup. LCD/web power snapshots
+are therefore stale only for the bounded duration of an applied stress test.
 An isolated I2C transaction error is recorded without discarding the run;
 three consecutive failed samples abort it in approximately 150 ms.
 
@@ -445,7 +447,8 @@ sudo ./scripts/pcs_power_stress.py --duration 60 \
   --apply --confirm PCS-POWER-STRESS
 ```
 
-For fault isolation, `--profile` selects `cpu`, `cellular`, `displays`,
+For fault isolation, `--profile` selects `cpu`, `cellular`, `cellular-idle`,
+`wifi-upload`, `displays`,
 `cpu-cellular`, `cpu-displays`, `cellular-displays`, or `full`. Every profile
 keeps the fan at full duty and records CPU temperature as well as throttling
 flags. For example:
@@ -468,7 +471,17 @@ sudo ./scripts/pcs_power_stress.py --duration 60 --rf-seconds 10 \
 The script stops Dire Wolf before acquiring commissioned active-high GPIO6,
 releases PTT into the existing safety guard, verifies the guard, and only then
 restores the previously active APRS engine. Expected warning tones are muted;
-low-voltage alarms and the normal shutdown guard remain active.
+the stress logger's fast voltage cutoffs remain active, and the normal
+power-monitor/shutdown guard resumes during cleanup.
+
+Known v1.8.1 limitation: supervised SA818S key-down caused immediate repeated
+I2C transaction errors on the shared RTC/INA226 bus. The script safely unkeyed
+GPIO6 and both INA226s recovered after RF stopped, but a monitored ten-second
+key-down could not be completed. Do not bypass the sampling abort. Shorten and
+twist SDA/SCL with ground, improve separation from the transmitter/feedline,
+and consider local decoupling or ferrite suppression before repeating the RF
+stress test. The RTC has shown correct time and no persistent fault after these
+events, but its availability during transmission is not yet proven.
 
 ## Dire Wolf / APRS
 

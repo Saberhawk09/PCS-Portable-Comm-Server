@@ -4,11 +4,38 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-09-07
+
 ### Added
 
 - bounded manual PCS power-stress utility for full CPU/fan/display load,
   cellular upload, optional independently confirmed SA818S PTT, continuous
   input-power reporting, low-voltage abort, and fail-safe service restoration
+- persistent 20 Hz dual-INA226 flight recording with baseline-relative input
+  sag protection, 5V cutoff, CPU temperature, throttling flags, durable logs,
+  and selective CPU, cellular, Wi-Fi-upload, and display isolation profiles
+- bounded persistent system journal retention for diagnosis after an abrupt
+  watchdog reset
+
+### Fixed
+
+- stream generated upload data instead of buffering an endless input in curl,
+  preventing memory exhaustion and watchdog resets during cellular or Wi-Fi
+  power stress
+- give the high-rate stress logger exclusive INA226 ownership and restore the
+  normal power-monitor daemon during cleanup, preventing cross-process I2C
+  reconfiguration collisions in extended tests
+- expire self-test buzzer requests so a completed diagnostic cannot leave an
+  otherwise invisible warning/fault tone active
+
+### Known issues
+
+- SA818S transmission can immediately produce repeated I2C transaction errors
+  on the shared bus, temporarily making both INA226 monitors unavailable and
+  potentially interrupting RTC access. The PTT fail-safe releases GPIO6 and the
+  devices recover after RF stops; no RTC timekeeping damage has been observed.
+  RF/I2C wiring hardening and a successful monitored extended key-down remain
+  unresolved field work.
 
 ## [1.8] - 2026-09-07
 
@@ -496,7 +523,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8...v1.8.1
 [1.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7.1...v1.8
 [1.7.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7...v1.7.1
 [1.7]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.6...v1.7

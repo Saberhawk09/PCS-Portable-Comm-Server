@@ -982,6 +982,13 @@ Protection rows with current readings. Confirm the PCS Power web card shows
 both monitors as `online / OK`, includes both voltage/current/power triplets,
 and labels the input-minus-5V value as an estimate including conversion loss.
 
+PCS v1.8.1 has an unresolved RF/I2C limitation: SA818S key-down can immediately
+cause repeated transaction errors on the shared INA226/RTC bus. Confirm GPIO6
+returns low and both INA226 addresses recover after any attempted RF stress;
+do not bypass the logger's sampling abort to complete an extended transmission.
+Treat a successful monitored ten-second key-down as pending until SDA/SCL
+routing, grounding, separation, decoupling, or ferrite mitigation is completed.
+
 ## Service Status Test
 
 On the Pi:
