@@ -108,6 +108,10 @@ also unfinished.
 - Characterize Meshtastic range beyond the commissioned RF-to-map test and
   establish a referenced case temperature/humidity baseline
 - Continue expanding automated and operator-supervised field validation
+- Resolve RF coupling into the shared I2C bus: SA818S key-down currently causes
+  immediate INA226 transaction errors and may temporarily interrupt RTC access.
+  The devices recover after unkeying and no RTC timekeeping damage is observed,
+  but monitored extended key-down remains unverified.
 
 The outbound WireGuard remote-management plane was commissioned on PCS on
 2026-08-26. It is an explicit, default-off base-installer choice using an
@@ -155,6 +159,12 @@ GPIO13 audible-status system. Power health and readings are integrated across
 self-test, web/API/Android status, the LCD, and the physical indicators.
 Supervised bench tests verified warning, recovery, shutdown, Pi-Star handoff,
 and all audible patterns.
+
+PCS v1.8.1 adds the guarded full-appliance power-stress utility, persistent
+high-rate rail/thermal flight recording, upload-streaming and watchdog-reset
+fixes, and exclusive INA226 ownership during diagnostics. A five-minute full
+non-RF acceptance run completed with zero sample errors or throttling. RF/I2C
+coupling remains an explicitly unresolved hardware issue as documented above.
 
 ## Hardware Setup
 

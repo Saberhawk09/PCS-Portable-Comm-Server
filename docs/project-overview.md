@@ -246,8 +246,12 @@ The working build is operational. Remaining work is primarily documentation, mea
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
 
 The PCS Pi SD-card wipe/rebuild was most recently verified on August 18, 2026.
-The deployed stack was synchronized for PCS v1.8 and passed its live power,
-alarm, and shutdown acceptance on September 7, 2026. Credential entry,
+The deployed stack was synchronized for PCS v1.8.1 and passed its live power,
+alarm, shutdown, and five-minute full non-RF stress acceptance on September 7,
+2026. SA818S transmission still disrupts the shared I2C bus and can temporarily
+make both INA226s and potentially the RTC inaccessible; devices recover after
+unkeying and no RTC timekeeping damage has been observed, but RF/I2C hardening
+and monitored extended key-down remain unresolved. Credential entry,
 external-appliance recovery, radio identity, firmware flashing, and on-air RF
 checks intentionally remain manual.
 
