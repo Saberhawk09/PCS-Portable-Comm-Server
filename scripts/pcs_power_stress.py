@@ -40,6 +40,8 @@ WS2812_PYTHON = Path("/opt/pcs-gpio-leds/bin/python")
 PROFILE_COMPONENTS = {
     "cpu": frozenset({"cpu"}),
     "cellular": frozenset({"cellular"}),
+    "cellular-idle": frozenset({"cellular", "cellular_idle"}),
+    "wifi-upload": frozenset({"wifi_upload"}),
     "displays": frozenset({"displays"}),
     "cpu-cellular": frozenset({"cpu", "cellular"}),
     "cpu-displays": frozenset({"cpu", "displays"}),
@@ -104,14 +106,17 @@ def plan(args: argparse.Namespace) -> dict[str, object]:
     if "displays" in components:
         sequence.append("displays_and_fan")
     if "cellular" in components:
-        sequence.append("cellular_upload")
+        sequence.append("cellular_idle" if "cellular_idle" in components else "cellular_upload")
+    if "wifi_upload" in components:
+        sequence.append("wifi_upload")
     if "cpu" in components:
         sequence.append("cpu")
     return {
         "profile": args.profile,
         "duration_seconds": args.duration,
         "cpu_workers": (os.cpu_count() or 1) if "cpu" in components else 0,
-        "cellular_upload": args.upload_url if "cellular" in components else None,
+        "cellular_upload": args.upload_url if "cellular" in components and "cellular_idle" not in components else None,
+        "wifi_upload": args.upload_url if "wifi_upload" in components else None,
         "fan": "full duty",
         "max7219": "all pixels, intensity 15/15" if "displays" in components else "normal service",
         "ws2812": "six white pixels, brightness 255/255" if "displays" in components else "normal service",
@@ -177,6 +182,25 @@ def wait_for_cellular(timeout: float = 10.0) -> tuple[str, str]:
                 return device, iface
         time.sleep(1)
     raise RuntimeError("cellular interface did not become connected with an IP interface")
+
+
+def connected_wifi_interface() -> str:
+    result = subprocess.run(
+        ("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"),
+        text=True, capture_output=True, check=True,
+    )
+    for line in result.stdout.splitlines():
+        fields = line.split(":", 2)
+        if len(fields) == 3 and fields[1] == "wifi" and fields[2] == "connected":
+            device = fields[0]
+            lines = subprocess.run(
+                ("nmcli", "-g", "GENERAL.IP-IFACE", "device", "show", device),
+                text=True, capture_output=True, check=True,
+            ).stdout.strip().splitlines()
+            iface = lines[0] if lines else ""
+            if iface and re.fullmatch(r"[A-Za-z0-9_.:-]+", iface):
+                return iface
+    raise RuntimeError("no connected Wi-Fi interface with an IP interface is present")
 
 
 class HighRatePowerLogger:
@@ -494,7 +518,10 @@ class StressRun:
                 "curl", "--interface", iface, "-4", "--fail", "--show-error", "--silent",
                 "--connect-timeout", "15", "--max-time", str(self.args.duration + 10),
                 "--request", "POST", "--header", "Content-Type: application/octet-stream",
-                "--data-binary", "@-", self.args.upload_url,
+                # --data-binary @- buffers stdin to determine its size. With an
+                # endless generator that exhausts RAM and lets the watchdog reset
+                # the Pi. --upload-file - streams stdin as it is produced.
+                "--upload-file", "-", self.args.upload_url,
             ),
             stdin=self.dd_process.stdout, stdout=subprocess.DEVNULL,
         )
@@ -622,8 +649,17 @@ class StressRun:
         if "cellular" in components:
             self.power_logger.set_stage("cellular_connect")
             iface = self.start_cellular()
+            if "cellular_idle" in components:
+                self.power_logger.set_stage("cellular_idle")
+            else:
+                self.start_upload(iface)
+                self.power_logger.set_stage("cellular_upload")
+            self.power_logger.wait(STAGE_SETTLE_SECONDS)
+        if "wifi_upload" in components:
+            iface = connected_wifi_interface()
+            print(f"Wi-Fi upload interface: {iface}", flush=True)
             self.start_upload(iface)
-            self.power_logger.set_stage("cellular_upload")
+            self.power_logger.set_stage("wifi_upload")
             self.power_logger.wait(STAGE_SETTLE_SECONDS)
         if "cpu" in components:
             self.start_cpu()

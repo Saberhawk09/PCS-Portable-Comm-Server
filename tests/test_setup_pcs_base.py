@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP_SCRIPT = ROOT / "scripts" / "setup-pcs-base.sh"
+POWER_SETUP_SCRIPT = ROOT / "scripts" / "setup-power-audio.sh"
 
 
 class SetupPcsBaseTests(unittest.TestCase):
@@ -142,6 +143,14 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertLess(backup, discovery)
         self.assertLess(discovery, control)
         self.assertIn('ensure_executable "scripts/setup-pcs-share-discovery.sh"', self.source)
+
+
+class PowerSetupTests(unittest.TestCase):
+    def test_power_install_enables_bounded_persistent_diagnostics(self):
+        source = POWER_SETUP_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('config/pcs-journald-persistent.conf', source)
+        self.assertIn('/etc/systemd/journald.conf.d/90-pcs-persistent-diagnostics.conf', source)
+        self.assertIn('sudo journalctl --flush', source)
 
 
 if __name__ == "__main__":
