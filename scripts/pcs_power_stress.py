@@ -33,6 +33,7 @@ MAX_CONSECUTIVE_SAMPLE_ERRORS = 3
 STAGE_SETTLE_SECONDS = 2.0
 DISPLAY_SERVICES = ("pcs-gpio-leds.service", "pcs-gpio-stats.service")
 FAN_SERVICE = "pcs-gpio-fan.service"
+POWER_SERVICE = "pcs-power-monitor.service"
 FALLBACK_SERVICE = "pcs-cellular-fallback.service"
 PTT_GUARD_SERVICE = "pcs-aprs-ptt-safe.service"
 RADIO_SERVICES = ("direwolf.service", "graywolf.service")
@@ -488,7 +489,7 @@ class StressRun:
         self.cleanup_errors: list[str] = []
 
     def snapshot_services(self) -> None:
-        names = (*DISPLAY_SERVICES, FAN_SERVICE, FALLBACK_SERVICE, *RADIO_SERVICES, PTT_GUARD_SERVICE)
+        names = (*DISPLAY_SERVICES, FAN_SERVICE, POWER_SERVICE, FALLBACK_SERVICE, *RADIO_SERVICES, PTT_GUARD_SERVICE)
         self.original_active = {name: service_active(name) for name in names}
 
     def start_cellular(self) -> str:
@@ -600,6 +601,8 @@ class StressRun:
             for service in (*DISPLAY_SERVICES, FAN_SERVICE):
                 if self.original_active.get(service):
                     safely(service, lambda service=service: run(("systemctl", "start", service), check=False))
+            if self.original_active.get(POWER_SERVICE):
+                safely(POWER_SERVICE, lambda: run(("systemctl", "start", POWER_SERVICE), check=False))
             for service in RADIO_SERVICES:
                 if self.original_active.get(service):
                     safely(service, lambda service=service: run(("systemctl", "start", service), check=False))
@@ -636,6 +639,10 @@ class StressRun:
             run(("systemctl", "stop", FAN_SERVICE))
         if not self.buzzer_was_muted:
             run(("/usr/local/sbin/pcs-buzzer", "mute"), check=False)
+        # The regular daemon reconfigures the same INA226s for averaged reads.
+        # Give the 20 Hz fail-safe logger exclusive bus ownership during stress.
+        if self.original_active.get(POWER_SERVICE):
+            run(("systemctl", "stop", POWER_SERVICE))
         self.power_logger.start()
         print(f"Persistent 20 Hz power log: {self.power_logger.path}", flush=True)
         self.power_logger.set_stage("baseline")
