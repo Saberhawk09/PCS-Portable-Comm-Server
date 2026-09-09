@@ -17,7 +17,8 @@ All notable user-facing PCS changes are recorded here.
 
 - extend the full-stack reinstall runbook and acceptance checklist to cover the
   commissioned dual-INA226 monitor, GPIO13 buzzer, safe APRS/Meshtastic staging,
-  removable-storage recovery, and headless boot validation
+  removable-storage recovery, headless boot validation, and the Git bootstrap
+  required by a stock Raspberry Pi OS Lite image
 - keep clean-install acceptance to the single `setup-pcs-base.sh` command,
   offer the explicitly selected versioned commissioned INA226 profile from that
   installer, and return failure if any selected step or final self-test fails

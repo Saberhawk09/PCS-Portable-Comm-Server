@@ -63,6 +63,7 @@ class DocumentationTests(unittest.TestCase):
         runbook = (ROOT / "docs" / "full-stack-reinstall.md").read_text(encoding="utf-8")
         for required in (
             "Raspberry Pi OS Lite (64-bit)",
+            "sudo apt-get install -y git",
             "PCS_SETUP_POWER_MONITOR=yes",
             "PCS_POWER_PROFILE=commissioned-pcs",
             "PCS_SETUP_BUZZER=yes",

@@ -107,10 +107,13 @@ Wi-Fi. PCS services are web/systemd based and do not require a graphical
 desktop. The installer fails before mutation if the account or repository path
 is incompatible with its fixed service paths.
 
-Boot, verify Internet access and system time, and clone the repository at the
-required path:
+Boot and verify Internet access and system time. A stock Raspberry Pi OS Lite
+image does not include Git, so install that source-retrieval prerequisite and
+then clone the repository at the required path:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y git
 mkdir -p ~/Projects
 cd ~/Projects
 git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
@@ -127,8 +130,10 @@ test "$(git rev-parse HEAD)" = "REINSTALL_TEST_COMMIT"
 git status --short --branch
 ```
 
-Do not restore `pcs-install.conf`, `/etc/pcs`, or any credential archive before
-the acceptance run. The clean-install contract is one installer command:
+The Git bootstrap and repository checkout above are prerequisites, not PCS
+component installation. Do not restore `pcs-install.conf`, `/etc/pcs`, or any
+credential archive before the acceptance run. The clean-install contract is one
+PCS installer command:
 
 ```bash
 ./scripts/setup-pcs-base.sh

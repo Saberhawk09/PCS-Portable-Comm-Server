@@ -184,9 +184,12 @@ Before running setup, connect the hardware you want the installer to configure:
 
 ## Software Setup
 
-Clone the repository:
+Raspberry Pi OS Lite does not include Git by default. Install that bootstrap
+prerequisite, then clone the repository:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y git
 mkdir -p ~/Projects
 cd ~/Projects
 git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
