@@ -6,5 +6,7 @@ ConditionPathExists=/sys/class/net/wg-pcs
 
 [Service]
 Type=oneshot
+# Temporary DNS failures retain the endpoint; the timer retries in five minutes.
+SuccessExitStatus=75
 Environment=PCS_WIREGUARD_CONFIG=/etc/pcs/wireguard-management.conf
 ExecStart=/usr/local/sbin/pcs-wireguard-endpoint-refresh

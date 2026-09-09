@@ -4,6 +4,11 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+- Retry temporary WireGuard endpoint DNS failures three times within a bounded
+  lookup window, retain the current endpoint if DNS remains unavailable, and
+  defer to the periodic timer without triggering a failed-service buzzer alarm.
+  Invalid configuration and permanent DNS/WireGuard failures remain errors.
+
 ## [1.8.2] - 2026-09-09
 
 ### Added

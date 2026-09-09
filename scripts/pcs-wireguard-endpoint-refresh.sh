@@ -35,17 +35,42 @@ if [[ -z "${host}" || ! "${port}" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 
     exit 1
 fi
 
+if ! wg show "${interface}" peers | grep -Fxq "${peer_key}"; then
+    echo "ERROR: configured WireGuard peer is not active on ${interface}." >&2
+    exit 1
+fi
+
+resolve_status=0
 ipv4="$(python3 - "${host}" <<'PY'
 import ipaddress
+import signal
 import socket
 import sys
+import time
+
+def deferred(*_):
+    print("WARNING: DNS temporarily unavailable; retaining the current WireGuard endpoint until the next timer retry.", file=sys.stderr)
+    raise SystemExit(75)
+
+signal.signal(signal.SIGALRM, deferred)
+signal.alarm(20)
 
 host = sys.argv[1]
 try:
     print(ipaddress.IPv4Address(host))
 except ipaddress.AddressValueError:
     addresses = []
-    for result in socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_DGRAM):
+    for attempt in range(3):
+        try:
+            results = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_DGRAM)
+            break
+        except socket.gaierror as exc:
+            if exc.errno != socket.EAI_AGAIN:
+                raise SystemExit("ERROR: endpoint DNS lookup failed permanently") from None
+            if attempt == 2:
+                deferred()
+            time.sleep(2)
+    for result in results:
         address = result[4][0]
         if address not in addresses:
             addresses.append(address)
@@ -53,11 +78,10 @@ except ipaddress.AddressValueError:
         raise SystemExit("ERROR: endpoint hostname has no IPv4 address")
     print(addresses[0])
 PY
-)"
+)" || resolve_status=$?
 
-if ! wg show "${interface}" peers | grep -Fxq "${peer_key}"; then
-    echo "ERROR: configured WireGuard peer is not active on ${interface}." >&2
-    exit 1
+if (( resolve_status != 0 )); then
+    exit "${resolve_status}"
 fi
 
 wg set "${interface}" peer "${peer_key}" endpoint "${ipv4}:${port}"
