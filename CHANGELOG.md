@@ -4,6 +4,8 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-09-09
+
 ### Added
 
 - Raspberry Pi OS Lite 64-bit reinstall candidate path with a fail-fast host,
@@ -37,6 +39,15 @@ All notable user-facing PCS changes are recorded here.
 - keep clean-install acceptance to the single `setup-pcs-base.sh` command,
   offer the explicitly selected versioned commissioned INA226 profile from that
   installer, and return failure if any selected step or final self-test fails
+
+### Known limitations
+
+- The repaired Raspberry Pi OS Lite appliance is operational, including
+  user-confirmed two-way APRS. A fresh end-to-end installation of this final
+  release has not been repeated; APRS and Meshtastic staging still requires
+  explicit commissioning before operation.
+- Previously documented SA818S RF-related shared-I2C sensor interruptions
+  remain an unresolved hardware limitation.
 
 ## [1.8.1] - 2026-09-07
 
@@ -557,7 +568,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.2...HEAD
+[1.8.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8...v1.8.1
 [1.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7.1...v1.8
 [1.7.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7...v1.7.1
