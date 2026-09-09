@@ -123,6 +123,14 @@ export_state() {
         echo "ERROR: Reinstall-state export failed; removed the incomplete archive." >&2
         exit 1
     fi
+
+    if ! PCS_REINSTALL_PASSPHRASE="${passphrase}" openssl enc -d -aes-256-cbc -pbkdf2 \
+            -pass env:PCS_REINSTALL_PASSPHRASE -in "${archive}" \
+            | tar -tzf - >/dev/null; then
+        sudo rm -f -- "${archive}"
+        echo "ERROR: Encrypted archive verification failed; removed the unusable archive." >&2
+        exit 1
+    fi
     unset passphrase passphrase_confirm
     sudo chmod 0600 "${archive}" 2>/dev/null || true
 
@@ -133,6 +141,7 @@ export_state() {
 
     echo "Created credential-bearing reinstall archive: ${archive}"
     echo "Created checksum: ${archive}.sha256"
+    echo "Encrypted archive decrypt/tar verification passed."
     echo "Archived ${count} present state paths. Keep the archive, checksum, and passphrase separate from the SD card being wiped."
 }
 

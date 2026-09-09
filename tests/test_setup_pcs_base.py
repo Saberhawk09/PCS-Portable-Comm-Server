@@ -172,6 +172,8 @@ class ReinstallStateTests(unittest.TestCase):
         self.assertIn('openssl enc -aes-256-cbc -pbkdf2 -salt', source)
         self.assertIn('Passphrase must contain at least 12 characters', source)
         self.assertIn('removed the incomplete archive', source)
+        self.assertIn('Encrypted archive verification failed', source)
+        self.assertIn('tar -tzf - >/dev/null', source)
         self.assertIn('sudo chmod 0600 "${archive}"', source)
         self.assertIn('digest="$(sudo sha256sum "${archive}"', source)
         self.assertIn('etc/pcs', source)
