@@ -262,8 +262,8 @@ validate_profile_file() {
 
     profile_mode="$(stat -c '%a' -- "${profile_path}")"
     profile_owner="$(stat -c '%u' -- "${profile_path}")"
-    if [[ "${profile_owner}" != "${EUID}" ]]; then
-        echo "ERROR: WireGuard profile must be owned by the user running this installer." >&2
+    if [[ "${profile_owner}" != "${EUID}" && "${profile_owner}" != "0" ]]; then
+        echo "ERROR: WireGuard profile must be owned by root or the user running this installer." >&2
         exit 1
     fi
     if [[ "${profile_mode}" != "600" && "${profile_mode}" != "400" ]]; then
@@ -272,7 +272,17 @@ validate_profile_file() {
         exit 1
     fi
 
-    python3 "${PROFILE_HELPER}" --validate "${profile_path}"
+    # Snapshot a secure root-owned restore into an owner-only temporary file.
+    # The source is never chowned, printed, or executed as shell configuration.
+    VALIDATED_PROFILE_PATH="${profile_path}"
+    if [[ "${profile_owner}" == "0" ]]; then
+        require_sudo
+        VALIDATED_PROFILE_PATH="$(mktemp)"
+        SECRET_TEMP_FILES+=("${VALIDATED_PROFILE_PATH}")
+        chmod 0600 "${VALIDATED_PROFILE_PATH}"
+        sudo cat -- "${profile_path}" >"${VALIDATED_PROFILE_PATH}"
+    fi
+    python3 "${PROFILE_HELPER}" --validate "${VALIDATED_PROFILE_PATH}"
 }
 
 import_profile() {
@@ -284,6 +294,7 @@ import_profile() {
     local credentials_change="no"
 
     validate_profile_file "${profile_path}"
+    profile_path="${VALIDATED_PROFILE_PATH}"
     require_command wg
 
     if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}.service" \
@@ -312,6 +323,10 @@ import_profile() {
     fi
 
     original_config="${CONFIG_FILE}"
+    if [[ -n "${PCS_WIREGUARD_HOME_NETWORK:-}" ]]; then
+        printf 'PCS_WG_HOME_INTERFACE=%q\nPCS_WG_HOME_NETWORK=%q\n' \
+            wlan0 "${PCS_WIREGUARD_HOME_NETWORK}" >>"${policy_temp}"
+    fi
     CONFIG_FILE="${policy_temp}"
     validate_config
     CONFIG_FILE="${original_config}"
@@ -542,6 +557,24 @@ activate_feature() {
     local waited=0
 
     require_normal_user
+    # Check the initiating SSH source before installing or applying any rules.
+    validate_config
+    if [[ -n "${SSH_CONNECTION:-}" ]]; then
+        python3 - "${SSH_CONNECTION%% *}" "${PCS_WG_HOME_NETWORK:-}" \
+            "${PCS_WG_ADMIN_SOURCES}" <<'PY'
+import ipaddress
+import json
+import subprocess
+import sys
+peer = ipaddress.ip_address(sys.argv[1])
+route = json.loads(subprocess.check_output(["ip", "-j", "route", "get", str(peer)]))[0]
+interface = route.get("dev")
+networks = {"eth0": "10.42.0.0/24", "wlan0": sys.argv[2], "wg-pcs": sys.argv[3]}
+allowed = networks.get(interface, "")
+if not any(peer in ipaddress.ip_network(n.strip()) for n in allowed.split(",") if n.strip()):
+    raise SystemExit("ERROR: WireGuard policy would block this SSH source. Configure the trusted home Wi-Fi subnet or activate from the PCS LAN/local console. No firewall changes made.")
+PY
+    fi
     configure_feature
 
     echo "Activation changes the running firewall and starts the outbound management tunnel."

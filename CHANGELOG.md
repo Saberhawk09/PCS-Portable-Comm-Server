@@ -4,6 +4,51 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-09-09
+
+### Added
+
+- Raspberry Pi OS Lite 64-bit reinstall candidate path with a fail-fast host,
+  account, and fixed-checkout preflight
+- bounded, passphrase-encrypted pre-wipe export of private PCS configuration,
+  calibration, WireGuard/SSH/Samba/Bluetooth credentials and identities, and
+  retained application state with a separate SHA-256 checksum and SD-card
+  destination refusal
+
+### Changed
+
+- accept protected root-owned WireGuard restores and collect the trusted home
+  Wi-Fi subnet; refuse activation when the policy would block the current SSH source
+- count missing selected USB storage and failed WireGuard, UART, APRS, or
+  Meshtastic setup as incomplete installs instead of reporting success
+- discover `~/wg-pcs.conf` during setup, retaining existing saved selections
+  and older private-config locations and allowing an explicit path override
+- collect the APRS base callsign, SSID, and APRS-IS passcode during the main
+  installer flow while keeping the passcode out of persistent install config
+  and Git
+- extend the full-stack reinstall runbook and acceptance checklist to cover the
+  commissioned dual-INA226 monitor, GPIO13 buzzer, safe APRS/Meshtastic staging,
+  removable-storage recovery, headless boot validation, and the Git bootstrap
+  required by a stock Raspberry Pi OS Lite image
+- document the outside-repository WireGuard profile placement required when
+  remote management is selected during a clean base installation
+- defer starting the GPIO13 fault buzzer until the monitored PCS service stack
+  has finished installing, avoiding false hard-fault alarms during setup
+- treat a deliberately absent APRS agent as healthy when APRS is only staged,
+  while retaining hard-fault signaling for stale or failed installed agents
+- keep clean-install acceptance to the single `setup-pcs-base.sh` command,
+  offer the explicitly selected versioned commissioned INA226 profile from that
+  installer, and return failure if any selected step or final self-test fails
+
+### Known limitations
+
+- The repaired Raspberry Pi OS Lite appliance is operational, including
+  user-confirmed two-way APRS. A fresh end-to-end installation of this final
+  release has not been repeated; APRS and Meshtastic staging still requires
+  explicit commissioning before operation.
+- Previously documented SA818S RF-related shared-I2C sensor interruptions
+  remain an unresolved hardware limitation.
+
 ## [1.8.1] - 2026-09-07
 
 ### Added
@@ -523,7 +568,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.2...HEAD
+[1.8.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8...v1.8.1
 [1.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7.1...v1.8
 [1.7.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7...v1.7.1

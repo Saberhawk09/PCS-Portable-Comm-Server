@@ -1583,6 +1583,16 @@ prompt_aprs_is_passcode() {
     if [[ "${PCS_APRS_IGATE}" != "yes" ]]; then
         return 0
     fi
+    if [[ -n "${PCS_APRS_IS_PASSCODE:-}" ]]; then
+        if [[ ! "${PCS_APRS_IS_PASSCODE}" =~ ^[0-9]{1,5}$ ]] \
+            || (( 10#${PCS_APRS_IS_PASSCODE} > 32767 )); then
+            echo "ERROR: PCS_APRS_IS_PASSCODE is not a valid numeric APRS-IS passcode." >&2
+            APRS_IS_PASSCODE=""
+            return 1
+        fi
+        APRS_IS_PASSCODE="${PCS_APRS_IS_PASSCODE}"
+        return 0
+    fi
     if [[ ! -t 0 ]]; then
         echo "ERROR: APRS-IS activation requires an interactive terminal for the passcode." >&2
         return 1
@@ -1854,6 +1864,12 @@ activate_profile() {
     APRS_IS_PASSCODE=""
     rm -rf -- "${temp_dir}"
     echo "Dire Wolf ${profile} profile activated successfully."
+    if [[ "${PCS_APRS_AGENT_ENABLED}" == "yes" ]]; then
+        if ! "${REPO_DIR}/scripts/setup-pcs-aprs-agent.sh" --install; then
+            echo "ERROR: Dire Wolf is active, but the selected APRS agent did not install successfully." >&2
+            return 1
+        fi
+    fi
     refresh_control_panel_if_installed
     if [[ "${profile}" == "rx" ]]; then
         echo "RF transmit remains impossible in this profile: output is null and no PTT or transmit directives are present."

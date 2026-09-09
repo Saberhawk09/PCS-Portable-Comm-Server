@@ -22,7 +22,23 @@ PCS_CELLULAR_APN_DEFAULT="fast.t-mobile.com"
 PCS_CELLULAR_ROUTE_METRIC_DEFAULT="900"
 PCS_CELLULAR_FALLBACK_MODE_DEFAULT="manual"
 PCS_SAMBA_WORKGROUP_DEFAULT="WORKGROUP"
-PCS_WIREGUARD_PROFILE_DEFAULT="private-config/wg-pcs.conf"
+PCS_WIREGUARD_PROFILE_DEFAULT="${HOME}/wg-pcs.conf"
+
+discover_wireguard_profile() {
+    local candidate
+    # Prefer an existing saved selection, then the simple home-directory path.
+    # Keep older restore locations compatible without searching arbitrary files.
+    for candidate in "${PCS_WIREGUARD_PROFILE:-}" "${HOME}/wg-pcs.conf" \
+        "${HOME}/private-config/wg-pcs.conf" "${REPO_DIR}/private-config/wg-pcs.conf"; do
+        [[ -n "${candidate}" ]] || continue
+        [[ "${candidate}" == /* ]] || candidate="${REPO_DIR}/${candidate}"
+        if [[ -f "${candidate}" && ! -L "${candidate}" ]]; then
+            printf '%s\n' "${candidate}"
+            return
+        fi
+    done
+    printf '%s\n' "${PCS_WIREGUARD_PROFILE_DEFAULT}"
+}
 
 PCS_SETUP_MODE="ASK"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
@@ -38,7 +54,8 @@ PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
 PCS_SETUP_WIREGUARD="${PCS_SETUP_WIREGUARD:-ask}"
-PCS_WIREGUARD_PROFILE="${PCS_WIREGUARD_PROFILE:-${PCS_WIREGUARD_PROFILE_DEFAULT}}"
+PCS_WIREGUARD_PROFILE="$(discover_wireguard_profile)"
+PCS_WIREGUARD_HOME_NETWORK="${PCS_WIREGUARD_HOME_NETWORK:-}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
 PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
 PCS_GRAYWOLF_HTTP_ADDRESS="${PCS_GRAYWOLF_HTTP_ADDRESS:-10.42.0.1}"
@@ -49,9 +66,13 @@ PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-ask}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"
 PCS_SETUP_POWER_MONITOR="${PCS_SETUP_POWER_MONITOR:-ask}"
+PCS_POWER_PROFILE="${PCS_POWER_PROFILE:-ask}"
 PCS_SETUP_BUZZER="${PCS_SETUP_BUZZER:-ask}"
 PCS_APRS_CONFIG_VERSION="${PCS_APRS_CONFIG_VERSION:-3}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
+PCS_APRS_CALLSIGN_BASE="${PCS_APRS_CALLSIGN_BASE:-W8IJC}"
+PCS_APRS_SSID="${PCS_APRS_SSID:-10}"
+PCS_APRS_IS_PASSCODE="${PCS_APRS_IS_PASSCODE:-}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
 PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-W8IJC-10}"
 PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-144.550 MHz}"
@@ -167,6 +188,58 @@ is_no() {
     esac
 }
 
+validate_host_preflight() {
+    local current_user
+    local expected_repo="/home/pi/Projects/PCS-Portable-Comm-Server"
+
+    current_user="$(id -un)"
+    if [[ "${current_user}" != "pi" ]]; then
+        echo "ERROR: PCS currently requires the normal Raspberry Pi OS user to be named pi." >&2
+        echo "Create/select the pi account in Raspberry Pi Imager, then rerun as pi." >&2
+        exit 1
+    fi
+
+    if [[ "${REPO_DIR}" != "${expected_repo}" ]]; then
+        echo "ERROR: PCS must be cloned at ${expected_repo}." >&2
+        echo "The installed systemd units and bounded administrative helpers use that fixed path." >&2
+        exit 1
+    fi
+
+    for command in apt-get systemctl python3; do
+        if ! command -v "${command}" >/dev/null 2>&1; then
+            echo "ERROR: Required Raspberry Pi OS command is unavailable: ${command}" >&2
+            exit 1
+        fi
+    done
+
+    if [[ -r /etc/os-release ]]; then
+        # shellcheck source=/dev/null
+        . /etc/os-release
+        case "${ID:-}" in
+            raspbian|debian)
+                ;;
+            *)
+                echo "ERROR: PCS expects Raspberry Pi OS/Debian; detected ${PRETTY_NAME:-unknown}." >&2
+                exit 1
+                ;;
+        esac
+        echo "PCS host preflight: ${PRETTY_NAME:-Raspberry Pi OS/Debian}"
+    else
+        echo "ERROR: /etc/os-release is unavailable; cannot validate the PCS host OS." >&2
+        exit 1
+    fi
+
+    if [[ -e /proc/device-tree/model ]]; then
+        echo -n "PCS hardware preflight: "
+        tr -d '\0' < /proc/device-tree/model
+        echo
+    else
+        echo "WARNING: Raspberry Pi model data is unavailable; hardware validation remains pending."
+    fi
+
+    echo "A graphical desktop is not required; Raspberry Pi OS Lite is supported by this setup path."
+}
+
 ask_yes_no() {
     local prompt="$1"
     local default_answer="${2:-}"
@@ -236,6 +309,29 @@ validate_aprs_engine() {
     esac
 }
 
+collect_aprs_identity() {
+    while true; do
+        PCS_APRS_CALLSIGN_BASE="$(ask_value "APRS base callsign" "${PCS_APRS_CALLSIGN_BASE}")"
+        PCS_APRS_CALLSIGN_BASE="${PCS_APRS_CALLSIGN_BASE^^}"
+        [[ "${PCS_APRS_CALLSIGN_BASE}" =~ ^[A-Z0-9]{1,6}$ ]] && break
+        echo "Use a 1-6 character amateur-radio callsign without the SSID." >&2
+    done
+    PCS_APRS_SSID="$(ask_choice "APRS SSID" "${PCS_APRS_SSID}" 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)"
+    if [[ "${PCS_APRS_SSID}" == "0" ]]; then
+        PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN_BASE}"
+    else
+        PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN_BASE}-${PCS_APRS_SSID}"
+    fi
+    while true; do
+        ask_secret_confirm "APRS-IS passcode for ${PCS_APRS_CALLSIGN}" PCS_APRS_IS_PASSCODE
+        if [[ "${PCS_APRS_IS_PASSCODE}" =~ ^[0-9]{1,5}$ ]] \
+            && (( 10#${PCS_APRS_IS_PASSCODE} <= 32767 )); then
+            break
+        fi
+        echo "Use the numeric APRS-IS passcode for this callsign (0 through 32767)." >&2
+    done
+}
+
 ask_secret_confirm() {
     local prompt="$1"
     local output_var="$2"
@@ -283,6 +379,7 @@ write_install_config() {
         printf "PCS_SETUP_PISTAR=%q\n" "${PCS_SETUP_PISTAR}"
         printf "PCS_SETUP_WIREGUARD=%q\n" "${PCS_SETUP_WIREGUARD}"
         printf "PCS_WIREGUARD_PROFILE=%q\n" "${PCS_WIREGUARD_PROFILE}"
+        printf "PCS_WIREGUARD_HOME_NETWORK=%q\n" "${PCS_WIREGUARD_HOME_NETWORK}"
         printf "PCS_SETUP_APRS=%q\n" "${PCS_SETUP_APRS}"
         printf "PCS_APRS_ENGINE=%q\n" "${PCS_APRS_ENGINE}"
         printf "PCS_GRAYWOLF_HTTP_ADDRESS=%q\n" "${PCS_GRAYWOLF_HTTP_ADDRESS}"
@@ -293,6 +390,7 @@ write_install_config() {
         printf "PCS_SETUP_GPIO_STATS=%q\n" "${PCS_SETUP_GPIO_STATS}"
         printf "PCS_SETUP_GPIO_FAN=%q\n" "${PCS_SETUP_GPIO_FAN}"
         printf "PCS_SETUP_POWER_MONITOR=%q\n" "${PCS_SETUP_POWER_MONITOR}"
+        printf "PCS_POWER_PROFILE=%q\n" "${PCS_POWER_PROFILE}"
         printf "PCS_SETUP_BUZZER=%q\n" "${PCS_SETUP_BUZZER}"
         printf "PCS_APRS_CONFIG_VERSION=%q\n" "${PCS_APRS_CONFIG_VERSION}"
         printf "PCS_APRS_ACTIVE_MODE=%q\n" "${PCS_APRS_ACTIVE_MODE}"
@@ -444,6 +542,7 @@ collect_install_answers() {
     local gpio_stats_default
     local gpio_fan_default
     local power_monitor_default
+    local power_profile_default
     local buzzer_default
     local cellular_fallback_default
 
@@ -473,6 +572,7 @@ collect_install_answers() {
             PCS_SETUP_GPIO_STATS="no"
             PCS_SETUP_GPIO_FAN="no"
             PCS_SETUP_POWER_MONITOR="no"
+            PCS_POWER_PROFILE="generic"
             PCS_SETUP_BUZZER="no"
             ;;
         ALL)
@@ -502,6 +602,7 @@ collect_install_answers() {
             gpio_stats_default="${PCS_SETUP_GPIO_STATS}"
             gpio_fan_default="${PCS_SETUP_GPIO_FAN}"
             power_monitor_default="${PCS_SETUP_POWER_MONITOR}"
+            power_profile_default="${PCS_POWER_PROFILE}"
             buzzer_default="${PCS_SETUP_BUZZER}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
@@ -527,13 +628,19 @@ collect_install_answers() {
             PCS_SETUP_WWAN_GPS="$(ask_yes_no "Configure WWAN modem NMEA GPS during setup?" "${gps_default}")"
             PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
-            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management from ${PCS_WIREGUARD_PROFILE_DEFAULT}?" "${wireguard_default}")"
+            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management?" "${wireguard_default}")"
             if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
                 PCS_WIREGUARD_PROFILE="$(ask_value "WireGuard profile path (kept outside Git)" "${PCS_WIREGUARD_PROFILE}")"
+                PCS_WIREGUARD_HOME_NETWORK="$(ask_value "Trusted home Wi-Fi subnet for management (CIDR; blank disables)" "${PCS_WIREGUARD_HOME_NETWORK}")"
             fi
             PCS_SETUP_APRS="$(ask_yes_no "Stage optional APRS software without enabling radio or RF transmit?" "${aprs_default}")"
             if [[ "${PCS_SETUP_APRS}" == "yes" ]]; then
                 PCS_APRS_ENGINE="$(ask_choice "APRS software engine" "${PCS_APRS_ENGINE}" direwolf graywolf)"
+                if [[ "${PCS_APRS_ENGINE}" == "direwolf" ]]; then
+                    collect_aprs_identity
+                    PCS_APRS_AGENT_ENABLED="yes"
+                    PCS_APRS_AGENT_RF_ENABLED="no"
+                fi
             fi
             PCS_SETUP_MESHTASTIC="$(ask_yes_no "Stage optional Meshtastic USB/Bluetooth support without connecting to or configuring a radio?" "${meshtastic_default}")"
             PCS_SETUP_GPIO_LCD="$(ask_yes_no "Install and start the optional 16x2 HD44780 LCD status display?" "${gpio_lcd_default}")"
@@ -541,6 +648,12 @@ collect_install_answers() {
             PCS_SETUP_GPIO_STATS="$(ask_yes_no "Install and start the optional MAX7219 LED matrix statistics display?" "${gpio_stats_default}")"
             PCS_SETUP_GPIO_FAN="$(ask_yes_no "Install GPIO18 hardware PWM thermal fan control?" "${gpio_fan_default}")"
             PCS_SETUP_POWER_MONITOR="$(ask_yes_no "Install optional dual INA226 power monitoring (calibration required)?" "${power_monitor_default}")"
+            if [[ "${PCS_SETUP_POWER_MONITOR}" == "yes" ]]; then
+                [[ "${power_profile_default}" == "ask" ]] && power_profile_default="generic"
+                PCS_POWER_PROFILE="$(ask_choice "INA226 configuration profile" "${power_profile_default}" generic commissioned-pcs)"
+            else
+                PCS_POWER_PROFILE="generic"
+            fi
             PCS_SETUP_BUZZER="$(ask_yes_no "Install optional active-low GPIO13 audible status?" "${buzzer_default}")"
             ;;
         ASK)
@@ -566,15 +679,17 @@ collect_install_answers() {
             PCS_SETUP_GPIO_STATS="ask"
             PCS_SETUP_GPIO_FAN="ask"
             PCS_SETUP_POWER_MONITOR="ask"
+            PCS_POWER_PROFILE="ask"
             PCS_SETUP_BUZZER="ask"
             pistar_default="${PCS_SETUP_PISTAR}"
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
             wireguard_default="${PCS_SETUP_WIREGUARD}"
             [[ "${wireguard_default}" == "ask" ]] && wireguard_default="no"
-            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management from ${PCS_WIREGUARD_PROFILE_DEFAULT}?" "${wireguard_default}")"
+            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management?" "${wireguard_default}")"
             if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
                 PCS_WIREGUARD_PROFILE="$(ask_value "WireGuard profile path (kept outside Git)" "${PCS_WIREGUARD_PROFILE}")"
+                PCS_WIREGUARD_HOME_NETWORK="$(ask_value "Trusted home Wi-Fi subnet for management (CIDR; blank disables)" "${PCS_WIREGUARD_HOME_NETWORK}")"
             fi
             ;;
     esac
@@ -594,8 +709,12 @@ collect_install_answers() {
     export PCS_SETUP_PISTAR
     export PCS_SETUP_WIREGUARD
     export PCS_WIREGUARD_PROFILE
+    export PCS_WIREGUARD_HOME_NETWORK
     export PCS_SETUP_APRS
     export PCS_APRS_ENGINE
+    export PCS_APRS_CALLSIGN_BASE
+    export PCS_APRS_SSID
+    export PCS_APRS_IS_PASSCODE
     export PCS_GRAYWOLF_HTTP_ADDRESS
     export PCS_GRAYWOLF_HTTP_PORT
     export PCS_SETUP_MESHTASTIC
@@ -604,6 +723,7 @@ collect_install_answers() {
     export PCS_SETUP_GPIO_STATS
     export PCS_SETUP_GPIO_FAN
     export PCS_SETUP_POWER_MONITOR
+    export PCS_POWER_PROFILE
     export PCS_SETUP_BUZZER
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
@@ -641,12 +761,17 @@ confirm_install_answers() {
     echo "  WireGuard remote:   ${PCS_SETUP_WIREGUARD}"
     echo "  WireGuard profile:  ${PCS_WIREGUARD_PROFILE}"
     echo "  APRS software:       ${PCS_SETUP_APRS} (${PCS_APRS_ENGINE})"
+    if [[ "${PCS_SETUP_APRS}" == "yes" && "${PCS_APRS_ENGINE}" == "direwolf" ]]; then
+        echo "  APRS identity:       ${PCS_APRS_CALLSIGN}"
+        echo "  APRS-IS passcode:    provided; not written to config"
+    fi
     echo "  Meshtastic BLE:      ${PCS_SETUP_MESHTASTIC}"
     echo "  HD44780 LCD:         ${PCS_SETUP_GPIO_LCD}"
     echo "  WS2812 indicators:   ${PCS_SETUP_GPIO_LEDS}"
     echo "  MAX7219 LED matrix: ${PCS_SETUP_GPIO_STATS}"
     echo "  GPIO18 PWM fan:     ${PCS_SETUP_GPIO_FAN}"
     echo "  INA226 monitoring:  ${PCS_SETUP_POWER_MONITOR}"
+    echo "  INA226 profile:     ${PCS_POWER_PROFILE}"
     echo "  GPIO13 buzzer:      ${PCS_SETUP_BUZZER}"
     echo
 
@@ -701,6 +826,7 @@ echo
 echo "WWAN modem GPS can be configured as an optional hardware step if the modem is present."
 echo
 
+validate_host_preflight
 choose_setup_mode
 
 collect_install_answers
@@ -714,6 +840,9 @@ echo
 
 sudo -v
 cd "${REPO_DIR}"
+
+OPTIONAL_STEP_FAILURES=0
+FINAL_SELF_TEST_PASSED=0
 
 run_step() {
     local name="$1"
@@ -745,6 +874,7 @@ run_optional_step() {
         echo
         echo "WARNING: Optional step failed or was skipped: ${name}"
         echo "Continuing PCS base setup."
+        OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
     fi
 }
 
@@ -811,6 +941,7 @@ ensure_executable "scripts/pcs-web-action.sh"
 ensure_executable "scripts/sync-pcs-share-to-backup.sh"
 ensure_executable "scripts/pcs-self-test.sh"
 ensure_executable "scripts/pcs-status.sh"
+ensure_executable "scripts/pcs-reinstall-state.sh"
 
 if [[ -d "web/pcs-control-panel" ]]; then
     chmod +x web/pcs-control-panel/*.py 2>/dev/null || true
@@ -878,6 +1009,7 @@ if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
         fi
         echo "WARNING: WireGuard remote management was not accepted as active; feature files and services were rolled back."
         echo "The base install will continue; correct the private profile or home hub and retry later."
+        OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
     else
         echo "WireGuard remote management is installed, active, and handshake-verified."
     fi
@@ -1026,6 +1158,10 @@ if [[ -n "${USB_DEVICE}" ]]; then
     esac
 else
     echo "No removable/USB storage filesystem was detected."
+    if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" ]]; then
+        OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
+        echo "ERROR: USB primary storage was selected; connect the drive and rerun setup." >&2
+    fi
     echo "Skipping USB primary share setup."
     echo "You can run this later with a specific device, for example:"
     echo "  ./scripts/setup-usb-primary-share.sh /dev/sda1"
@@ -1227,30 +1363,14 @@ PCS_SETUP_POWER_MONITOR="${power_monitor_answer}"
 export PCS_SETUP_POWER_MONITOR
 write_install_config
 if [[ "${power_monitor_answer}" == "yes" ]]; then
-    run_optional_step "Install dual INA226 power monitoring" "./scripts/setup-power-audio.sh --install-power"
+    if [[ "${PCS_POWER_PROFILE}" != "generic" && "${PCS_POWER_PROFILE}" != "commissioned-pcs" ]]; then
+        PCS_POWER_PROFILE="$(ask_choice "INA226 configuration profile" "generic" generic commissioned-pcs)"
+        export PCS_POWER_PROFILE
+        write_install_config
+    fi
+    run_optional_step "Install dual INA226 power monitoring" "PCS_POWER_PROFILE=${PCS_POWER_PROFILE} ./scripts/setup-power-audio.sh --install-power"
 else
     echo "Skipping dual INA226 power monitoring."
-fi
-
-echo
-echo "============================================================"
-echo "OPTIONAL STEP: Install active-low GPIO13 audible status"
-echo "============================================================"
-echo
-echo "Install only after confirming the external approximately 10k SIG-to-3.3V pull-up."
-echo
-if [[ "${PCS_SETUP_BUZZER}" == "yes" || "${PCS_SETUP_BUZZER}" == "no" ]]; then
-    buzzer_answer="${PCS_SETUP_BUZZER}"
-else
-    buzzer_answer="$(ask_yes_no "Install GPIO13 passive-buzzer status?" "no")"
-fi
-PCS_SETUP_BUZZER="${buzzer_answer}"
-export PCS_SETUP_BUZZER
-write_install_config
-if [[ "${buzzer_answer}" == "yes" ]]; then
-    run_optional_step "Install GPIO13 audible status" "./scripts/setup-power-audio.sh --install-buzzer"
-else
-    echo "Skipping GPIO13 audible status."
 fi
 
 echo
@@ -1287,6 +1407,7 @@ case "${aprs_answer}" in
         else
             echo
             echo "WARNING: PCS APRS UART preparation failed."
+            OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
             echo "RF activation will remain blocked until this succeeds:"
             echo "  ./scripts/setup-direwolf-aprs.sh --prepare-uart"
         fi
@@ -1298,6 +1419,7 @@ case "${aprs_answer}" in
         else
             echo
             echo "WARNING: ${PCS_APRS_ENGINE} APRS software staging failed."
+            OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
             echo "You can retry it later with:"
             echo "  ${aprs_setup_script} --prepare"
         fi
@@ -1338,6 +1460,7 @@ case "${meshtastic_answer}" in
         else
             echo
             echo "WARNING: Meshtastic USB/Bluetooth software staging failed."
+            OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
             echo "You can retry it later with:"
             echo "  ./scripts/setup-meshtastic-bluetooth.sh --prepare"
         fi
@@ -1413,6 +1536,29 @@ run_step "Install PCS Control Panel" "./scripts/setup-pcs-control-panel.sh"
 
 echo
 echo "============================================================"
+echo "OPTIONAL STEP: Install active-low GPIO13 audible status"
+echo "============================================================"
+echo
+echo "This is intentionally the final service installation step so the buzzer does"
+echo "not signal transient hard faults while the services it monitors are incomplete."
+echo "Install only after confirming the external approximately 10k SIG-to-3.3V pull-up."
+echo
+if [[ "${PCS_SETUP_BUZZER}" == "yes" || "${PCS_SETUP_BUZZER}" == "no" ]]; then
+    buzzer_answer="${PCS_SETUP_BUZZER}"
+else
+    buzzer_answer="$(ask_yes_no "Install GPIO13 passive-buzzer status?" "no")"
+fi
+PCS_SETUP_BUZZER="${buzzer_answer}"
+export PCS_SETUP_BUZZER
+write_install_config
+if [[ "${buzzer_answer}" == "yes" ]]; then
+    run_optional_step "Install GPIO13 audible status" "./scripts/setup-power-audio.sh --install-buzzer"
+else
+    echo "Skipping GPIO13 audible status."
+fi
+
+echo
+echo "============================================================"
 echo "STEP: Final PCS status"
 echo "============================================================"
 echo
@@ -1426,6 +1572,7 @@ echo "============================================================"
 echo
 
 if ./scripts/pcs-self-test.sh; then
+    FINAL_SELF_TEST_PASSED=1
     echo
     echo "PCS base setup completed and self-test passed."
 else
@@ -1466,3 +1613,16 @@ echo "  cd ${REPO_DIR}"
 echo "  ./scripts/pcs-self-test.sh"
 echo "  ./scripts/pcs-status.sh"
 echo
+
+if (( OPTIONAL_STEP_FAILURES > 0 )); then
+    echo "ERROR: ${OPTIONAL_STEP_FAILURES} selected optional setup step(s) failed or were skipped." >&2
+fi
+if (( FINAL_SELF_TEST_PASSED == 0 )); then
+    echo "ERROR: Final PCS self-test did not pass." >&2
+fi
+if (( OPTIONAL_STEP_FAILURES > 0 || FINAL_SELF_TEST_PASSED == 0 )); then
+    echo "PCS base setup is incomplete; correct the reported issue and rerun this one command." >&2
+    exit 1
+fi
+
+echo "PCS one-command installation completed successfully."

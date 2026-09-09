@@ -59,6 +59,32 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("python -m compileall -q scripts tests web", workflow)
         self.assertIn('for script in scripts/*.sh; do', workflow)
 
+    def test_reinstall_runbook_covers_lite_and_v18_private_state(self):
+        runbook = (ROOT / "docs" / "full-stack-reinstall.md").read_text(encoding="utf-8")
+        for required in (
+            "Raspberry Pi OS Lite (64-bit)",
+            "sudo apt-get install -y git",
+            "PCS_SETUP_POWER_MONITOR=yes",
+            "PCS_POWER_PROFILE=commissioned-pcs",
+            "PCS_SETUP_BUZZER=yes",
+            "pcs-reinstall-state.sh --export",
+            "/etc/pcs/power-monitor.json",
+            "./scripts/setup-power-audio.sh --check",
+            "systemctl get-default",
+        ):
+            self.assertIn(required, runbook)
+        installer = runbook.index("./scripts/setup-pcs-base.sh")
+        recovery = runbook.index("## Optional Post-Acceptance Credential Recovery")
+        self.assertLess(installer, recovery)
+        self.assertNotIn("/root/pcs-reinstall-state", runbook[:installer])
+
+    def test_main_setup_documents_external_wireguard_profile(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        setup = readme[readme.index("## Software Setup") :]
+        self.assertIn("/home/pi/private-config/wg-pcs.conf", setup)
+        self.assertIn("chmod 600 /home/pi/private-config/wg-pcs.conf", setup)
+        self.assertIn("Never add it to the repository", setup)
+
 
 if __name__ == "__main__":
     unittest.main()

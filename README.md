@@ -170,7 +170,7 @@ coupling remains an explicitly unresolved hardware issue as documented above.
 
 Before running setup, connect the hardware you want the installer to configure:
 
-- Raspberry Pi booted from the target SD card. Tested with Raspberry Pi OS 64-bit Desktop; Lite has not yet been validated.
+- Raspberry Pi booted from the target SD card. Raspberry Pi OS 64-bit Desktop is validated; the installer also supports a headless Raspberry Pi OS Lite 64-bit path, whose first full appliance wipe acceptance remains pending.
 - Ethernet from the Pi to the PCS router/AP through a LAN port, not the WAN/Internet port.
 - The PCS router/AP powered on.
 - The RTC module installed, if this build includes the RTC.
@@ -184,14 +184,42 @@ Before running setup, connect the hardware you want the installer to configure:
 
 ## Software Setup
 
-Clone the repository:
+Raspberry Pi OS Lite does not include Git by default. Install that bootstrap
+prerequisite, then clone the repository:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y git
 mkdir -p ~/Projects
 cd ~/Projects
 git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
 cd PCS-Portable-Comm-Server
 ```
+
+If WireGuard remote management will be enabled during setup, restore its private
+profile before starting the installer. Simply place `wg-pcs.conf` in `/home/pi`.
+Setup discovers it and offers the path as the prompt default; press Enter to
+accept it, or enter another path. Restrict the file to the `pi` account:
+
+```bash
+sudo chown pi:pi /home/pi/wg-pcs.conf
+chmod 600 /home/pi/wg-pcs.conf
+```
+
+The profile contains a private key. Never add it to the repository or copy it
+into documentation, logs, or test output.
+An existing saved path takes priority. The older
+`/home/pi/private-config/wg-pcs.conf` location is also discovered automatically;
+use `chmod 600 /home/pi/private-config/wg-pcs.conf` if retaining that location.
+Secure root-owned restored profiles are also accepted without changing their
+ownership. Other owners, symlinks, and exposed permissions are rejected.
+Setup also asks for the trusted home Wi-Fi subnet (for example,
+`192.168.50.0/24`) if you want management through that network. WireGuard
+activation refuses to apply a policy that would block the current SSH source.
+
+When Dire Wolf APRS is selected, setup asks separately for the base callsign,
+SSID, and APRS-IS passcode. The passcode is used only to render the protected
+live Dire Wolf configuration; it is not written to `pcs-install.conf` or Git.
 
 Run the base setup:
 

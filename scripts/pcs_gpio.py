@@ -85,6 +85,8 @@ FAN_PWM_PERIOD_NS = 1_000_000_000 // FAN_PWM_FREQUENCY_HZ
 FAN_PWM_CHIP_PATH = Path("/sys/class/pwm/pwmchip0")
 FAN_STATUS_PATH = Path("/run/pcs-gpio-fan/status.json")
 APRS_STATUS_PATH = Path("/run/pcs-aprs-agent/status.json")
+APRS_AGENT_CONFIG_PATH = Path("/etc/pcs/aprs-agent.conf")
+APRS_AGENT_SERVICE_PATH = Path("/etc/systemd/system/pcs-aprs-agent.service")
 POWER_STATUS_PATH = Path(
     os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/status.json")
 )
@@ -542,6 +544,7 @@ class MatrixHealthSnapshot:
     pistar_online: bool | None = None
     router_online: bool | None = None
     power: PowerSnapshot | None = None
+    aprs_agent_expected: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -552,6 +555,7 @@ class MatrixHealthSnapshot:
             "pistar_online": self.pistar_online,
             "router_online": self.router_online,
             "power": self.power.as_dict() if self.power is not None else None,
+            "aprs_agent_expected": self.aprs_agent_expected,
         }
 
 
@@ -1500,6 +1504,14 @@ def read_pistar_online(
     return read_host_online(host)
 
 
+def read_aprs_agent_expected(
+    config_path: Path = APRS_AGENT_CONFIG_PATH,
+    service_path: Path = APRS_AGENT_SERVICE_PATH,
+) -> bool:
+    """Return whether an installed APRS agent is expected to publish health."""
+    return config_path.is_file() or service_path.is_file()
+
+
 def collect_matrix_health() -> MatrixHealthSnapshot:
     return MatrixHealthSnapshot(
         stats=collect_stats(),
@@ -1509,12 +1521,15 @@ def collect_matrix_health() -> MatrixHealthSnapshot:
         pistar_online=read_pistar_online(),
         router_online=read_router_online(),
         power=read_power_status(),
+        aprs_agent_expected=read_aprs_agent_expected(),
     )
 
 
 def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
     alerts: list[MatrixAlert] = []
-    if snapshot.stats.aprs_status != "ok":
+    if snapshot.stats.aprs_status not in {None, "ok"} or (
+        snapshot.aprs_agent_expected and snapshot.stats.aprs_status != "ok"
+    ):
         alerts.append(MatrixAlert("aprs_agent", "critical", SERVICE_ICON))
     temperature = snapshot.stats.temperature_c
     if temperature is not None and temperature >= TEMPERATURE_CRITICAL_C:
@@ -1618,7 +1633,9 @@ def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator,
         services = ("power_critical", LED_CRITICAL)
     elif snapshot.power is not None and snapshot.power.status == "warn":
         services = ("power_warning", LED_WARNING)
-    elif snapshot.stats.aprs_status != "ok":
+    elif snapshot.stats.aprs_status not in {None, "ok"} or (
+        snapshot.aprs_agent_expected and snapshot.stats.aprs_status != "ok"
+    ):
         services = ("aprs_error", LED_CRITICAL)
     elif snapshot.failed_services is None:
         services = ("unknown", LED_UNKNOWN)
