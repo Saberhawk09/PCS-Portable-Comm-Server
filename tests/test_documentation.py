@@ -78,6 +78,13 @@ class DocumentationTests(unittest.TestCase):
         self.assertLess(installer, recovery)
         self.assertNotIn("/root/pcs-reinstall-state", runbook[:installer])
 
+    def test_main_setup_documents_external_wireguard_profile(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        setup = readme[readme.index("## Software Setup") :]
+        self.assertIn("/home/pi/private-config/wg-pcs.conf", setup)
+        self.assertIn("chmod 600 /home/pi/private-config/wg-pcs.conf", setup)
+        self.assertIn("Never add it to the repository", setup)
+
 
 if __name__ == "__main__":
     unittest.main()

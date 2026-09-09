@@ -196,6 +196,19 @@ git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
 cd PCS-Portable-Comm-Server
 ```
 
+If WireGuard remote management will be enabled during setup, restore its private
+profile before starting the installer. For a wiped PCS, use the standard
+outside-repository location `/home/pi/private-config/wg-pcs.conf`, restrict it
+to the `pi` account, and enter that absolute path when prompted:
+
+```bash
+chmod 700 /home/pi/private-config
+chmod 600 /home/pi/private-config/wg-pcs.conf
+```
+
+The profile contains a private key. Never add it to the repository or copy it
+into documentation, logs, or test output.
+
 Run the base setup:
 
 ```bash

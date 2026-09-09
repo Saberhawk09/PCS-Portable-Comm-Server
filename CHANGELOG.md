@@ -19,6 +19,8 @@ All notable user-facing PCS changes are recorded here.
   commissioned dual-INA226 monitor, GPIO13 buzzer, safe APRS/Meshtastic staging,
   removable-storage recovery, headless boot validation, and the Git bootstrap
   required by a stock Raspberry Pi OS Lite image
+- document the outside-repository WireGuard profile placement required when
+  remote management is selected during a clean base installation
 - keep clean-install acceptance to the single `setup-pcs-base.sh` command,
   offer the explicitly selected versioned commissioned INA226 profile from that
   installer, and return failure if any selected step or final self-test fails
