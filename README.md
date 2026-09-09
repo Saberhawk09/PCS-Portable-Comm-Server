@@ -14,6 +14,12 @@ Codex was heavily utilized in the creation of this project. I have thoroughly te
 
 This GitHub will also use a mix of my own writing and AI-generated text. I am learning how to use GitHub, and I'd rather have a nice AI-generated page than a gross-looking human-generated one because I don't know what I'm doing.
 
+## What is PCS?
+
+At its core, initially PCS was little more than a portable Raspberry Pi 4 based networking appliance. It intergrated a Pi 4, old Linksys EA4500 router, and surplus Sierra Wireless cell modem into a box with a USB drive samba share. The power system was 2 seperate AC-DC supplies, and the case was far from ideal. The Pi provides DNS and gateway services, while the EA4500 was simply a dumb AP/switch. The cell modem provided internet where available, and also functioned as a GNSS receiver thanks to its dedicated GPS antenna port.
+
+In its current state, PCS is *much* more feature complete. It intergrates the core features, remote management, web portal, stats API, samba share, AC/DC power system, Pi-Star, Meshtastic, APRS, and diagnostic indicators + power monitoring into one single casette that fits neatly into an Apache 4800 rugged case. With the cellular and GNSS antennas installed in the lid, the entire system only needs opened, connected to power, and turned on. Everything else is automatic, and is fully water tight and very durable when the case is closed.
+
 ## Project Goals
 
 - Simple and straightforward software setup with a single script
@@ -60,7 +66,7 @@ also unfinished.
 - INA226 power monitoring modules on the input and 5v rails
 - HD44780 16x2 Charactor LCD, MAX7219 8x8 LED Matrix annunciator, and six-pixel WS2812 RGB LED status chain
 - GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
-- SA818S/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
+- SA818S VHF Radio Module/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
 - RAK4631 Meshtastic expansion connected over USB with validated persistent
   NeoMesh MQTT proxy and 30-minute GPSD position delivery
 
@@ -194,32 +200,6 @@ The setup script installs the PCS software baseline, configures the Pi client ne
 For more detail, see [Raspberry Pi Setup](docs/raspberry-pi-setup.md) and [Script Reference](scripts/README.md).
 
 
-## Cellular Connection Note
-
-Fresh installs ask whether cellular should remain manual or automatically serve
-as a fallback when Wi-Fi is unavailable; the conservative default is manual.
-The selected policy is saved in `config/pcs-install.conf`.
-
-In `wifi-fallback` mode, PCS waits 30 seconds after active Wi-Fi is lost before
-starting cellular. After Wi-Fi has been restored for 30 seconds, it disconnects
-only a cellular session that the fallback service started itself. The
-NetworkManager profile remains non-autoconnecting in both modes, and manually
-started cellular sessions remain under operator control.
-
-Change the installed policy at any time:
-
-```bash
-./scripts/setup-cellular-profile.sh --fallback wifi-fallback
-./scripts/setup-cellular-profile.sh --fallback manual
-```
-
-Open the PCS homepage and select **Admin Login**:
-
-```text
-http://10.42.0.1/
-```
-
-Authenticated operators can change the admin password from the administration page. If it is forgotten, rerun `./scripts/setup-pcs-control-panel.sh --reset-admin-password` from an interactive Pi terminal.
 
 ## PCS Documentation
 
@@ -247,38 +227,6 @@ For additional documentation, start here:
 - [Release Checklist](docs/release-checklist.md)
 - [Script Reference](scripts/README.md)
 - [Changelog](CHANGELOG.md)
-
-## Windows Client Testing
-
-From a Windows client connected to the PCS access point, run:
-
-```cmd
-ipconfig
-```
-
-Expected:
-
-```text
-IPv4 Address:      10.42.0.x
-Subnet Mask:       255.255.255.0
-Default Gateway:   10.42.0.1
-```
-
-Then test network access:
-
-```cmd
-ping 10.42.0.1
-ping 8.8.8.8
-ping google.com
-```
-
-Expected:
-
-- `10.42.0.1` replies from the Pi
-- `8.8.8.8` confirms internet routing when an uplink is intentionally active
-- `google.com` confirms DNS when an uplink is intentionally active
-
-For more detail, see [Testing Checklist](docs/testing-checklist.md).
 
 ## Quick Client Access
 
@@ -310,36 +258,37 @@ Windows File Explorer tests:
 
 For more detail, see [PCS Control Panel](docs/pcs-control-panel.md) and [Samba File Share](docs/samba-file-share.md).
 
-## Current Storage Layout
 
-```text
-\\10.42.0.1\PCS-Share   -> /mnt/pcs-usb/PCS-Share
-\\10.42.0.1\PCS-Backup  -> /srv/pcs-share-backup
-```
+## Cellular Connection Note
 
-`PCS-Share` is the primary field share on removable USB storage.
+Fresh installs ask whether cellular should remain manual or automatically serve
+as a fallback when Wi-Fi is unavailable; the conservative default is manual.
+The selected policy is saved in `config/pcs-install.conf`.
 
-`PCS-Backup` is the SD-card backup mirror.
+In `wifi-fallback` mode, PCS waits 30 seconds after active Wi-Fi is lost before
+starting cellular. After Wi-Fi has been restored for 30 seconds, it disconnects
+only a cellular session that the fallback service started itself. The
+NetworkManager profile remains non-autoconnecting in both modes, and manually
+started cellular sessions remain under operator control.
 
-Windows Network Discovery advertises the clickable server name
-**PCS-FILE-SHARE** on the wired PCS LAN and Wi-Fi only. `PCS-Share` keeps its existing Samba credentials;
-`PCS-Backup` uses username `pcs-admin` with the current PCS web-admin password.
-The base installer configures and verifies this behavior repeatably.
-
-Automatic additive backups are enabled by default on new installs with a
-10-minute interval. An administrator can enable or disable them, select a
-1-43,200 minute interval, and optionally retain every dated backup snapshot
-from the web panel or a paired PCS Companion app. The fixed systemd timer
-checks every minute and runs a sync only when the configured interval
-is due. Manual sync remains available.
-
-Manual sync:
+Change the installed policy at any time:
 
 ```bash
-./scripts/sync-pcs-share-to-backup.sh
+./scripts/setup-cellular-profile.sh --fallback wifi-fallback
+./scripts/setup-cellular-profile.sh --fallback manual
 ```
 
-For more detail, see [Samba File Share](docs/samba-file-share.md).
+Open the PCS homepage and select **Admin Login**:
+
+```text
+http://10.42.0.1/
+```
+
+Authenticated operators can change the admin password from the administration page. If it is forgotten, rerun `./scripts/setup-pcs-control-panel.sh --reset-admin-password` from an interactive Pi terminal.
+
+
+
+
 
 ## Important Scripts
 
@@ -370,32 +319,25 @@ See [Script Reference](scripts/README.md) for the full script list.
 Installed and tested hardware:
 
 - Raspberry Pi 4
+- Armor Lite cooler with GPIO18 hardware-PWM fan control
 - RTC module
-- USB flash drive
+- Generic USB flash drive
 - Linksys EA4500 running OpenWrt used as AP/switch
 - Sierra Wireless EM7565 WWAN modem with external LTE and active GNSS antennas
-- Pi-Star hotspot
+- MMDVM Pi-Star hotspot w/ Pi Zero W
 - AC/DC source-selector power system and two 120 mm cooling fans
 - HD44780 16x2 LCD status display
-- MAX7219 8x8 health-annunciator matrix
-- Six-pixel WS2812 status-indicator chain
-- Armor Lite cooler with GPIO18 hardware-PWM fan control
-- SA818S V1.2, stock Easy Digi, C-Media USB audio, GPIO6 PTT, and managed Dire Wolf APRS
+- MAX7219 8x8 LCD Matrix health-annunciator
+- Six-pixel WS2812 RGB LED status-indicator chain
+- SA818S VHF Radio, Easy Digi Audio Interface, Sabrent USB audio device, GPIO6 PTT, and managed Dire Wolf APRS
 - RAK4631 Meshtastic node over USB with NeoMesh MQTT, GPSD position, and public-map forwarding
 - Dual INA226 input/5V power monitoring and GPIO13 passive buzzer
-
-Installed with as-built records or measurements pending:
-
-- RAK4631 sensor model/mounting record and referenced environment baseline
 
 Remaining documentation and validation:
 
 - Complete the exact as-built power-component, fuse, wiring, grounding, and
   thermal record; retain the measured rail and load references already captured
 - Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
-- Characterize Meshtastic range beyond the completed IJC2 RF-to-map test and establish a referenced case-sensor baseline
-
-For more detail, see [Bill of Materials](docs/bill-of-materials.md) and [Power System](docs/power-system.md).
 
 ## The Issue That Started This Project
 
