@@ -140,6 +140,11 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('generic commissioned-pcs', self.source)
         self.assertIn('./scripts/setup-power-audio.sh --install-power', self.source)
         self.assertIn('./scripts/setup-power-audio.sh --install-buzzer', self.source)
+        buzzer = self.source.index('./scripts/setup-power-audio.sh --install-buzzer')
+        control_panel = self.source.index('run_step "Install PCS Control Panel"')
+        final_status = self.source.index('STEP: Final PCS status')
+        self.assertLess(control_panel, buzzer)
+        self.assertLess(buzzer, final_status)
 
     def test_lite_preflight_enforces_fixed_runtime_identity_and_path(self):
         preflight_call = self.source.index("validate_host_preflight\n")

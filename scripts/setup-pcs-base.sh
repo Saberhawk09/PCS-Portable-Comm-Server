@@ -1311,27 +1311,6 @@ fi
 
 echo
 echo "============================================================"
-echo "OPTIONAL STEP: Install active-low GPIO13 audible status"
-echo "============================================================"
-echo
-echo "Install only after confirming the external approximately 10k SIG-to-3.3V pull-up."
-echo
-if [[ "${PCS_SETUP_BUZZER}" == "yes" || "${PCS_SETUP_BUZZER}" == "no" ]]; then
-    buzzer_answer="${PCS_SETUP_BUZZER}"
-else
-    buzzer_answer="$(ask_yes_no "Install GPIO13 passive-buzzer status?" "no")"
-fi
-PCS_SETUP_BUZZER="${buzzer_answer}"
-export PCS_SETUP_BUZZER
-write_install_config
-if [[ "${buzzer_answer}" == "yes" ]]; then
-    run_optional_step "Install GPIO13 audible status" "./scripts/setup-power-audio.sh --install-buzzer"
-else
-    echo "Skipping GPIO13 audible status."
-fi
-
-echo
-echo "============================================================"
 echo "OPTIONAL STEP: Stage APRS software"
 echo "============================================================"
 echo
@@ -1487,6 +1466,29 @@ else
 fi
 
 run_step "Install PCS Control Panel" "./scripts/setup-pcs-control-panel.sh"
+
+echo
+echo "============================================================"
+echo "OPTIONAL STEP: Install active-low GPIO13 audible status"
+echo "============================================================"
+echo
+echo "This is intentionally the final service installation step so the buzzer does"
+echo "not signal transient hard faults while the services it monitors are incomplete."
+echo "Install only after confirming the external approximately 10k SIG-to-3.3V pull-up."
+echo
+if [[ "${PCS_SETUP_BUZZER}" == "yes" || "${PCS_SETUP_BUZZER}" == "no" ]]; then
+    buzzer_answer="${PCS_SETUP_BUZZER}"
+else
+    buzzer_answer="$(ask_yes_no "Install GPIO13 passive-buzzer status?" "no")"
+fi
+PCS_SETUP_BUZZER="${buzzer_answer}"
+export PCS_SETUP_BUZZER
+write_install_config
+if [[ "${buzzer_answer}" == "yes" ]]; then
+    run_optional_step "Install GPIO13 audible status" "./scripts/setup-power-audio.sh --install-buzzer"
+else
+    echo "Skipping GPIO13 audible status."
+fi
 
 echo
 echo "============================================================"

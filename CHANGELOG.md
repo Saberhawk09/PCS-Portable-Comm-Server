@@ -21,6 +21,8 @@ All notable user-facing PCS changes are recorded here.
   required by a stock Raspberry Pi OS Lite image
 - document the outside-repository WireGuard profile placement required when
   remote management is selected during a clean base installation
+- defer starting the GPIO13 fault buzzer until the monitored PCS service stack
+  has finished installing, avoiding false hard-fault alarms during setup
 - keep clean-install acceptance to the single `setup-pcs-base.sh` command,
   offer the explicitly selected versioned commissioned INA226 profile from that
   installer, and return failure if any selected step or final self-test fails
