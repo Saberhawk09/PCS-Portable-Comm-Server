@@ -130,10 +130,14 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('PCS_SETUP_GPIO_FAN="no"', self.source)
 
     def test_power_monitor_and_buzzer_are_optional_and_persisted(self):
-        for name in ("PCS_SETUP_POWER_MONITOR", "PCS_SETUP_BUZZER"):
+        for name in ("PCS_SETUP_POWER_MONITOR", "PCS_POWER_PROFILE", "PCS_SETUP_BUZZER"):
             self.assertIn(f'{name}="${{{name}:-ask}}"', self.source)
             self.assertIn(f'printf "{name}=%q\\n"', self.source)
+        for name in ("PCS_SETUP_POWER_MONITOR", "PCS_SETUP_BUZZER"):
             self.assertIn(f'{name}="no"', self.source)
+        self.assertIn('PCS_POWER_PROFILE="generic"', self.source)
+        self.assertIn('INA226 configuration profile', self.source)
+        self.assertIn('generic commissioned-pcs', self.source)
         self.assertIn('./scripts/setup-power-audio.sh --install-power', self.source)
         self.assertIn('./scripts/setup-power-audio.sh --install-buzzer', self.source)
 
@@ -154,6 +158,17 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertLess(discovery, control)
         self.assertIn('ensure_executable "scripts/setup-pcs-share-discovery.sh"', self.source)
 
+    def test_one_command_install_cannot_hide_selected_step_or_self_test_failure(self):
+        self.assertIn('OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))', self.source)
+        self.assertIn('FINAL_SELF_TEST_PASSED=1', self.source)
+        self.assertIn('PCS base setup is incomplete', self.source)
+        self.assertIn('PCS one-command installation completed successfully.', self.source)
+        failure_gate = self.source.rindex(
+            'if (( OPTIONAL_STEP_FAILURES > 0 || FINAL_SELF_TEST_PASSED == 0 ))'
+        )
+        success = self.source.rindex('PCS one-command installation completed successfully.')
+        self.assertLess(failure_gate, success)
+
 
 class PowerSetupTests(unittest.TestCase):
     def test_power_install_enables_bounded_persistent_diagnostics(self):
@@ -161,6 +176,14 @@ class PowerSetupTests(unittest.TestCase):
         self.assertIn('config/pcs-journald-persistent.conf', source)
         self.assertIn('/etc/systemd/journald.conf.d/90-pcs-persistent-diagnostics.conf', source)
         self.assertIn('sudo journalctl --flush', source)
+
+    def test_commissioned_profile_is_explicit_and_validated_before_install(self):
+        source = POWER_SETUP_SCRIPT.read_text(encoding="utf-8")
+        validation = source.index('config/power-monitor.pcs.json')
+        install = source.index('sudo install -o root -g root -m 0644', validation)
+        self.assertLess(validation, install)
+        self.assertIn('commissioned-pcs)', source)
+        self.assertIn('PCS_POWER_PROFILE must be generic or commissioned-pcs', source)
 
 
 class ReinstallStateTests(unittest.TestCase):
@@ -177,7 +200,12 @@ class ReinstallStateTests(unittest.TestCase):
         self.assertIn('sudo chmod 0600 "${archive}"', source)
         self.assertIn('digest="$(sudo sha256sum "${archive}"', source)
         self.assertIn('etc/pcs', source)
+        self.assertIn('etc/wireguard', source)
+        self.assertIn('etc/ssh', source)
+        self.assertIn('home/pi/.ssh', source)
         self.assertIn('etc/NetworkManager/system-connections', source)
+        self.assertIn('var/lib/samba/private', source)
+        self.assertIn('var/lib/bluetooth', source)
         self.assertNotIn('etc/shadow', source)
 
 

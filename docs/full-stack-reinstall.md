@@ -57,16 +57,21 @@ cd /mnt/pcs-usb/PCS-Share
 sudo sha256sum --check pcs-reinstall-state-YYYYMMDD.tar.gz.enc.sha256
 ```
 
-The AES-256 encrypted archive includes the installed answer file, commissioned INA226
-calibration/shutdown policy, APRS and Meshtastic credentials/configuration,
-WireGuard key material, Pi-Star shutdown key, administrator/API state,
-NetworkManager profiles, and retained APRS application state when those paths
-exist. It deliberately does not archive `PCS-Share` itself, OpenWrt, Pi-Star,
-or Samba passwords.
+The AES-256 encrypted archive includes the installed answer file, commissioned
+INA226 calibration/shutdown policy, APRS and Meshtastic credentials/configuration,
+WireGuard source and generated key material, Pi-Star shutdown key,
+administrator/API state, SSH host identity and permanent authorized keys,
+NetworkManager profiles, Samba credentials, Bluetooth bonds, and retained APRS
+application state when those paths exist. It deliberately does not archive
+`PCS-Share` itself, OpenWrt, Pi-Star, `/etc/shadow`, or a raw Android app token.
+The Stats API stores only a hash of each app token: restoring that server state
+keeps an unchanged paired phone working, but deleted Android app data must be
+paired again.
 
 Record separately:
 
-- the Samba/PCS administrator password, or the decision to set a new one
+- a known Raspberry Pi OS login password and the PCS administrator password,
+  or the decision to set new ones
 - the intended USB filesystem identity and current mount
 - the archive filename and matching SHA-256 checksum
 - the archive passphrase, retained separately from the archive
@@ -112,71 +117,26 @@ git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
 cd PCS-Portable-Comm-Server
 ```
 
-Lite does not automatically mount the retained PCS USB drive at the old path.
-Use the filesystem identity recorded before the wipe, inspect it without
-formatting, and mount it read-only for recovery:
-
-```bash
-lsblk -f
-sudo install -d -m 0755 /mnt/pcs-recovery
-sudo mount -o ro /dev/disk/by-uuid/RECORDED_PCS_USB_UUID /mnt/pcs-recovery
-```
-
-Verify the exact release or candidate commit under test, then restore the saved installer answers and
-commissioned power configuration into place. Replace the archive name below
-with the file actually created before the wipe. For a pre-release wipe test,
-use the exact reviewed commit supplied for the test rather than a moving branch:
+Verify the exact release or candidate commit under test. For a pre-release wipe
+test, use the exact reviewed commit supplied for the test rather than a moving
+branch:
 
 ```bash
 git checkout REINSTALL_TEST_COMMIT
 test "$(git rev-parse HEAD)" = "REINSTALL_TEST_COMMIT"
 git status --short --branch
-cd /mnt/pcs-recovery/PCS-Share
-sudo sha256sum --check pcs-reinstall-state-YYYYMMDD.tar.gz.enc.sha256
-sudo install -d -o root -g root -m 0700 /root/pcs-reinstall-state
-openssl enc -d -aes-256-cbc -pbkdf2 \
-  -in pcs-reinstall-state-YYYYMMDD.tar.gz.enc \
-  | sudo tar -xzf - -C /root/pcs-reinstall-state
-cd /home/pi/Projects/PCS-Portable-Comm-Server
-sudo install -o pi -g pi -m 0600 \
-  /root/pcs-reinstall-state/home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf \
-  config/pcs-install.conf
-if sudo test -d /root/pcs-reinstall-state/home/pi/Projects/PCS-Portable-Comm-Server/private-config; then
-  sudo cp -a /root/pcs-reinstall-state/home/pi/Projects/PCS-Portable-Comm-Server/private-config .
-  sudo chown -R pi:pi private-config
-fi
-sudo install -d -o root -g root -m 0755 /etc/pcs
-sudo cp -a /root/pcs-reinstall-state/etc/pcs/. /etc/pcs/
 ```
 
-The `/etc/pcs` restore makes the INA226 installation use the previously
-commissioned addresses, 2 milliohm shunts, limits, and guarded shutdown policy
-instead of the intentionally invalid generic template. This is valid only for
-the same unchanged PCS hardware. Do not copy that calibrated profile to a
-different build.
-
-Before running the base installer, force radio/network integrations into safe
-staging so restoring old state cannot activate RF, a broker connection, or
-remote management during the rebuild:
-
-```bash
-sed -i -E \
-  -e 's/^PCS_SETUP_APRS=.*/PCS_SETUP_APRS="staged"/' \
-  -e 's/^PCS_APRS_ACTIVE_MODE=.*/PCS_APRS_ACTIVE_MODE="staged"/' \
-  -e 's/^PCS_APRS_AGENT_ENABLED=.*/PCS_APRS_AGENT_ENABLED="no"/' \
-  -e 's/^PCS_SETUP_MESHTASTIC=.*/PCS_SETUP_MESHTASTIC="staged"/' \
-  -e 's/^PCS_SETUP_WIREGUARD=.*/PCS_SETUP_WIREGUARD="no"/' \
-  config/pcs-install.conf
-```
-
-This changes only the recovery copy on the new SD card. The encrypted
-archive retains the pre-wipe values for later comparison.
-
-Run the base installer:
+Do not restore `pcs-install.conf`, `/etc/pcs`, or any credential archive before
+the acceptance run. The clean-install contract is one installer command:
 
 ```bash
 ./scripts/setup-pcs-base.sh
 ```
+
+Answer its prompts interactively. Do not run individual component setup scripts
+first. A failure or skipped selected component is an installer failure, even if
+the script continues to present diagnostics.
 
 For the current GPS-sharing build, select:
 
@@ -191,6 +151,7 @@ Install six-pixel WS2812 indicators: yes (when physically fitted)
 Install MAX7219 LED matrix display:  yes (only when physically fitted)
 Install GPIO18 hardware PWM fan:     yes (when the Armor Lite cooler is fitted)
 Install dual INA226 power monitoring: yes (only on the commissioned PCS hardware)
+INA226 configuration profile:        commissioned-pcs (only on this unchanged PCS hardware)
 Install active-low GPIO13 audible status: yes (when the pull-up/wiring is confirmed)
 ```
 
@@ -207,6 +168,7 @@ PCS_SETUP_GPIO_LEDS=yes
 PCS_SETUP_GPIO_STATS=yes
 PCS_SETUP_GPIO_FAN=yes
 PCS_SETUP_POWER_MONITOR=yes
+PCS_POWER_PROFILE=commissioned-pcs
 PCS_SETUP_BUZZER=yes
 ```
 
@@ -304,11 +266,13 @@ sound adapter is unaffected. The PWM overlay becomes active after the reboot
 below; before that reboot, self-test reports the pending transition as a warning.
 
 `PCS_SETUP_POWER_MONITOR=yes` installs the dual-INA226 monitor and persistent
-diagnostic journal. On this reinstall, `/etc/pcs/power-monitor.json` must already
-be restored from the private archive before the base installer reaches this
-step. If the configuration is absent or invalid, the installer safely leaves
-the service staged and continues with a visible warning; that warning is a
-reinstall failure and must not be ignored.
+diagnostic journal. Selecting `PCS_POWER_PROFILE=commissioned-pcs` makes the
+one-command installer validate and install the repository's versioned `0x40`
+input/`0x4c` 5V profile with the commissioned 2 milliohm shunts and guarded
+shutdown policy. This choice is valid only for the same unchanged PCS hardware.
+Other builds must use `generic`, complete calibration, and explicitly arm
+shutdown later. An invalid profile or unavailable monitor is a reinstall
+failure and must not be ignored.
 
 `PCS_SETUP_BUZZER=yes` installs the active-low GPIO13 audible-status service.
 Use it only with the confirmed external approximately 10k SIG-to-3.3V pull-up.
@@ -473,6 +437,39 @@ complete when:
 - Dire Wolf is safely staged and its software test passes, or its active mode has completed the documented hardware/RF validation
 - Meshtastic is safely staged, or its active mode has a stable selected USB/BLE transport, broker connection, policy-safe allowlisted uplink/downlink, GPSD position health, and map policy when enabled
 - required radio modes pass an operator-supervised on-air test
+
+## Optional Post-Acceptance Credential Recovery
+
+Only after the clean one-command installer and cold-boot acceptance pass, mount
+the retained USB without formatting and verify/decrypt the recovery archive into
+a root-only staging directory:
+
+```bash
+lsblk -f
+sudo install -d -m 0755 /mnt/pcs-recovery
+sudo mount -o ro /dev/disk/by-uuid/RECORDED_PCS_USB_UUID /mnt/pcs-recovery
+cd /mnt/pcs-recovery/PCS-Share
+sudo sha256sum --check pcs-reinstall-state-YYYYMMDD.tar.gz.enc.sha256
+sudo install -d -o root -g root -m 0700 /root/pcs-reinstall-state
+openssl enc -d -aes-256-cbc -pbkdf2 \
+  -in pcs-reinstall-state-YYYYMMDD.tar.gz.enc \
+  | sudo tar -xzf - -C /root/pcs-reinstall-state
+```
+
+Do not bulk-copy the staging tree over `/`. Restore only state that is still
+needed, preserving its recorded ownership/mode, and rerun the owning setup
+script plus self-test afterward. Generated units and helpers must always come
+from the candidate repository.
+
+- `/etc/pcs`, `/etc/wireguard`, and the ignored repository `private-config`
+  carry WireGuard, APRS, Meshtastic, power, and Pi-Star shutdown material
+- `/etc/pcs-stats-api` restores server token hashes and TLS state; it cannot
+  recreate a lost raw Android token
+- `/etc/ssh` and `/home/pi/.ssh` restore host identity and permanent authorized
+  keys after confirming that no temporary access key is present
+- `/var/lib/samba/private` can restore Samba credentials only when the clean
+  image's Samba version is compatible; otherwise reset them through PCS setup
+- `/var/lib/bluetooth` restores bonds only when deliberately retaining BLE
 
 ## Remaining Manual Checkpoints
 

@@ -64,6 +64,7 @@ class DocumentationTests(unittest.TestCase):
         for required in (
             "Raspberry Pi OS Lite (64-bit)",
             "PCS_SETUP_POWER_MONITOR=yes",
+            "PCS_POWER_PROFILE=commissioned-pcs",
             "PCS_SETUP_BUZZER=yes",
             "pcs-reinstall-state.sh --export",
             "/etc/pcs/power-monitor.json",
@@ -71,6 +72,10 @@ class DocumentationTests(unittest.TestCase):
             "systemctl get-default",
         ):
             self.assertIn(required, runbook)
+        installer = runbook.index("./scripts/setup-pcs-base.sh")
+        recovery = runbook.index("## Optional Post-Acceptance Credential Recovery")
+        self.assertLess(installer, recovery)
+        self.assertNotIn("/root/pcs-reinstall-state", runbook[:installer])
 
 
 if __name__ == "__main__":

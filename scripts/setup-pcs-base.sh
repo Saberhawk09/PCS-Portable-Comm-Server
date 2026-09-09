@@ -49,6 +49,7 @@ PCS_SETUP_GPIO_LEDS="${PCS_SETUP_GPIO_LEDS:-ask}"
 PCS_SETUP_GPIO_STATS="${PCS_SETUP_GPIO_STATS:-ask}"
 PCS_SETUP_GPIO_FAN="${PCS_SETUP_GPIO_FAN:-ask}"
 PCS_SETUP_POWER_MONITOR="${PCS_SETUP_POWER_MONITOR:-ask}"
+PCS_POWER_PROFILE="${PCS_POWER_PROFILE:-ask}"
 PCS_SETUP_BUZZER="${PCS_SETUP_BUZZER:-ask}"
 PCS_APRS_CONFIG_VERSION="${PCS_APRS_CONFIG_VERSION:-3}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
@@ -345,6 +346,7 @@ write_install_config() {
         printf "PCS_SETUP_GPIO_STATS=%q\n" "${PCS_SETUP_GPIO_STATS}"
         printf "PCS_SETUP_GPIO_FAN=%q\n" "${PCS_SETUP_GPIO_FAN}"
         printf "PCS_SETUP_POWER_MONITOR=%q\n" "${PCS_SETUP_POWER_MONITOR}"
+        printf "PCS_POWER_PROFILE=%q\n" "${PCS_POWER_PROFILE}"
         printf "PCS_SETUP_BUZZER=%q\n" "${PCS_SETUP_BUZZER}"
         printf "PCS_APRS_CONFIG_VERSION=%q\n" "${PCS_APRS_CONFIG_VERSION}"
         printf "PCS_APRS_ACTIVE_MODE=%q\n" "${PCS_APRS_ACTIVE_MODE}"
@@ -496,6 +498,7 @@ collect_install_answers() {
     local gpio_stats_default
     local gpio_fan_default
     local power_monitor_default
+    local power_profile_default
     local buzzer_default
     local cellular_fallback_default
 
@@ -525,6 +528,7 @@ collect_install_answers() {
             PCS_SETUP_GPIO_STATS="no"
             PCS_SETUP_GPIO_FAN="no"
             PCS_SETUP_POWER_MONITOR="no"
+            PCS_POWER_PROFILE="generic"
             PCS_SETUP_BUZZER="no"
             ;;
         ALL)
@@ -554,6 +558,7 @@ collect_install_answers() {
             gpio_stats_default="${PCS_SETUP_GPIO_STATS}"
             gpio_fan_default="${PCS_SETUP_GPIO_FAN}"
             power_monitor_default="${PCS_SETUP_POWER_MONITOR}"
+            power_profile_default="${PCS_POWER_PROFILE}"
             buzzer_default="${PCS_SETUP_BUZZER}"
             [[ "${usb_default}" == "ask" ]] && usb_default="yes"
             [[ "${gps_default}" == "ask" ]] && gps_default="no"
@@ -593,6 +598,12 @@ collect_install_answers() {
             PCS_SETUP_GPIO_STATS="$(ask_yes_no "Install and start the optional MAX7219 LED matrix statistics display?" "${gpio_stats_default}")"
             PCS_SETUP_GPIO_FAN="$(ask_yes_no "Install GPIO18 hardware PWM thermal fan control?" "${gpio_fan_default}")"
             PCS_SETUP_POWER_MONITOR="$(ask_yes_no "Install optional dual INA226 power monitoring (calibration required)?" "${power_monitor_default}")"
+            if [[ "${PCS_SETUP_POWER_MONITOR}" == "yes" ]]; then
+                [[ "${power_profile_default}" == "ask" ]] && power_profile_default="generic"
+                PCS_POWER_PROFILE="$(ask_choice "INA226 configuration profile" "${power_profile_default}" generic commissioned-pcs)"
+            else
+                PCS_POWER_PROFILE="generic"
+            fi
             PCS_SETUP_BUZZER="$(ask_yes_no "Install optional active-low GPIO13 audible status?" "${buzzer_default}")"
             ;;
         ASK)
@@ -618,6 +629,7 @@ collect_install_answers() {
             PCS_SETUP_GPIO_STATS="ask"
             PCS_SETUP_GPIO_FAN="ask"
             PCS_SETUP_POWER_MONITOR="ask"
+            PCS_POWER_PROFILE="ask"
             PCS_SETUP_BUZZER="ask"
             pistar_default="${PCS_SETUP_PISTAR}"
             [[ "${pistar_default}" == "ask" ]] && pistar_default="no"
@@ -656,6 +668,7 @@ collect_install_answers() {
     export PCS_SETUP_GPIO_STATS
     export PCS_SETUP_GPIO_FAN
     export PCS_SETUP_POWER_MONITOR
+    export PCS_POWER_PROFILE
     export PCS_SETUP_BUZZER
 
     if [[ "${PCS_SETUP_MODE}" == "ASK" ]]; then
@@ -699,6 +712,7 @@ confirm_install_answers() {
     echo "  MAX7219 LED matrix: ${PCS_SETUP_GPIO_STATS}"
     echo "  GPIO18 PWM fan:     ${PCS_SETUP_GPIO_FAN}"
     echo "  INA226 monitoring:  ${PCS_SETUP_POWER_MONITOR}"
+    echo "  INA226 profile:     ${PCS_POWER_PROFILE}"
     echo "  GPIO13 buzzer:      ${PCS_SETUP_BUZZER}"
     echo
 
@@ -768,6 +782,9 @@ echo
 sudo -v
 cd "${REPO_DIR}"
 
+OPTIONAL_STEP_FAILURES=0
+FINAL_SELF_TEST_PASSED=0
+
 run_step() {
     local name="$1"
     local command="$2"
@@ -798,6 +815,7 @@ run_optional_step() {
         echo
         echo "WARNING: Optional step failed or was skipped: ${name}"
         echo "Continuing PCS base setup."
+        OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
     fi
 }
 
@@ -1281,7 +1299,12 @@ PCS_SETUP_POWER_MONITOR="${power_monitor_answer}"
 export PCS_SETUP_POWER_MONITOR
 write_install_config
 if [[ "${power_monitor_answer}" == "yes" ]]; then
-    run_optional_step "Install dual INA226 power monitoring" "./scripts/setup-power-audio.sh --install-power"
+    if [[ "${PCS_POWER_PROFILE}" != "generic" && "${PCS_POWER_PROFILE}" != "commissioned-pcs" ]]; then
+        PCS_POWER_PROFILE="$(ask_choice "INA226 configuration profile" "generic" generic commissioned-pcs)"
+        export PCS_POWER_PROFILE
+        write_install_config
+    fi
+    run_optional_step "Install dual INA226 power monitoring" "PCS_POWER_PROFILE=${PCS_POWER_PROFILE} ./scripts/setup-power-audio.sh --install-power"
 else
     echo "Skipping dual INA226 power monitoring."
 fi
@@ -1480,6 +1503,7 @@ echo "============================================================"
 echo
 
 if ./scripts/pcs-self-test.sh; then
+    FINAL_SELF_TEST_PASSED=1
     echo
     echo "PCS base setup completed and self-test passed."
 else
@@ -1520,3 +1544,16 @@ echo "  cd ${REPO_DIR}"
 echo "  ./scripts/pcs-self-test.sh"
 echo "  ./scripts/pcs-status.sh"
 echo
+
+if (( OPTIONAL_STEP_FAILURES > 0 )); then
+    echo "ERROR: ${OPTIONAL_STEP_FAILURES} selected optional setup step(s) failed or were skipped." >&2
+fi
+if (( FINAL_SELF_TEST_PASSED == 0 )); then
+    echo "ERROR: Final PCS self-test did not pass." >&2
+fi
+if (( OPTIONAL_STEP_FAILURES > 0 || FINAL_SELF_TEST_PASSED == 0 )); then
+    echo "PCS base setup is incomplete; correct the reported issue and rerun this one command." >&2
+    exit 1
+fi
+
+echo "PCS one-command installation completed successfully."

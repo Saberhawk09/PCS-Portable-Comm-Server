@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 POWER_CONFIG="${PCS_POWER_CONFIG:-/etc/pcs/power-monitor.json}"
+POWER_PROFILE="${PCS_POWER_PROFILE:-generic}"
 JOURNAL_CONFIG="/etc/systemd/journald.conf.d/90-pcs-persistent-diagnostics.conf"
 
 usage() {
@@ -48,9 +49,25 @@ install_power() {
     sudo journalctl --flush
     sudo install -d -o root -g root -m 0755 /etc/pcs
     if [[ ! -e "${POWER_CONFIG}" ]]; then
-        sudo install -o root -g root -m 0644 "${REPO_DIR}/config/power-monitor.example.json" "${POWER_CONFIG}"
-        echo "IMPORTANT: Verify both INA226 addresses and shunt calibrations in ${POWER_CONFIG}."
-        echo "Controlled shutdown remains disarmed until allow_shutdown is explicitly set true."
+        case "${POWER_PROFILE}" in
+            commissioned-pcs)
+                sudo /usr/local/sbin/pcs-power-monitor check-config \
+                    --config "${REPO_DIR}/config/power-monitor.pcs.json"
+                sudo install -o root -g root -m 0644 \
+                    "${REPO_DIR}/config/power-monitor.pcs.json" "${POWER_CONFIG}"
+                echo "Installed the versioned commissioned PCS INA226 profile."
+                ;;
+            generic)
+                sudo install -o root -g root -m 0644 \
+                    "${REPO_DIR}/config/power-monitor.example.json" "${POWER_CONFIG}"
+                echo "IMPORTANT: Verify both INA226 addresses and shunt calibrations in ${POWER_CONFIG}."
+                echo "Controlled shutdown remains disarmed until allow_shutdown is explicitly set true."
+                ;;
+            *)
+                echo "ERROR: PCS_POWER_PROFILE must be generic or commissioned-pcs." >&2
+                exit 2
+                ;;
+        esac
     fi
     if ! sudo /usr/local/sbin/pcs-power-monitor check-config --config "${POWER_CONFIG}"; then
         echo "Power-monitor software and its disabled unit are staged."

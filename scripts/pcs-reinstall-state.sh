@@ -20,15 +20,21 @@ EOF
 STATE_PATHS=(
     "home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf"
     "home/pi/Projects/PCS-Portable-Comm-Server/private-config"
+    "home/pi/.ssh"
     "etc/pcs"
     "etc/pcs-control-panel"
     "etc/pcs-backup/config.json"
     "etc/pcs-stats-api"
     "etc/direwolf.conf"
+    "etc/wireguard"
+    "etc/ssh"
+    "etc/samba"
     "etc/NetworkManager/system-connections"
     "var/lib/pcs-aprs-agent"
     "var/lib/graywolf/graywolf.db"
     "var/lib/alsa/asound.state"
+    "var/lib/samba/private"
+    "var/lib/bluetooth"
 )
 
 require_normal_pi_user() {
@@ -59,7 +65,8 @@ show_state() {
     done
     echo "Inventory: ${present} present, ${absent} absent/unused"
     echo "External OpenWrt and Pi-Star native backups must be collected separately."
-    echo "Samba and administrator passwords must be recorded separately or reset during reinstall."
+    echo "Raw Android app tokens and OS login passwords are not recoverable from server state."
+    echo "Record the archive passphrase separately and retain a known PCS login password."
 }
 
 export_state() {
