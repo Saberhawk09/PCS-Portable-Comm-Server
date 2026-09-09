@@ -22,7 +22,23 @@ PCS_CELLULAR_APN_DEFAULT="fast.t-mobile.com"
 PCS_CELLULAR_ROUTE_METRIC_DEFAULT="900"
 PCS_CELLULAR_FALLBACK_MODE_DEFAULT="manual"
 PCS_SAMBA_WORKGROUP_DEFAULT="WORKGROUP"
-PCS_WIREGUARD_PROFILE_DEFAULT="private-config/wg-pcs.conf"
+PCS_WIREGUARD_PROFILE_DEFAULT="${HOME}/wg-pcs.conf"
+
+discover_wireguard_profile() {
+    local candidate
+    # Prefer an existing saved selection, then the simple home-directory path.
+    # Keep older restore locations compatible without searching arbitrary files.
+    for candidate in "${PCS_WIREGUARD_PROFILE:-}" "${HOME}/wg-pcs.conf" \
+        "${HOME}/private-config/wg-pcs.conf" "${REPO_DIR}/private-config/wg-pcs.conf"; do
+        [[ -n "${candidate}" ]] || continue
+        [[ "${candidate}" == /* ]] || candidate="${REPO_DIR}/${candidate}"
+        if [[ -f "${candidate}" && ! -L "${candidate}" ]]; then
+            printf '%s\n' "${candidate}"
+            return
+        fi
+    done
+    printf '%s\n' "${PCS_WIREGUARD_PROFILE_DEFAULT}"
+}
 
 PCS_SETUP_MODE="ASK"
 PCS_CELLULAR_PROFILE="${PCS_CELLULAR_PROFILE:-${PCS_CELLULAR_PROFILE_DEFAULT}}"
@@ -38,7 +54,8 @@ PCS_SETUP_WWAN_GPS="${PCS_SETUP_WWAN_GPS:-ask}"
 PCS_SETUP_GPSD_LAN="${PCS_SETUP_GPSD_LAN:-ask}"
 PCS_SETUP_PISTAR="${PCS_SETUP_PISTAR:-ask}"
 PCS_SETUP_WIREGUARD="${PCS_SETUP_WIREGUARD:-ask}"
-PCS_WIREGUARD_PROFILE="${PCS_WIREGUARD_PROFILE:-${PCS_WIREGUARD_PROFILE_DEFAULT}}"
+PCS_WIREGUARD_PROFILE="$(discover_wireguard_profile)"
+PCS_WIREGUARD_HOME_NETWORK="${PCS_WIREGUARD_HOME_NETWORK:-}"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
 PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
 PCS_GRAYWOLF_HTTP_ADDRESS="${PCS_GRAYWOLF_HTTP_ADDRESS:-10.42.0.1}"
@@ -53,6 +70,9 @@ PCS_POWER_PROFILE="${PCS_POWER_PROFILE:-ask}"
 PCS_SETUP_BUZZER="${PCS_SETUP_BUZZER:-ask}"
 PCS_APRS_CONFIG_VERSION="${PCS_APRS_CONFIG_VERSION:-3}"
 PCS_APRS_ACTIVE_MODE="${PCS_APRS_ACTIVE_MODE:-staged}"
+PCS_APRS_CALLSIGN_BASE="${PCS_APRS_CALLSIGN_BASE:-W8IJC}"
+PCS_APRS_SSID="${PCS_APRS_SSID:-10}"
+PCS_APRS_IS_PASSCODE="${PCS_APRS_IS_PASSCODE:-}"
 PCS_APRS_ROLE="${PCS_APRS_ROLE:-digi-igate}"
 PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN:-W8IJC-10}"
 PCS_APRS_FREQUENCY="${PCS_APRS_FREQUENCY:-144.550 MHz}"
@@ -289,6 +309,29 @@ validate_aprs_engine() {
     esac
 }
 
+collect_aprs_identity() {
+    while true; do
+        PCS_APRS_CALLSIGN_BASE="$(ask_value "APRS base callsign" "${PCS_APRS_CALLSIGN_BASE}")"
+        PCS_APRS_CALLSIGN_BASE="${PCS_APRS_CALLSIGN_BASE^^}"
+        [[ "${PCS_APRS_CALLSIGN_BASE}" =~ ^[A-Z0-9]{1,6}$ ]] && break
+        echo "Use a 1-6 character amateur-radio callsign without the SSID." >&2
+    done
+    PCS_APRS_SSID="$(ask_choice "APRS SSID" "${PCS_APRS_SSID}" 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)"
+    if [[ "${PCS_APRS_SSID}" == "0" ]]; then
+        PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN_BASE}"
+    else
+        PCS_APRS_CALLSIGN="${PCS_APRS_CALLSIGN_BASE}-${PCS_APRS_SSID}"
+    fi
+    while true; do
+        ask_secret_confirm "APRS-IS passcode for ${PCS_APRS_CALLSIGN}" PCS_APRS_IS_PASSCODE
+        if [[ "${PCS_APRS_IS_PASSCODE}" =~ ^[0-9]{1,5}$ ]] \
+            && (( 10#${PCS_APRS_IS_PASSCODE} <= 32767 )); then
+            break
+        fi
+        echo "Use the numeric APRS-IS passcode for this callsign (0 through 32767)." >&2
+    done
+}
+
 ask_secret_confirm() {
     local prompt="$1"
     local output_var="$2"
@@ -336,6 +379,7 @@ write_install_config() {
         printf "PCS_SETUP_PISTAR=%q\n" "${PCS_SETUP_PISTAR}"
         printf "PCS_SETUP_WIREGUARD=%q\n" "${PCS_SETUP_WIREGUARD}"
         printf "PCS_WIREGUARD_PROFILE=%q\n" "${PCS_WIREGUARD_PROFILE}"
+        printf "PCS_WIREGUARD_HOME_NETWORK=%q\n" "${PCS_WIREGUARD_HOME_NETWORK}"
         printf "PCS_SETUP_APRS=%q\n" "${PCS_SETUP_APRS}"
         printf "PCS_APRS_ENGINE=%q\n" "${PCS_APRS_ENGINE}"
         printf "PCS_GRAYWOLF_HTTP_ADDRESS=%q\n" "${PCS_GRAYWOLF_HTTP_ADDRESS}"
@@ -584,13 +628,19 @@ collect_install_answers() {
             PCS_SETUP_WWAN_GPS="$(ask_yes_no "Configure WWAN modem NMEA GPS during setup?" "${gps_default}")"
             PCS_SETUP_GPSD_LAN="$(ask_yes_no "Share GPSD with trusted PCS LAN clients?" "${gpsd_lan_default}")"
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
-            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management from ${PCS_WIREGUARD_PROFILE_DEFAULT}?" "${wireguard_default}")"
+            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management?" "${wireguard_default}")"
             if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
                 PCS_WIREGUARD_PROFILE="$(ask_value "WireGuard profile path (kept outside Git)" "${PCS_WIREGUARD_PROFILE}")"
+                PCS_WIREGUARD_HOME_NETWORK="$(ask_value "Trusted home Wi-Fi subnet for management (CIDR; blank disables)" "${PCS_WIREGUARD_HOME_NETWORK}")"
             fi
             PCS_SETUP_APRS="$(ask_yes_no "Stage optional APRS software without enabling radio or RF transmit?" "${aprs_default}")"
             if [[ "${PCS_SETUP_APRS}" == "yes" ]]; then
                 PCS_APRS_ENGINE="$(ask_choice "APRS software engine" "${PCS_APRS_ENGINE}" direwolf graywolf)"
+                if [[ "${PCS_APRS_ENGINE}" == "direwolf" ]]; then
+                    collect_aprs_identity
+                    PCS_APRS_AGENT_ENABLED="yes"
+                    PCS_APRS_AGENT_RF_ENABLED="no"
+                fi
             fi
             PCS_SETUP_MESHTASTIC="$(ask_yes_no "Stage optional Meshtastic USB/Bluetooth support without connecting to or configuring a radio?" "${meshtastic_default}")"
             PCS_SETUP_GPIO_LCD="$(ask_yes_no "Install and start the optional 16x2 HD44780 LCD status display?" "${gpio_lcd_default}")"
@@ -636,9 +686,10 @@ collect_install_answers() {
             PCS_SETUP_PISTAR="$(ask_yes_no "Include a Pi-Star hotspot in PCS monitoring and local-access links?" "${pistar_default}")"
             wireguard_default="${PCS_SETUP_WIREGUARD}"
             [[ "${wireguard_default}" == "ask" ]] && wireguard_default="no"
-            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management from ${PCS_WIREGUARD_PROFILE_DEFAULT}?" "${wireguard_default}")"
+            PCS_SETUP_WIREGUARD="$(ask_yes_no "Import and activate WireGuard remote management?" "${wireguard_default}")"
             if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
                 PCS_WIREGUARD_PROFILE="$(ask_value "WireGuard profile path (kept outside Git)" "${PCS_WIREGUARD_PROFILE}")"
+                PCS_WIREGUARD_HOME_NETWORK="$(ask_value "Trusted home Wi-Fi subnet for management (CIDR; blank disables)" "${PCS_WIREGUARD_HOME_NETWORK}")"
             fi
             ;;
     esac
@@ -658,8 +709,12 @@ collect_install_answers() {
     export PCS_SETUP_PISTAR
     export PCS_SETUP_WIREGUARD
     export PCS_WIREGUARD_PROFILE
+    export PCS_WIREGUARD_HOME_NETWORK
     export PCS_SETUP_APRS
     export PCS_APRS_ENGINE
+    export PCS_APRS_CALLSIGN_BASE
+    export PCS_APRS_SSID
+    export PCS_APRS_IS_PASSCODE
     export PCS_GRAYWOLF_HTTP_ADDRESS
     export PCS_GRAYWOLF_HTTP_PORT
     export PCS_SETUP_MESHTASTIC
@@ -706,6 +761,10 @@ confirm_install_answers() {
     echo "  WireGuard remote:   ${PCS_SETUP_WIREGUARD}"
     echo "  WireGuard profile:  ${PCS_WIREGUARD_PROFILE}"
     echo "  APRS software:       ${PCS_SETUP_APRS} (${PCS_APRS_ENGINE})"
+    if [[ "${PCS_SETUP_APRS}" == "yes" && "${PCS_APRS_ENGINE}" == "direwolf" ]]; then
+        echo "  APRS identity:       ${PCS_APRS_CALLSIGN}"
+        echo "  APRS-IS passcode:    provided; not written to config"
+    fi
     echo "  Meshtastic BLE:      ${PCS_SETUP_MESHTASTIC}"
     echo "  HD44780 LCD:         ${PCS_SETUP_GPIO_LCD}"
     echo "  WS2812 indicators:   ${PCS_SETUP_GPIO_LEDS}"
@@ -950,6 +1009,7 @@ if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then
         fi
         echo "WARNING: WireGuard remote management was not accepted as active; feature files and services were rolled back."
         echo "The base install will continue; correct the private profile or home hub and retry later."
+        OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
     else
         echo "WireGuard remote management is installed, active, and handshake-verified."
     fi
@@ -1098,6 +1158,10 @@ if [[ -n "${USB_DEVICE}" ]]; then
     esac
 else
     echo "No removable/USB storage filesystem was detected."
+    if [[ "${PCS_SETUP_USB_PRIMARY}" == "yes" ]]; then
+        OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
+        echo "ERROR: USB primary storage was selected; connect the drive and rerun setup." >&2
+    fi
     echo "Skipping USB primary share setup."
     echo "You can run this later with a specific device, for example:"
     echo "  ./scripts/setup-usb-primary-share.sh /dev/sda1"
@@ -1343,6 +1407,7 @@ case "${aprs_answer}" in
         else
             echo
             echo "WARNING: PCS APRS UART preparation failed."
+            OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
             echo "RF activation will remain blocked until this succeeds:"
             echo "  ./scripts/setup-direwolf-aprs.sh --prepare-uart"
         fi
@@ -1354,6 +1419,7 @@ case "${aprs_answer}" in
         else
             echo
             echo "WARNING: ${PCS_APRS_ENGINE} APRS software staging failed."
+            OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
             echo "You can retry it later with:"
             echo "  ${aprs_setup_script} --prepare"
         fi
@@ -1394,6 +1460,7 @@ case "${meshtastic_answer}" in
         else
             echo
             echo "WARNING: Meshtastic USB/Bluetooth software staging failed."
+            OPTIONAL_STEP_FAILURES=$((OPTIONAL_STEP_FAILURES + 1))
             echo "You can retry it later with:"
             echo "  ./scripts/setup-meshtastic-bluetooth.sh --prepare"
         fi

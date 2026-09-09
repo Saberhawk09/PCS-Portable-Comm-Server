@@ -197,17 +197,29 @@ cd PCS-Portable-Comm-Server
 ```
 
 If WireGuard remote management will be enabled during setup, restore its private
-profile before starting the installer. For a wiped PCS, use the standard
-outside-repository location `/home/pi/private-config/wg-pcs.conf`, restrict it
-to the `pi` account, and enter that absolute path when prompted:
+profile before starting the installer. Simply place `wg-pcs.conf` in `/home/pi`.
+Setup discovers it and offers the path as the prompt default; press Enter to
+accept it, or enter another path. Restrict the file to the `pi` account:
 
 ```bash
-chmod 700 /home/pi/private-config
-chmod 600 /home/pi/private-config/wg-pcs.conf
+sudo chown pi:pi /home/pi/wg-pcs.conf
+chmod 600 /home/pi/wg-pcs.conf
 ```
 
 The profile contains a private key. Never add it to the repository or copy it
 into documentation, logs, or test output.
+An existing saved path takes priority. The older
+`/home/pi/private-config/wg-pcs.conf` location is also discovered automatically;
+use `chmod 600 /home/pi/private-config/wg-pcs.conf` if retaining that location.
+Secure root-owned restored profiles are also accepted without changing their
+ownership. Other owners, symlinks, and exposed permissions are rejected.
+Setup also asks for the trusted home Wi-Fi subnet (for example,
+`192.168.50.0/24`) if you want management through that network. WireGuard
+activation refuses to apply a policy that would block the current SSH source.
+
+When Dire Wolf APRS is selected, setup asks separately for the base callsign,
+SSID, and APRS-IS passcode. The passcode is used only to render the protected
+live Dire Wolf configuration; it is not written to `pcs-install.conf` or Git.
 
 Run the base setup:
 

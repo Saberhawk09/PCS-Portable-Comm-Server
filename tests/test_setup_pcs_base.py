@@ -45,11 +45,11 @@ class SetupPcsBaseTests(unittest.TestCase):
 
     def test_wireguard_setup_is_upfront_default_off_and_all_or_nothing(self):
         self.assertIn('PCS_SETUP_WIREGUARD="${PCS_SETUP_WIREGUARD:-ask}"', self.source)
-        self.assertIn('PCS_WIREGUARD_PROFILE_DEFAULT="private-config/wg-pcs.conf"', self.source)
+        self.assertIn('PCS_WIREGUARD_PROFILE_DEFAULT="${HOME}/wg-pcs.conf"', self.source)
         self.assertIn('printf "PCS_SETUP_WIREGUARD=%q\\n"', self.source)
         self.assertIn('printf "PCS_WIREGUARD_PROFILE=%q\\n"', self.source)
         self.assertIn(
-            'Import and activate WireGuard remote management from ${PCS_WIREGUARD_PROFILE_DEFAULT}?',
+            'Import and activate WireGuard remote management?',
             self.source,
         )
         self.assertIn('setup-wireguard-management.sh --validate-profile', self.source)
@@ -145,6 +145,14 @@ class SetupPcsBaseTests(unittest.TestCase):
         final_status = self.source.index('STEP: Final PCS status')
         self.assertLess(control_panel, buzzer)
         self.assertLess(buzzer, final_status)
+
+    def test_aprs_identity_and_passcode_are_collected_without_persisting_secret(self):
+        self.assertIn('ask_value "APRS base callsign"', self.source)
+        self.assertIn('ask_choice "APRS SSID"', self.source)
+        self.assertIn('ask_secret_confirm "APRS-IS passcode for ${PCS_APRS_CALLSIGN}"', self.source)
+        self.assertNotIn('printf "PCS_APRS_IS_PASSCODE=%q', self.source)
+        self.assertNotIn('printf "PCS_APRS_CALLSIGN_BASE=%q', self.source)
+        self.assertNotIn('printf "PCS_APRS_SSID=%q', self.source)
 
     def test_lite_preflight_enforces_fixed_runtime_identity_and_path(self):
         preflight_call = self.source.index("validate_host_preflight\n")

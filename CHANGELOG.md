@@ -15,6 +15,15 @@ All notable user-facing PCS changes are recorded here.
 
 ### Changed
 
+- accept protected root-owned WireGuard restores and collect the trusted home
+  Wi-Fi subnet; refuse activation when the policy would block the current SSH source
+- count missing selected USB storage and failed WireGuard, UART, APRS, or
+  Meshtastic setup as incomplete installs instead of reporting success
+- discover `~/wg-pcs.conf` during setup, retaining existing saved selections
+  and older private-config locations and allowing an explicit path override
+- collect the APRS base callsign, SSID, and APRS-IS passcode during the main
+  installer flow while keeping the passcode out of persistent install config
+  and Git
 - extend the full-stack reinstall runbook and acceptance checklist to cover the
   commissioned dual-INA226 monitor, GPIO13 buzzer, safe APRS/Meshtastic staging,
   removable-storage recovery, headless boot validation, and the Git bootstrap

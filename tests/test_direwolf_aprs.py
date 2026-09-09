@@ -89,11 +89,20 @@ class DireWolfAprsTests(unittest.TestCase):
                 self.assertIn(f"`{option}`", documentation)
 
     def test_aprs_is_passcode_has_no_install_config_key(self):
-        combined = "\n".join(
-            path.read_text(encoding="utf-8")
-            for path in (INSTALL_EXAMPLE, SETUP_SCRIPT)
-        )
-        self.assertNotRegex(combined, r"PCS_APRS_.*PASS(?:CODE|WORD)")
+        example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
+        base_setup = BASE_SETUP_SCRIPT.read_text(encoding="utf-8")
+
+        self.assertNotRegex(example, r"PCS_APRS_.*PASS(?:CODE|WORD)")
+        self.assertNotIn('printf "PCS_APRS_IS_PASSCODE=%q', base_setup)
+
+    def test_selected_agent_is_installed_after_direwolf_activation(self):
+        setup = SETUP_SCRIPT.read_text(encoding="utf-8")
+
+        activation = setup.index('echo "Dire Wolf ${profile} profile activated successfully."')
+        agent_install = setup.index('setup-pcs-aprs-agent.sh" --install', activation)
+        refresh = setup.index("refresh_control_panel_if_installed", agent_install)
+        self.assertLess(activation, agent_install)
+        self.assertLess(agent_install, refresh)
 
     def test_selected_igate_policy_gates_all_normally_eligible_rf_packets(self):
         example = INSTALL_EXAMPLE.read_text(encoding="utf-8")
