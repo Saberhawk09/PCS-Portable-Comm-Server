@@ -23,6 +23,8 @@ All notable user-facing PCS changes are recorded here.
   remote management is selected during a clean base installation
 - defer starting the GPIO13 fault buzzer until the monitored PCS service stack
   has finished installing, avoiding false hard-fault alarms during setup
+- treat a deliberately absent APRS agent as healthy when APRS is only staged,
+  while retaining hard-fault signaling for stale or failed installed agents
 - keep clean-install acceptance to the single `setup-pcs-base.sh` command,
   offer the explicitly selected versioned commissioned INA226 profile from that
   installer, and return failure if any selected step or final self-test fails

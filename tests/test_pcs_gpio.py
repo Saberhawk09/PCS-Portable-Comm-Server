@@ -805,6 +805,42 @@ class PcsGpioTests(unittest.TestCase):
         service_led = pcs_gpio.led_status_indicators(health)[3]
         self.assertEqual((service_led.state, service_led.color), ("aprs_error", pcs_gpio.LED_CRITICAL))
 
+    def test_staged_aprs_without_agent_is_not_a_hard_fault(self):
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(
+                39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs",
+                aprs_status=None,
+            ),
+            20,
+            True,
+            0,
+            aprs_agent_expected=False,
+        )
+        self.assertNotIn("aprs_agent", {alert.name for alert in pcs_gpio.matrix_alerts(health)})
+        self.assertEqual(pcs_gpio.led_status_indicators(health)[3].state, "healthy")
+
+    def test_installed_agent_without_status_is_a_hard_fault(self):
+        health = pcs_gpio.MatrixHealthSnapshot(
+            pcs_gpio.StatsSnapshot(
+                39, 12, 21, True, True, 14, "WiFi", 1, "EN91qs",
+                aprs_status=None,
+            ),
+            20,
+            True,
+            0,
+            aprs_agent_expected=True,
+        )
+        self.assertIn("aprs_agent", {alert.name for alert in pcs_gpio.matrix_alerts(health)})
+        self.assertEqual(pcs_gpio.led_status_indicators(health)[3].state, "aprs_error")
+
+    def test_aprs_agent_expectation_uses_installed_non_secret_markers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = Path(temp_dir) / "aprs-agent.conf"
+            service = Path(temp_dir) / "pcs-aprs-agent.service"
+            self.assertFalse(pcs_gpio.read_aprs_agent_expected(config, service))
+            service.touch()
+            self.assertTrue(pcs_gpio.read_aprs_agent_expected(config, service))
+
     def test_matrix_annunciator_prioritizes_critical_and_warning_conditions(self):
         self.assertEqual(
             pcs_gpio.EXCLAMATION_ICON,
