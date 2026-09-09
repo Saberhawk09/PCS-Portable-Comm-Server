@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SETUP_SCRIPT = ROOT / "scripts" / "setup-pcs-base.sh"
 POWER_SETUP_SCRIPT = ROOT / "scripts" / "setup-power-audio.sh"
+REINSTALL_STATE_SCRIPT = ROOT / "scripts" / "pcs-reinstall-state.sh"
 
 
 class SetupPcsBaseTests(unittest.TestCase):
@@ -136,6 +137,15 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('./scripts/setup-power-audio.sh --install-power', self.source)
         self.assertIn('./scripts/setup-power-audio.sh --install-buzzer', self.source)
 
+    def test_lite_preflight_enforces_fixed_runtime_identity_and_path(self):
+        preflight_call = self.source.index("validate_host_preflight\n")
+        setup_choice = self.source.index("choose_setup_mode", preflight_call)
+        self.assertLess(preflight_call, setup_choice)
+        self.assertIn('current_user}" != "pi"', self.source)
+        self.assertIn('/home/pi/Projects/PCS-Portable-Comm-Server', self.source)
+        self.assertIn('A graphical desktop is not required', self.source)
+        self.assertIn('for command in apt-get systemctl python3', self.source)
+
     def test_file_share_discovery_is_a_repeatable_base_step(self):
         backup = self.source.index('run_step "Configure automatic PCS backups"')
         discovery = self.source.index('run_step "Configure LAN file-share discovery"')
@@ -151,6 +161,22 @@ class PowerSetupTests(unittest.TestCase):
         self.assertIn('config/pcs-journald-persistent.conf', source)
         self.assertIn('/etc/systemd/journald.conf.d/90-pcs-persistent-diagnostics.conf', source)
         self.assertIn('sudo journalctl --flush', source)
+
+
+class ReinstallStateTests(unittest.TestCase):
+    def test_export_is_private_bounded_and_never_overwrites(self):
+        source = REINSTALL_STATE_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('Refusing to place credential-bearing state inside the repository', source)
+        self.assertIn('Refusing to overwrite', source)
+        self.assertIn('Refusing to save recovery state on the SD-card root filesystem', source)
+        self.assertIn('openssl enc -aes-256-cbc -pbkdf2 -salt', source)
+        self.assertIn('Passphrase must contain at least 12 characters', source)
+        self.assertIn('removed the incomplete archive', source)
+        self.assertIn('sudo chmod 0600 "${archive}"', source)
+        self.assertIn('digest="$(sudo sha256sum "${archive}"', source)
+        self.assertIn('etc/pcs', source)
+        self.assertIn('etc/NetworkManager/system-connections', source)
+        self.assertNotIn('etc/shadow', source)
 
 
 if __name__ == "__main__":

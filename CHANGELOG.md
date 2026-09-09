@@ -4,6 +4,20 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- Raspberry Pi OS Lite 64-bit reinstall candidate path with a fail-fast host,
+  account, and fixed-checkout preflight
+- bounded, passphrase-encrypted pre-wipe export of private PCS configuration,
+  calibration, credentials, and retained application state with a separate
+  SHA-256 checksum and SD-card destination refusal
+
+### Changed
+
+- extend the full-stack reinstall runbook and acceptance checklist to cover the
+  commissioned dual-INA226 monitor, GPIO13 buzzer, safe APRS/Meshtastic staging,
+  removable-storage recovery, and headless boot validation
+
 ## [1.8.1] - 2026-09-07
 
 ### Added

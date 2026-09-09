@@ -37,11 +37,40 @@ an access-controlled folder; do not commit them to this repository.
 
 ### PCS
 
-Save:
+First make a final additive copy of the USB share into the SD-card backup and
+confirm the removable USB data is current:
 
-- `config/pcs-install.conf`
+```bash
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+./scripts/sync-pcs-share-to-backup.sh
+./scripts/pcs-self-test.sh
+```
+
+Then inventory and export the credential-bearing PCS configuration to trusted
+removable storage that will **not** be wiped. Do not put this archive in Git,
+cloud storage, or the replacement SD-card image:
+
+```bash
+./scripts/pcs-reinstall-state.sh --check
+./scripts/pcs-reinstall-state.sh --export /mnt/pcs-usb/PCS-Share/pcs-reinstall-state-YYYYMMDD.tar.gz.enc
+cd /mnt/pcs-usb/PCS-Share
+sudo sha256sum --check pcs-reinstall-state-YYYYMMDD.tar.gz.enc.sha256
+```
+
+The AES-256 encrypted archive includes the installed answer file, commissioned INA226
+calibration/shutdown policy, APRS and Meshtastic credentials/configuration,
+WireGuard key material, Pi-Star shutdown key, administrator/API state,
+NetworkManager profiles, and retained APRS application state when those paths
+exist. It deliberately does not archive `PCS-Share` itself, OpenWrt, Pi-Star,
+or Samba passwords.
+
+Record separately:
+
+- the Samba/PCS administrator password, or the decision to set a new one
+- the intended USB filesystem identity and current mount
+- the archive filename and matching SHA-256 checksum
+- the archive passphrase, retained separately from the archive
 - any files that exist only on `PCS-Share`
-- any intentionally edited local service configuration
 
 The installer never writes the Samba password to `pcs-install.conf`. Record
 that password separately.
@@ -66,8 +95,15 @@ integration script deliberately does not copy those values into Git.
 
 ### 1. Rebuild the PCS Raspberry Pi
 
-Install the tested Raspberry Pi OS, create the normal `pi` account, boot, and
-clone the repository:
+Use Raspberry Pi Imager to install **Raspberry Pi OS Lite (64-bit)** for this
+validation. In Imager customization, set hostname `pcs-pi`, create the normal
+user named exactly `pi`, enable SSH, and configure the temporary installation
+Wi-Fi. PCS services are web/systemd based and do not require a graphical
+desktop. The installer fails before mutation if the account or repository path
+is incompatible with its fixed service paths.
+
+Boot, verify Internet access and system time, and clone the repository at the
+required path:
 
 ```bash
 mkdir -p ~/Projects
@@ -75,6 +111,66 @@ cd ~/Projects
 git clone https://github.com/Saberhawk09/PCS-Portable-Comm-Server.git
 cd PCS-Portable-Comm-Server
 ```
+
+Lite does not automatically mount the retained PCS USB drive at the old path.
+Use the filesystem identity recorded before the wipe, inspect it without
+formatting, and mount it read-only for recovery:
+
+```bash
+lsblk -f
+sudo install -d -m 0755 /mnt/pcs-recovery
+sudo mount -o ro /dev/disk/by-uuid/RECORDED_PCS_USB_UUID /mnt/pcs-recovery
+```
+
+Verify the exact release or candidate commit under test, then restore the saved installer answers and
+commissioned power configuration into place. Replace the archive name below
+with the file actually created before the wipe. For a pre-release wipe test,
+use the exact reviewed commit supplied for the test rather than a moving branch:
+
+```bash
+git checkout REINSTALL_TEST_COMMIT
+test "$(git rev-parse HEAD)" = "REINSTALL_TEST_COMMIT"
+git status --short --branch
+cd /mnt/pcs-recovery/PCS-Share
+sudo sha256sum --check pcs-reinstall-state-YYYYMMDD.tar.gz.enc.sha256
+sudo install -d -o root -g root -m 0700 /root/pcs-reinstall-state
+openssl enc -d -aes-256-cbc -pbkdf2 \
+  -in pcs-reinstall-state-YYYYMMDD.tar.gz.enc \
+  | sudo tar -xzf - -C /root/pcs-reinstall-state
+cd /home/pi/Projects/PCS-Portable-Comm-Server
+sudo install -o pi -g pi -m 0600 \
+  /root/pcs-reinstall-state/home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf \
+  config/pcs-install.conf
+if sudo test -d /root/pcs-reinstall-state/home/pi/Projects/PCS-Portable-Comm-Server/private-config; then
+  sudo cp -a /root/pcs-reinstall-state/home/pi/Projects/PCS-Portable-Comm-Server/private-config .
+  sudo chown -R pi:pi private-config
+fi
+sudo install -d -o root -g root -m 0755 /etc/pcs
+sudo cp -a /root/pcs-reinstall-state/etc/pcs/. /etc/pcs/
+```
+
+The `/etc/pcs` restore makes the INA226 installation use the previously
+commissioned addresses, 2 milliohm shunts, limits, and guarded shutdown policy
+instead of the intentionally invalid generic template. This is valid only for
+the same unchanged PCS hardware. Do not copy that calibrated profile to a
+different build.
+
+Before running the base installer, force radio/network integrations into safe
+staging so restoring old state cannot activate RF, a broker connection, or
+remote management during the rebuild:
+
+```bash
+sed -i -E \
+  -e 's/^PCS_SETUP_APRS=.*/PCS_SETUP_APRS="staged"/' \
+  -e 's/^PCS_APRS_ACTIVE_MODE=.*/PCS_APRS_ACTIVE_MODE="staged"/' \
+  -e 's/^PCS_APRS_AGENT_ENABLED=.*/PCS_APRS_AGENT_ENABLED="no"/' \
+  -e 's/^PCS_SETUP_MESHTASTIC=.*/PCS_SETUP_MESHTASTIC="staged"/' \
+  -e 's/^PCS_SETUP_WIREGUARD=.*/PCS_SETUP_WIREGUARD="no"/' \
+  config/pcs-install.conf
+```
+
+This changes only the recovery copy on the new SD card. The encrypted
+archive retains the pre-wipe values for later comparison.
 
 Run the base installer:
 
@@ -94,6 +190,8 @@ Install 16x2 HD44780 LCD display:    yes (when physically fitted)
 Install six-pixel WS2812 indicators: yes (when physically fitted)
 Install MAX7219 LED matrix display:  yes (only when physically fitted)
 Install GPIO18 hardware PWM fan:     yes (when the Armor Lite cooler is fitted)
+Install dual INA226 power monitoring: yes (only on the commissioned PCS hardware)
+Install active-low GPIO13 audible status: yes (when the pull-up/wiring is confirmed)
 ```
 
 The generated `config/pcs-install.conf` should therefore contain:
@@ -108,6 +206,8 @@ PCS_SETUP_GPIO_LCD=yes
 PCS_SETUP_GPIO_LEDS=yes
 PCS_SETUP_GPIO_STATS=yes
 PCS_SETUP_GPIO_FAN=yes
+PCS_SETUP_POWER_MONITOR=yes
+PCS_SETUP_BUZZER=yes
 ```
 
 The GPSD setting installs a socket proxy bound only to
@@ -203,6 +303,16 @@ on GPIO18, and installs the fail-safe thermal controller. The USB Dire Wolf
 sound adapter is unaffected. The PWM overlay becomes active after the reboot
 below; before that reboot, self-test reports the pending transition as a warning.
 
+`PCS_SETUP_POWER_MONITOR=yes` installs the dual-INA226 monitor and persistent
+diagnostic journal. On this reinstall, `/etc/pcs/power-monitor.json` must already
+be restored from the private archive before the base installer reaches this
+step. If the configuration is absent or invalid, the installer safely leaves
+the service staged and continues with a visible warning; that warning is a
+reinstall failure and must not be ignored.
+
+`PCS_SETUP_BUZZER=yes` installs the active-low GPIO13 audible-status service.
+Use it only with the confirmed external approximately 10k SIG-to-3.3V pull-up.
+
 Reboot:
 
 ```bash
@@ -295,14 +405,13 @@ was not reachable then, use the standalone command above.
 
 ## Verification
 
-The PCS Pi SD-card wipe/rebuild path was most recently verified on August 18,
-2026. That validation covered the repeatable Pi-side software path and
-configured integrations; it did not make OpenWrt or Pi-Star flashing,
-credentials, appliance backups, USB identity decisions, or on-air RF checks
-automatic. The current installed stack was synchronized to `main` and passed
-133 live self-tests with no warnings or failures on August 24, 2026. The
-procedure below remains the release-standard validation because those
-intentional manual checkpoints still apply.
+The PCS Pi SD-card wipe/rebuild path was most recently verified on Raspberry Pi
+OS 64-bit Desktop on August 18, 2026. This run is the first full Raspberry Pi OS
+Lite 64-bit acceptance and the first wipe test of the v1.8 power/buzzer stack.
+Do not update the README to call Lite validated until every acceptance item
+below passes after a cold boot. OpenWrt/Pi-Star flashing, credentials, appliance
+backups, USB identity decisions, and on-air RF checks remain intentionally
+manual.
 
 On PCS:
 
@@ -314,7 +423,21 @@ cd /home/pi/Projects/PCS-Portable-Comm-Server
 ./scripts/setup-direwolf-aprs.sh --check
 ./scripts/setup-direwolf-aprs.sh --validate-config tx
 ./scripts/setup-direwolf-aprs.sh --software-test
+./scripts/setup-power-audio.sh --check
+sudo /usr/local/sbin/pcs-power-monitor check-config --config /etc/pcs/power-monitor.json
 ```
+
+For the Lite image also record:
+
+```bash
+. /etc/os-release; printf '%s\n' "$PRETTY_NAME"
+systemctl get-default
+systemctl --failed --no-pager
+```
+
+No graphical target or Wayland compositor is required. Raspberry Pi Connect may
+be absent and should be reported as an expected skip, not installed merely to
+make a headless image resemble Desktop.
 
 Copy a fresh version of the Pi-Star script after a repository update, then run
 on Pi-Star:
@@ -339,6 +462,9 @@ Finally, cold-boot all three devices and repeat both checks. A reinstall test is
 complete when:
 
 - PCS self-test has no failures
+- the host reports Raspberry Pi OS Lite 64-bit and reaches `multi-user.target` without failed units
+- power-monitor configuration validates, both commissioned INA226 addresses respond, and `pcs-power-monitor.service` is enabled and active
+- the GPIO13 buzzer service is enabled/active and POST, OK, WARN, BAD, and shutdown patterns are operator-confirmed
 - Pi-Star integration check has no configuration failures
 - OpenWrt and Pi-Star retain `.2` and `.3`
 - Pi-Star time synchronizes through PCS

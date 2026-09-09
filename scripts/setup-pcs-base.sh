@@ -167,6 +167,58 @@ is_no() {
     esac
 }
 
+validate_host_preflight() {
+    local current_user
+    local expected_repo="/home/pi/Projects/PCS-Portable-Comm-Server"
+
+    current_user="$(id -un)"
+    if [[ "${current_user}" != "pi" ]]; then
+        echo "ERROR: PCS currently requires the normal Raspberry Pi OS user to be named pi." >&2
+        echo "Create/select the pi account in Raspberry Pi Imager, then rerun as pi." >&2
+        exit 1
+    fi
+
+    if [[ "${REPO_DIR}" != "${expected_repo}" ]]; then
+        echo "ERROR: PCS must be cloned at ${expected_repo}." >&2
+        echo "The installed systemd units and bounded administrative helpers use that fixed path." >&2
+        exit 1
+    fi
+
+    for command in apt-get systemctl python3; do
+        if ! command -v "${command}" >/dev/null 2>&1; then
+            echo "ERROR: Required Raspberry Pi OS command is unavailable: ${command}" >&2
+            exit 1
+        fi
+    done
+
+    if [[ -r /etc/os-release ]]; then
+        # shellcheck source=/dev/null
+        . /etc/os-release
+        case "${ID:-}" in
+            raspbian|debian)
+                ;;
+            *)
+                echo "ERROR: PCS expects Raspberry Pi OS/Debian; detected ${PRETTY_NAME:-unknown}." >&2
+                exit 1
+                ;;
+        esac
+        echo "PCS host preflight: ${PRETTY_NAME:-Raspberry Pi OS/Debian}"
+    else
+        echo "ERROR: /etc/os-release is unavailable; cannot validate the PCS host OS." >&2
+        exit 1
+    fi
+
+    if [[ -e /proc/device-tree/model ]]; then
+        echo -n "PCS hardware preflight: "
+        tr -d '\0' < /proc/device-tree/model
+        echo
+    else
+        echo "WARNING: Raspberry Pi model data is unavailable; hardware validation remains pending."
+    fi
+
+    echo "A graphical desktop is not required; Raspberry Pi OS Lite is supported by this setup path."
+}
+
 ask_yes_no() {
     local prompt="$1"
     local default_answer="${2:-}"
@@ -701,6 +753,7 @@ echo
 echo "WWAN modem GPS can be configured as an optional hardware step if the modem is present."
 echo
 
+validate_host_preflight
 choose_setup_mode
 
 collect_install_answers
@@ -811,6 +864,7 @@ ensure_executable "scripts/pcs-web-action.sh"
 ensure_executable "scripts/sync-pcs-share-to-backup.sh"
 ensure_executable "scripts/pcs-self-test.sh"
 ensure_executable "scripts/pcs-status.sh"
+ensure_executable "scripts/pcs-reinstall-state.sh"
 
 if [[ -d "web/pcs-control-panel" ]]; then
     chmod +x web/pcs-control-panel/*.py 2>/dev/null || true

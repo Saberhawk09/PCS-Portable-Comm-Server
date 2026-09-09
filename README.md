@@ -170,7 +170,7 @@ coupling remains an explicitly unresolved hardware issue as documented above.
 
 Before running setup, connect the hardware you want the installer to configure:
 
-- Raspberry Pi booted from the target SD card. Tested with Raspberry Pi OS 64-bit Desktop; Lite has not yet been validated.
+- Raspberry Pi booted from the target SD card. Raspberry Pi OS 64-bit Desktop is validated; the installer also supports a headless Raspberry Pi OS Lite 64-bit path, whose first full appliance wipe acceptance remains pending.
 - Ethernet from the Pi to the PCS router/AP through a LAN port, not the WAN/Internet port.
 - The PCS router/AP powered on.
 - The RTC module installed, if this build includes the RTC.

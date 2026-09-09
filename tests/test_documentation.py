@@ -59,6 +59,19 @@ class DocumentationTests(unittest.TestCase):
         self.assertIn("python -m compileall -q scripts tests web", workflow)
         self.assertIn('for script in scripts/*.sh; do', workflow)
 
+    def test_reinstall_runbook_covers_lite_and_v18_private_state(self):
+        runbook = (ROOT / "docs" / "full-stack-reinstall.md").read_text(encoding="utf-8")
+        for required in (
+            "Raspberry Pi OS Lite (64-bit)",
+            "PCS_SETUP_POWER_MONITOR=yes",
+            "PCS_SETUP_BUZZER=yes",
+            "pcs-reinstall-state.sh --export",
+            "/etc/pcs/power-monitor.json",
+            "./scripts/setup-power-audio.sh --check",
+            "systemctl get-default",
+        ):
+            self.assertIn(required, runbook)
+
 
 if __name__ == "__main__":
     unittest.main()
