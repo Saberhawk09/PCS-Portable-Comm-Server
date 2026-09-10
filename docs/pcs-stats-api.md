@@ -268,6 +268,12 @@ python3 scripts/pcs-api-smoke-test.py \
 
 ## Verified state and remaining product gates
 
+PCS v1.4 established the supervised HTTPS status/pairing service and server-side
+Android contract. The complete administrative action/password expansion was
+deployed within a guarded rollback boundary on August 27, 2026. The dated
+checks below record that deployment; they do not imply a new full-scope client
+pairing test occurred during the September Lite recovery.
+
 The API process is disabled unless `PCS_API_ENABLED=yes` and its `main()`
 requires a TLS certificate and private key. Source existence alone does not
 enable a listener. The 2026-08-27 administrative deployment passed 318 local
@@ -282,7 +288,7 @@ gates are:
   certificate;
 - complete credential lifecycle and wider biometric compatibility tests for
   the production-signed Android client;
-- carry the post-v1.4 live fixes in the v1.4.1 repository release history.
+- repeat client acceptance after material API, certificate, or routing changes.
 
 Operator acceptance on 2026-08-28 confirmed PCS Companion access over the
 trusted home LAN, direct PCS LAN, and cellular/WireGuard routes. The corrected

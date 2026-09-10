@@ -245,8 +245,12 @@ The working build is operational. Remaining work is primarily documentation, mea
 - characterize a second input-current reference point if tighter calibration is needed
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
 
-The PCS Pi SD-card wipe/rebuild was most recently verified on August 18, 2026.
-The deployed stack was synchronized for PCS v1.8.1 and passed its live power,
+The PCS Pi was wiped and rebuilt with Raspberry Pi OS Lite on September 9,
+2026. USB, dual-INA226, WireGuard, APRS, and Meshtastic recovery required the
+repairs recorded in the [reinstall runbook](full-stack-reinstall.md). PCS v1.8.2
+was then deployed and passed live operational checks, with operator-confirmed
+two-way APRS. This repaired installation does not prove a fresh unattended run
+of the final installer. The deployed stack previously passed its live power,
 alarm, shutdown, and five-minute full non-RF stress acceptance on September 7,
 2026. SA818S transmission still disrupts the shared I2C bus and can temporarily
 make both INA226s and potentially the RTC inaccessible; devices recover after

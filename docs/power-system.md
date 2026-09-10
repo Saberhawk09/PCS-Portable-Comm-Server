@@ -248,6 +248,20 @@ Before this file is treated as an as-built electrical record, capture and verify
 - AC terminal guarding, strain relief, and protective-earth bonding
 ## INA226 Power Monitoring
 
+PCS v1.8 introduced the input/5V monitors, since-boot Ah/Wh tracking, low-voltage
+protection, coordinated PCS/Pi-Star shutdown, and GPIO13 audible status.
+Supervised bench acceptance covered warning, recovery, shutdown, Pi-Star
+handoff, and all audible patterns. Readings and health are integrated into
+self-test, web/API/Android status, the LCD, and physical indicators.
+
+PCS v1.8.1 added guarded full-appliance stress testing, persistent high-rate
+rail/thermal recording, upload streaming and watchdog-reset fixes, and
+exclusive INA226 ownership during diagnostics. A five-minute full non-RF run
+completed with zero sample errors or throttling. This does not establish RF
+immunity: SA818S/shared-I2C coupling remains unresolved. Both monitors were
+restored and operationally checked after the September 9 Lite reinstall;
+that check is not a new electrical calibration or shutdown bench test.
+
 The upstream PCS input monitor was commissioned on September 7, 2026 at I2C
 address `0x40` with an `R002` 2 milliohm shunt and advertised 20 A range. Its
 TI manufacturer and INA226 die IDs matched, and live readings were stable near

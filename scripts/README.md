@@ -53,14 +53,15 @@ home-hub, peer-isolation, cellular, routed-LAN, and reboot-recovery tests.
 ### setup-wireguard-management.sh
 
 Manages the opt-in outbound management client. For base setup, first place the
-private client export at ignored path `private-config/wg-pcs.conf`; the
+private client export at `/home/pi/wg-pcs.conf` (older `private-config/wg-pcs.conf`
+locations remain supported); the
 installer validates it before installing anything and requires a real
 home-hub handshake before accepting activation.
 
 ```bash
 ./scripts/setup-wireguard-management.sh --prepare
-./scripts/setup-wireguard-management.sh --validate-profile private-config/wg-pcs.conf
-./scripts/setup-wireguard-management.sh --import-profile private-config/wg-pcs.conf
+./scripts/setup-wireguard-management.sh --validate-profile /home/pi/wg-pcs.conf
+./scripts/setup-wireguard-management.sh --import-profile /home/pi/wg-pcs.conf
 ./scripts/setup-wireguard-management.sh --generate-key
 ./scripts/setup-wireguard-management.sh --validate-config
 ./scripts/setup-wireguard-management.sh --configure
@@ -486,8 +487,8 @@ events, but its availability during transmission is not yet proven.
 ## Dire Wolf / APRS
 
 The base installer records `PCS_APRS_ENGINE` as `direwolf` or `graywolf` and
-dispatches software staging to the matching script. Only Dire Wolf currently
-has a supported PCS activation workflow.
+dispatches software staging to the matching script. Both engines have guarded
+activation workflows; only Dire Wolf supports the PCS APRS agent.
 
 ### setup-graywolf-aprs.sh
 

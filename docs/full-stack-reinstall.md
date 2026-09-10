@@ -1,5 +1,32 @@
 # Full-Stack Reinstall Runbook
 
+## September 2026 recovery evidence
+
+The September 9 Raspberry Pi OS Lite wipe exposed these issues, repaired on the
+live appliance before v1.8.2 deployment:
+
+- Git needed installation on the stock Lite image.
+- USB primary storage was absent during setup and was mounted after connection.
+- Both INA226 monitors required installation with `commissioned-pcs`.
+- The restored WireGuard profile was root-owned; its separate trusted-home
+  policy was missing, and activating without it blocked home-Wi-Fi SSH.
+- APRS and Meshtastic were staged rather than operational. Their commissioned
+  settings were recovered explicitly; Dire Wolf, agent, and USB/MQTT gateway
+  were subsequently verified active. The operator confirmed two-way APRS.
+- Buzzer startup preceded monitored services; staged APRS also incorrectly
+  produced a missing-agent hard fault. These installer/health fixes shipped
+  in v1.8.2.
+
+v1.8.2 passed live self-test after deployment. An initial SA818S readback failed;
+direct readback and the repeated full self-test passed. A later temporary DNS
+refresh failure triggered a hard buzzer alarm; PR #68 added bounded retries
+and preserved the current WireGuard endpoint while awaiting the next timer.
+Agent RF channel 0 was subsequently explicitly enabled by the operator.
+
+These are repaired-appliance observations. The final version has not undergone
+another fresh end-to-end wipe acceptance, nor a new full three-appliance rebuild.
+Do not mark those gates complete from a successful enabled-services self-test.
+
 This runbook rebuilds the tested PCS field LAN:
 
 ```text

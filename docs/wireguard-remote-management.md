@@ -115,21 +115,38 @@ the installed feature files before the rest of base setup continues.
 ## Profile-based base setup
 
 Before starting the base installer, export a normal WireGuard client profile
-from the already-configured home hub and place it at this exact repository
-path:
+from the already-configured home hub and place it in the Pi user's home:
 
 ```text
-private-config/wg-pcs.conf
+/home/pi/wg-pcs.conf
 ```
 
-That path and `wg*.conf` are ignored by Git. The profile contains a private key,
-so keep it mode `0600` and owned by the normal Pi user:
+The profile contains a private key. Never add it to the repository, logs, or
+documentation. Keep it mode `0600` and owned by the normal Pi user or root:
 
 ```bash
-mkdir -p private-config
-chmod 700 private-config
-chmod 600 private-config/wg-pcs.conf
+chmod 600 /home/pi/wg-pcs.conf
 ```
+
+Setup discovers this path, then older home/repository `private-config`
+locations. An existing saved path takes priority and the prompt permits an
+explicit override. Secure root-owned restores are read through a protected
+temporary copy; their ownership is preserved. Symlinks and other owners are
+rejected. The trusted home Wi-Fi subnet is a separate setup input, for example
+`192.168.50.0/24`; it is not an AllowedIPs route. Activation checks whether the
+policy would block the initiating SSH source before applying firewall rules.
+
+Direct management through the explicitly trusted home Wi-Fi subnet was
+commissioned without requiring a VPN. After the September 9, 2026 Lite reinstall,
+profile ownership and the missing home-subnet policy were repaired; an
+authenticated handshake and continued LAN SSH access were verified.
+
+The endpoint refresher retries temporary DNS failures three times within a
+20-second resolver window. If DNS remains temporarily unavailable it retains
+the current endpoint and exits with systemd-accepted status 75; the five-minute
+timer retries later. This avoids a hard buzzer alarm for a transient lookup
+failure. Configuration, permanent DNS, and WireGuard errors still fail. A
+successful refresh alone does not prove a current tunnel handshake.
 
 The accepted profile is deliberately narrower than general `wg-quick` syntax:
 
@@ -245,9 +262,9 @@ rerun mutating commands on the commissioned PCS without an approved maintenance
 task.
 
 ```bash
-./scripts/setup-wireguard-management.sh --validate-profile private-config/wg-pcs.conf
+./scripts/setup-wireguard-management.sh --validate-profile /home/pi/wg-pcs.conf
 ./scripts/setup-wireguard-management.sh --prepare
-./scripts/setup-wireguard-management.sh --import-profile private-config/wg-pcs.conf
+./scripts/setup-wireguard-management.sh --import-profile /home/pi/wg-pcs.conf
 ./scripts/setup-wireguard-management.sh --validate-config
 ./scripts/setup-wireguard-management.sh --generate-key
 ./scripts/setup-wireguard-management.sh --configure
