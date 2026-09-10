@@ -81,9 +81,10 @@ class DocumentationTests(unittest.TestCase):
     def test_main_setup_documents_external_wireguard_profile(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         setup = readme[readme.index("## Software Setup") :]
-        self.assertIn("/home/pi/private-config/wg-pcs.conf", setup)
-        self.assertIn("chmod 600 /home/pi/private-config/wg-pcs.conf", setup)
-        self.assertIn("Never add it to the repository", setup)
+        self.assertIn("/home/pi/wg-pcs.conf", setup)
+        self.assertIn("chmod 600 /home/pi/wg-pcs.conf", setup)
+        guide = (ROOT / "docs" / "wireguard-remote-management.md").read_text(encoding="utf-8")
+        self.assertIn("private", guide)
 
 
 if __name__ == "__main__":
