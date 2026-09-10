@@ -14,6 +14,33 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pcs_gpio  # noqa: E402
 
 
+class IndicatorGraceTests(unittest.TestCase):
+    def test_fault_must_persist_and_recovery_resets_timer(self):
+        clock = Mock(return_value=0.0)
+        grace = pcs_gpio.IndicatorGrace(clock)
+        self.assertEqual(grace.confirmed(["power"]), set())
+        clock.return_value = 4.99
+        self.assertEqual(grace.confirmed(["power"]), set())
+        clock.return_value = 5.0
+        self.assertEqual(grace.confirmed(["power"]), {"power"})
+        self.assertEqual(grace.confirmed([]), set())
+        clock.return_value = 6.0
+        self.assertEqual(grace.confirmed(["power"]), set())
+
+    def test_independent_faults_and_escalation_have_separate_timers(self):
+        clock = Mock(return_value=0.0)
+        grace = pcs_gpio.IndicatorGrace(clock)
+        warning = ("power", "warning")
+        critical = ("power", "critical")
+        grace.confirmed([warning])
+        clock.return_value = 5.0
+        self.assertEqual(grace.confirmed([warning, "router"]), {warning})
+        clock.return_value = 6.0
+        self.assertEqual(grace.confirmed([critical, "router"]), set())
+        clock.return_value = 10.0
+        self.assertEqual(grace.confirmed([critical, "router"]), {"router"})
+
+
 STATS_SERVICE = ROOT / "systemd" / "pcs-gpio-stats.service"
 STATS_SETUP = ROOT / "scripts" / "setup-gpio-stats.sh"
 LCD_SERVICE = ROOT / "systemd" / "pcs-gpio-lcd.service"

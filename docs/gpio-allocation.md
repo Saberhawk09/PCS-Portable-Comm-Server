@@ -1,5 +1,21 @@
 # PCS GPIO Allocation
 
+## Indicator fault grace period
+
+Continuous LCD alert pages, MAX7219 warnings/faults, and WS2812 warning/fault
+colors require five seconds of observed persistence before appearing. Each
+condition and severity is timed independently; recovery clears the candidate
+immediately. The display changes on its next health poll after five seconds,
+so LCD page cycling can add latency. LEDs retain their previous normal color
+during the grace period, or show unknown until a normal state is observed.
+
+The buzzer retains its existing five-second health debounce and consumes raw
+health alerts, avoiding two stacked delays. Low-voltage/shutdown priority
+tones and the independent shutdown protection are unchanged. Raw readings,
+self-test, one-shot diagnostics, and web/API health remain immediate; this is
+physical indicator filtering, not suppression of recorded faults or a cure
+for the documented RF/I2C interference.
+
 This is the central Raspberry Pi 4 header allocation for PCS. It distinguishes
 confirmed or selected assignments from future reservations so planned hardware
 is not presented as already wired or validated.
