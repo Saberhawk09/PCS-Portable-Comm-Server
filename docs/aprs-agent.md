@@ -6,6 +6,19 @@ audio, PTT, beaconing, digipeating, IGate policy, and packet routing.
 
 ## Data path and safety boundary
 
+PCS v1.7 introduced the status, command, and mailbox agent. Historical supervised
+testing with a Yaesu FT3DR verified an RF request, ACK, `PONG`, and reply-ACK
+exchange. Mailbox state is exposed through the public/admin dashboards, API,
+LCD, WS2812 indicators, and MAX7219 matrix.
+
+Following the September 9 Lite recovery, agent RF access was initially disabled.
+The operator subsequently requested its restoration: live configuration and
+service checks now confirm RF channel 0 enabled alongside Internet channel 8.
+The operator confirmed two-way APRS on the restored appliance; a fresh
+agent-specific request/ACK/PONG exchange after this channel change has not yet
+been independently observed. These dated observations do not change the safe
+RF-disabled default for new installs.
+
 ```text
 APRS-IS <-> Dire Wolf IGate <-> KISS ICHANNEL 8 <-> pcs-aprs-agent
 144.550 <-> Dire Wolf radio channel 0 <-> pcs-aprs-agent (explicit opt-in)

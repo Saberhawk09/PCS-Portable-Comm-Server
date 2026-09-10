@@ -4,8 +4,8 @@ PCS treats APRS as an optional subsystem with a deliberate two-stage rollout:
 
 `PCS_APRS_ENGINE` selects `direwolf` (the commissioned default described here)
 or the separately staged `graywolf` alternative. See
-[Graywolf APRS Staging](graywolf-aprs.md). Only Dire Wolf currently has a
-supported PCS activation and rollback workflow.
+[Graywolf APRS Engine](graywolf-aprs.md). Both engines have guarded activation
+and rollback workflows; only Dire Wolf supports the PCS APRS agent.
 
 1. **Software staging** installs Dire Wolf and PCS monitoring support while the
    service remains stopped and disabled.

@@ -1,5 +1,15 @@
 # Graywolf APRS Engine
 
+## Commissioning history
+
+PCS v1.6 commissioned Graywolf with the SA818S/Easy Digi path, then the
+operator restored Dire Wolf and left Graywolf inactive and masked on that
+installation. That is historical deployment evidence, not a claim that every
+fresh install includes a masked Graywolf unit. The September 9, 2026 Lite
+recovery selected Dire Wolf; Graywolf was inactive. When selected and active,
+Graywolf exposes its portal to PCS LAN clients on TCP 8070. Its capture-buffer
+patch and supervised 925/100 ms timing evidence are detailed below.
+
 PCS can select `PCS_APRS_ENGINE="graywolf"` instead of the default
 `PCS_APRS_ENGINE="direwolf"`. Installation remains hardware-safe by default;
 production activation is a separate confirmed transaction.

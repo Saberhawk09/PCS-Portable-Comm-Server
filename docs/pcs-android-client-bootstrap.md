@@ -6,6 +6,14 @@ manage WireGuard keys.
 
 ## Reachability order
 
+The server-side contract was established in PCS v1.4. PCS Companion subsequently
+passed real-phone acceptance over trusted home LAN, direct PCS LAN, and
+cellular/WireGuard, including backup synchronization and challenge-protected
+shutdown. PCS v1.5 bundled the production-signed Companion v0.2.0 APK, additive
+backup controls, warning/fault summaries, and LAN-only clickable share discovery.
+See [API acceptance evidence](pcs-stats-api.md#verified-state-and-remaining-product-gates)
+and the [roadmap](remote-management-api-android-roadmap.md) for the dated history.
+
 Try a short HTTPS connection to these operator-configured candidates in order:
 
 1. home-LAN PCS address, currently `https://192.168.50.236:9443`;
