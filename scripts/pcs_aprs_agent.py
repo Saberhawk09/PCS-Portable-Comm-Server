@@ -8,6 +8,7 @@ import configparser
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import signal
@@ -38,6 +39,8 @@ MAX_APRS_MESSAGE_TEXT = 67
 DEFAULT_CONFIG = "/etc/pcs/aprs-agent.conf"
 DEFAULT_STATE_DB = "/var/lib/pcs-aprs-agent/state.sqlite3"
 DEFAULT_STATUS_FILE = "/run/pcs-aprs-agent/status.json"
+DEFAULT_POWER_STATUS_FILE = "/run/pcs-power-monitor/status.json"
+POWER_STATUS_MAX_AGE_SECONDS = 15
 CALLSIGN_RE = re.compile(r"^[A-Z0-9]{1,6}(?:-(?:[1-9]|1[0-5]))?$")
 MESSAGE_ID_RE = re.compile(r"\{([A-Za-z0-9]{1,5})(?:\}([A-Za-z0-9]{1,5}))?$")
 RECEIPT_RE = re.compile(r"^(ack|rej)([A-Za-z0-9]{1,5})$", re.IGNORECASE)
@@ -428,6 +431,58 @@ def aprs_reply_information(recipient: str, body: str, message_id: str) -> bytes:
     return f":{recipient:<9}:{body}{suffix}".encode("ascii", errors="replace")
 
 
+def split_aprs_reply_body(body: str) -> list[str]:
+    """Split a long reply at status-field boundaries without silent truncation."""
+
+    normalized = " ".join(body.strip().split())
+    maximum_body = MAX_APRS_MESSAGE_TEXT - len("{0000")
+    if len(normalized) <= maximum_body:
+        return [normalized]
+
+    # Reserve enough room for a two-digit part label. Agent-generated replies
+    # are bounded well below 99 parts, but keeping the label allowance fixed
+    # makes every fragment safe before its persistent message ID is assigned.
+    payload_limit = maximum_body - len("99/99 ")
+    fields = [field.strip() for field in normalized.strip(" |").split("|") if field.strip()]
+    chunks: list[str] = []
+    current = ""
+    for field in fields:
+        candidates = [field]
+        if len(field) > payload_limit:
+            candidates = []
+            words = field.split()
+            word_chunk = ""
+            for word in words:
+                while len(word) > payload_limit:
+                    if word_chunk:
+                        candidates.append(word_chunk)
+                        word_chunk = ""
+                    candidates.append(word[:payload_limit])
+                    word = word[payload_limit:]
+                if not word:
+                    continue
+                candidate = f"{word_chunk} {word}".strip()
+                if word_chunk and len(candidate) > payload_limit:
+                    candidates.append(word_chunk)
+                    word_chunk = word
+                else:
+                    word_chunk = candidate
+            if word_chunk:
+                candidates.append(word_chunk)
+        for candidate_field in candidates:
+            candidate = f"{current} | {candidate_field}" if current else candidate_field
+            if current and len(candidate) > payload_limit:
+                chunks.append(current)
+                current = candidate_field
+            else:
+                current = candidate
+    if current:
+        chunks.append(current)
+    if not chunks or len(chunks) > 99:
+        raise ValueError("outbound APRS reply requires too many fragments")
+    return [f"{index}/{len(chunks)} {chunk}" for index, chunk in enumerate(chunks, 1)]
+
+
 def mailbox_summary_from_connection(
     connection: sqlite3.Connection,
     *,
@@ -649,27 +704,57 @@ class DedupStore:
         maximum_pending: int,
         kiss_channel: int,
     ) -> OutboundMessage:
+        return self.queue_outbound_batch(
+            recipient,
+            [body],
+            maximum_pending,
+            kiss_channel,
+        )[0]
+
+    def queue_outbound_batch(
+        self,
+        recipient: str,
+        bodies: Iterable[str],
+        maximum_pending: int,
+        kiss_channel: int,
+    ) -> list[OutboundMessage]:
         split_callsign(recipient)
         if not 0 <= kiss_channel <= 15:
             raise ValueError("outbound KISS channel must be between 0 and 15")
+        reply_bodies = list(bodies)
+        if not reply_bodies:
+            raise ValueError("outbound APRS reply batch is empty")
+        outbound: list[OutboundMessage] = []
         with self.connection:
             self.connection.execute("BEGIN IMMEDIATE")
             pending = self.connection.execute(
                 "SELECT COUNT(*) FROM outbound_messages WHERE state = 'pending'"
             ).fetchone()[0]
-            if int(pending) >= maximum_pending:
+            if int(pending) + len(reply_bodies) > maximum_pending:
                 raise RuntimeError("outbound APRS queue is full")
-            message_id = self._next_outbound_id_locked()
-            normalized = normalize_aprs_reply_body(body, message_id)
             current = self.now()
-            self.connection.execute(
-                "INSERT INTO outbound_messages"
-                "(message_id, recipient, body, state, attempts, created_at, updated_at, "
-                "next_attempt_at, kiss_channel) "
-                "VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, ?)",
-                (message_id, recipient.upper(), normalized, current, current, current, kiss_channel),
-            )
-        return OutboundMessage(message_id, recipient.upper(), normalized, 0, kiss_channel)
+            for body in reply_bodies:
+                message_id = self._next_outbound_id_locked()
+                normalized = normalize_aprs_reply_body(body, message_id)
+                self.connection.execute(
+                    "INSERT INTO outbound_messages"
+                    "(message_id, recipient, body, state, attempts, created_at, updated_at, "
+                    "next_attempt_at, kiss_channel) "
+                    "VALUES (?, ?, ?, 'pending', 0, ?, ?, ?, ?)",
+                    (
+                        message_id,
+                        recipient.upper(),
+                        normalized,
+                        current,
+                        current,
+                        current,
+                        kiss_channel,
+                    ),
+                )
+                outbound.append(
+                    OutboundMessage(message_id, recipient.upper(), normalized, 0, kiss_channel)
+                )
+        return outbound
 
     def due_outbound(self, limit: int = 10) -> list[OutboundMessage]:
         rows = self.connection.execute(
@@ -971,6 +1056,7 @@ class StatusProvider:
         timeout: float = 3.0,
         temperature_path: str | Path = "/sys/class/thermal/thermal_zone0/temp",
         uptime_path: str | Path = "/proc/uptime",
+        power_status_path: str | Path = DEFAULT_POWER_STATUS_FILE,
         wall_time: Callable[[], float] = time.time,
     ) -> None:
         self.runner = runner or CommandRunner()
@@ -979,6 +1065,7 @@ class StatusProvider:
         self.timeout = timeout
         self.temperature_path = Path(temperature_path)
         self.uptime_path = Path(uptime_path)
+        self.power_status_path = Path(power_status_path)
         self.wall_time = wall_time
 
     def temperature_c(self) -> int | None:
@@ -1128,8 +1215,44 @@ class StatusProvider:
         return "Down"
 
     @staticmethod
-    def power() -> str:
-        return "POWER N/A"
+    def _power_number(record: dict[str, object], name: str) -> float | None:
+        value = record.get(name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        converted = float(value)
+        return converted if math.isfinite(converted) and converted >= 0 else None
+
+    def power_values(self) -> tuple[str, str, str]:
+        try:
+            payload = json.loads(self.power_status_path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict) or payload.get("version") != 1:
+                raise ValueError("invalid power status schema")
+            age = self.wall_time() - float(payload["collected_at_epoch"])
+            if not 0 <= age <= POWER_STATUS_MAX_AGE_SECONDS:
+                raise ValueError("stale power status")
+            monitors = payload.get("monitors")
+            if not isinstance(monitors, dict):
+                raise ValueError("invalid power monitor map")
+            input_monitor = monitors.get("input")
+            if not isinstance(input_monitor, dict):
+                raise ValueError("invalid input power monitor")
+            voltage = self._power_number(input_monitor, "voltage")
+            charge = self._power_number(input_monitor, "charge_since_boot_mah")
+            energy = self._power_number(input_monitor, "energy_since_boot_wh")
+            if input_monitor.get("online") is not True:
+                voltage = None
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            voltage = charge = energy = None
+
+        voltage_label = "N/A" if voltage is None or voltage > 100 else f"{voltage:.2f}".rstrip("0").rstrip(".") + "v"
+        charge_label = "N/A" if charge is None or charge > 999_999_999 else f"{charge:.0f}mAh"
+        energy_label = "N/A" if energy is None or energy > 999_999 else f"{energy:.1f}".rstrip("0").rstrip(".") + "Wh"
+        return voltage_label, charge_label, energy_label
+
+    def power(self) -> str:
+        voltage, charge, energy = self.power_values()
+        total = "N/A" if charge == "N/A" and energy == "N/A" else f"{charge} / {energy}"
+        return f"DC IN - {voltage} | Total PWR - {total}"
 
     def status(self) -> str:
         uplink = self.uplink_value()
@@ -1137,10 +1260,11 @@ class StatusProvider:
         temperature = self.temperature_c()
         health = "BAD" if uplink == "Down" or temperature is None or temperature >= 85 else "OK"
         temperature_label = "N/A" if temperature is None else f"{temperature}C"
-        return (
+        base = (
             f"PCS {health} | Uplink - {uplink} | GPS {gps} | "
             f"Pi Temp - {temperature_label}"
         )
+        return f"{base} | {self.power()} |"
 
     def execute(self, command: str) -> str:
         handlers: dict[str, Callable[[], str]] = {
@@ -1322,16 +1446,17 @@ class AprsAgent:
                 response = "PCS STATUS UNAVAILABLE"
         try:
             self.store.purge_outbound_history(self.config.outbound_retention_seconds)
-            outbound = self.store.queue_outbound(
+            outbound = self.store.queue_outbound_batch(
                 message.sender,
-                response,
+                split_aprs_reply_body(response),
                 self.config.outbound_max_pending,
                 ingress_channel,
             )
-        except RuntimeError:
-            LOG.error("Outbound APRS queue is full; reply to %s was not queued", message.sender)
+        except (RuntimeError, ValueError) as exc:
+            LOG.error("Outbound APRS reply to %s was not queued: %s", message.sender, exc)
             return
-        self._transmit_outbound(outbound, send_ax25)
+        for message_outbound in outbound:
+            self._transmit_outbound(message_outbound, send_ax25)
 
 
 class AgentRuntime:

@@ -210,6 +210,36 @@ class StoreAndAgentTests(unittest.TestCase):
         self.assertEqual(["STATUS"], self.provider.commands)
         self.assertEqual(1, self.store.outbound_summary()["pending"])
 
+    def test_long_status_reply_is_split_at_field_boundaries(self):
+        self.provider.execute = mock.Mock(
+            return_value=(
+                "PCS OK | Uplink - WiFi | GPS 3D | Pi Temp - 37C | "
+                "DC IN - 23.95v | Total PWR - 3989mAh / 95.6Wh |"
+            )
+        )
+
+        sent = self.process(inbound_frame(body="STATUS", message_id="48"))
+        reply_bodies = [
+            frame.information.decode("ascii")[11:].rsplit("{", 1)[0]
+            for frame in sent[1:]
+        ]
+
+        self.assertEqual(3, len(sent))
+        self.assertEqual(
+            [
+                "1/2 PCS OK | Uplink - WiFi | GPS 3D | Pi Temp - 37C",
+                "2/2 DC IN - 23.95v | Total PWR - 3989mAh / 95.6Wh",
+            ],
+            reply_bodies,
+        )
+        self.assertEqual(2, self.store.outbound_summary()["pending"])
+        self.assertTrue(
+            all(
+                len(frame.information[11:]) <= pcs_aprs_agent.MAX_APRS_MESSAGE_TEXT
+                for frame in sent[1:]
+            )
+        )
+
     def test_only_matching_sender_can_ack_an_outbound_message(self):
         sent = self.process(inbound_frame(body="PING", message_id="42"))
         outbound_id = sent[1].information.decode("ascii").rsplit("{", 1)[1]
@@ -680,14 +710,40 @@ class ConfigurationAndStatusTests(unittest.TestCase):
             uptime = Path(temp_dir) / "uptime"
             temperature.write_text("43250\n", encoding="ascii")
             uptime.write_text("93784.22 1.0\n", encoding="ascii")
+            power = Path(temp_dir) / "power.json"
+            power.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "collected_at_epoch": 995,
+                        "monitors": {
+                            "input": {
+                                "online": True,
+                                "voltage": 23.949,
+                                "charge_since_boot_mah": 3989.4,
+                                "energy_since_boot_wh": 95.56,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
             provider = pcs_aprs_agent.StatusProvider(
                 temperature_path=temperature,
                 uptime_path=uptime,
+                power_status_path=power,
+                wall_time=lambda: 1000,
             )
 
             self.assertEqual("TEMP 43C", provider.temperature())
             self.assertEqual("UPTIME 1D 2H 3M", provider.uptime())
-            self.assertEqual("POWER N/A", provider.power())
+            self.assertEqual(
+                "DC IN - 23.95v | Total PWR - 3989mAh / 95.6Wh",
+                provider.power(),
+            )
+
+            power.write_text("{}", encoding="utf-8")
+            self.assertEqual("DC IN - N/A | Total PWR - N/A", provider.power())
 
     def test_status_uses_requested_health_uplink_gps_and_temperature_fields(self):
         provider = pcs_aprs_agent.StatusProvider()
@@ -695,18 +751,30 @@ class ConfigurationAndStatusTests(unittest.TestCase):
             mock.patch.object(provider, "uplink_value", return_value="WiFi"),
             mock.patch.object(provider, "gps_value", return_value="3D"),
             mock.patch.object(provider, "temperature_c", return_value=37),
+            mock.patch.object(
+                provider,
+                "power",
+                return_value="DC IN - 24v | Total PWR - 4000mAh / 96Wh",
+            ),
         ):
             self.assertEqual(
-                "PCS OK | Uplink - WiFi | GPS 3D | Pi Temp - 37C",
+                "PCS OK | Uplink - WiFi | GPS 3D | Pi Temp - 37C | "
+                "DC IN - 24v | Total PWR - 4000mAh / 96Wh |",
                 provider.status(),
             )
         with (
             mock.patch.object(provider, "uplink_value", return_value="Down"),
             mock.patch.object(provider, "gps_value", return_value="NO FIX"),
             mock.patch.object(provider, "temperature_c", return_value=38),
+            mock.patch.object(
+                provider,
+                "power",
+                return_value="DC IN - N/A | Total PWR - N/A",
+            ),
         ):
             self.assertEqual(
-                "PCS BAD | Uplink - Down | GPS NoFX | Pi Temp - 38C",
+                "PCS BAD | Uplink - Down | GPS NoFX | Pi Temp - 38C | "
+                "DC IN - N/A | Total PWR - N/A |",
                 provider.status(),
             )
 

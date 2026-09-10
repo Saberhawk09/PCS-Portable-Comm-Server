@@ -8,6 +8,9 @@ All notable user-facing PCS changes are recorded here.
 
 ### Changed
 
+- Add fresh DC input voltage and cumulative input charge/energy to APRS
+  `STATUS` and `POWER` replies. Long status replies are delivered as numbered,
+  independently acknowledged parts instead of being silently truncated.
 - Require five seconds of observed persistence before LCD alert pages,
   MAX7219 alarms, and WS2812 warning/fault colors appear. Recovery clears
   candidates immediately; raw health, existing buzzer debounce, and independent
