@@ -95,8 +95,8 @@ is retained for seven days. The pending queue is capped at 100 messages.
 | Command | Reply |
 | --- | --- |
 | `PING` | `PONG` |
-| `STATUS` or `S` | `PCS OK/BAD | Uplink - LTE/WiFi/Down | GPS 3D/NoFX | Pi Temp - XXC` |
-| `POWER` | `POWER N/A` (power telemetry is intentionally not exposed over APRS) |
+| `STATUS` or `S` | `PCS OK/BAD | Uplink - LTE/WiFi/Down | GPS 3D/NoFX | Pi Temp - XXC | DC IN - XXv | Total PWR - XXXXmAh / XXXWh |` |
+| `POWER` | `DC IN - XXv | Total PWR - XXXXmAh / XXXWh` |
 | `LTE` | `UP`, `STANDBY`, `NO MODEM`, or `UNKNOWN` |
 | `GPS` | `3D`, `2D`, `STALE`, `NO FIX`, or `UNAVAILABLE` |
 | `TEMP` | Raspberry Pi thermal-zone temperature |
@@ -105,10 +105,16 @@ is retained for seven days. The pending queue is capped at 100 messages.
 | `HELP` or `H` | Supported command names |
 | `MSG <text>` | Store a 1-63 character mailbox message and reply `MESSAGE STORED` |
 
-`STATUS` deliberately omits detailed power-monitor telemetry. APRS messaging
-uses printable 7-bit text, so the radio reply uses `37C` rather than a degree
-symbol. An unrecognized command receives `COMMAND UNKNOWN | COMMAND LIST: HELP`,
-which cannot reasonably be mistaken for a distress request.
+Power values come from the input INA226 monitor's fresh read-only status file;
+the APRS agent never accesses the I2C bus directly. `DC IN` is the input voltage,
+and `Total PWR` is the input monitor's cumulative charge and energy since the
+power-monitor service started. Missing, stale, offline, non-finite, or
+out-of-range data is shown as `N/A`. The expanded `STATUS` response is sent in
+numbered parts at `|` field boundaries so no requested field is silently
+truncated. APRS messaging uses printable 7-bit text, so the radio reply uses
+`37C` rather than a degree symbol. An unrecognized command receives `COMMAND
+UNKNOWN | COMMAND LIST: HELP`, which cannot reasonably be mistaken for a
+distress request.
 
 GPS replies never include coordinates. LTE and network replies never expose IP
 addresses, SSIDs, carriers, IMEI/ICCID values, device names, or account data.
