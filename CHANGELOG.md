@@ -4,10 +4,32 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.8.3] - 2026-09-10
+
+### Changed
+
+- Require five seconds of observed persistence before LCD alert pages,
+  MAX7219 alarms, and WS2812 warning/fault colors appear. Recovery clears
+  candidates immediately; raw health, existing buzzer debounce, and independent
+  low-voltage/shutdown protection remain unchanged.
+- Preserve removed root README history in specialist documentation, update
+  recovery and WireGuard instructions, and correct stale commissioning claims.
+
+### Fixed
+
 - Retry temporary WireGuard endpoint DNS failures three times within a bounded
   lookup window, retain the current endpoint if DNS remains unavailable, and
   defer to the periodic timer without triggering a failed-service buzzer alarm.
   Invalid configuration and permanent DNS/WireGuard failures remain errors.
+
+### Deployment and limitations
+
+- The live APRS agent has explicitly enabled RF channel 0 alongside APRS-IS
+  channel 8. This deployment setting does not change the RF-disabled default.
+- Post-deployment PCS operational self-tests passed. Final fresh one-command
+  wipe acceptance and a new agent-specific over-air command/reply test remain
+  outstanding. SA818S/shared-I2C RF interference remains unresolved; indicator
+  filtering mitigates transient alarms rather than repairing that hardware issue.
 
 ## [1.8.2] - 2026-09-09
 
@@ -573,7 +595,8 @@ All notable user-facing PCS changes are recorded here.
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.2...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.3...HEAD
+[1.8.3]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8...v1.8.1
 [1.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.7.1...v1.8
