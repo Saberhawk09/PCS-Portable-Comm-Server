@@ -1342,12 +1342,14 @@ def lcd_health_pages(
     snapshot: MatrixHealthSnapshot,
     uptime_seconds: int | None,
     power: PowerSnapshot | None = None,
+    confirmed_alerts: Sequence[MatrixAlert] | None = None,
 ) -> tuple[tuple[str, str], ...]:
     power = power if power is not None else snapshot.power
-    alerts = matrix_alerts(snapshot)
+    alerts = matrix_alerts(snapshot) if confirmed_alerts is None else tuple(confirmed_alerts)
+    show_power_alert = confirmed_alerts is None or any(alert.name in {"low_voltage", "power_monitor"} for alert in alerts)
     alerts = tuple(alert for alert in alerts if alert.name not in {"low_voltage", "power_monitor"})
     critical = tuple(alert for alert in alerts if alert.severity == "critical")
-    power_alert = lcd_power_alert_page(power) if power is not None else None
+    power_alert = lcd_power_alert_page(power) if power is not None and show_power_alert else None
     power_critical = power_alert if power is not None and (power.status == "bad" or power.low_voltage_active) else None
     if critical or power_critical is not None:
         pages = tuple(lcd_alert_page(snapshot, alert) for alert in critical)
@@ -1525,6 +1527,26 @@ def collect_matrix_health() -> MatrixHealthSnapshot:
     )
 
 
+class IndicatorGrace:
+    """Require five seconds of observed persistence; recovery clears immediately."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic):
+        self.clock = clock
+        self.since: dict[object, float] = {}
+
+    def confirmed(self, keys: Sequence[object]) -> set[object]:
+        now = self.clock()
+        active = set(keys)
+        self.since = {key: start for key, start in self.since.items() if key in active}
+        for key in active:
+            self.since.setdefault(key, now)
+        return {key for key in active if now - self.since[key] >= 5.0}
+
+    def alerts(self, alerts: Sequence[MatrixAlert]) -> tuple[MatrixAlert, ...]:
+        ready = self.confirmed([(alert.name, alert.severity) for alert in alerts])
+        return tuple(alert for alert in alerts if (alert.name, alert.severity) in ready)
+
+
 def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
     alerts: list[MatrixAlert] = []
     if snapshot.stats.aprs_status not in {None, "ok"} or (
@@ -1691,11 +1713,23 @@ def run_led_status(
 ) -> None:
     previous_summary = ""
     previous_colors: tuple[tuple[int, int, int], ...] | None = None
+    grace = IndicatorGrace()
+    normal_colors: dict[int, tuple[int, int, int]] = {}
     while not should_stop():
         snapshot = collector()
         health_writer(snapshot, matrix_alerts(snapshot))
         indicators = led_status_indicators(snapshot)
         colors = tuple(indicator.color for indicator in indicators)
+        if not once:
+            for item in indicators:
+                if item.color not in {LED_WARNING, LED_CRITICAL}:
+                    normal_colors[item.pixel] = item.color
+            faults = [(item.pixel, item.state) for item in indicators if item.color in {LED_WARNING, LED_CRITICAL}]
+            ready = grace.confirmed(faults)
+            colors = tuple(
+                normal_colors.get(item.pixel, LED_UNKNOWN) if (item.pixel, item.state) in faults and (item.pixel, item.state) not in ready else item.color
+                for item in indicators
+            )
         unread = snapshot.stats.aprs_mailbox_unread or 0
         if unread > 0:
             flash_colors = list(colors)
@@ -1754,10 +1788,13 @@ def run_matrix_alerts(
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
     previous_summary = ""
+    grace = IndicatorGrace()
     while not should_stop():
         snapshot = collector()
         alerts = matrix_alerts(snapshot)
         health_writer(snapshot, alerts)
+        if not once:
+            alerts = grace.alerts(alerts)
         frames = matrix_alert_frames(alerts, snapshot.stats.aprs_mailbox_unread or 0)
         summary = json.dumps(
             {
@@ -1793,12 +1830,15 @@ def run_lcd_status(
     sleeper: Callable[[float], None] = time.sleep,
     should_stop: Callable[[], bool] = lambda: False,
 ) -> None:
+    grace = IndicatorGrace()
     while not should_stop():
         snapshot = collector()
         power = snapshot.power if snapshot.power is not None else power_reader()
         alerts = matrix_alerts(snapshot)
         health_writer(snapshot, alerts)
-        pages = lcd_health_pages(snapshot, uptime_reader(), power)
+        if not once:
+            alerts = grace.alerts(alerts)
+        pages = lcd_health_pages(snapshot, uptime_reader(), power, confirmed_alerts=alerts)
         print(
             json.dumps(
                 {
