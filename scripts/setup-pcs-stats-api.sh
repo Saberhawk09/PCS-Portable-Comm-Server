@@ -398,6 +398,16 @@ deactivate_feature() {
     sudo "${FIREWALL_DST}" --clear >/dev/null 2>&1 || true
 }
 
+check_public_response() {
+    # Allow the collector's 30-second deadline plus transport overhead.
+    if ! curl --insecure --fail --silent --show-error --max-time 40 \
+        "https://127.0.0.1:${PCS_API_PORT}/api/v1/status" \
+        | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data["access"] == "public"; assert data["details"] is None; assert "coordinates" not in json.dumps(data).lower()'; then
+        echo "ERROR: Stats API public response or redaction check failed." >&2
+        return 1
+    fi
+}
+
 check_feature() {
     require_normal_user
     require_sudo
@@ -431,9 +441,7 @@ check_feature() {
     systemctl is-enabled --quiet pcs-stats-api.service
     systemctl is-active --quiet pcs-stats-api.service
     sudo "${FIREWALL_DST}" --check
-    curl --insecure --fail --silent --show-error --max-time 10 \
-        "https://127.0.0.1:${PCS_API_PORT}/api/v1/status" \
-        | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data["access"] == "public"; assert data["details"] is None; assert "coordinates" not in json.dumps(data).lower()'
+    check_public_response || return 1
     echo "PCS Stats API checks passed."
 }
 
@@ -455,7 +463,9 @@ activate_feature() {
         exit 1
     fi
     sudo systemctl enable pcs-stats-api-firewall.service pcs-stats-api.service >/dev/null
-    if ! check_feature; then
+    # A fresh shell preserves errexit inside check_feature. Calling the function
+    # in an if-condition disables errexit throughout its body in Bash.
+    if ! bash "${BASH_SOURCE[0]}" --check; then
         deactivate_feature
         echo "ERROR: Stats API validation failed; services and firewall were deactivated." >&2
         exit 1
