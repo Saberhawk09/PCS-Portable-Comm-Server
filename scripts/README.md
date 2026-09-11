@@ -1110,3 +1110,13 @@ ping 8.8.8.8
 ping google.com
 w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
 ```
+## Recovery installer
+
+`setup-pcs-reinstall-restore.sh --network TRUSTED_DIRECTORY` restores saved
+Wi-Fi profiles and the complete VPN policy/key material from an explicitly
+selected, decrypted, root-owned `0700` backup. `--api TRUSTED_DIRECTORY`
+restores the original Android TLS certificate/key and pairing records and
+activates the validated API after its prerequisites are installed. Different
+live files are never overwritten. Base setup runs both phases when
+`PCS_REINSTALL_STATE_DIR` is selected; fresh installs leave it blank. See
+`docs/full-stack-reinstall.md` for ordering and acceptance limits.

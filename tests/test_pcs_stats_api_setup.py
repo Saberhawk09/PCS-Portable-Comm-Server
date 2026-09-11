@@ -155,7 +155,7 @@ class StatsApiSetupTests(unittest.TestCase):
         enable = setup.index("sudo systemctl enable pcs-stats-api-firewall.service")
         self.assertLess(firewall_start, api_start)
         self.assertLess(api_start, enable)
-        self.assertIn("if ! check_feature", setup)
+        self.assertIn('if ! bash "${BASH_SOURCE[0]}" --check', setup)
         self.assertIn(
             "meshtastic-status restart-meshtastic aprs-mailbox-read", setup
         )

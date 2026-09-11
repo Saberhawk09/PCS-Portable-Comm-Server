@@ -4,6 +4,14 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+- Add opt-in base-installer recovery of saved Wi-Fi profiles, complete VPN
+  client policy and keys, and Android API certificate/key and pairing records.
+- Reject conflicting live recovery files and incomplete identity backups.
+- Fail API activation when its public response check fails; allow the status
+  collector's timeout budget instead of reporting success after a short timeout.
+- Document the observed startup rfkill timeout without hiding the unresolved
+  fault or claiming a fresh reinstall acceptance test.
+
 ## [1.8.3] - 2026-09-10
 
 ### Changed

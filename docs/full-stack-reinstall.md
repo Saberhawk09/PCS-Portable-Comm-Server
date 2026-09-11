@@ -472,6 +472,49 @@ complete when:
 
 ## Optional Post-Acceptance Credential Recovery
 
+### Restore network and Android identity during base setup
+
+After verifying and decrypting your trusted recovery archive into a root-owned
+mode `0700` directory (for example `/root/pcs-reinstall-state`), enter that
+directory at the base installer's recovery prompt. The saved answer is
+`PCS_REINSTALL_STATE_DIR`; leave it blank for a new installation. The installer
+does not decrypt archives or record their passphrases.
+
+Recovery loads saved Wi-Fi profiles, preserves the complete WireGuard runtime
+policy and keys, and restores the Android HTTPS certificate, matching private
+key, and hashed pairing records after the control panel is installed. It
+regenerates the API runtime environment and validates TLS, firewall policy,
+and public response before accepting activation. Existing different live files
+cause recovery to stop. It does not restore RF configuration, SSH host identity,
+or unrelated system files. An unchanged paired app should retain its trust and
+token; deleted app data still requires pairing again.
+
+The network and API phases can also be run independently as `pi` on a fresh
+installation, with the required components installed:
+
+```bash
+bash scripts/setup-pcs-reinstall-restore.sh --network /root/pcs-reinstall-state
+bash scripts/setup-pcs-reinstall-restore.sh --api /root/pcs-reinstall-state
+```
+
+The network phase loads Wi-Fi profiles without explicitly switching the current
+uplink. Base setup then prepares and activates the restored VPN policy, rather
+than importing an older hub-only profile over its approved client addresses.
+The API phase requires its VPN sources to be approved by that policy.
+
+The September 10 field investigation found `systemd-rfkill.service` timing out
+90 seconds after startup and triggering the service-failure alert. Retained
+power samples were healthy; the cause of the rfkill stall remains unresolved.
+The subsequent boot succeeded. Do not mask that service or suppress its fault
+as an installer workaround without further evidence.
+
+The same investigation found missing Wi-Fi/API recovery and a hub-only VPN
+allowlist. Restoring the original state recovered home Wi-Fi and verified SSH
+and certificate-validating HTTPS from a VPN client. A green hub handshake alone
+does not prove client-to-PCS access. The opt-in installer recovery flow still
+requires a fresh wipe acceptance test; live repair is not that test.
+
+
 Only after the clean one-command installer and cold-boot acceptance pass, mount
 the retained USB without formatting and verify/decrypt the recovery archive into
 a root-only staging directory:
