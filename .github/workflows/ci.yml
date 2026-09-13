@@ -21,8 +21,16 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Install nginx for real frontend integration tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+
       - name: Run Python tests
         run: python -m unittest discover -s tests -v
+
+      - name: Test defensive portal JavaScript (no appliance Node dependency)
+        run: node --test tests/test_pcs_home.js
 
       - name: Compile Python sources
         run: python -m compileall -q scripts tests web

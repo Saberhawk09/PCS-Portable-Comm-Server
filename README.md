@@ -4,6 +4,12 @@
 
 A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and multi-protocol radio interface/hotspot.
 
+PCS v1.9 adds an offline [web service portal](docs/pcs-web-frontend.md) at
+`http://10.42.0.1/`. nginx serves the public interface while the existing
+authenticated Python administration stays behind it on loopback. The standard
+installer configures both layers; see the architecture guide for upgrades,
+validation and rollback.
+
 What started as an annoyance caused by Windows networking has evolved into my first end-to-end hardware and software project.
 
 ## Warning: AI-generated code

@@ -4,6 +4,24 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9] - 2026-09-13
+
+### PCS web portal
+
+- Put nginx on port 80 and bind the existing Python control panel only to
+  `127.0.0.1:8081`. Preserve authentication, sessions, CSRF, password management,
+  fixed administrative actions, the public status API and legacy `:8080` redirect.
+- Add an offline, responsive service portal with local assets, Files and Help
+  pages, input watts/volts, GPS coordinates/grid, and the existing health model.
+- Share the LCD's infrastructure-excluding AP client reader with public status.
+  Match the detailed public status page to the portal theme.
+- Add staged nginx validation, atomic static releases, rollback backups, installer
+  integration, listener checks, and real nginx/security and defensive JS tests.
+- Check the installed GPIO executable directly during self-test, catching broken
+  interpreter lines or imports before the next service restart.
+
+### Recovery improvements included since v1.8.3
+
 - Add opt-in base-installer recovery of saved Wi-Fi profiles, complete VPN
   client policy and keys, and Android API certificate/key and pairing records.
 - Reject conflicting live recovery files and incomplete identity backups.
@@ -11,6 +29,15 @@ All notable user-facing PCS changes are recorded here.
   collector's timeout budget instead of reporting success after a short timeout.
 - Document the observed startup rfkill timeout without hiding the unresolved
   fault or claiming a fresh reinstall acceptance test.
+
+### Scope and limitations
+
+- No APRS engine, Stats API, Samba, TLS trust, or power-monitor redesign.
+- AP client counts use the LCD's neighbor-table semantics, not a router
+  association table. Unknown readings remain unavailable.
+- `10.42.0.1` remains the PCS LAN entry point. `pcs.local` is optional and was
+  not configured on the validated appliance. Full appliance wipe/reinstall
+  acceptance and the existing SA818S/shared-I2C hardware issue remain separate.
 
 ## [1.8.3] - 2026-09-10
 

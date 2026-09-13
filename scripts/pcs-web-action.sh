@@ -558,6 +558,9 @@ import time
 import shutil
 import subprocess
 from datetime import datetime
+import sys
+sys.path.insert(0, "/usr/local/lib/pcs")
+from pcs_network_clients import read_ap_client_count
 
 INSTALL_CONFIG = os.environ.get(
     "PCS_INSTALL_CONFIG",
@@ -3263,6 +3266,7 @@ if PUBLIC_VIEW:
             "internet_available": internet_ok and dns_ok,
             "uplink_type": active_uplink_label,
             "connected_client_count": len(router_clients),
+            "ap_client_count": read_ap_client_count(),
         },
         "remote_management": {
             "configured": wireguard["configured"],

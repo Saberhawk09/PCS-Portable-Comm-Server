@@ -6,6 +6,7 @@ import getpass
 import hashlib
 import hmac
 import html
+import ipaddress
 import json
 import os
 import secrets
@@ -16,8 +17,9 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-HOST = os.environ.get("PCS_CONTROL_HOST", "0.0.0.0")
-PORT = int(os.environ.get("PCS_CONTROL_PORT", "80"))
+HOST = os.environ.get("PCS_CONTROL_HOST", "127.0.0.1")
+PORT = int(os.environ.get("PCS_CONTROL_PORT", "8081"))
+TRUST_PROXY = os.environ.get("PCS_CONTROL_TRUST_PROXY", "0") == "1"
 DISPATCHER = os.environ.get("PCS_WEB_ACTION", "/usr/local/sbin/pcs-web-action")
 PASSWORD_HELPER = os.environ.get(
     "PCS_ADMIN_PASSWORD_HELPER",
@@ -321,7 +323,7 @@ PUBLIC_CACHE = TimedCache()
 
 PUBLIC_FIELDS = {
     "system": {"status", "uptime", "local_time", "cpu_temperature", "cpu_load", "memory_used", "root_storage_used"},
-    "network": {"status", "offline", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "uplink_type", "connected_client_count"},
+    "network": {"status", "offline", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "uplink_type", "connected_client_count", "ap_client_count"},
     "remote_management": {"configured", "status", "connection", "management_address", "boot_enabled", "firewall_active", "latest_handshake"},
     "cellular": {"status", "modem_present", "connected", "carrier", "access_technology", "signal", "fallback_policy", "fallback_active"},
     "time": {"status", "chrony_active", "synchronized", "source", "reference"},
@@ -574,12 +576,14 @@ main{max-width:1450px;margin:auto;padding:1.2rem}.admin-main{max-width:1600px}.h
 """
 
 
-def document(title: str, body: str, script: str = "", nonce: str = "") -> bytes:
+def document(title: str, body: str, script: str = "", nonce: str = "", public_theme: bool = False) -> bytes:
+    theme_html = '<link rel="stylesheet" href="/assets/css/pcs.css">' if public_theme else ""
+    body_class = ' class="public-status"' if public_theme else ""
     script_html = f'<script nonce="{esc(nonce)}">{script}</script>' if script else ""
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{esc(title)}</title>
-<meta name="viewport" content="width=device-width,initial-scale=1"><style>{BASE_CSS}</style></head>
-<body>{body}{script_html}<footer>PCS local field network interface</footer></body></html>""".encode("utf-8")
+<meta name="viewport" content="width=device-width,initial-scale=1"><style>{BASE_CSS}</style>{theme_html}</head>
+<body{body_class}>{body}{script_html}<footer>PCS local field network interface</footer></body></html>""".encode("utf-8")
 
 
 def badge(status: str, label: str | None = None) -> str:
@@ -661,7 +665,7 @@ def render_public_page(data: dict) -> bytes:
             ("OpenWrt AP online", "openwrt_online", False),
             ("Internet available", "internet_available", False),
             ("Active uplink", "uplink_type", "None"),
-            ("Connected clients", "connected_client_count", 0),
+            ("AP clients", "ap_client_count", "unavailable"),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),
     ]
 
@@ -791,12 +795,12 @@ def render_public_page(data: dict) -> bytes:
     </section>"""
 
     body = f"""
-    <header><div class="nav"><div class="brand-group"><div class="brand">PCS Field Network</div>{header_health(data)}</div><nav class="navlinks"><a class="button secondary" href="/">Refresh</a><a class="button" href="/admin/">Admin Login</a></nav></div></header>
+    <header><div class="nav"><div class="brand-group"><div class="brand">PCS Field Network</div>{header_health(data)}</div><nav class="navlinks"><a class="button secondary" href="/">PCS Home</a><a class="button secondary" href="/status/">Refresh</a><a class="button" href="/admin/">Admin Login</a></nav></div></header>
     <main><section class="hero"><div class="hero-main"><p class="eyebrow">Portable Communication Server</p><h1>Field Network Status</h1><p>Local services, communications, position, time, and storage information for devices connected on site.</p></div>
     <aside class="admin-entry"><h2>PCS Administration</h2><p>Authorized operators can manage network, cellular, storage, services, time, and power.</p><a class="button" href="/admin/">Admin Login</a></aside></section>
     {error_html}<section class="overview"><div><h2>Overall system health</h2><p>Last refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
     <section class="grid public-grid">{''.join(cards)}</section>{service_directory}</main>"""
-    return document("PCS Field Network Status", body)
+    return document("PCS Field Network Status", body, public_theme=True)
 
 
 def render_metric(metric: dict) -> str:
@@ -957,6 +961,17 @@ class Handler(BaseHTTPRequestHandler):
         raw = cookie_value(self.headers.get("Cookie"), "pcs_admin_session")
         return SESSIONS.validate(raw)
 
+    def client_ip(self) -> str:
+        """Trust only nginx's overwritten single address, from loopback peers."""
+        peer = self.client_address[0]
+        if TRUST_PROXY and peer in {"127.0.0.1", "::1"}:
+            forwarded = self.headers.get("X-Real-IP", "")
+            try:
+                return str(ipaddress.ip_address(forwarded))
+            except ValueError:
+                pass
+        return peer
+
     def read_form(self) -> dict[str, str] | None:
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -988,7 +1003,7 @@ class Handler(BaseHTTPRequestHandler):
         if path in {"/admin/", "/admin/password"} and not self.session()[1]:
             self.redirect("/admin/login")
             return
-        if path in {"/", "/health", "/api/public-status", "/admin/", "/admin/login", "/admin/password"}:
+        if path in {"/", "/status/", "/health", "/api/public-status", "/admin/", "/admin/login", "/admin/password"}:
             content_type = "application/json; charset=utf-8" if path == "/api/public-status" else "text/html; charset=utf-8"
             self.send_body(200, b"", content_type, head_only=True)
             return
@@ -997,7 +1012,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlsplit(self.path)
         path = parsed.path
-        if path == "/":
+        if path in {"/", "/status/"}:
             self.send_body(200, render_public_page(get_public_dashboard()), "text/html; charset=utf-8")
             return
         if path == "/health":
@@ -1051,7 +1066,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/login":
             expected = cookie_value(self.headers.get("Cookie"), "pcs_login_csrf") or ""
             supplied = form.get("csrf", "")
-            address = self.client_address[0]
+            address = self.client_ip()
             if not expected or not supplied or not hmac.compare_digest(expected, supplied):
                 self.send_body(403, render_login_page(secrets.token_urlsafe(32), "Login request expired. Reload and try again."), "text/html; charset=utf-8")
                 return
@@ -1095,7 +1110,7 @@ class Handler(BaseHTTPRequestHandler):
             current_password = form.get("current_password", "")
             new_password = form.get("new_password", "")
             confirmation = form.get("confirm_password", "")
-            address = self.client_address[0]
+            address = self.client_ip()
             if not LOGIN_LIMITER.allowed(address):
                 self.send_body(429, render_password_page(session["csrf"], "Too many failed attempts. Wait one minute and try again."), "text/html; charset=utf-8")
                 return

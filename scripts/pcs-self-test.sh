@@ -754,6 +754,34 @@ fi
 
 section "PCS Homepage and Administration"
 
+if service_active nginx.service && service_enabled nginx.service \
+    && sudo -n nginx -t >/dev/null 2>&1; then
+    pass "nginx frontend is enabled, active, and configuration is valid"
+else
+    fail "nginx frontend is inactive, disabled, or configuration is invalid"
+fi
+
+PCS_WEB_LISTENERS="$(sudo -n ss -H -ltnp 2>/dev/null || true)"
+if printf '%s\n' "${PCS_WEB_LISTENERS}" | python3 -c '
+import sys
+rows = [line.split() for line in sys.stdin if line.strip()]
+backend = [row for row in rows if row[3].endswith(":8081")]
+frontend = [row for row in rows if row[3].endswith(":80")]
+assert backend and all(row[3] == "127.0.0.1:8081" and "python" in " ".join(row) for row in backend)
+assert frontend and all("nginx" in " ".join(row) for row in frontend)
+' 2>/dev/null; then
+    pass "nginx owns port 80; Python backend listens only on 127.0.0.1:8081"
+else
+    fail "Frontend/backend listener ownership or loopback isolation is incorrect"
+fi
+
+if curl -fsS --max-time 5 http://127.0.0.1:8081/health \
+    | python3 -c 'import json,sys; assert json.load(sys.stdin).get("service") == "pcs-control-panel"' 2>/dev/null; then
+    pass "Loopback PCS backend health endpoint works"
+else
+    fail "Loopback PCS backend health endpoint failed"
+fi
+
 if service_active "${PCS_CONTROL_SERVICE}"; then
     pass "${PCS_CONTROL_SERVICE} is active"
 else
@@ -775,7 +803,7 @@ fi
 if command_exists curl; then
     PCS_CONTROL_HTML="$(mktemp)"
     if curl -fsS --max-time 20 "${PCS_CONTROL_URL}" -o "${PCS_CONTROL_HTML}" 2>/dev/null \
-        && grep -q "Portable Communication Server" "${PCS_CONTROL_HTML}" \
+        && grep -q "LOCAL OPERATIONS" "${PCS_CONTROL_HTML}" \
         && grep -q "Admin Login" "${PCS_CONTROL_HTML}"; then
         pass "PCS public homepage and Admin Login panel work at ${PCS_CONTROL_URL}"
     else
@@ -932,6 +960,13 @@ if command_exists curl; then
         pass "PCS port 8080 compatibility redirect health check works"
     else
         fail "PCS port 8080 compatibility redirect health check failed"
+    fi
+    PCS_LEGACY_HEADERS="$(curl -sSI --max-time 5 http://127.0.0.1:8080/ 2>/dev/null | tr -d '\r' || true)"
+    if [[ "${PCS_LEGACY_HEADERS}" == *' 308 '* ]] \
+        && printf '%s\n' "${PCS_LEGACY_HEADERS}" | grep -Fxiq 'Location: http://127.0.0.1/admin/'; then
+        pass "Legacy admin redirect points to the nginx frontend"
+    else
+        fail "Legacy admin redirect does not point to the nginx frontend"
     fi
 else
     skip "curl not found; skipping compatibility redirect HTTP check"
@@ -1530,6 +1565,14 @@ else
 fi
 
 section "GPIO Boot Indicators"
+
+if [[ -x /usr/local/sbin/pcs-gpio ]]; then
+    if timeout 10 /usr/local/sbin/pcs-gpio --help >/dev/null 2>&1; then
+        pass "Installed GPIO driver executes directly (interpreter and imports valid)"
+    else
+        fail "Installed GPIO driver cannot execute; check its shebang, line endings and imports"
+    fi
+fi
 
 if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" \
     || "${PCS_SETUP_GPIO_LEDS}" == "yes" \

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#14191d">
+  <title>Files • PCS</title>
+  <link rel="stylesheet" href="/assets/css/pcs.css">
+</head>
+<body><a class="skip" href="#content">Skip to content</a><div class="shell"><header class="masthead">
+    <a class="brand" href="/" aria-label="PCS home"><span class="brand-mark" aria-hidden="true">PCS</span><span>PORTABLE COMM SERVER<span class="brand-sub">FIELD COMMUNICATIONS APPLIANCE</span></span></a>
+    <a class="admin-link" href="/admin/">Admin Login <span aria-hidden="true">↗</span></a>
+  </header><main id="content"><a class="back" href="/">← All PCS services</a><div class="page-intro"><p class="eyebrow">PCS FIELD REFERENCE</p><h1>Files</h1><p class="muted">Local file shares for the field team. No browser file manager or Internet connection is required.</p></div>
+<div class="content-grid"><section class="content-panel"><h2>PCS-Share</h2><p>Primary shared storage.</p><code>\\10.42.0.1\PCS-Share</code><p>Use the access permissions configured by your PCS administrator.</p></section>
+<section class="content-panel"><h2>PCS-Backup</h2><p>Backup storage. Administrator credentials are required.</p><code>\\10.42.0.1\PCS-Backup</code><p>Sign in as <code>pcs-admin</code> with the PCS administrator password. Backup jobs are managed in Admin.</p></section></div>
+<div class="content-grid"><section class="content-panel"><h2>Connect from Windows</h2><ol><li>Connect to the PCS LAN or its Wi-Fi access point.</li><li>Open File Explorer and enter the share address in its address bar.</li><li>If prompted, enter the credentials provided for that share.</li></ol><p>You may also find <code>PCS-FILE-SHARE</code> under Network. Use the IP address if discovery is unavailable.</p></section>
+<section class="content-panel"><h2>Connect from Linux</h2><ol><li>Connect to the PCS network.</li><li>Open your file manager’s “Connect to Server” or “Other Locations” view.</li><li>Enter <code>smb://10.42.0.1/PCS-Share</code> or <code>smb://10.42.0.1/PCS-Backup</code>.</li><li>Enter share credentials if requested.</li></ol></section></div>
+<section class="content-panel"><h2>Share unavailable?</h2><p>Check USB and file-sharing health on the Status page. Keep storage connected until an administrator has safely unmounted it.</p><a class="button" href="/status/">Check storage status</a></section></main><footer class="page-footer"><a href="/">PCS home</a><a href="/status/">Detailed status</a><a href="/admin/">Admin Login</a><span>Available on the local PCS network</span></footer></div></body></html>

@@ -64,6 +64,8 @@ install_service() {
     python3 -c 'import gpiozero, lgpio' || { echo "ERROR: Python gpiozero/lgpio is unavailable."; exit 1; }
     getent group gpio >/dev/null || { echo "ERROR: Raspberry Pi gpio group is unavailable."; exit 1; }
 
+    sudo install -d -o root -g root -m 0755 /usr/local/lib/pcs
+    sudo install -o root -g root -m 0644 "${REPO_DIR}/scripts/pcs_network_clients.py" /usr/local/lib/pcs/pcs_network_clients.py
     sudo install -o root -g root -m 0755 "${DRIVER_SOURCE}" "${DRIVER_TARGET}"
     sudo install -o root -g root -m 0755 "${STARTUP_SCRIPT_SOURCE}" "${STARTUP_SCRIPT_TARGET}"
     sudo install -o root -g root -m 0644 "${UNIT_SOURCE}" "${UNIT_TARGET}"
