@@ -91,7 +91,7 @@ and the portal require no Internet connection.
 
 ## Validation evidence (2026-09-12)
 
-- Debian 13/Python 3.13: **530 Python tests passed, no skips**, including real
+- Debian 13/Python 3.13: **538 Python tests passed, no skips**, including real
   nginx authentication/proxy tests and Linux filesystem transaction tests.
 - **9 JavaScript tests passed**: malformed/missing data, real zero vs unavailable
   power, optional services, URL validation, text-only alerts, stale readings and
@@ -104,6 +104,12 @@ and the portal require no Internet connection.
 - Browser inspection at 360px: no horizontal overflow and no link targets below
   44px after corrections. Desktop uses four service columns.
 - Python compilation, changed-shell syntax and whitespace checks passed.
+- Final v1.9 rehearsal ran the complete `setup-pcs-control-panel.sh` from no
+  nginx package, PCS units, or credentials in the disposable Debian VM. Fresh
+  installation and repeat installation passed; existing credential and session
+  key hashes were unchanged on repeat. Invalid-config and post-handoff rollback
+  tests passed again on the final candidate. This tests the web installer, not
+  a full hardware appliance wipe/reinstall.
 - Live PCS staging passed on Debian 13/Python 3.13.5 using an extracted nginx
   1.26.3 package, without installing packages or changing production services.
   The candidate backend and nginx listened only on loopback test ports. Real
