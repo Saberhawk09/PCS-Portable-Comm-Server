@@ -93,6 +93,8 @@ install_service() {
     append_boot_line "dtparam=audio=off"
     append_boot_line "${PWM_OVERLAY}"
 
+    sudo install -d -o root -g root -m 0755 /usr/local/lib/pcs
+    sudo install -o root -g root -m 0644 "${REPO_DIR}/scripts/pcs_network_clients.py" /usr/local/lib/pcs/pcs_network_clients.py
     sudo install -o root -g root -m 0755 "${DRIVER_SOURCE}" "${DRIVER_TARGET}"
     sudo install -o root -g root -m 0644 "${UNIT_SOURCE}" "${UNIT_TARGET}"
     sudo systemctl daemon-reload

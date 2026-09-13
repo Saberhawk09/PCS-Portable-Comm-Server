@@ -7,6 +7,7 @@ CONTROL_PANEL_SRC="${REPO_DIR}/web/pcs-control-panel/pcs_control_panel.py"
 REDIRECT_SRC="${REPO_DIR}/web/pcs-control-panel/pcs_dashboard_redirect.py"
 DISPATCHER_SRC="${REPO_DIR}/scripts/pcs-web-action.sh"
 DISPATCHER_DST="/usr/local/sbin/pcs-web-action"
+NETWORK_CLIENTS_SRC="${REPO_DIR}/scripts/pcs_network_clients.py"
 PASSWORD_HELPER_SRC="${REPO_DIR}/scripts/pcs-admin-password-helper.py"
 PASSWORD_HELPER_DST="/usr/local/sbin/pcs-admin-password-helper"
 BACKUP_CONFIG_HELPER_SRC="${REPO_DIR}/scripts/pcs_backup_config.py"
@@ -17,6 +18,8 @@ SERVICE_SRC="${REPO_DIR}/systemd/pcs-control-panel.service"
 SERVICE_DST="/etc/systemd/system/pcs-control-panel.service"
 REDIRECT_SERVICE_SRC="${REPO_DIR}/systemd/pcs-dashboard-redirect.service"
 REDIRECT_SERVICE_DST="/etc/systemd/system/pcs-dashboard-redirect.service"
+FRONTEND_INSTALLER="${REPO_DIR}/scripts/pcs_frontend_install.py"
+FRONTEND_CONFIG="${REPO_DIR}/config/nginx/pcs.conf"
 AUTH_DIR="/etc/pcs-control-panel"
 ADMIN_FILE="${AUTH_DIR}/admin.json"
 SESSION_KEY_FILE="${AUTH_DIR}/session.key"
@@ -70,9 +73,12 @@ for required_file in \
     "${CONTROL_PANEL_SRC}" \
     "${REDIRECT_SRC}" \
     "${DISPATCHER_SRC}" \
+    "${NETWORK_CLIENTS_SRC}" \
     "${PASSWORD_HELPER_SRC}" \
     "${BACKUP_CONFIG_HELPER_SRC}" \
     "${SERVICE_SRC}" \
+    "${FRONTEND_INSTALLER}" \
+    "${FRONTEND_CONFIG}" \
     "${REDIRECT_SERVICE_SRC}"; do
     if [[ ! -f "${required_file}" ]]; then
         echo "ERROR: missing required file: ${required_file}"
@@ -87,6 +93,8 @@ sudo rm -rf -- "${REMOVED_STANDBY_DIR}"
 
 echo "Installing root-owned PCS web action dispatcher..."
 sudo install -o root -g root -m 0755 "${DISPATCHER_SRC}" "${DISPATCHER_DST}"
+sudo install -d -o root -g root -m 0755 /usr/local/lib/pcs
+sudo install -o root -g root -m 0644 "${NETWORK_CLIENTS_SRC}" /usr/local/lib/pcs/pcs_network_clients.py
 
 echo "Installing root-owned PCS admin password helper..."
 sudo install -o root -g root -m 0755 "${PASSWORD_HELPER_SRC}" "${PASSWORD_HELPER_DST}"
@@ -165,32 +173,12 @@ if sudo test -s "${ADMIN_FILE}"; then
     sudo chmod 0640 "${ADMIN_FILE}"
 fi
 
-echo "Stopping the current web services for the port migration..."
-sudo systemctl stop pcs-dashboard-redirect.service >/dev/null 2>&1 || true
-sudo systemctl stop pcs-control-panel.service >/dev/null 2>&1 || true
-
-echo "Installing systemd services..."
-sudo install -o root -g root -m 0644 "${SERVICE_SRC}" "${SERVICE_DST}"
-sudo install -o root -g root -m 0644 "${REDIRECT_SERVICE_SRC}" "${REDIRECT_SERVICE_DST}"
-sudo systemctl daemon-reload
-
-echo "Starting the unified port 80 homepage and admin service..."
-sudo systemctl enable pcs-control-panel.service >/dev/null
-sudo systemctl restart pcs-control-panel.service
-
-echo "Starting the legacy port 8080 compatibility redirect..."
-sudo systemctl enable pcs-dashboard-redirect.service >/dev/null
-sudo systemctl restart pcs-dashboard-redirect.service
-
-echo
-echo "Testing local endpoints..."
-curl -fsS --max-time 10 http://127.0.0.1/health
-curl -fsS --max-time 20 http://127.0.0.1/ | grep -q "Admin Login"
-curl -fsS --max-time 10 http://127.0.0.1:8080/health
+echo "Installing and validating nginx with transactional backend migration..."
+sudo python3 "${FRONTEND_INSTALLER}"
 
 echo
 echo "Service status:"
-systemctl status pcs-control-panel.service pcs-dashboard-redirect.service --no-pager -l || true
+systemctl status nginx.service pcs-control-panel.service pcs-dashboard-redirect.service --no-pager -l || true
 
 echo
 echo "PCS web setup complete."
