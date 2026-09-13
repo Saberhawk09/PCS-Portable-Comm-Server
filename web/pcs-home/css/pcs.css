@@ -1,0 +1,528 @@
+:root{
+  color-scheme:dark;
+  --bg:#14191d;
+  --panel:#1c2328;
+  --panel-high:#222b31;
+  --line:#354149;
+  --text:#f0f3f4;
+  --muted:#a9b5be;
+  --cyan:#91cfe3;
+  --green:#9bd9ae;
+  --amber:#f2ce82;
+  --red:#ffada7}
+  *{
+    box-sizing:border-box}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      font-size:16px;
+      line-height:1.55}
+      a{
+        color:var(--cyan);
+        text-underline-offset:4px}
+        a:focus-visible,button:focus-visible{
+          outline:3px solid var(--cyan);
+          outline-offset:5px}
+          a:hover{
+            text-decoration-thickness:2px}
+            .shell{
+              max-width:1180px;
+              margin:auto;
+              padding:0 32px}
+              .skip{
+                position:absolute;
+                top:-100px;
+                left:16px;
+                padding:12px;
+                background:var(--panel);
+                z-index:10}
+                .skip:focus{
+                  top:8px}
+                  .masthead{
+                    min-height:106px;
+                    display:flex;
+                    align-items:center;
+                    justify-content:space-between;
+                    gap:16px;
+                    border-bottom:1px solid var(--line)}
+                    .brand{
+                      display:flex;
+                      align-items:center;
+                      gap:16px;
+                      color:var(--text);
+                      text-decoration:none;
+                      font-size:14px;
+                      font-weight:750;
+                      letter-spacing:.075em}
+                      .brand-mark{
+                        display:grid;
+                        place-items:center;
+                        width:52px;
+                        height:52px;
+                        border:2px solid var(--cyan);
+                        color:var(--cyan);
+                        font-size:16px;
+                        letter-spacing:0}
+                        .brand-sub{
+                          display:block;
+                          margin-top:3px;
+                          color:var(--muted);
+                          font-size:10px;
+                          letter-spacing:.15em}
+                          .admin-link{
+                            font-size:13px;
+                            text-decoration:none;
+                            padding:12px 0;
+                            white-space:nowrap}
+                            .admin-link span{
+                              margin-left:14px}
+                              main{
+                                padding-top:32px}
+                                .instrument{
+                                  background:var(--panel);
+                                  border:1px solid var(--line);
+                                  border-top:3px solid var(--cyan);
+                                  border-radius:4px;
+                                  overflow:hidden}
+                                  .station-row{
+                                    display:flex;
+                                    justify-content:space-between;
+                                    align-items:center;
+                                    gap:24px;
+                                    padding:28px 28px 20px}
+                                    .eyebrow{
+                                      font-size:11px;
+                                      letter-spacing:.15em;
+                                      color:var(--cyan);
+                                      margin:0 0 7px;
+                                      font-weight:700}
+                                      h1{
+                                        margin:0;
+                                        font-size:clamp(24px,4vw,34px);
+                                        letter-spacing:.025em;
+                                        line-height:1.25}
+                                        .muted{
+                                          color:var(--muted);
+                                          margin:8px 0 0;
+                                          font-size:14px}
+                                          .health-wrap{
+                                            text-align:right;
+                                            flex-shrink:0}
+                                            .health{
+                                              display:block;
+                                              font-weight:750;
+                                              font-size:20px;
+                                              padding:7px 15px;
+                                              border:1px solid var(--line);
+                                              border-radius:3px;
+                                              color:var(--muted)}
+                                              .health[data-state=ok]{
+                                                color:var(--green);
+                                                border-color:#496d54}
+                                                .health[data-state=warn]{
+                                                  color:var(--amber);
+                                                  border-color:#806b40}
+                                                  .health[data-state=bad]{
+                                                    color:var(--red);
+                                                    border-color:#805350}
+                                                    .health-caption{
+                                                      display:block;
+                                                      color:var(--muted);
+                                                      font-size:12px;
+                                                      margin-top:6px}
+                                                      .station-meta{
+                                                        padding:0 28px 20px;
+                                                        display:flex;
+                                                        flex-wrap:wrap;
+                                                        gap:8px 24px;
+                                                        font-size:12px;
+                                                        color:var(--muted)}
+                                                        .station-meta strong{
+                                                          color:var(--text);
+                                                          font-weight:500;
+                                                          margin-left:5px}
+                                                          .local-label{
+                                                            margin-left:auto;
+                                                            color:var(--cyan)}
+                                                            .metrics{
+                                                              display:grid;
+                                                              grid-template-columns:repeat(4,minmax(0,1fr));
+                                                              border-top:1px solid var(--line);
+                                                              background:#192025}
+                                                              .metrics>div{
+                                                                padding:20px 26px;
+                                                                border-right:1px solid var(--line);
+                                                                min-width:0}
+                                                                .metrics>div:last-child{
+                                                                  border-right:0}
+                                                                  .metric-label{
+                                                                    color:var(--muted);
+                                                                    letter-spacing:.12em;
+                                                                    font-size:11px;
+                                                                    font-weight:650}
+                                                                    .metrics strong{
+                                                                      display:block;
+                                                                      font-size:26px;
+                                                                      line-height:1.4;
+                                                                      font-weight:650;
+                                                                      overflow-wrap:anywhere;
+                                                                      margin-top:5px}
+                                                                      .metric-note{
+                                                                        color:var(--muted);
+                                                                        font-size:12px}
+                                                                        .radio-strip{
+                                                                          display:flex;
+                                                                          flex-wrap:wrap;
+                                                                          gap:12px 30px;
+                                                                          padding:13px 26px;
+                                                                          border-top:1px solid var(--line);
+                                                                          font-size:10px;
+                                                                          color:var(--muted);
+                                                                          letter-spacing:.06em}
+                                                                          .radio-strip strong{
+                                                                            font-size:11px;
+                                                                            color:var(--text);
+                                                                            margin-left:9px;
+                                                                            font-weight:550;
+                                                                            letter-spacing:0}
+                                                                            .status-note{
+                                                                              font-size:12px;
+                                                                              color:var(--muted);
+                                                                              margin:12px 2px 26px}
+                                                                              .status-note[data-stale=true]{
+                                                                                color:var(--amber)}
+                                                                                .section-heading{
+                                                                                  display:flex;
+                                                                                  align-items:center;
+                                                                                  justify-content:space-between;
+                                                                                  margin-bottom:14px;
+                                                                                  gap:16px}
+                                                                                  .section-heading h2{
+                                                                                    font-size:19px;
+                                                                                    margin:0}
+                                                                                    .section-heading>span{
+                                                                                      color:var(--muted);
+                                                                                      font-size:10px;
+                                                                                      letter-spacing:.12em}
+                                                                                      .service-grid{
+                                                                                        display:grid;
+                                                                                        grid-template-columns:repeat(4,minmax(0,1fr));
+                                                                                        gap:14px}
+                                                                                        .tile{
+                                                                                          display:block;
+                                                                                          min-height:206px;
+                                                                                          padding:20px;
+                                                                                          background:var(--panel);
+                                                                                          border:1px solid var(--line);
+                                                                                          border-radius:4px;
+                                                                                          color:var(--text);
+                                                                                          text-decoration:none;
+                                                                                          transition:background .12s,border-color .12s}
+                                                                                          .tile:hover{
+                                                                                            background:var(--panel-high);
+                                                                                            border-color:#688494}
+                                                                                            .tile-top{
+                                                                                              display:flex;
+                                                                                              justify-content:space-between;
+                                                                                              gap:8px;
+                                                                                              align-items:center;
+                                                                                              min-height:30px}
+                                                                                              .icon{
+                                                                                                font-family:system-ui,sans-serif;
+                                                                                                font-size:29px;
+                                                                                                color:var(--cyan);
+                                                                                                line-height:1}
+                                                                                                .tag{
+                                                                                                  font-size:9px;
+                                                                                                  letter-spacing:.055em;
+                                                                                                  color:var(--muted);
+                                                                                                  text-align:right;
+                                                                                                  overflow-wrap:anywhere}
+                                                                                                  .tile h3{
+                                                                                                    font-size:17px;
+                                                                                                    font-weight:650;
+                                                                                                    margin:25px 0 7px;
+                                                                                                    display:flex;
+                                                                                                    justify-content:space-between;
+                                                                                                    gap:8px;
+                                                                                                    overflow-wrap:anywhere}
+                                                                                                    .tile h3 span{
+                                                                                                      color:var(--muted);
+                                                                                                      font-size:15px}
+                                                                                                      .tile p{
+                                                                                                        font-size:12px;
+                                                                                                        line-height:1.65;
+                                                                                                        color:var(--muted);
+                                                                                                        margin:0}
+                                                                                                        .future{
+                                                                                                          display:flex;
+                                                                                                          gap:30px;
+                                                                                                          align-items:center;
+                                                                                                          padding:22px 2px;
+                                                                                                          margin:20px 0;
+                                                                                                          border-bottom:1px solid var(--line)}
+                                                                                                          .future>span{
+                                                                                                            font-size:10px;
+                                                                                                            letter-spacing:.1em;
+                                                                                                            color:var(--muted)}
+                                                                                                            .future p{
+                                                                                                              font-size:13px;
+                                                                                                              color:var(--muted);
+                                                                                                              margin:0}
+                                                                                                              .future small{
+                                                                                                                display:block;
+                                                                                                                font-size:11px;
+                                                                                                                margin-top:3px;
+                                                                                                                color:var(--muted)}
+                                                                                                                footer{
+                                                                                                                  display:flex;
+                                                                                                                  flex-wrap:wrap;
+                                                                                                                  justify-content:space-between;
+                                                                                                                  gap:12px 24px;
+                                                                                                                  font-size:10px;
+                                                                                                                  color:var(--muted);
+                                                                                                                  padding:0 0 24px}
+                                                                                                                  footer a{
+                                                                                                                    color:var(--muted);
+                                                                                                                    min-height:44px;
+                                                                                                                    display:flex;
+                                                                                                                    align-items:flex-start}
+                                                                                                                    .notice,.alerts{
+                                                                                                                      padding:16px 20px;
+                                                                                                                      background:var(--panel);
+                                                                                                                      border-left:3px solid var(--amber);
+                                                                                                                      font-size:14px}
+                                                                                                                      .alerts{
+                                                                                                                        list-style:none}
+                                                                                                                        .alerts li+li{
+                                                                                                                          margin-top:6px}
+                                                                                                                          [hidden]{
+                                                                                                                            display:none!important}
+                                                                                                                            .page-intro{
+                                                                                                                              margin-bottom:28px}
+                                                                                                                              .back{
+                                                                                                                                display:inline-block;
+                                                                                                                                padding:12px 0;
+                                                                                                                                font-size:13px}
+                                                                                                                                .content-grid{
+                                                                                                                                  display:grid;
+                                                                                                                                  grid-template-columns:repeat(2,minmax(0,1fr));
+                                                                                                                                  gap:18px}
+                                                                                                                                  .content-panel{
+                                                                                                                                    background:var(--panel);
+                                                                                                                                    border:1px solid var(--line);
+                                                                                                                                    border-radius:4px;
+                                                                                                                                    padding:24px;
+                                                                                                                                    margin-bottom:18px;
+                                                                                                                                    min-width:0;
+                                                                                                                                    scroll-margin-top:16px}
+                                                                                                                                    .content-panel h2{
+                                                                                                                                      font-size:20px;
+                                                                                                                                      margin:0 0 12px}
+                                                                                                                                      .content-panel h3{
+                                                                                                                                        font-size:16px;
+                                                                                                                                        margin:20px 0 8px}
+                                                                                                                                        .content-panel p,.content-panel li{
+                                                                                                                                          font-size:14px;
+                                                                                                                                          color:var(--muted)}
+                                                                                                                                          .content-panel li{
+                                                                                                                                            margin-bottom:8px}
+                                                                                                                                            .content-panel code{
+                                                                                                                                              color:var(--text);
+                                                                                                                                              overflow-wrap:anywhere;
+                                                                                                                                              white-space:normal;
+                                                                                                                                              font-size:14px}
+                                                                                                                                              .content-panel ol,.content-panel ul{
+                                                                                                                                                padding-left:22px}
+                                                                                                                                                .button{
+                                                                                                                                                  display:inline-flex;
+                                                                                                                                                  align-items:center;
+                                                                                                                                                  min-height:44px;
+                                                                                                                                                  padding:9px 16px;
+                                                                                                                                                  border:1px solid var(--cyan);
+                                                                                                                                                  border-radius:3px;
+                                                                                                                                                  text-decoration:none;
+                                                                                                                                                  font-size:14px;
+                                                                                                                                                  margin:8px 8px 0 0}
+                                                                                                                                                  dl{
+                                                                                                                                                    margin:0}
+                                                                                                                                                    dl>div{
+                                                                                                                                                      display:grid;
+                                                                                                                                                      grid-template-columns:minmax(100px,1fr) 2fr;
+                                                                                                                                                      gap:15px;
+                                                                                                                                                      padding:10px 0;
+                                                                                                                                                      border-bottom:1px solid var(--line);
+                                                                                                                                                      font-size:13px}
+                                                                                                                                                      dt{
+                                                                                                                                                        color:var(--muted)}
+                                                                                                                                                        dd{
+                                                                                                                                                          margin:0;
+                                                                                                                                                          overflow-wrap:anywhere}
+                                                                                                                                                          .content-panel a{
+                                                                                                                                                            overflow-wrap:anywhere}
+                                                                                                                                                            .content-panel a:not(.button){
+                                                                                                                                                              display:inline-block;
+                                                                                                                                                              min-height:44px;
+                                                                                                                                                              padding:8px 0}
+                                                                                                                                                              .page-footer{
+                                                                                                                                                                margin-top:28px;
+                                                                                                                                                                border-top:1px solid var(--line);
+                                                                                                                                                                padding-top:20px}
+                                                                                                                                                                @media(max-width:1000px){
+                                                                                                                                                                  .service-grid{
+                                                                                                                                                                    grid-template-columns:repeat(2,minmax(0,1fr))}
+                                                                                                                                                                    .tile{
+                                                                                                                                                                      min-height:190px}
+                                                                                                                                                                      .tile p{
+                                                                                                                                                                        font-size:14px}
+                                                                                                                                                                        .tag{
+                                                                                                                                                                          font-size:10px}
+                                                                                                                                                                          .tile h3{
+                                                                                                                                                                            font-size:19px}
+                                                                                                                                                                            .metrics strong{
+                                                                                                                                                                              font-size:23px}
+                                                                                                                                                                            }
+                                                                                                                                                                            @media(max-width:600px){
+                                                                                                                                                                              .shell{
+                                                                                                                                                                                padding:0 16px}
+                                                                                                                                                                                .masthead{
+                                                                                                                                                                                  min-height:86px}
+                                                                                                                                                                                  .brand{
+                                                                                                                                                                                    font-size:10px;
+                                                                                                                                                                                    gap:10px;
+                                                                                                                                                                                    letter-spacing:.04em}
+                                                                                                                                                                                    .brand-mark{
+                                                                                                                                                                                      width:40px;
+                                                                                                                                                                                      height:40px;
+                                                                                                                                                                                      font-size:13px;
+                                                                                                                                                                                      flex-shrink:0}
+                                                                                                                                                                                      .brand-sub{
+                                                                                                                                                                                        font-size:8px;
+                                                                                                                                                                                        letter-spacing:.055em}
+                                                                                                                                                                                        .admin-link{
+                                                                                                                                                                                          font-size:12px}
+                                                                                                                                                                                          .admin-link span{
+                                                                                                                                                                                            display:none}
+                                                                                                                                                                                            main{
+                                                                                                                                                                                              padding-top:20px}
+                                                                                                                                                                                              .station-row{
+                                                                                                                                                                                                display:block;
+                                                                                                                                                                                                padding:20px}
+                                                                                                                                                                                                .health-wrap{
+                                                                                                                                                                                                  display:flex;
+                                                                                                                                                                                                  align-items:center;
+                                                                                                                                                                                                  gap:12px;
+                                                                                                                                                                                                  margin-top:20px;
+                                                                                                                                                                                                  text-align:left}
+                                                                                                                                                                                                  .health{
+                                                                                                                                                                                                    font-size:16px;
+                                                                                                                                                                                                    padding:6px 10px}
+                                                                                                                                                                                                    .health-caption{
+                                                                                                                                                                                                      font-size:11px;
+                                                                                                                                                                                                      max-width:110px;
+                                                                                                                                                                                                      margin:0}
+                                                                                                                                                                                                      .station-meta{
+                                                                                                                                                                                                        padding:0 20px 18px;
+                                                                                                                                                                                                        gap:6px 12px}
+                                                                                                                                                                                                        .station-meta>span{
+                                                                                                                                                                                                          display:block}
+                                                                                                                                                                                                          .local-label{
+                                                                                                                                                                                                            display:none!important}
+                                                                                                                                                                                                            .metrics{
+                                                                                                                                                                                                              grid-template-columns:repeat(2,minmax(0,1fr))}
+                                                                                                                                                                                                              .metrics>div{
+                                                                                                                                                                                                                padding:16px 20px}
+                                                                                                                                                                                                                .metrics>div:nth-child(2){
+                                                                                                                                                                                                                  border-right:0}
+                                                                                                                                                                                                                  .metrics>div:nth-child(-n+2){
+                                                                                                                                                                                                                    border-bottom:1px solid var(--line)}
+                                                                                                                                                                                                                    .metrics strong{
+                                                                                                                                                                                                                      font-size:22px}
+                                                                                                                                                                                                                      .radio-strip{
+                                                                                                                                                                                                                        padding:12px 20px;
+                                                                                                                                                                                                                        gap:8px 20px}
+                                                                                                                                                                                                                        .section-heading>span{
+                                                                                                                                                                                                                          display:none}
+                                                                                                                                                                                                                          .service-grid{
+                                                                                                                                                                                                                            gap:10px}
+                                                                                                                                                                                                                            .tile{
+                                                                                                                                                                                                                              padding:15px;
+                                                                                                                                                                                                                              min-height:210px}
+                                                                                                                                                                                                                              .tile-top{
+                                                                                                                                                                                                                                display:block}
+                                                                                                                                                                                                                                .tag{
+                                                                                                                                                                                                                                  display:block;
+                                                                                                                                                                                                                                  text-align:left;
+                                                                                                                                                                                                                                  margin-top:12px;
+                                                                                                                                                                                                                                  font-size:8px;
+                                                                                                                                                                                                                                  letter-spacing:0}
+                                                                                                                                                                                                                                  .tile h3{
+                                                                                                                                                                                                                                    font-size:16px;
+                                                                                                                                                                                                                                    margin-top:16px;
+                                                                                                                                                                                                                                    gap:3px}
+                                                                                                                                                                                                                                    .tile p{
+                                                                                                                                                                                                                                      font-size:12px}
+                                                                                                                                                                                                                                      .future{
+                                                                                                                                                                                                                                        display:block}
+                                                                                                                                                                                                                                        .future p{
+                                                                                                                                                                                                                                          margin-top:8px}
+                                                                                                                                                                                                                                          .content-grid{
+                                                                                                                                                                                                                                            grid-template-columns:1fr}
+                                                                                                                                                                                                                                            .content-panel{
+                                                                                                                                                                                                                                              padding:20px}
+                                                                                                                                                                                                                                              footer{
+                                                                                                                                                                                                                                                font-size:11px}
+                                                                                                                                                                                                                                                .page-intro h1{
+                                                                                                                                                                                                                                                  font-size:28px}
+                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                @media(prefers-reduced-motion:reduce){
+                                                                                                                                                                                                                                                  *{
+                                                                                                                                                                                                                                                    scroll-behavior:auto!important;
+                                                                                                                                                                                                                                                    transition:none!important}
+                                                                                                                                                                                                                                                  }
+                                                                                                                                                                                                                                                  /* Touch targets and narrow-card titles remain legible on field phones. */
+                                                                                                                                                                                                                                                  .brand,.admin-link{
+                                                                                                                                                                                                                                                    min-height:44px}
+                                                                                                                                                                                                                                                    .admin-link{
+                                                                                                                                                                                                                                                      display:flex;
+                                                                                                                                                                                                                                                      align-items:center}
+                                                                                                                                                                                                                                                      @media(max-width:600px){
+                                                                                                                                                                                                                                                        .tile h3{
+                                                                                                                                                                                                                                                          font-size:15px}
+                                                                                                                                                                                                                                                          .tile h3 span{
+                                                                                                                                                                                                                                                            display:none}
+                                                                                                                                                                                                                                                            .tile p{
+                                                                                                                                                                                                                                                              font-size:13px}
+                                                                                                                                                                                                                                                              .tag{
+                                                                                                                                                                                                                                                                font-size:9px}
+                                                                                                                                                                                                                                                                .tile:last-child h3{
+                                                                                                                                                                                                                                                                  font-size:14px}
+                                                                                                                                                                                                                                                                }
+/* Public detail page uses the portal palette; administration keeps its own CSS. */
+.metrics .metric-note { overflow-wrap:anywhere; }
+.metrics > div > .metric-note { display:block; }
+body.public-status {
+  --accent:var(--cyan); --ok:var(--green); --warn:var(--amber); --bad:var(--red);
+  background:var(--bg); line-height:1.55;
+}
+.public-status header { position:static; background:var(--bg); backdrop-filter:none; }
+.public-status .nav, .public-status main { max-width:1180px; }
+.public-status .nav { min-height:106px; }
+.public-status .brand { color:var(--cyan); white-space:normal; }
+.public-status .hero-main, .public-status .admin-entry,
+.public-status .overview, .public-status .card {
+  background:var(--panel); border-radius:4px; box-shadow:none;
+}
+.public-status .hero-main { border-top:3px solid var(--cyan); }
+.public-status .button { min-height:44px; display:inline-flex; align-items:center; border-radius:3px; }
+.public-status .button.secondary { background:var(--panel); }
+.public-status .bar-fill { background:var(--cyan); }
+.public-status .service-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(245px,1fr)); }
+.public-status .service-card a { min-height:44px; display:flex; align-items:center; }
+@media(max-width:760px) {
+  .public-status .nav { flex-wrap:wrap; }
+  .public-status .navlinks { flex-wrap:wrap; justify-content:flex-start; }
+  .public-status .brand-group { max-width:100%; }
+}

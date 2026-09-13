@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#14191d">
+  <title>PCS • Field communications</title>
+  <link rel="stylesheet" href="/assets/css/pcs.css">
+  <script src="/assets/js/pcs.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#services">Skip to services</a>
+<div class="shell">
+  <header class="masthead">
+    <a class="brand" href="/" aria-label="PCS home"><span class="brand-mark" aria-hidden="true">PCS</span><span>PORTABLE COMM SERVER<span class="brand-sub">FIELD COMMUNICATIONS APPLIANCE</span></span></a>
+    <a class="admin-link" href="/admin/">Admin Login <span aria-hidden="true">↗</span></a>
+  </header>
+  <main>
+    <section class="instrument" aria-labelledby="station-title">
+      <div class="station-row"><div><p class="eyebrow">LOCAL OPERATIONS</p><h1 id="station-title">Portable Comm Server</h1><p class="muted">Your communications. Your local network.</p></div>
+        <div class="health-wrap"><span class="health" id="health" role="status">— Status pending</span><span class="health-caption" id="health-caption">Connecting to PCS</span></div>
+      </div>
+      <div class="station-meta"><span>PCS time <strong data-field="localTime">Unavailable</strong></span><span>Uptime <strong data-field="uptime">Unavailable</strong></span><span class="local-label"><span aria-hidden="true">⌁</span> Local appliance</span></div>
+      <div class="metrics" aria-label="Quick status">
+        <div><span class="metric-label">UPLINK</span><strong data-field="uplink">Unavailable</strong><span class="metric-note">Internet connection</span></div>
+        <div><span class="metric-label">GPS</span><strong data-field="gps">Unavailable</strong><span class="metric-note" data-field="coordinates">Unavailable</span><span class="metric-note">Grid <span data-field="grid">Unavailable</span></span></div>
+        <div><span class="metric-label">POWER</span><strong data-field="power">Unavailable</strong><span class="metric-note">Input <span data-field="voltage">Unavailable</span></span></div>
+        <div><span class="metric-label">AP CLIENTS</span><strong data-field="clients">Unavailable</strong><span class="metric-note">Excludes PCS infrastructure</span></div>
+      </div>
+      <div class="radio-strip"><span>APRS <strong data-field="aprs">Unknown</strong></span><span>MESHTASTIC <strong data-field="mesh">Unknown</strong></span><span>TIME SOURCE <strong data-field="timeSource">Unknown</strong></span></div>
+    </section>
+    <p class="status-note" id="status-note" role="status">Waiting for local status. Service links are ready.</p>
+    <noscript><p class="notice">Live readings need JavaScript. All service links below work without it. Open Status for current PCS information.</p></noscript>
+    <ul class="alerts" id="alerts" aria-label="PCS warnings and faults" hidden></ul>
+    <section id="services" aria-labelledby="services-title">
+      <div class="section-heading"><h2 id="services-title">Services</h2><span>SELECT A SERVICE TO CONTINUE</span></div>
+      <div class="service-grid">
+        <a class="tile" href="/status/"><span class="tile-top"><span class="icon" aria-hidden="true">▤</span><span class="tag">PUBLIC</span></span><h3>Status <span aria-hidden="true">↗</span></h3><p>Detailed health, position, storage and network information.</p></a>
+        <a class="tile" href="/files/"><span class="tile-top"><span class="icon" aria-hidden="true">▱</span><span class="tag">LOCAL SHARES</span></span><h3>Files <span aria-hidden="true">↗</span></h3><p>Connect to PCS-Share and PCS-Backup from your device.</p></a>
+        <a class="tile" href="/radio/#aprs"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag" data-field="aprs">Unknown</span></span><h3>APRS <span aria-hidden="true">↗</span></h3><p>Packet radio station and messaging service information.</p></a>
+        <a class="tile" href="/radio/#meshtastic"><span class="tile-top"><span class="icon" aria-hidden="true">⋈</span><span class="tag" data-field="mesh">Unknown</span></span><h3>Meshtastic <span aria-hidden="true">↗</span></h3><p>Mesh radio link and MQTT gateway information.</p></a>
+        <a class="tile" href="/pistar/" id="pistar-tile"><span class="tile-top"><span class="icon" aria-hidden="true">◉</span><span class="tag" data-field="pistar">Unknown</span></span><h3>Pi-Star <span aria-hidden="true">↗</span></h3><p>Open the paired digital voice hotspot dashboard.</p></a>
+        <a class="tile" href="/cockpit/"><span class="tile-top"><span class="icon" aria-hidden="true">▣</span><span class="tag">SIGN-IN REQUIRED</span></span><h3>Cockpit <span aria-hidden="true">↗</span></h3><p>System management for authorized operators.</p></a>
+        <a class="tile" href="/admin/"><span class="tile-top"><span class="icon" aria-hidden="true">⊞</span><span class="tag">SIGN-IN REQUIRED</span></span><h3>Admin <span aria-hidden="true">↗</span></h3><p>PCS network, services, backups and power controls.</p></a>
+        <a class="tile" href="/docs/"><span class="tile-top"><span class="icon" aria-hidden="true">≡</span><span class="tag">OFFLINE HELP</span></span><h3>Documentation <span aria-hidden="true">↗</span></h3><p>Quick start, service addresses and field reference.</p></a>
+      </div>
+    </section>
+    <aside class="future"><span>ROOM TO GROW</span><p>Maps · Library · Messages · Diagnostics <small>Future services · not installed by this update</small></p></aside>
+  </main>
+  <footer><span>PCS / LOCAL SERVICE PORTAL</span><a href="/docs/#health">Understanding PCS health</a><span>No Internet required for local services</span></footer>
+</div>
+</body>
+</html>
