@@ -1566,6 +1566,14 @@ fi
 
 section "GPIO Boot Indicators"
 
+if [[ -x /usr/local/sbin/pcs-gpio ]]; then
+    if timeout 10 /usr/local/sbin/pcs-gpio --help >/dev/null 2>&1; then
+        pass "Installed GPIO driver executes directly (interpreter and imports valid)"
+    else
+        fail "Installed GPIO driver cannot execute; check its shebang, line endings and imports"
+    fi
+fi
+
 if [[ "${PCS_SETUP_GPIO_LCD}" == "yes" \
     || "${PCS_SETUP_GPIO_LEDS}" == "yes" \
     || "${PCS_SETUP_GPIO_STATS}" == "yes" ]]; then

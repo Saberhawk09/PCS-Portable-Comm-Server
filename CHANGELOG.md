@@ -4,7 +4,7 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
-## [1.9] - 2026-09-12
+## [1.9] - 2026-09-13
 
 ### PCS web portal
 
@@ -17,6 +17,8 @@ All notable user-facing PCS changes are recorded here.
   Match the detailed public status page to the portal theme.
 - Add staged nginx validation, atomic static releases, rollback backups, installer
   integration, listener checks, and real nginx/security and defensive JS tests.
+- Check the installed GPIO executable directly during self-test, catching broken
+  interpreter lines or imports before the next service restart.
 
 ### Recovery improvements included since v1.8.3
 
