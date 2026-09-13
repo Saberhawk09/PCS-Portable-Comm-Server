@@ -8,16 +8,20 @@ Admin login:      http://10.42.0.1/admin/
 Cockpit:          https://10.42.0.1:9090
 ```
 
-The public homepage contains a visible **Admin Login** button and administration panel. Operators do not need to enter the legacy port manually.
+The static homepage is a service launcher with a visible **Admin Login** link.
+Detailed public information remains available at `/status/`. Operators do not
+need to enter the legacy port manually.
 
-The sticky header always places the overall `OK`, `WARN`, or `BAD` indicator
-beside public-safe summaries for every active warning or fault. The same alert
-list feeds the Android status header, so a degraded condition is identified by
-component and message instead of requiring the operator to search every card.
+The portal places the existing `OK`, `WARN`, or `BAD` indicator beside the
+station summary and shows public-safe warning/fault descriptions beneath it.
+The same alert list feeds the Android status header. Failed status requests
+label retained readings as last known while keeping service navigation usable.
 
 ## Public Homepage
 
-The homepage is read-only and does not require authentication. It shows an explicitly limited status data set:
+The homepage is read-only and does not require authentication. It summarizes
+uplink, GPS, input power, clients and radio/time services. The detailed public
+view at `/status/` shows the existing explicitly limited status data set:
 
 - Overall health, uptime, local time, temperature, load, memory, and storage use
 - Internet availability, active uplink, OpenWrt status, and client count
@@ -166,12 +170,20 @@ sudo systemctl restart pcs-control-panel.service
 
 ## Services and Ports
 
+The frontend update is staged locally and has passed a Debian systemd rehearsal.
+The following describes its installation target, not a claim that the running
+PCS has been migrated. See [frontend deployment and validation](pcs-web-frontend.md).
+
 ```text
-pcs-control-panel.service          port 80, public and authenticated routes
+nginx.service                     port 80, explicit reverse-proxy routes
+pcs-control-panel.service         127.0.0.1:8081, public and authenticated backend
 pcs-dashboard-redirect.service    port 8080, legacy compatibility redirect
 ```
 
-The old redirect service no longer owns port 80. After the unified service is installed, old bookmarks such as `http://10.42.0.1:8080/` redirect to `http://10.42.0.1/admin/`.
+nginx serves the static portal and preserves Python's public status and admin routes.
+Old bookmarks such as `http://10.42.0.1:8080/` continue redirecting to
+`http://10.42.0.1/admin/`. The Python backend no longer needs a privileged-port
+capability and is not exposed directly to LAN clients.
 
 The compatibility redirect remains separate so it can be disabled later without affecting the homepage:
 
@@ -183,11 +195,15 @@ sudo systemctl disable --now pcs-dashboard-redirect.service
 
 ```bash
 systemctl status pcs-control-panel.service --no-pager -l
+systemctl status nginx.service --no-pager -l
 systemctl status pcs-dashboard-redirect.service --no-pager -l
+sudo nginx -t
+curl -fsS http://127.0.0.1:8081/health
 curl -fsS http://127.0.0.1/health
 curl -fsS http://127.0.0.1/api/public-status
 curl -I http://127.0.0.1/admin/
 curl -fsS http://127.0.0.1:8080/health
+curl -I http://127.0.0.1:8080/
 ```
 
 An unauthenticated request to `/admin/` should return HTTP `303` and point to `/admin/login`.
