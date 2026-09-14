@@ -4,6 +4,11 @@
 
 A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and multi-protocol radio interface/hotspot.
 
+PCS v1.9.2 adds [optional Starlink telemetry](docs/starlink-telemetry.md), a dedicated
+dashboard tab, sanitized public/admin information, staged reboot coordination,
+and optional 12V/Starlink branch power monitoring. Uninstalled hardware stays
+disabled; actual Mini and sensor commissioning are still required.
+
 PCS v1.9.1 adds [generalized multi-WAN routing](docs/uplink-manager.md), optional
 Starlink/Ethernet WAN, verified Internet failover, and WAN data totals since boot.
 The Pi remains the gateway at `10.42.0.1`; Starlink hardware is optional.

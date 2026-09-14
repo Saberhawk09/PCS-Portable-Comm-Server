@@ -4,6 +4,27 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-09-14
+
+- Add optional read-only Starlink telemetry, a dedicated homepage tab, sanitized
+  public/admin cards and the additive `/api/v1/starlink` resource. Diagnostics
+  use the selected Ethernet interface and stay independent of WAN routing.
+- Keep disconnected Starlink quiet. Connected Starlink without Internet gets a
+  diagnostic warning; no working fallback raises a no-uplink warning, not a LAN
+  hard fault. Stale or missing telemetry never claims a live connection.
+- Stage explicit Mini reboot pairing and bounded PCS system-reboot coordination.
+  Controls default disabled and use existing authentication/confirmation rules.
+  Mini shutdown remains unsupported pending DC switching hardware; no stow or
+  sleep command is substituted for power-off.
+- Add optional third/fourth INA226 monitoring and separate branch energy totals.
+  The uninstalled 12V and Starlink monitors remain disabled at planned addresses
+  `0x4d` and `0x4e`, with calibration required before enabling either one.
+- Add repeatable optional installation, fixed sudo action permissions, real
+  gRPC fixture tests, privacy checks and deployment/commissioning documentation.
+- Validate 602 Python tests, 12 portal tests, a fake-device transport integration
+  and live PCS web/API/self-test checks. Real Mini telemetry/reboot and the new
+  physical monitors remain commissioning gates; no Mini power action was tested.
+
 ## [1.9.1] - 2026-09-14
 
 - Add configurable ordered Ethernet, Wi-Fi and cellular uplinks with bounded
