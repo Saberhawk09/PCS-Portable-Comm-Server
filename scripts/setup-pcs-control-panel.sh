@@ -95,6 +95,7 @@ echo "Installing root-owned PCS web action dispatcher..."
 sudo install -o root -g root -m 0755 "${DISPATCHER_SRC}" "${DISPATCHER_DST}"
 sudo install -d -o root -g root -m 0755 /usr/local/lib/pcs
 sudo install -o root -g root -m 0644 "${NETWORK_CLIENTS_SRC}" /usr/local/lib/pcs/pcs_network_clients.py
+sudo install -o root -g root -m 0644 "${REPO_DIR}/scripts/pcs_uplink_manager.py" /usr/local/lib/pcs/pcs_uplink_manager.py
 
 echo "Installing root-owned PCS admin password helper..."
 sudo install -o root -g root -m 0755 "${PASSWORD_HELPER_SRC}" "${PASSWORD_HELPER_DST}"

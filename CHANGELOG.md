@@ -4,6 +4,23 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-09-14
+
+- Add configurable ordered Ethernet, Wi-Fi and cellular uplinks with bounded
+  interface-bound IPv4/IPv6 health checks and failure/recovery stability windows.
+  NetworkManager runtime route selection handles carrier-up Internet outages.
+- Keep Starlink optional, bind USB Ethernet by permanent MAC, migrate the old
+  cellular controller, and protect operator-started connections across restarts.
+  The Pi retains its existing LAN, DHCP/DNS/NAT and intentional offline operation.
+- Show structured uplink health and download/upload totals since boot on public
+  and authenticated dashboards/API, preserving public identity redaction.
+- Add opt-in management access from a trusted private Ethernet upstream, refreshed
+  after device events and firewall reloads. Existing HTTPS identity remains intact.
+- Correct Ethernet health on existing indicators and show `Ethernet WAN` on the LCD.
+- Fix the APRS uplink recovery restart race with the PTT safety guard.
+- Add state-machine, installer, firewall, routing and systemd regression coverage;
+  record home-router USB NIC deployment and remaining Starlink acceptance gates.
+
 ## [1.9] - 2026-09-13
 
 ### PCS web portal

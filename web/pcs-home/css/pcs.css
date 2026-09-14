@@ -526,3 +526,8 @@ body.public-status {
   .public-status .navlinks { flex-wrap:wrap; justify-content:flex-start; }
   .public-status .brand-group { max-width:100%; }
 }
+.wan-usage { padding: 1rem 1.25rem; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.wan-usage h2 { margin: 0; font-size: 1rem; }
+.wan-usage p { margin: .4rem 0 0; }
+.wan-usage ul { list-style: none; padding: 0; margin: .4rem 0 0; font-size: .9rem; }
+.wan-usage li + li { margin-top: .35rem; }

@@ -100,6 +100,14 @@ class SessionTests(unittest.TestCase):
 
 
 class PublicDataTests(unittest.TestCase):
+    def test_wan_usage_is_public_but_nested_identifiers_are_not(self):
+        data = deepcopy(PUBLIC_DATA)
+        data['network'].update(usage={'rx_bytes': 1, 'tx_bytes': 2, 'total_bytes': 3, 'partial': True, 'interface': 'private-interface'}, uplinks=[{'id': 'starlink', 'name': 'Starlink', 'interface': 'private-interface', 'profile': 'private-profile', 'addresses': ['private-address'], 'usage': {'rx_bytes': 1, 'tx_bytes': 2, 'total_bytes': 3, 'secret': 'private-secret'}}])
+        public = pcs.sanitize_public_dashboard(data)
+        self.assertNotIn('private-', json.dumps(public))
+        self.assertEqual(public['network']['usage']['total_bytes'], 3)
+        self.assertEqual(public['network']['uplinks'][0]['usage']['rx_bytes'], 1)
+
     def test_power_card_is_hidden_until_configured_and_labels_estimate(self):
         hidden = pcs.render_public_page(pcs.sanitize_public_dashboard(PUBLIC_DATA)).decode("utf-8")
         self.assertNotIn("PCS Power", hidden)

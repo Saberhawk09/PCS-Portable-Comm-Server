@@ -323,6 +323,10 @@ fi
 
 echo
 echo "[Cellular fallback policy]"
+if [[ -r /etc/pcs/uplinks.json && -x /usr/local/sbin/pcs-uplink-manager ]]; then
+    echo "[Uplinks and WAN traffic since boot]"
+    /usr/local/sbin/pcs-uplink-manager --check || true
+else
 echo "Configured policy: ${PCS_CELLULAR_FALLBACK_MODE}"
 if systemctl is-enabled --quiet pcs-cellular-fallback.service 2>/dev/null; then
     echo "pcs-cellular-fallback.service enabled: yes"
@@ -338,6 +342,7 @@ if [[ -e "${PCS_CELLULAR_FALLBACK_MARKER}" ]]; then
     echo "Cellular session ownership: automatic fallback"
 else
     echo "Cellular session ownership: manual or disconnected"
+fi
 fi
 
 echo

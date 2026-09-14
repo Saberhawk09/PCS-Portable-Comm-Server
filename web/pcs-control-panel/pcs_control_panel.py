@@ -54,7 +54,7 @@ ACTIONS = [
     ("wifi-disconnect", "Disable Wi-Fi Radio", "Turn off Pi Wi-Fi for offline or cellular-only operation."),
     ("cellular-status", "View Cellular", "Show WWAN modem and cellular connection state."),
     ("cellular-connect", "Connect Cellular", "Bring up cellular data without changing the fallback policy."),
-    ("cellular-disconnect", "Disconnect Cellular", "Bring down cellular data; automatic mode may reconnect it if Wi-Fi is unavailable."),
+    ("cellular-disconnect", "Disconnect Cellular", "Disconnect cellular and pause automatic cellular activation until Connect Cellular or operator resume."),
     ("cellular-test", "Test Cellular", "Test cellular-only internet through the WWAN interface."),
     ("meshtastic-status", "View Meshtastic", "Show privacy-safe node, mesh, MQTT, GPSD, and environment status."),
     ("restart-meshtastic", "Restart Meshtastic", "Reconnect the Meshtastic radio transport and MQTT gateway."),
@@ -323,7 +323,7 @@ PUBLIC_CACHE = TimedCache()
 
 PUBLIC_FIELDS = {
     "system": {"status", "uptime", "local_time", "cpu_temperature", "cpu_load", "memory_used", "root_storage_used"},
-    "network": {"status", "offline", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "uplink_type", "connected_client_count", "ap_client_count"},
+    "network": {"status", "offline", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "ip_internet_available", "dns_available", "uplink_type", "connected_client_count", "ap_client_count", "uplinks", "usage", "usage_summary"},
     "remote_management": {"configured", "status", "connection", "management_address", "boot_enabled", "firewall_active", "latest_handshake"},
     "cellular": {"status", "modem_present", "connected", "carrier", "access_technology", "signal", "fallback_policy", "fallback_active"},
     "time": {"status", "chrony_active", "synchronized", "source", "reference"},
@@ -504,7 +504,23 @@ def sanitize_public_dashboard(data: dict) -> dict:
             for key in allowed_fields
             if key in source
         }
+    network = sanitized.get("network", {})
+    if "uplinks" in network:
+        fields = {"id", "name", "type", "priority", "link", "address", "address6", "internet", "internet6", "state", "active", "selected", "selected6"}
+        rows = network["uplinks"] if isinstance(network["uplinks"], list) else []
+        network["uplinks"] = [{**{k: v for k, v in row.items() if k in fields and isinstance(v, (str, int, bool, type(None)))}, "usage": sanitize_wan_usage(row.get("usage"))} for row in rows[:32] if isinstance(row, dict)]
+    if "usage" in network:
+        network["usage"] = sanitize_wan_usage(network["usage"])
     return sanitized
+
+
+def sanitize_wan_usage(value):
+    if not isinstance(value, dict):
+        return None
+    result = {k: v for k, v in value.items() if k in {"rx_bytes", "tx_bytes", "total_bytes"} and type(v) is int and v >= 0}
+    if "partial" in value:
+        result["partial"] = value["partial"] is True
+    return result
 
 
 def sanitize_alerts(value) -> list[dict]:
@@ -665,9 +681,17 @@ def render_public_page(data: dict) -> bytes:
             ("OpenWrt AP online", "openwrt_online", False),
             ("Internet available", "internet_available", False),
             ("Active uplink", "uplink_type", "None"),
+            ("WAN traffic since boot", "usage_summary", "Unavailable"),
             ("AP clients", "ap_client_count", "unavailable"),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),
     ]
+
+    for uplink in network.get("uplinks", []):
+        if not isinstance(uplink, dict):
+            continue
+        usage = uplink.get("usage") or {}
+        traffic = " / ".join(f"{label} {usage[key] / (1024 ** 3):.3f} GiB" for key, label in [("rx_bytes", "Down"), ("tx_bytes", "Up"), ("total_bytes", "Total")] if type(usage.get(key)) is int)
+        cards.append(public_card(str(uplink.get("name", "WAN")), {"status": "ok" if uplink.get("internet") is True else "warn", "state": uplink.get("state", "unknown"), "active": uplink.get("active", False), "traffic": traffic or "Unavailable"}, [("Internet health", "state", "unknown"), ("Active", "active", False), ("Traffic since boot", "traffic", "Unavailable")]))
 
     if remote_management.get("configured"):
         cards.append(public_card("Remote Management", remote_management, [

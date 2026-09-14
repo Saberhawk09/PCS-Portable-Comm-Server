@@ -6,7 +6,7 @@ Wants=NetworkManager.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/pcs-direwolf-uplink-recovery --recover
-TimeoutStartSec=150
+TimeoutStartSec=300
 User=root
 Group=root
 NoNewPrivileges=yes

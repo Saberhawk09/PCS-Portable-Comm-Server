@@ -35,6 +35,7 @@ DISPLAY_SERVICES = ("pcs-gpio-leds.service", "pcs-gpio-stats.service")
 FAN_SERVICE = "pcs-gpio-fan.service"
 POWER_SERVICE = "pcs-power-monitor.service"
 FALLBACK_SERVICE = "pcs-cellular-fallback.service"
+UPLINK_SERVICE = "pcs-uplink-manager.service"
 PTT_GUARD_SERVICE = "pcs-aprs-ptt-safe.service"
 RADIO_SERVICES = ("direwolf.service", "graywolf.service")
 WS2812_PYTHON = Path("/opt/pcs-gpio-leds/bin/python")
@@ -489,7 +490,7 @@ class StressRun:
         self.cleanup_errors: list[str] = []
 
     def snapshot_services(self) -> None:
-        names = (*DISPLAY_SERVICES, FAN_SERVICE, POWER_SERVICE, FALLBACK_SERVICE, *RADIO_SERVICES, PTT_GUARD_SERVICE)
+        names = (*DISPLAY_SERVICES, FAN_SERVICE, POWER_SERVICE, FALLBACK_SERVICE, UPLINK_SERVICE, *RADIO_SERVICES, PTT_GUARD_SERVICE)
         self.original_active = {name: service_active(name) for name in names}
 
     def start_cellular(self) -> str:
@@ -498,6 +499,8 @@ class StressRun:
             raise RuntimeError("no NetworkManager GSM device is present")
         if self.original_active.get(FALLBACK_SERVICE):
             run(("systemctl", "stop", FALLBACK_SERVICE))
+        if self.original_active.get(UPLINK_SERVICE):
+            run(("systemctl", "stop", UPLINK_SERVICE))
         if initial[1] != "connected":
             self.cellular_profile = gsm_profile()
             run(
@@ -615,7 +618,9 @@ class StressRun:
                         timeout=15,
                     ),
                 )
-            if self.original_active.get(FALLBACK_SERVICE):
+            if self.original_active.get(UPLINK_SERVICE):
+                safely(UPLINK_SERVICE, lambda: run(("systemctl", "start", UPLINK_SERVICE), check=False))
+            elif self.original_active.get(FALLBACK_SERVICE):
                 safely(
                     FALLBACK_SERVICE,
                     lambda: run(("systemctl", "start", FALLBACK_SERVICE), check=False),

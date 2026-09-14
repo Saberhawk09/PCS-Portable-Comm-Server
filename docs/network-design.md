@@ -1,5 +1,9 @@
 # Network Design
 
+For the optional generalized Ethernet/Wi-Fi/cellular policy, health-driven
+routing and since-boot traffic counters, see [Uplink manager](uplink-manager.md).
+Starlink uses a dedicated USB Ethernet DHCP WAN; `eth0` remains the LAN gateway.
+
 PCS uses a Pi-centered network design.
 
 The Raspberry Pi 4 is the main PCS server, LAN gateway, DHCP/DNS provider, file server, NTP server, monitoring host, and optional cellular gateway.

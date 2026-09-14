@@ -300,3 +300,18 @@ It verified authenticated status and action discovery, the read-only
 `wifi-status` action, challenge issuance without execution, invalid
 password-change rejection, token revocation, and a subsequent `401` for the
 revoked credential. The temporary raw token was then deleted.
+# Additive WAN status and traffic fields
+
+The public network resource includes `uplinks`, `usage`, `usage_summary`,
+`ip_internet_available` and `dns_available`. Existing fields and schema version
+remain available. Each uplink has a safe name/type, priority, link/address and
+Internet health, active/selected state and per-WAN usage. `address` and
+`address6` are booleans, not address strings. `internet6` and `selected6` describe
+IPv6 separately. Authenticated details include actual interface/profile/address
+and session-ownership information; public nested allowlists remove those fields.
+
+Usage exposes nonnegative integer `rx_bytes`, `tx_bytes`, `total_bytes` and an
+aggregate `partial` flag. An unavailable aggregate is null or has no measured
+byte values, not a fabricated zero. Counts include all configured WAN interface
+traffic since boot, including the Pi and clients, and survive service restart.
+See [uplink accounting and migration](uplink-manager.md).

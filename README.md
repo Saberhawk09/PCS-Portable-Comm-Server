@@ -4,6 +4,10 @@
 
 A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and multi-protocol radio interface/hotspot.
 
+PCS v1.9.1 adds [generalized multi-WAN routing](docs/uplink-manager.md), optional
+Starlink/Ethernet WAN, verified Internet failover, and WAN data totals since boot.
+The Pi remains the gateway at `10.42.0.1`; Starlink hardware is optional.
+
 PCS v1.9 adds an offline [web service portal](docs/pcs-web-frontend.md) at
 `http://10.42.0.1/`. nginx serves the public interface while the existing
 authenticated Python administration stays behind it on loopback. The standard
@@ -368,3 +372,12 @@ It was an hour before start time, while everyone was setting up antennas I was c
 Once we had everything hooked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event. Needless to say I was annoyed. Not just at Windows, but at myself for assuming it would work properly and not planning ahead. Well the lessons from that mistake have evolved into this project.
 
 The goal of this project isn't to replace commercial networking equipment or build a portable homelab grade server, it's to build a communications appliance specifically tailored to emergency communications exercises and other portable operations.
+
+# Optional multi-WAN Internet
+
+PCS can prefer a MAC-bound USB Ethernet WAN (including Starlink Mini), then
+external Wi-Fi, then optional cellular, with Internet probes and stability
+windows. The Pi remains the gateway; `eth0` is always the PCS LAN. Public/admin
+dashboards include WAN traffic totals since boot. See the
+[uplink manager guide](docs/uplink-manager.md) and
+[acceptance tests](docs/testing-uplinks.md) before installation.

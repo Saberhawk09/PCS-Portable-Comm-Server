@@ -113,6 +113,9 @@ apply_rules() {
         nft add rule inet "${TABLE}" input iifname "${interface}" ip saddr "${network}" tcp dport "${API_PORT}" accept comment "pcs-api-allowed"
     done
     nft add rule inet "${TABLE}" input tcp dport "${API_PORT}" drop comment "pcs-api-default-deny"
+    if [[ -x /usr/local/sbin/pcs-uplink-management ]]; then
+        /usr/local/sbin/pcs-uplink-management --apply
+    fi
     echo "PCS Stats API firewall is active on TCP ${API_PORT} for explicit trusted sources only."
 }
 

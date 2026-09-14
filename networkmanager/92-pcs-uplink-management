@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -eu
+case "${2:-}" in
+    up|down|reapply|dhcp4-change)
+        if systemctl is-enabled --quiet pcs-uplink-management.service; then
+            systemctl --no-block start pcs-uplink-management.service
+        fi
+        ;;
+esac

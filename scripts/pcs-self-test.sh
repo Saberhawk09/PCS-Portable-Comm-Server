@@ -1759,6 +1759,19 @@ else
 fi
 
 PCS_CELLULAR_PROFILE_ACTIVE="$(pcs_cellular_profile_name)"
+if [[ -r /etc/pcs/uplinks.json ]]; then
+    if /usr/local/sbin/pcs-uplink-manager --check; then
+        pass "Generalized uplink configuration is valid (optional WAN absence is informational)"
+    else
+        warn "Uplink configuration or observer needs attention; LAN checks remain independent"
+    fi
+    if service_active pcs-cellular-fallback.service; then
+        fail "Legacy fallback must not run alongside the uplink manager"
+    fi
+    if ! service_active pcs-uplink-manager.service; then
+        warn "Uplink health and usage observer is not active"
+    fi
+fi
 if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_PROFILE_ACTIVE}"; then
     pass "Cellular NetworkManager profile exists: ${PCS_CELLULAR_PROFILE_ACTIVE}"
 
@@ -1769,6 +1782,7 @@ if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_P
         warn "Cellular profile autoconnect is not disabled"
     fi
 
+    if [[ ! -r /etc/pcs/uplinks.json ]]; then
     if [[ -x "${PCS_CELLULAR_FALLBACK_HELPER}" ]]; then
         pass "Cellular fallback helper is installed"
     else
@@ -1822,6 +1836,7 @@ if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_P
             fail "Unknown cellular fallback policy: ${PCS_CELLULAR_FALLBACK_MODE}"
             ;;
     esac
+    fi
 else
     skip "Cellular NetworkManager profile not created yet"
 fi

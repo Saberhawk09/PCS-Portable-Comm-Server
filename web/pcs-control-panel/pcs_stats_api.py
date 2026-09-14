@@ -91,7 +91,7 @@ ACTION_GROUPS = {
     "cellular": {
         "cellular-status": ("View Cellular", "Show WWAN modem and cellular connection state."),
         "cellular-connect": ("Connect Cellular", "Bring up cellular data without changing the fallback policy."),
-        "cellular-disconnect": ("Disconnect Cellular", "Bring down cellular data; automatic mode may reconnect it if Wi-Fi is unavailable."),
+        "cellular-disconnect": ("Disconnect Cellular", "Disconnect cellular and pause automatic cellular activation until Connect Cellular or operator resume."),
         "cellular-test": ("Test Cellular", "Test cellular-only internet through the WWAN interface."),
     },
     "communications": {
@@ -159,6 +159,8 @@ API_FIELDS = {
     "network": {
         "status", "offline", "lan_gateway", "openwrt_online",
         "internet_available", "uplink_type", "connected_client_count",
+        "uplinks", "usage", "usage_summary",
+        "ip_internet_available", "dns_available",
     },
     "remote_management": {
         "configured", "status", "connection", "management_address",
@@ -287,7 +289,23 @@ def sanitize_sections(dashboard: dict) -> dict:
             for key in sorted(allowed)
             if key in source
         }
+    network = sections.get("network", {})
+    if "uplinks" in network:
+        fields = {"id", "name", "type", "priority", "link", "address", "address6", "internet", "internet6", "state", "active", "selected", "selected6"}
+        rows = network["uplinks"] if isinstance(network["uplinks"], list) else []
+        network["uplinks"] = [{**{k: v for k, v in row.items() if k in fields and isinstance(v, (str, int, bool, type(None)))}, "usage": sanitize_wan_usage(row.get("usage"))} for row in rows[:32] if isinstance(row, dict)]
+    if "usage" in network:
+        network["usage"] = sanitize_wan_usage(network["usage"])
     return sections
+
+
+def sanitize_wan_usage(value):
+    if not isinstance(value, dict):
+        return None
+    result = {k: v for k, v in value.items() if k in {"rx_bytes", "tx_bytes", "total_bytes"} and type(v) is int and v >= 0}
+    if "partial" in value:
+        result["partial"] = value["partial"] is True
+    return result
 
 
 def api_document(resource: str, dashboard: dict) -> dict:
@@ -497,6 +515,7 @@ ADMIN_CLIENT_INFO_FIELDS = {
     "router_ip", "openwrt_url", "pi_star_configured", "pi_star_url",
     "aprs_state", "meshtastic_state", "wan_public_ip", "uplink_interface",
     "uplink_source_ip", "router_side_clients",
+    "uplinks", "wan_usage",
 }
 ADMIN_CLIENT_FIELDS = {"ip", "mac", "state", "name"}
 

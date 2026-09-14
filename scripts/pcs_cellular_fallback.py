@@ -202,6 +202,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    # Migrated installations must never run the legacy policy concurrently.
+    if Path('/etc/pcs/uplinks.json').exists():
+        if args.release_owned:
+            print('Legacy ownership is not authoritative after uplink migration; session preserved.')
+            return 0
+        os.execv('/usr/local/sbin/pcs-uplink-manager', ['pcs-uplink-manager', *(['--check'] if args.check else ['--once'] if args.once else [])])
     try:
         config = load_config(args.config)
     except (OSError, ValueError, configparser.Error) as exc:
@@ -210,6 +216,17 @@ def main() -> int:
 
     network_manager = NetworkManager()
     controller = FallbackController(config, network_manager, args.marker)
+
+    if not args.check:
+        # Shared lifetime exclusion with the replacement daemon also protects
+        # operators who launch this legacy helper outside systemd.
+        import fcntl
+        policy_lock = open('/run/lock/pcs-uplink-manager.lock', 'a')
+        try:
+            fcntl.flock(policy_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('Another PCS uplink controller is running; legacy action refused.')
+            return 1
 
     if args.check:
         print(f"Wi-Fi interface: {config.wifi_interface}")

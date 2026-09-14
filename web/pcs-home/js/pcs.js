@@ -28,10 +28,18 @@
     const offline = data.offline === true || network.offline === true;
     const inputWatts = power.configured === true && power.input_online === true ? watts(power.input_power) : 'Unavailable';
     const clients = typeof network.ap_client_count === 'number' && Number.isInteger(network.ap_client_count) && network.ap_client_count >= 0 ? String(network.ap_client_count) : 'Unavailable';
+    const wanRows = Array.isArray(network.uplinks) ? network.uplinks.filter(u => u && typeof u === 'object' && !Array.isArray(u)).slice(0, 32).map(u => {
+      const usage = object(u.usage);
+      const bytes = key => typeof usage[key] === 'number' && Number.isFinite(usage[key]) && usage[key] >= 0 ? (usage[key] / (1024 ** 3)).toFixed(3) + ' GiB' : 'Unavailable';
+      const traffic = Object.keys(usage).length ? `Down ${bytes('rx_bytes')} / Up ${bytes('tx_bytes')} / Total ${bytes('total_bytes')}` : 'Traffic unavailable';
+      return `${text(u.name, 'WAN')}: ${text(u.state, 'unknown')}${u.active === true ? ' / active' : ''} · ${traffic}`;
+    }) : [];
     return {
       state, health: state ? states[state] + (offline ? ' - OFFLINE' : '') : '— Status unavailable',
       callsign: text(aprs.callsign, 'PCS FIELD STATION'), localTime: text(system.local_time), uptime: text(system.uptime),
       uplink: offline || network.internet_available === false ? 'Offline' : text(network.uplink_type),
+      wanUsage: text(network.usage_summary),
+      wanRows, wanBreakdown: wanRows.join(' • ') || 'Unavailable',
       coordinates: text(gps.coordinates), grid: text(gps.grid_square),
       voltage: power.configured === true && power.input_online === true && typeof power.input_voltage === "number" && Number.isFinite(power.input_voltage) ? power.input_voltage.toFixed(2) + " V" : "Unavailable",
       gps: text(gps.fix), power: inputWatts, clients, aprs: optional(aprs), mesh: optional(mesh),
@@ -57,6 +65,13 @@
       el.textContent = values.configured === false ? 'Not configured' : text(values[field]);
     });
     const badge = doc.getElementById('health');
+    const wanList = doc.getElementById('wan-breakdown');
+    if (wanList) {
+      wanList.replaceChildren();
+      (model.wanRows.length ? model.wanRows : ['Uplink details unavailable']).forEach(row => {
+        const item = doc.createElement('li'); item.textContent = row; wanList.appendChild(item);
+      });
+    }
     if (badge) { badge.textContent = model.health; badge.dataset.state = model.state || ''; }
     const caption = doc.getElementById('health-caption');
     if (caption) caption.textContent = model.error ? 'Collector reported a fault' : model.state ? 'Current PCS health' : 'No health reading';
