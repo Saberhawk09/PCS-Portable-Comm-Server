@@ -1,7 +1,8 @@
 # Optional Starlink telemetry and staged lifecycle controls
 
-This work is local staging only. It has not been deployed or tested against the
-operator's Mini. Starlink routing and PCS offline LAN operation remain independent.
+Read-only telemetry and dashboard support were deployed on September 14, 2026.
+The operator's Mini is not connected, so real Mini commissioning remains pending.
+Starlink routing and PCS offline LAN operation remain independent.
 The PCS-wide event logger is a separate task.
 
 ## Read-only diagnostics
@@ -135,3 +136,26 @@ and adding the fixed Starlink actions to both installer sudoers allowlists.
 An enabled collector with no Mini was exercised under systemd in the disposable
 VM: it remained active and reported `available: false`, `status: ok`. This test
 does not enable or commission the uninstalled power monitors.
+
+## Deployment validation: September 14, 2026
+
+Code commit `f0182ba` was deployed over v1.9.1 with a rollback backup at
+`/var/backups/pcs-starlink/1789393383538346955/rollback.py`. The final warning-policy
+revision passed 602 Python tests; the portal suite passed 12 tests. Live checks
+confirmed the homepage, Starlink tab, public/admin cards, HTTPS public allowlist,
+protected action catalog and fixed dispatcher permissions. No power control was
+executed. The collector is enabled, active and quietly unavailable without a Mini.
+
+The third INA226 remains disabled at `0x4d`; the fourth remains disabled at `0x4e`.
+Existing input/5V calibration and protection settings were preserved. The power
+monitor, uplink controller, Dire Wolf, GPSD and Chrony kept their running processes;
+TLS/pairing/admin credentials, NetworkManager profiles and eth0 LAN configuration
+were unchanged. No new I2C sensor was probed or commissioned.
+
+The first post-reboot self-test caught the existing IPv4-only WireGuard endpoint
+check while the peer still used IPv6. Its existing refresh timer selected IPv4
+without deployment changes; the repeat self-test passed all enabled checks with
+PCS status OK. The final report is
+`/root/.local/state/pcs/self-test-20260914T134758Z-8443.log`.
+Real Mini telemetry, paired reboot and physical power monitoring still require
+hardware commissioning. This deployment did not publish a GitHub release.
