@@ -6,6 +6,9 @@ All notable user-facing PCS changes are recorded here.
 
 ## [1.9.4] - 2026-09-14
 
+- Beep once on Internet uplink selection changes, including offline/recovery,
+  through the existing buzzer owner. Respect mute and higher-priority alarms;
+  avoid duplicate notifications on startup, restart or individual probe failures.
 - Label Ethernet uplinks as "Ethernet WAN" on the homepage and public/admin
   network cards unless fresh telemetry identifies the configured Starlink source.
 - Preserve EM7565 cellular addressing during WAN failover. Leave modem route

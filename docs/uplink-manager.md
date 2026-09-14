@@ -101,6 +101,14 @@ session migration or load balancing.
 
 ## Ownership and operator control
 
+The existing buzzer service emits one short beep when automatic WAN selection
+changes, including confirmed offline/recovery transitions. Initial observation,
+buzzer restart, stale status and standby-only changes are silent. The selection
+already includes uplink hysteresis, so individual failed probes do not beep.
+Mute, startup chimes and higher-priority alarms suppress the notification;
+suppressed notifications are not replayed later. Manual mode observes the
+effective Internet source. No additional process owns the buzzer GPIO.
+
 Automation records boot, NetworkManager daemon and active-connection identity,
 not merely a profile name. Only the exact activation it created can be released.
 Restarting the manager preserves that identity. A replaced activation, reboot,

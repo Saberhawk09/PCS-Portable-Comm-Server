@@ -22,6 +22,30 @@ class FakeOutput:
 
 
 class BuzzerTests(unittest.TestCase):
+    def test_uplink_chime_tracks_selection_not_probe_flaps(self):
+        guard = buzzer.UplinkChimeGuard()
+        sample = dict(boot='boot', mode='auto', generated_at=100, selected_id='wifi', internet=True)
+        self.assertFalse(guard.changed(sample, 100))
+        self.assertFalse(guard.changed(sample | {'internet': False}, 101))
+        self.assertTrue(guard.changed(sample | {'selected_id': 'cellular'}, 102))
+        self.assertFalse(guard.changed(sample | {'selected_id': 'cellular'}, 103))
+        self.assertTrue(guard.changed(sample | {'selected_id': None}, 104))
+        self.assertTrue(guard.changed(sample, 105))
+        self.assertFalse(guard.changed(sample | {'boot': 'new'}, 106))
+
+    def test_uplink_chime_ignores_missing_stale_and_error_samples(self):
+        guard = buzzer.UplinkChimeGuard()
+        sample = dict(boot='boot', mode='auto', generated_at=100, selected_id='wifi')
+        guard.changed(sample, 100)
+        for bad in ({}, sample | {'generated_at': 0}, sample | {'error': 'route failed'}, sample | {'generated_at': 200}):
+            self.assertFalse(guard.changed(bad, 110))
+        self.assertFalse(guard.changed(sample, 110))
+
+    def test_uplink_pattern_is_one_short_low_priority_tone(self):
+        self.assertEqual(len(buzzer.PATTERNS['uplink']), 1)
+        self.assertLess(buzzer.PATTERNS['uplink'][0].seconds, 0.2)
+        self.assertLess(buzzer.PRIORITY['uplink'], buzzer.PRIORITY['warn'])
+
     def test_service_uses_writable_lgpio_runtime_directory(self):
         service = SERVICE.read_text(encoding="utf-8")
         self.assertIn("RuntimeDirectory=pcs-buzzer", service)
@@ -29,7 +53,7 @@ class BuzzerTests(unittest.TestCase):
         self.assertIn("Environment=GPIOZERO_PIN_FACTORY=lgpio", service)
 
     def test_patterns_are_named_and_distinct(self):
-        self.assertEqual(set(buzzer.PATTERNS), {"post", "ok", "shutdown", "warn", "bad", "low_voltage"})
+        self.assertEqual(set(buzzer.PATTERNS), {"post", "ok", "shutdown", "warn", "bad", "low_voltage", "uplink"})
         self.assertGreater(buzzer.PRIORITY["low_voltage"], buzzer.PRIORITY["bad"])
         self.assertGreater(buzzer.PRIORITY["bad"], buzzer.PRIORITY["warn"])
         self.assertEqual(buzzer.PATTERNS["post"][0].duty, 0.24)
