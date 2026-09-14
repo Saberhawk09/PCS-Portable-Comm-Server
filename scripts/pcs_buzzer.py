@@ -18,6 +18,7 @@ REQUEST_PATH = Path(os.environ.get("PCS_BUZZER_REQUEST", "/run/pcs-buzzer/reques
 POWER_PATH = Path(os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/status.json"))
 MUTE_PATH = Path(os.environ.get("PCS_BUZZER_MUTE", "/run/pcs-buzzer/muted"))
 HEALTH_PATH = Path(os.environ.get("PCS_BUZZER_HEALTH", "/run/pcs-buzzer/health.json"))
+UPLINK_PATH = Path('/run/pcs-uplink-manager/status.json')
 HEALTH_MAX_AGE_SECONDS = 30
 HEALTH_DEBOUNCE_SECONDS = 5.0
 SHUTDOWN_CHIME_WAIT_SECONDS = 0.75
@@ -34,6 +35,7 @@ class Tone:
 
 SILENCE = Tone(0, 0.10, 0.0)
 PATTERNS: dict[str, tuple[Tone, ...]] = {
+    "uplink": (Tone(880, 0.12, 0.20),),
     "post": (Tone(880, 0.10, 0.24),),
     "ok": (Tone(360, 0.18, 0.20), Tone(520, 0.16, 0.20), Tone(760, 0.12, 0.20)),
     "shutdown": (Tone(760, 0.12, 0.20), Tone(520, 0.16, 0.20), Tone(360, 0.20, 0.20)),
@@ -43,7 +45,35 @@ PATTERNS: dict[str, tuple[Tone, ...]] = {
     # than the former 62.5% waveform without reducing its one-second cadence.
     "low_voltage": (Tone(700, 1.0, 0.50), Tone(0, 1.0, 0)),
 }
-PRIORITY = {"silent": 0, "ok": 1, "post": 1, "warn": 2, "bad": 3, "low_voltage": 4, "shutdown": 5}
+PRIORITY = {"silent": 0, "ok": 1, "post": 1, "uplink": 1, "warn": 2, "bad": 3, "low_voltage": 4, "shutdown": 5}
+
+
+@dataclass
+class UplinkChimeGuard:
+    boot: str | None = None
+    source: str | None = None
+
+    def changed(self, sample: dict, now: float) -> bool:
+        stamp = sample.get('generated_at')
+        boot = sample.get('boot')
+        if (not isinstance(stamp, (int, float)) or not 0 <= now - stamp <= 90
+                or not isinstance(boot, str) or not boot or sample.get('error')):
+            return False
+        # Automatic selection includes the manager's failure/recovery windows.
+        # Ignore raw probe fluctuations and standby connection changes.
+        if sample.get('mode') == 'auto':
+            if 'selected_id' not in sample:
+                return False
+            source = sample['selected_id']
+        else:
+            if not isinstance(sample.get('internet'), bool):
+                return False
+            source = sample.get('active_id') if sample['internet'] else None
+        if source is not None and not isinstance(source, str):
+            return False
+        changed = self.boot == boot and self.source != source
+        self.boot, self.source = boot, source
+        return changed
 
 
 class Output(Protocol):
@@ -172,7 +202,7 @@ def requested_pattern(now: float | None = None, health_pattern: str = "silent") 
         return "low_voltage"
     if health_pattern in {"warn", "bad"} and PRIORITY[health_pattern] > PRIORITY[pattern]:
         pattern = health_pattern
-    if MUTE_PATH.exists() and pattern in {"warn", "bad"}:
+    if MUTE_PATH.exists() and pattern in {"warn", "bad", "uplink"}:
         return "silent"
     return pattern
 
@@ -209,6 +239,7 @@ def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> N
     stopped = False
     health = HealthDebouncer()
     online_chime = OnlineChimeGuard()
+    uplink_chime = UplinkChimeGuard()
     health_available = False
     raw_health = "silent"
     def stop(_signum, _frame):
@@ -230,6 +261,7 @@ def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> N
         while not stopped:
             pattern = current_pattern()
             now = time.time()
+            uplink_changed = uplink_chime.changed(read_json(UPLINK_PATH), now)
             if online_chime.should_play(
                 health_available=health_available,
                 raw_health=raw_health,
@@ -239,9 +271,15 @@ def serve(output: Output, *, sleeper: Callable[[float], None] = time.sleep) -> N
                 play(output, "ok", sleeper=sleeper, interrupted=lambda: stopped)
                 last = "ok"
                 continue
+            if (uplink_changed and not online_chime.pending and pattern == 'silent'
+                    and raw_health == 'silent' and not MUTE_PATH.exists()):
+                play(output, 'uplink', sleeper=sleeper,
+                     interrupted=lambda: stopped or MUTE_PATH.exists() or PRIORITY[current_pattern()] > PRIORITY['uplink'])
+                last = 'uplink'
+                continue
             if pattern in {"low_voltage", "bad", "warn"}:
                 play(output, pattern, sleeper=sleeper, interrupted=lambda: stopped or PRIORITY[current_pattern()] > PRIORITY[pattern])
-            elif pattern in {"ok", "post", "shutdown"} and pattern != last:
+            elif pattern in {"ok", "post", "shutdown", "uplink"} and pattern != last:
                 play(output, pattern, sleeper=sleeper, interrupted=lambda: stopped)
             else:
                 output.off()
