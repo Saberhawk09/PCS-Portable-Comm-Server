@@ -39,6 +39,28 @@ hardware must not prevent installation or LAN operation.
 
 ## Spare USB NIC and Starlink gates
 
+For the EM7565 regression, manually connect cellular while Ethernet is healthy,
+then disable Wi-Fi and disconnect Ethernet. Verify the cellular address, DNS,
+default route and exact active-session identity survive standby and failover.
+Restore Ethernet and wait for recovery: cellular must remain connected and
+unowned. Repeat after restarting the uplink controller. There must be no modem
+`device-reapply` audit entry. A connected-modem test must verify kernel IP/routes
+and bound Internet probes, not only NetworkManager's activated state.
+
+### EM7565 recovery verification — 2026-09-14
+
+With Wi-Fi disabled and Ethernet unplugged, the modem remained activated but
+lost its kernel address and DNS after the old controller's standby Reapply.
+One operator-approved reconnect with the controller paused restored its IPv4
+address, metric-900 default route and successful bound Internet probes. The
+patched controller then started and restarted without changing the manual
+activation identity or taking ownership. Cellular remained healthy and selected,
+the public dashboard reported online, and no systemd units were failed. A Windows
+LAN client bound to its PCS address completed an HTTPS request with HTTP 200.
+All 26 uplink unit tests passed on PCS Linux, including the new no-modem-Reapply
+regressions. Actual Ethernet reconnection/failback with this patch remains a
+physical acceptance check; state-machine recovery and restart were tested.
+
 For every transition, record `ip -j address`, `ip -j route`, NetworkManager active
 profiles, cached status, public/admin API output, and an actual LAN-client fetch.
 Confirm `eth0` remains `10.42.0.1/24`; renew a client's DHCP lease and verify
