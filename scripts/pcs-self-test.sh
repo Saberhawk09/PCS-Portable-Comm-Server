@@ -373,6 +373,16 @@ echo
 
 WIFI_CONNECTED=0
 CELLULAR_CONNECTED=0
+MANAGED_CONNECTED_IFACES="$(PYTHONPATH=/usr/local/lib/pcs python3 - <<'PYUPLINK' 2>/dev/null || true
+from pcs_uplink_manager import CONFIG, cached_status, load_config
+if CONFIG.exists():
+    configured = {u.id for u in load_config().uplinks}
+    status = cached_status()
+    if status.get('available'):
+        print(' '.join(u['interface'] for u in status['uplinks']
+                       if u['id'] in configured and u.get('link') and u.get('address')))
+PYUPLINK
+)"
 
 if nmcli -t -f DEVICE,STATE device status 2>/dev/null | awk -F: -v dev="${PCS_WIFI_IFACE}" '$1 == dev && $2 == "connected" { found=1 } END { exit !found }'; then
     WIFI_CONNECTED=1
@@ -388,10 +398,10 @@ else
     echo "[INFO] Cellular/WWAN uplink is disconnected"
 fi
 
-if [[ "${WIFI_CONNECTED}" -eq 1 || "${CELLULAR_CONNECTED}" -eq 1 ]]; then
+if [[ "${WIFI_CONNECTED}" -eq 1 || "${CELLULAR_CONNECTED}" -eq 1 || -n "${MANAGED_CONNECTED_IFACES}" ]]; then
     pass "At least one internet uplink is connected"
 else
-    warn "No internet uplink is connected; PCS offline LAN services can still be healthy"
+    echo "[INFO] No internet uplink is connected; PCS is operating as offline LAN only"
 fi
 
 if nmcli -t -f DEVICE,STATE,CONNECTION device status 2>/dev/null | awk -F: -v dev="${PCS_ETH_IFACE}" '$1 == dev && $2 == "connected" && $3 == "pcs-router-wan-share" { found=1 } END { exit !found }'; then
@@ -416,10 +426,14 @@ case "${DEFAULT_IFACE}" in
         pass "Default route uses cellular uplink ${DEFAULT_IFACE}"
         ;;
     "")
-        warn "No default route is present; expected when PCS is running as offline LAN only"
+        echo "[INFO] No default route is present; expected when PCS is running as offline LAN only"
         ;;
     *)
-        warn "Default route uses unexpected interface: ${DEFAULT_IFACE}"
+        if [[ " ${MANAGED_CONNECTED_IFACES} " == *" ${DEFAULT_IFACE} "* ]]; then
+            pass "Default route uses configured WAN ${DEFAULT_IFACE}"
+        else
+            warn "Default route uses unexpected interface: ${DEFAULT_IFACE}"
+        fi
         ;;
 esac
 
