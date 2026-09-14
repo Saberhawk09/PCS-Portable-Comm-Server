@@ -6,6 +6,10 @@ All notable user-facing PCS changes are recorded here.
 
 ## [1.9.4] - 2026-09-14
 
+- Preserve EM7565 cellular addressing during WAN failover. Leave modem route
+  settings intact and rank Ethernet/Wi-Fi routes around them, avoiding a
+  NetworkManager Reapply that can remove the active bearer address and DNS.
+  Preserve manually started sessions through standby, failover and recovery.
 - Display WAN download, upload and total usage in decimal megabytes (MB,
   1,000,000 bytes) across the homepage, detailed status and usage summaries.
   Convert the values as well as the labels; preserve raw byte counters,
