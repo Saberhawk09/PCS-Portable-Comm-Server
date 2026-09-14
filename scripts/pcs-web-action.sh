@@ -2612,6 +2612,21 @@ wireguard_connection = (
 )
 wireguard_handshake_label = age_label(wireguard["handshake_age"])
 
+try:
+    from pcs_starlink import cached_status as starlink_cached, load_config as starlink_config
+    starlink_snapshot = starlink_cached()
+    telemetry_uplink_id = starlink_config()['uplink_id']
+except (ImportError, OSError, ValueError, TypeError):
+    starlink_snapshot = {"configured": False, "available": False, "state": "UNAVAILABLE", "status": "ok"}
+    telemetry_uplink_id = None
+for uplink in uplink_snapshot.get('uplinks', []):
+    if uplink.get('type') == 'ethernet':
+        uplink['name'] = 'Starlink' if (
+            uplink.get('id') == telemetry_uplink_id
+            and starlink_snapshot.get('configured') is True
+            and starlink_snapshot.get('available') is True
+        ) else 'Ethernet WAN'
+
 active_uplink_label = (
     "Wi-Fi"
     if default_iface == "wlan0"
@@ -3228,11 +3243,6 @@ if POWER_CONFIGURED:
         "items": power_items,
     })
 
-try:
-    from pcs_starlink import cached_status as starlink_cached, load_config as starlink_config
-    starlink_snapshot = starlink_cached()
-except (ImportError, OSError, ValueError, TypeError):
-    starlink_snapshot = {"configured": False, "available": False, "state": "UNAVAILABLE", "status": "ok"}
 if starlink_wan_unhealthy:
     starlink_snapshot['status'] = 'warn'
 starlink_items = [{"label": label, "value": starlink_snapshot.get(key) if starlink_snapshot.get(key) is not None else "Unavailable"}

@@ -6,6 +6,8 @@ All notable user-facing PCS changes are recorded here.
 
 ## [1.9.4] - 2026-09-14
 
+- Label Ethernet uplinks as "Ethernet WAN" on the homepage and public/admin
+  network cards unless fresh telemetry identifies the configured Starlink source.
 - Preserve EM7565 cellular addressing during WAN failover. Leave modem route
   settings intact and rank Ethernet/Wi-Fi routes around them, avoiding a
   NetworkManager Reapply that can remove the active bearer address and DNS.

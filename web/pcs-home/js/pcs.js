@@ -31,12 +31,15 @@
     const offline = data.offline === true || network.offline === true;
     const inputWatts = power.configured === true && power.input_online === true ? watts(power.input_power) : 'Unavailable';
     const clients = typeof network.ap_client_count === 'number' && Number.isInteger(network.ap_client_count) && network.ap_client_count >= 0 ? String(network.ap_client_count) : 'Unavailable';
-    const wanRows = Array.isArray(network.uplinks) ? network.uplinks.filter(u => u && typeof u === 'object' && !Array.isArray(u)).slice(0, 32).map(u => {
+    const uplinks = Array.isArray(network.uplinks) ? network.uplinks.filter(u => u && typeof u === 'object' && !Array.isArray(u)).slice(0, 32) : [];
+    const wanName = u => u.type === 'ethernet' ? (u.id === 'starlink' && slReady ? 'Starlink' : 'Ethernet WAN') : text(u.name, 'WAN');
+    const activeWAN = uplinks.find(u => u.active === true);
+    const wanRows = uplinks.map(u => {
       const usage = object(u.usage);
       const bytes = key => typeof usage[key] === 'number' && Number.isFinite(usage[key]) && usage[key] >= 0 ? (usage[key] / 1_000_000).toFixed(3) + ' MB' : 'Unavailable';
       const traffic = Object.keys(usage).length ? `Down ${bytes('rx_bytes')} / Up ${bytes('tx_bytes')} / Total ${bytes('total_bytes')}` : 'Traffic unavailable';
-      return `${text(u.name, 'WAN')}: ${text(u.state, 'unknown')}${u.active === true ? ' / active' : ''} · ${traffic}`;
-    }) : [];
+      return `${wanName(u)}: ${text(u.state, 'unknown')}${u.active === true ? ' / active' : ''} · ${traffic}`;
+    });
     return {
       starlinkState: starlink.configured === false ? 'Not commissioned' : slReady ? text(starlink.state) : 'Unavailable',
       starlinkLatency: slMetric('latency_ms', ' ms'), starlinkLoss: slMetric('packet_loss_percent', '%'),
@@ -45,7 +48,7 @@
       starlinkAge: slMetric('sample_age_seconds', ' s'), starlinkAlerts: slReady ? text(starlink.alerts_summary) : 'Unavailable',
       state, health: state ? states[state] + (offline ? ' - OFFLINE' : '') : '— Status unavailable',
       callsign: text(aprs.callsign, 'PCS FIELD STATION'), localTime: text(system.local_time), uptime: text(system.uptime),
-      uplink: offline || network.internet_available === false ? 'Offline' : text(network.uplink_type),
+      uplink: offline || network.internet_available === false ? 'Offline' : activeWAN && activeWAN.type === 'ethernet' ? wanName(activeWAN) : network.uplink_type === 'Starlink' && !slReady ? 'Ethernet WAN' : text(network.uplink_type),
       wanUsage: text(network.usage_summary),
       starlinkPower: power.configured === true && power.starlink_online === true ? watts(power.starlink_power) : power.configured === true && power.starlink_configured === true ? 'Unavailable' : 'Not commissioned',
       starlinkEnergy: power.configured === true && power.starlink_online === true && typeof power.starlink_energy_since_boot_wh === 'number' && Number.isFinite(power.starlink_energy_since_boot_wh) ? power.starlink_energy_since_boot_wh.toFixed(3) + ' Wh' : 'Unavailable',
