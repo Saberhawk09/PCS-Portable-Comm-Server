@@ -325,3 +325,7 @@ The additive power fields are `starlink_configured`, `starlink_online`,
 planned module is not present. Public output includes readings but no sensor
 address or calibration. Missing readings are unavailable, never fabricated zero.
 These power readings are independent of network uplink health and usage counters.
+
+### Starlink diagnostics and controls
+
+`GET /api/v1/starlink` exposes sanitized, cached dish diagnostics. Authenticated `starlink-reboot` and staged `starlink-shutdown` use the existing action challenge; `starlink-status` is read-only. PCS system power actions can follow explicit Mini pairing. See [telemetry and lifecycle behavior](starlink-telemetry.md); Mini shutdown is not yet supported.

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "enabled": false,
+  "uplink_id": "starlink",
+  "poll_seconds": 15,
+  "paired_device_id": "",
+  "allow_reboot": false,
+  "follow_pcs_reboot": false,
+  "follow_pcs_shutdown": false
+}

@@ -118,6 +118,17 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(document["data"]["starlink_energy_since_boot_wh"], 0.072)
         self.assertNotIn("private", json.dumps(document))
 
+    def test_starlink_resource_excludes_controls_identity_and_location(self):
+        raw = {"starlink": {"configured": True, "available": True, "status": "ok", "state": "CONNECTED", "latency_ms": 0,
+             "device_id": "private", "location": "private", "paired_device_id": "private", "allow_reboot": True, "follow_pcs_reboot": True}}
+        document = api.api_document("starlink", raw)
+        self.assertEqual(document["data"]["latency_ms"], 0)
+        self.assertNotIn("private", json.dumps(document))
+        self.assertNotIn("allow_reboot", document["data"])
+        self.assertIn("starlink-reboot", api.DANGEROUS_ACTIONS)
+        self.assertIn("starlink-shutdown", api.DANGEROUS_ACTIONS)
+        self.assertIn("starlink-status", api.READ_ONLY_ACTIONS)
+
     def test_power_resource_exposes_alarm_and_shutdown_state(self):
         document = api.api_document("power", PUBLIC_DASHBOARD)
         self.assertEqual(document["health"]["severity"], "bad")

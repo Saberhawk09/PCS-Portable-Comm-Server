@@ -385,3 +385,5 @@ dashboards include WAN traffic totals since boot. See the
 The planned third (12V rail) and fourth (Starlink branch) INA226 monitors are
 optional and staged disabled. See [power-monitor commissioning](docs/power-system.md#planned-fourth-ina226-starlink-branch);
 software support does not imply either module is installed.
+
+Optional [Starlink telemetry](docs/starlink-telemetry.md) adds a homepage tab and sanitized public/admin cards. Reboot pairing is opt-in; Mini power-off remains staged pending DC switching hardware.

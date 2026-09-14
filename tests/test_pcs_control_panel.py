@@ -44,6 +44,21 @@ ADMIN_DATA = {
 }
 
 
+class StarlinkPrivacyTests(unittest.TestCase):
+    def test_public_card_has_metrics_without_actions_or_pairing(self):
+        raw = deepcopy(PUBLIC_DATA)
+        raw['starlink'] = {'configured': True, 'available': True, 'status': 'ok', 'state': 'CONNECTED',
+            'latency_ms': 0, 'device_id': 'private-device', 'paired_device_id': 'private-pair',
+            'allow_reboot': True, 'location': 'private-location'}
+        clean = pcs.sanitize_public_dashboard(raw)
+        page = pcs.render_public_page(clean).decode()
+        self.assertIn('Starlink Telemetry', page)
+        self.assertNotIn('private-', page)
+        self.assertNotIn('starlink-reboot', page)
+        self.assertNotIn('starlink-shutdown', page)
+        self.assertNotIn('allow_reboot', str(clean))
+
+
 class PasswordTests(unittest.TestCase):
     def test_password_record_verifies_without_storing_plaintext(self):
         record = pcs.make_password_record("correct horse battery staple")

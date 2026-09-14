@@ -1133,3 +1133,5 @@ See [configuration and migration](../docs/uplink-manager.md) and
 The power collector supports an optional fourth `starlink` INA226 alongside the
 planned `rail_12v` monitor. Both remain disabled in the templates pending physical
 installation and calibration. See [power staging](../docs/power-system.md#planned-fourth-ina226-starlink-branch).
+
+`setup-starlink-telemetry.sh --install|--check` stages the optional collector; `pcs_starlink.py` and `pcs_starlink_lifecycle.py` provide bounded diagnostics and paired power-action coordination. See [Starlink telemetry](../docs/starlink-telemetry.md).

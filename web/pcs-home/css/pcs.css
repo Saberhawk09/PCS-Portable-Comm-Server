@@ -531,3 +531,8 @@ body.public-status {
 .wan-usage p { margin: .4rem 0 0; }
 .wan-usage ul { list-style: none; padding: 0; margin: .4rem 0 0; font-size: .9rem; }
 .wan-usage li + li { margin-top: .35rem; }
+
+.dashboard-tabs { display:flex; gap:.4rem; margin:1rem 0; border-bottom:1px solid var(--line); }
+.dashboard-tabs a { padding:.8rem 1.2rem; color:var(--muted); text-decoration:none; border-bottom:3px solid transparent; }
+.dashboard-tabs a[aria-current="page"] { color:var(--cyan); border-color:var(--cyan); }
+.dashboard-tabs a:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }

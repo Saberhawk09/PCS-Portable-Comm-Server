@@ -16,6 +16,7 @@
     <a class="admin-link" href="/admin/">Admin Login <span aria-hidden="true">↗</span></a>
   </header>
   <main>
+    <nav class="dashboard-tabs" aria-label="Dashboard tabs"><a href="/" aria-current="page">Overview</a><a href="/starlink/">Starlink</a></nav>
     <section class="instrument" aria-labelledby="station-title">
       <div class="station-row"><div><p class="eyebrow">LOCAL OPERATIONS</p><h1 id="station-title">Portable Comm Server</h1><p class="muted">Your communications. Your local network.</p></div>
         <div class="health-wrap"><span class="health" id="health" role="status">— Status pending</span><span class="health-caption" id="health-caption">Connecting to PCS</span></div>
@@ -36,6 +37,7 @@
     <section id="services" aria-labelledby="services-title">
       <div class="section-heading"><h2 id="services-title">Services</h2><span>SELECT A SERVICE TO CONTINUE</span></div>
       <div class="service-grid">
+        <a class="tile" href="/starlink/"><span class="tile-top"><span class="icon" aria-hidden="true">↗</span><span class="tag" data-field="starlinkState">Unavailable</span></span><h3>Starlink</h3><p>Dish diagnostics, link quality and branch power.</p></a>
         <a class="tile" href="/status/"><span class="tile-top"><span class="icon" aria-hidden="true">▤</span><span class="tag">PUBLIC</span></span><h3>Status <span aria-hidden="true">↗</span></h3><p>Detailed health, position, storage and network information.</p></a>
         <a class="tile" href="/files/"><span class="tile-top"><span class="icon" aria-hidden="true">▱</span><span class="tag">LOCAL SHARES</span></span><h3>Files <span aria-hidden="true">↗</span></h3><p>Connect to PCS-Share and PCS-Backup from your device.</p></a>
         <a class="tile" href="/radio/#aprs"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag" data-field="aprs">Unknown</span></span><h3>APRS <span aria-hidden="true">↗</span></h3><p>Packet radio station and messaging service information.</p></a>

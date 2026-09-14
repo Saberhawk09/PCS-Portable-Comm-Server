@@ -168,3 +168,5 @@ For full installer rollback, use `sudo ./scripts/setup-uplink-manager.sh
 The installer also attempts this rollback on installation failure. It restores
 saved files/profiles and at most one previous controller. It clears ambiguous
 legacy ownership and leaves operator sessions alive.
+
+Optional [Starlink diagnostics](starlink-telemetry.md) use a separate bound connection and never drive uplink selection.

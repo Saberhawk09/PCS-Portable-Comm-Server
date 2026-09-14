@@ -46,7 +46,7 @@ dispatch_host_namespace_action() {
     local dispatcher
 
     case "${ACTION}" in
-        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute|shutdown-system) ;;
+        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute|shutdown-system|reboot-system|starlink-status|starlink-reboot|starlink-shutdown) ;;
         *) return 0 ;;
     esac
 
@@ -73,6 +73,19 @@ dispatch_host_namespace_action() {
         --quiet \
         --service-type=exec \
         /usr/bin/env PCS_HOST_NAMESPACE_ACTION=1 "${dispatcher}" "${ACTION}"
+}
+
+queue_pcs_power_action() {
+    local action="$1"
+    if [[ -x /usr/local/sbin/pcs-starlink-lifecycle ]]; then
+        # One pending power action; a duplicate request cannot create another job.
+        systemd-run --quiet --collect --unit=pcs-system-power --on-active=3s \
+            /usr/local/sbin/pcs-starlink-lifecycle "${action}"
+        echo "PCS ${action} queued. Mini follow is optional; its power-off hook is staged/unsupported."
+    else
+        if [[ "${action}" == "reboot" ]]; then systemctl --no-block reboot;
+        else systemctl --no-block poweroff; fi
+    fi
 }
 
 request_pistar_poweroff() {
@@ -148,6 +161,9 @@ Allowed actions:
   restart-logs
   buzzer-mute
   buzzer-unmute
+  starlink-status
+  starlink-reboot
+  starlink-shutdown
   reboot-system
   shutdown-system
 EOF
@@ -3206,6 +3222,29 @@ if POWER_CONFIGURED:
         "items": power_items,
     })
 
+try:
+    from pcs_starlink import cached_status as starlink_cached, load_config as starlink_config
+    starlink_snapshot = starlink_cached()
+except (ImportError, OSError, ValueError, TypeError):
+    starlink_snapshot = {"configured": False, "available": False, "state": "UNAVAILABLE", "status": "warn"}
+starlink_items = [{"label": label, "value": starlink_snapshot.get(key) if starlink_snapshot.get(key) is not None else "Unavailable"}
+    for key, label in [("state", "Dish state"), ("latency_ms", "Latency (ms)"),
+        ("packet_loss_percent", "Packet loss (%)"), ("obstruction_percent", "Obstruction (%)"),
+        ("downlink_bps", "Download (bps)"), ("uplink_bps", "Upload (bps)"),
+        ("uptime_seconds", "Dish uptime (seconds)"), ("alerts_summary", "Dish alerts"),
+        ("sample_age_seconds", "Sample age (seconds)")]]
+if not PUBLIC_VIEW:
+    try:
+        pair = starlink_config()
+        starlink_items.extend([{"label": "Reboot paired", "value": bool(pair["paired_device_id"]) and pair["allow_reboot"]},
+            {"label": "Follow PCS reboot", "value": pair["follow_pcs_reboot"]},
+            {"label": "Follow PCS shutdown", "value": "Staged; requires DC switching hardware"}])
+    except (NameError, OSError, ValueError, TypeError):
+        pass
+cards.append({"id": "starlink", "title": "Starlink Telemetry", "status": starlink_snapshot.get("status", "warn"),
+    "summary": "Read-only diagnostics" if starlink_snapshot.get("available") else "Telemetry unavailable or not commissioned",
+    "items": starlink_items})
+
 network_card = next(card for card in cards if card.get("id") == "network")
 network_card["items"].append({"label": "WAN traffic since boot", "value": usage_label(uplink_snapshot.get("usage"))})
 for uplink in uplink_snapshot.get("uplinks", []):
@@ -3240,7 +3279,7 @@ cards.sort(key=lambda card: card_rank.get(card.get("id", ""), len(card_order)))
 overall_cards = [
     card
     for card in cards
-    if not (
+    if card.get("id") != "starlink" and not (
         offline_mode
         and (
             card.get("id") == "uplink-details"
@@ -3308,6 +3347,7 @@ if PUBLIC_VIEW:
     gps_items = card_items_by_id(cards, "gps")
 
     public_sections = {
+        "starlink": starlink_snapshot,
         "system": {
             "status": system_status,
             "uptime": system_items.get("Uptime", "unknown"),
@@ -4491,11 +4531,21 @@ case "${ACTION}" in
         journalctl -u pcs-restart-services.service -n 120 --no-pager
         ;;
 
+    starlink-status)
+        /usr/local/sbin/pcs-starlink status
+        ;;
+    starlink-reboot)
+        /usr/local/sbin/pcs-starlink control reboot
+        ;;
+    starlink-shutdown)
+        /usr/local/sbin/pcs-starlink control shutdown
+        ;;
+
     reboot-system)
         header "Reboot PCS"
         echo "Reboot requested from PCS Control Panel."
         echo "The dashboard will disconnect while the Pi restarts."
-        systemctl --no-block reboot
+        queue_pcs_power_action reboot
         ;;
 
     shutdown-system)
@@ -4503,7 +4553,7 @@ case "${ACTION}" in
         echo "Shutdown requested from PCS Control Panel."
         request_pistar_poweroff
         echo "Wait for the Pi activity LED to settle before removing power."
-        systemctl --no-block poweroff
+        queue_pcs_power_action shutdown
         ;;
 
     ""|-h|--help|help)
