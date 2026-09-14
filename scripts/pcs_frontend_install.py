@@ -115,7 +115,7 @@ def stage_site():
     """Copy only public site assets; never serve the repo or follow symlinks."""
     source = REPO / "web/pcs-home"
     required = ["index.html", "css/pcs.css", "js/pcs.js"] + [
-        f"{page}/index.html" for page in ("files", "docs", "radio", "pistar")
+        f"{page}/index.html" for page in ("files", "docs", "radio", "pistar", "starlink")
     ]
     for relative in required:
         path = source / relative
@@ -173,7 +173,7 @@ def check_endpoints():
     status, _, body = request("http://127.0.0.1/")
     if status != 200 or b"LOCAL OPERATIONS" not in body:
         raise RuntimeError("Static homepage failed")
-    for path, mime in (("/assets/css/pcs.css", "text/css"), ("/assets/js/pcs.js", "application/javascript"), ("/files/", "text/html"), ("/docs/", "text/html"), ("/radio/", "text/html"), ("/pistar/", "text/html")):
+    for path, mime in (("/assets/css/pcs.css", "text/css"), ("/assets/js/pcs.js", "application/javascript"), ("/files/", "text/html"), ("/docs/", "text/html"), ("/radio/", "text/html"), ("/pistar/", "text/html"), ("/starlink/", "text/html")):
         status, headers, body = request("http://127.0.0.1" + path)
         if status != 200 or mime not in headers.get("Content-Type", "") or not body:
             raise RuntimeError(f"Static asset/page failed: {path}")

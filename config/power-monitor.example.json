@@ -8,7 +8,27 @@
   "poll_seconds": 2,
   "allow_shutdown": false,
   "monitors": {
-    "input": {"address": "0x40", "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS", "max_current_amps": "REPLACE_WITH_RATED_AMPS"},
-    "rail_5v": {"address": "0x41", "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS", "max_current_amps": "REPLACE_WITH_RATED_AMPS"}
+    "input": {
+      "address": "0x40",
+      "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS",
+      "max_current_amps": "REPLACE_WITH_RATED_AMPS"
+    },
+    "rail_5v": {
+      "address": "0x4c",
+      "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS",
+      "max_current_amps": "REPLACE_WITH_RATED_AMPS"
+    },
+    "rail_12v": {
+      "enabled": false,
+      "address": "0x4d",
+      "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS",
+      "max_current_amps": "REPLACE_WITH_RATED_AMPS"
+    },
+    "starlink": {
+      "enabled": false,
+      "address": "0x4e",
+      "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS",
+      "max_current_amps": "REPLACE_WITH_RATED_AMPS"
+    }
   }
 }

@@ -1,0 +1,28 @@
+[Unit]
+Description=PCS optional read-only Starlink telemetry
+After=NetworkManager.service
+ConditionPathExists=/etc/pcs/starlink.json
+
+[Service]
+Type=simple
+User=root
+RuntimeDirectory=pcs-starlink
+ExecStart=/usr/local/sbin/pcs-starlink service
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=12
+KillMode=control-group
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=CAP_NET_RAW
+RestrictAddressFamilies=AF_UNIX AF_INET AF_NETLINK
+MemoryMax=192M
+TasksMax=48
+
+[Install]
+WantedBy=multi-user.target

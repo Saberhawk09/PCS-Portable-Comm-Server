@@ -1995,6 +1995,12 @@ POWER_INPUT_VALUE="unavailable"
 POWER_5V_PRESENT="no"
 POWER_5V_STATE="warn"
 POWER_5V_VALUE="unavailable"
+POWER_12V_PRESENT="no"
+POWER_STARLINK_PRESENT="no"
+POWER_12V_STATE="warn"
+POWER_STARLINK_STATE="warn"
+POWER_12V_VALUE="unavailable"
+POWER_STARLINK_VALUE="unavailable"
 POWER_ESTIMATE_VALUE="unavailable"
 POWER_LOW_ACTIVE="no"
 POWER_LOW_COUNTDOWN=""
@@ -2055,6 +2061,9 @@ try:
     print(estimate_value)
     print('yes' if low.get('active') is True else 'no')
     print('' if countdown is None else int(countdown))
+    for role in ('rail_12v', 'starlink'):
+        for field in monitor(role):
+            print(field)
 except Exception:
     print('unavailable')
 PY
@@ -2069,6 +2078,12 @@ PY
     POWER_ESTIMATE_VALUE="${POWER_FIELDS[7]:-unavailable}"
     POWER_LOW_ACTIVE="${POWER_FIELDS[8]:-no}"
     POWER_LOW_COUNTDOWN="${POWER_FIELDS[9]:-}"
+    POWER_12V_PRESENT="${POWER_FIELDS[10]:-no}"
+    POWER_STARLINK_PRESENT="${POWER_FIELDS[13]:-no}"
+    POWER_12V_STATE="${POWER_FIELDS[11]:-warn}"
+    POWER_STARLINK_STATE="${POWER_FIELDS[14]:-warn}"
+    POWER_12V_VALUE="${POWER_FIELDS[12]:-unavailable}"
+    POWER_STARLINK_VALUE="${POWER_FIELDS[15]:-unavailable}"
 fi
 
 section "Input Power"
@@ -2101,6 +2116,38 @@ else
         *) warn "5V rail INA226 reports a warning reading" ;;
     esac
     summary_value "${POWER_5V_VALUE}"
+fi
+
+section "12V Rail"
+if [[ "${PCS_SETUP_POWER_MONITOR}" != "yes" ]]; then
+    skip "INA226 power monitoring is not configured"
+elif [[ "${POWER_12V_PRESENT}" != "yes" ]]; then
+    skip "12V rail INA226 is not commissioned"
+elif [[ "${POWER_SNAPSHOT_STATE}" == "unavailable" ]]; then
+    warn "12V rail INA226 snapshot is stale or unavailable"
+else
+    case "${POWER_12V_STATE}" in
+        ok) pass "12V rail INA226 communicates and reports plausible readings" ;;
+        bad) fail "12V rail INA226 reports a critical reading" ;;
+        *) warn "12V rail INA226 reports a warning reading" ;;
+    esac
+    summary_value "${POWER_12V_VALUE}"
+fi
+
+section "Starlink Branch"
+if [[ "${PCS_SETUP_POWER_MONITOR}" != "yes" ]]; then
+    skip "INA226 power monitoring is not configured"
+elif [[ "${POWER_STARLINK_PRESENT}" != "yes" ]]; then
+    skip "Starlink branch INA226 is not commissioned"
+elif [[ "${POWER_SNAPSHOT_STATE}" == "unavailable" ]]; then
+    warn "Starlink branch INA226 snapshot is stale or unavailable"
+else
+    case "${POWER_STARLINK_STATE}" in
+        ok) pass "Starlink branch INA226 communicates and reports plausible readings" ;;
+        bad) fail "Starlink branch INA226 reports a critical reading" ;;
+        *) warn "Starlink branch INA226 reports a warning reading" ;;
+    esac
+    summary_value "${POWER_STARLINK_VALUE}"
 fi
 
 section "Power Protection"

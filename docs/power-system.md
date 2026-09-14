@@ -278,6 +278,8 @@ The intended roles are:
 - `input` (`0x40`, commissioned): upstream of PCS conversion and authoritative
   for source voltage, total current, and total PCS input power.
 - `rail_5v` (`0x4c`, commissioned): 5V voltage, current, and power.
+- `rail_12v` (staged, disabled): dedicated 12V voltage, current, power, and
+  since-boot charge/energy. Planned address is `0x4d`; solder selection and calibration await hardware confirmation.
 
 The input monitor may also be commissioned by itself if the 5V monitor is
 temporarily removed. In that state input measurements and low-voltage status
@@ -286,8 +288,27 @@ reported as not commissioned rather than as a monitor fault.
 
 The reported non-5V value is `input power - 5V power`. It is explicitly an
 estimate that includes DC/DC conversion losses, not an exact 12V rail reading.
-The JSON configuration leaves the monitor map extensible for a later dedicated
-12V sensor.
+The dedicated `rail_12v` reading is separate from that estimate and is never
+added to total input power (which would double-count downstream consumption).
+
+Both configuration templates include `rail_12v` with `enabled: false` and the
+planned address `0x4d` (A1 to SCL, A0 to VS/VCC). On the pictured module,
+select the `L` (SCL) pad pair on A1 and the `U` pad pair on A0, removing any
+previous selection on those rows. Change solder links only with power disconnected;
+VS/VCC means the module logic supply, not the monitored 12V rail. Confirm the
+address after wiring before enabling. Disabled monitors are not accessed or reported as offline.
+After confirming the third module's address, shunt, and rated current, fill in
+`address`, `shunt_ohms`, and `max_current_amps`, then set `enabled: true`.
+Run `pcs-power-monitor check-config --config /etc/pcs/power-monitor.json`
+before a separately authorized installation/restart. Enabled addresses must be
+unique. Adding the monitor preserves existing same-boot energy totals; the new
+monitor starts at zero. Hardware wiring and meter comparison remain pending.
+
+The collector, public dashboard, control panel, stats API, self-test, and stress
+logger support the third role. Its offline/current faults contribute to overall
+health. No dedicated 12V voltage limits have been commissioned; source shutdown
+continues to use the input monitor alone. The LCD retains its input/5V power
+page and total-input usage page; APRS retains the total-input telemetry format.
 
 Low-voltage protection defaults to 11.5V with 0.3V recovery hysteresis, three
 consecutive low samples, and a 90-second countdown. In `auto` source mode the
@@ -341,3 +362,41 @@ The installer copies `config/power-monitor.example.json` only when no live
 configuration exists, and does not overwrite an operator-calibrated file. Its
 shunt/current values are deliberate non-runnable placeholders; the service is
 not enabled until they are replaced and configuration validation passes.
+
+## Planned fourth INA226: Starlink branch
+
+Monitor roles are `input`, `rail_5v`, optional `rail_12v` (third), and optional
+`starlink` (fourth). The third 12V monitor is still physically uninstalled and
+staged disabled at `0x4d`. Both templates also stage `starlink.enabled: false`,
+at planned address `0x4e`, with explicit placeholders for shunt resistance and
+current range. Select A1 to SCL and A0 to SDA (the module's L and SDA/A pads).
+Disconnect module power and remove conflicting solder bridges before changing
+links. This follows TI's 7-bit address table: SCL/SDA = `1001110` = `0x4e`.
+Wiring, calibration and voltage limits remain uncommissioned.
+
+When installed and enabled, the Starlink branch exposes voltage, current, power,
+charge (mAh) and energy (Wh) since boot. Existing same-boot totals survive a
+collector restart; a newly observed branch begins accounting when first observed.
+Input power remains the system total: neither branch measurement is added to it
+or subtracted again from the existing input-minus-5V estimate. Branch placement
+and whether it includes conversion losses depend on the eventual physical wiring.
+
+An enabled missing sensor reports a monitor warning. Disabled sensors are never
+accessed and do not cause missing-hardware warnings. Low-voltage shutdown still
+uses only the input monitor. This support does not switch Starlink power, control
+its WAN, or add LCD/APRS power fields.
+
+Before enabling either planned monitor, install and verify it during a hardware
+maintenance window, choose a unique 7-bit address in `0x40`–`0x4f`, confirm the
+actual shunt/range, fill in the placeholders, and run `pcs-power-monitor
+check-config --config /etc/pcs/power-monitor.json`. Compare measurements against
+a meter before relying on them. Do not copy the illustrative test addresses as
+hardware assignments. No live power-monitor restart is needed for local staging.
+
+Staging validation (2026-09-14): the clean v1.9.1-based staging tree passed
+583 Python tests on Debian 13/Python 3.13, 11 portal JavaScript tests, Python
+compilation and shell syntax checks. Coverage includes four simultaneous
+monitors, duplicate-address rejection, disabled sensors not being read, separate
+branch energy without double-counting, missing-branch shutdown isolation and
+public API field filtering. This is software validation; both planned modules
+remain uninstalled and disabled. No live deployment or service restart occurred.

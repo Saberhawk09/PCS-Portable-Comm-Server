@@ -49,6 +49,7 @@ PUBLIC_DASHBOARD = {
         "configured": True, "status": "bad", "input_online": True,
         "input_voltage": 11.2, "input_current": 2.0, "input_power": 22.4,
         "input_charge_since_boot_mah": 250.0, "input_energy_since_boot_wh": 3.2,
+        "rail_12v_online": True, "rail_12v_voltage": 12.1, "rail_12v_energy_since_boot_wh": 1.25,
         "rail_5v_online": True, "rail_5v_voltage": 5.2,
         "rail_5v_current": 1.5, "rail_5v_power": 7.8,
         "rail_5v_charge_since_boot_mah": 180.0, "rail_5v_energy_since_boot_wh": 0.94,
@@ -107,6 +108,27 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(document['data']['usage']['rx_bytes'], 0)
         self.assertEqual(document['data']['uplinks'][0]['usage']['total_bytes'], 5)
 
+    def test_starlink_branch_power_is_public_without_hardware_identity(self):
+        document = api.api_document("power", {"power": {"configured": True,
+            "starlink_configured": True, "starlink_online": True, "starlink_voltage": 24.0,
+            "starlink_current": 0.0, "starlink_power": 0.0,
+            "starlink_charge_since_boot_mah": 3.0, "starlink_energy_since_boot_wh": 0.072,
+            "starlink_address": "private", "starlink_calibration": "private"}})
+        self.assertEqual(document["data"]["starlink_power"], 0.0)
+        self.assertEqual(document["data"]["starlink_energy_since_boot_wh"], 0.072)
+        self.assertNotIn("private", json.dumps(document))
+
+    def test_starlink_resource_excludes_controls_identity_and_location(self):
+        raw = {"starlink": {"configured": True, "available": True, "status": "ok", "state": "CONNECTED", "latency_ms": 0,
+             "device_id": "private", "location": "private", "paired_device_id": "private", "allow_reboot": True, "follow_pcs_reboot": True}}
+        document = api.api_document("starlink", raw)
+        self.assertEqual(document["data"]["latency_ms"], 0)
+        self.assertNotIn("private", json.dumps(document))
+        self.assertNotIn("allow_reboot", document["data"])
+        self.assertIn("starlink-reboot", api.DANGEROUS_ACTIONS)
+        self.assertIn("starlink-shutdown", api.DANGEROUS_ACTIONS)
+        self.assertIn("starlink-status", api.READ_ONLY_ACTIONS)
+
     def test_power_resource_exposes_alarm_and_shutdown_state(self):
         document = api.api_document("power", PUBLIC_DASHBOARD)
         self.assertEqual(document["health"]["severity"], "bad")
@@ -117,6 +139,8 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(document["data"]["input_energy_since_boot_wh"], 3.2)
         self.assertEqual(document["data"]["rail_5v_energy_since_boot_wh"], 0.94)
         self.assertEqual(document["data"]["energy_tracking_elapsed_seconds"], 600)
+        self.assertEqual(document["data"]["rail_12v_voltage"], 12.1)
+        self.assertEqual(document["data"]["rail_12v_energy_since_boot_wh"], 1.25)
 
     def test_tls_handshakes_are_deferred_to_bounded_worker_threads(self):
         self.assertTrue(api.ReusableThreadingHTTPServer.daemon_threads)

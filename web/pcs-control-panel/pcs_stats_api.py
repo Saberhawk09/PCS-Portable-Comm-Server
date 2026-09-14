@@ -59,6 +59,7 @@ API_CONTENT_TYPE = "application/vnd.pcs.v1+json; charset=utf-8"
 PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8"
 
 RESOURCE_SECTIONS = {
+    "starlink": "starlink",
     "network": "network",
     "cellular": "cellular",
     "time": "time",
@@ -77,6 +78,7 @@ RESOURCE_PATHS = {
 }
 
 ACTION_GROUPS = {
+    "starlink": {'starlink-status': ('Starlink Telemetry', 'Read cached Mini diagnostics.'), 'starlink-reboot': ('Reboot Starlink Mini', 'Requires an explicitly paired and armed Mini; interrupts its Internet connection.'), 'starlink-shutdown': ('Starlink Shutdown (staged)', 'Not available until DC power switching is commissioned; does not stow or sleep the Mini.')},
     "health": {
         "status": ("View PCS Status", "Show the full PCS status report."),
         "self-test": ("Run Self-Test", "Run the Pi-side health validation."),
@@ -118,8 +120,8 @@ ACTION_GROUPS = {
     "power": {
         "buzzer-mute": ("Mute Audible Warnings", "Mute repeating WARN/BAD sounds without changing visual status; low voltage remains audible."),
         "buzzer-unmute": ("Enable Audible Warnings", "Re-enable repeating WARN/BAD sounds."),
-        "reboot-system": ("Reboot PCS", "Restart the Raspberry Pi."),
-        "shutdown-system": ("Shutdown PCS", "Shut down Pi-Star when paired, then power off PCS."),
+        "reboot-system": ("Reboot PCS", "Restart PCS and request a Mini reboot when explicitly paired."),
+        "shutdown-system": ("Shutdown PCS", "Shut down Pi-Star when paired, run the optional Mini follow hook, then power off PCS. Mini power removal is not yet supported."),
     },
 }
 ACTION_MAP = {
@@ -128,6 +130,7 @@ ACTION_MAP = {
     for name, (label, description) in actions.items()
 }
 READ_ONLY_ACTIONS = {
+    "starlink-status",
     "status", "self-test", "storage-status", "restart-logs", "wifi-status",
     "cellular-status", "cellular-test", "meshtastic-status",
 }
@@ -137,6 +140,7 @@ DANGEROUS_ACTIONS = set(ACTION_MAP) - READ_ONLY_ACTIONS
 ACTION_TIMEOUTS = {"self-test": 360, "sync-backup": 900, "safe-unmount-usb": 900}
 
 RESOURCE_CARD_IDS = {
+    "starlink": {"starlink"},
     "network": {"network", "remote-management", "uplink-details", "client-lan"},
     "cellular": {"cellular"},
     "time": {"time"},
@@ -152,6 +156,7 @@ RESOURCE_CARD_IDS = {
 # This is intentionally a second allowlist, independent of the public web
 # allowlist. New dashboard fields do not become API fields by accident.
 API_FIELDS = {
+    "starlink": {'available', 'downlink_bps', 'uplink_bps', 'latency_ms', 'obstructed', 'sample_age_seconds', 'state', 'status', 'alerts_summary', 'configured', 'obstruction_percent', 'packet_loss_percent', 'uptime_seconds'},
     "system": {
         "status", "uptime", "cpu_temperature", "cpu_load", "memory_used",
         "root_storage_used",
@@ -193,6 +198,10 @@ API_FIELDS = {
         "input_charge_since_boot_mah", "input_energy_since_boot_wh",
         "rail_5v_voltage", "rail_5v_current", "rail_5v_power",
         "rail_5v_charge_since_boot_mah", "rail_5v_energy_since_boot_wh",
+        "rail_12v_online", "rail_12v_voltage", "rail_12v_current", "rail_12v_power",
+        "starlink_configured", "starlink_online", "starlink_voltage", "starlink_current", "starlink_power",
+        "rail_12v_charge_since_boot_mah", "rail_12v_energy_since_boot_wh",
+        "starlink_charge_since_boot_mah", "starlink_energy_since_boot_wh",
         "estimated_non_5v_power", "low_voltage_active",
         "energy_tracking_elapsed_seconds", "shutdown_armed", "shutdown_remaining_seconds",
     },

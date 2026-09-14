@@ -46,6 +46,10 @@ MIN_BACKUP_INTERVAL_MINUTES = 1
 MAX_BACKUP_INTERVAL_MINUTES = 43_200
 
 ACTIONS = [
+    ('starlink-status', 'Starlink Telemetry', 'Read cached Mini diagnostics.'),
+    ('starlink-reboot', 'Reboot Starlink Mini', 'Requires an explicitly paired and armed Mini; interrupts its Internet connection.'),
+    ('starlink-shutdown', 'Starlink Shutdown (staged)', 'Not available until DC power switching is commissioned; does not stow or sleep the Mini.'),
+
     ("status", "View PCS Status", "Show the full PCS status report."),
     ("self-test", "Run Self-Test", "Run the Pi-side health validation."),
     ("storage-status", "View Storage", "Show USB, SD backup, and Samba state."),
@@ -72,12 +76,14 @@ ACTIONS = [
     ("restart-logs", "View Restart Logs", "Show recent PCS restart service logs."),
     ("buzzer-mute", "Mute Audible Warnings", "Mute repeating WARN/BAD sounds without changing visual status; low voltage remains audible."),
     ("buzzer-unmute", "Enable Audible Warnings", "Re-enable repeating WARN/BAD sounds."),
-    ("reboot-system", "Reboot PCS", "Restart the Raspberry Pi."),
-    ("shutdown-system", "Shutdown PCS", "Shut down Pi-Star when paired, then power off PCS."),
+    ("reboot-system", "Reboot PCS", "Restart PCS and request a Mini reboot when explicitly paired."),
+    ("shutdown-system", "Shutdown PCS", "Shut down Pi-Star when paired, run the optional Mini follow hook, then power off PCS. Mini power removal is not yet supported."),
 ]
 
 ACTION_MAP = {name: (label, desc) for name, label, desc in ACTIONS}
 ACTION_CONFIRMS = {
+    "starlink-reboot": "Reboot the paired Mini? Its Internet connection will be interrupted.",
+    "starlink-shutdown": "Starlink power-off is staged and currently unsupported. Check its status?",
     "mount-new-usb": "Configure the attached USB device as PCS primary storage?",
     "safe-unmount-usb": "Sync the backup and safely unmount PCS USB storage?",
     "restart-meshtastic": "Restart the Meshtastic radio and MQTT gateway now?",
@@ -86,6 +92,7 @@ ACTION_CONFIRMS = {
     "shutdown-system": "Shutdown PCS now? Physical access is required to power it back on.",
 }
 ACTION_GROUPS = [
+    ("Starlink", ["starlink-status", "starlink-reboot", "starlink-shutdown"]),
     ("Health", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
@@ -96,6 +103,7 @@ ACTION_GROUPS = [
     ("Power", ["buzzer-mute", "buzzer-unmute", "reboot-system", "shutdown-system"]),
 ]
 DANGEROUS_ACTIONS = {
+    "starlink-reboot", "starlink-shutdown",
     "mount-new-usb",
     "safe-unmount-usb",
     "restart-services",
@@ -322,6 +330,7 @@ LOGIN_LIMITER = LoginLimiter()
 PUBLIC_CACHE = TimedCache()
 
 PUBLIC_FIELDS = {
+    "starlink": {'available', 'downlink_bps', 'uplink_bps', 'latency_ms', 'obstructed', 'sample_age_seconds', 'state', 'status', 'alerts_summary', 'configured', 'obstruction_percent', 'packet_loss_percent', 'uptime_seconds'},
     "system": {"status", "uptime", "local_time", "cpu_temperature", "cpu_load", "memory_used", "root_storage_used"},
     "network": {"status", "offline", "lan_gateway", "openwrt_online", "openwrt_url", "internet_available", "ip_internet_available", "dns_available", "uplink_type", "connected_client_count", "ap_client_count", "uplinks", "usage", "usage_summary"},
     "remote_management": {"configured", "status", "connection", "management_address", "boot_enabled", "firewall_active", "latest_handshake"},
@@ -341,6 +350,10 @@ PUBLIC_FIELDS = {
         "input_charge_since_boot_mah", "input_energy_since_boot_wh",
         "rail_5v_voltage", "rail_5v_current", "rail_5v_power",
         "rail_5v_charge_since_boot_mah", "rail_5v_energy_since_boot_wh",
+        "rail_12v_online", "rail_12v_voltage", "rail_12v_current", "rail_12v_power",
+        "starlink_configured", "starlink_online", "starlink_voltage", "starlink_current", "starlink_power",
+        "rail_12v_charge_since_boot_mah", "rail_12v_energy_since_boot_wh",
+        "starlink_charge_since_boot_mah", "starlink_energy_since_boot_wh",
         "estimated_non_5v_power", "low_voltage_active",
         "energy_tracking_elapsed_seconds", "shutdown_armed", "shutdown_remaining_seconds",
     },
@@ -686,6 +699,13 @@ def render_public_page(data: dict) -> bytes:
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),
     ]
 
+    cards.append(public_card("Starlink Telemetry", data.get("starlink", {}), [
+        ("Dish state", "state", "Unavailable"), ("Latency (ms)", "latency_ms", "Unavailable"),
+        ("Packet loss (%)", "packet_loss_percent", "Unavailable"), ("Obstruction (%)", "obstruction_percent", "Unavailable"),
+        ("Download (bps)", "downlink_bps", "Unavailable"), ("Upload (bps)", "uplink_bps", "Unavailable"),
+        ("Dish uptime (seconds)", "uptime_seconds", "Unavailable"), ("Dish alerts", "alerts_summary", "Unavailable"),
+        ("Sample age (seconds)", "sample_age_seconds", "Unavailable"),
+    ]))
     for uplink in network.get("uplinks", []):
         if not isinstance(uplink, dict):
             continue
@@ -745,6 +765,18 @@ def render_public_page(data: dict) -> bytes:
             ("5V rail power", "rail_5v_power", "unavailable"),
             ("5V charge since boot (mAh)", "rail_5v_charge_since_boot_mah", "unavailable"),
             ("5V energy since boot (Wh)", "rail_5v_energy_since_boot_wh", "unavailable"),
+            ("12V monitor", "rail_12v_online", False),
+            ("12V rail voltage", "rail_12v_voltage", "unavailable"),
+            ("12V rail current", "rail_12v_current", "unavailable"),
+            ("12V rail power", "rail_12v_power", "unavailable"),
+            ("12V charge since boot (mAh)", "rail_12v_charge_since_boot_mah", "unavailable"),
+            ("12V energy since boot (Wh)", "rail_12v_energy_since_boot_wh", "unavailable"),
+            ("Starlink monitor", "starlink_online", False),
+            ("Starlink branch voltage", "starlink_voltage", "unavailable"),
+            ("Starlink branch current", "starlink_current", "unavailable"),
+            ("Starlink branch power", "starlink_power", "unavailable"),
+            ("Starlink charge since boot (mAh)", "starlink_charge_since_boot_mah", "unavailable"),
+            ("Starlink energy since boot (Wh)", "starlink_energy_since_boot_wh", "unavailable"),
             ("Estimated non-5V load", "estimated_non_5v_power", "unavailable"),
             ("Low voltage alarm", "low_voltage_active", False),
             ("Automatic shutdown", "shutdown_armed", False),

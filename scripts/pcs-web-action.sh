@@ -46,7 +46,7 @@ dispatch_host_namespace_action() {
     local dispatcher
 
     case "${ACTION}" in
-        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute|shutdown-system) ;;
+        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute|shutdown-system|reboot-system|starlink-status|starlink-reboot|starlink-shutdown) ;;
         *) return 0 ;;
     esac
 
@@ -73,6 +73,19 @@ dispatch_host_namespace_action() {
         --quiet \
         --service-type=exec \
         /usr/bin/env PCS_HOST_NAMESPACE_ACTION=1 "${dispatcher}" "${ACTION}"
+}
+
+queue_pcs_power_action() {
+    local action="$1"
+    if [[ -x /usr/local/sbin/pcs-starlink-lifecycle ]]; then
+        # One pending power action; a duplicate request cannot create another job.
+        systemd-run --quiet --collect --unit=pcs-system-power --on-active=3s \
+            /usr/local/sbin/pcs-starlink-lifecycle "${action}"
+        echo "PCS ${action} queued. Mini follow is optional; its power-off hook is staged/unsupported."
+    else
+        if [[ "${action}" == "reboot" ]]; then systemctl --no-block reboot;
+        else systemctl --no-block poweroff; fi
+    fi
 }
 
 request_pistar_poweroff() {
@@ -148,6 +161,9 @@ Allowed actions:
   restart-logs
   buzzer-mute
   buzzer-unmute
+  starlink-status
+  starlink-reboot
+  starlink-shutdown
   reboot-system
   shutdown-system
 EOF
@@ -2555,6 +2571,12 @@ if uplink_snapshot.get("available"):
 active_uplink_ok = bool(default_iface) and default_iface not in {"lo"}
 internet_uplink_ok = active_uplink_ok and internet_ok and dns_ok
 offline_mode = not internet_uplink_ok and eth_ok and eth_ip_ok
+try:
+    from pcs_starlink import connected_without_internet, load_config as starlink_config
+    starlink_wan_unhealthy = connected_without_internet(uplink_snapshot, starlink_config()['uplink_id'])
+except (ImportError, OSError, ValueError, TypeError):
+    starlink_wan_unhealthy = False
+no_uplink_warning = starlink_wan_unhealthy and not internet_uplink_ok
 
 wireguard = wireguard_runtime()
 wireguard_handshake_current = (
@@ -2628,6 +2650,8 @@ power_fresh = power_age is not None and power_age <= 15
 power_monitors = power_runtime.get("monitors", {}) if isinstance(power_runtime.get("monitors"), dict) else {}
 power_input = power_monitors.get("input", {}) if isinstance(power_monitors.get("input"), dict) else {}
 power_5v = power_monitors.get("rail_5v", {}) if isinstance(power_monitors.get("rail_5v"), dict) else {}
+power_12v = power_monitors.get("rail_12v", {}) if isinstance(power_monitors.get("rail_12v"), dict) else {}
+power_starlink = power_monitors.get("starlink", {}) if isinstance(power_monitors.get("starlink"), dict) else {}
 power_energy = power_runtime.get("energy_tracking", {}) if isinstance(power_runtime.get("energy_tracking"), dict) else {}
 power_status = str(power_runtime.get("status", "warn")) if power_fresh else "warn"
 if power_status not in {"ok", "warn", "bad"}:
@@ -3159,6 +3183,28 @@ if POWER_CONFIGURED:
         ])
     else:
         power_items.append({"label": "5V monitor", "value": "not commissioned"})
+    if "rail_12v" in power_monitors:
+        power_items.extend([
+            {"label": "12V monitor", "value": power_monitor_state(power_12v)},
+            {"label": "12V rail voltage", "value": power_value(power_12v.get("voltage"), "V")},
+            {"label": "12V rail current", "value": power_value(power_12v.get("current"), "A")},
+            {"label": "12V rail power", "value": power_value(power_12v.get("power"), "W")},
+            {"label": "12V charge since boot", "value": power_value(power_12v.get("charge_since_boot_mah"), "mAh", 1)},
+            {"label": "12V energy since boot", "value": power_value(power_12v.get("energy_since_boot_wh"), "Wh", 3)},
+        ])
+    else:
+        power_items.append({"label": "12V monitor", "value": "not commissioned"})
+    if "starlink" in power_monitors:
+        power_items.extend([
+            {"label": "Starlink monitor", "value": power_monitor_state(power_starlink)},
+            {"label": "Starlink branch voltage", "value": power_value(power_starlink.get("voltage"), "V")},
+            {"label": "Starlink branch current", "value": power_value(power_starlink.get("current"), "A")},
+            {"label": "Starlink branch power", "value": power_value(power_starlink.get("power"), "W")},
+            {"label": "Starlink charge since boot", "value": power_value(power_starlink.get("charge_since_boot_mah"), "mAh", 1)},
+            {"label": "Starlink energy since boot", "value": power_value(power_starlink.get("energy_since_boot_wh"), "Wh", 3)},
+        ])
+    else:
+        power_items.append({"label": "Starlink monitor", "value": "not commissioned"})
     power_items.extend([
         {"label": "Low-voltage protection", "value": "active" if low_voltage.get("active") else "normal"},
         {"label": "Automatic shutdown", "value": "armed" if low_voltage.get("shutdown_armed") else "disarmed"},
@@ -3181,6 +3227,31 @@ if POWER_CONFIGURED:
         ),
         "items": power_items,
     })
+
+try:
+    from pcs_starlink import cached_status as starlink_cached, load_config as starlink_config
+    starlink_snapshot = starlink_cached()
+except (ImportError, OSError, ValueError, TypeError):
+    starlink_snapshot = {"configured": False, "available": False, "state": "UNAVAILABLE", "status": "ok"}
+if starlink_wan_unhealthy:
+    starlink_snapshot['status'] = 'warn'
+starlink_items = [{"label": label, "value": starlink_snapshot.get(key) if starlink_snapshot.get(key) is not None else "Unavailable"}
+    for key, label in [("state", "Dish state"), ("latency_ms", "Latency (ms)"),
+        ("packet_loss_percent", "Packet loss (%)"), ("obstruction_percent", "Obstruction (%)"),
+        ("downlink_bps", "Download (bps)"), ("uplink_bps", "Upload (bps)"),
+        ("uptime_seconds", "Dish uptime (seconds)"), ("alerts_summary", "Dish alerts"),
+        ("sample_age_seconds", "Sample age (seconds)")]]
+if not PUBLIC_VIEW:
+    try:
+        pair = starlink_config()
+        starlink_items.extend([{"label": "Reboot paired", "value": bool(pair["paired_device_id"]) and pair["allow_reboot"]},
+            {"label": "Follow PCS reboot", "value": pair["follow_pcs_reboot"]},
+            {"label": "Follow PCS shutdown", "value": "Staged; requires DC switching hardware"}])
+    except (NameError, OSError, ValueError, TypeError):
+        pass
+cards.append({"id": "starlink", "title": "Starlink Telemetry", "status": starlink_snapshot.get("status", "ok"),
+    "summary": "Ethernet WAN connected; Internet unavailable" if starlink_wan_unhealthy else "Read-only diagnostics" if starlink_snapshot.get("available") else "Telemetry unavailable or not commissioned",
+    "items": starlink_items})
 
 network_card = next(card for card in cards if card.get("id") == "network")
 network_card["items"].append({"label": "WAN traffic since boot", "value": usage_label(uplink_snapshot.get("usage"))})
@@ -3216,8 +3287,8 @@ cards.sort(key=lambda card: card_rank.get(card.get("id", ""), len(card_order)))
 overall_cards = [
     card
     for card in cards
-    if not (
-        offline_mode
+    if card.get("id") != "starlink" and not (
+        offline_mode and not no_uplink_warning
         and (
             card.get("id") == "uplink-details"
             or (card.get("id") == "network" and openwrt_online)
@@ -3284,6 +3355,7 @@ if PUBLIC_VIEW:
     gps_items = card_items_by_id(cards, "gps")
 
     public_sections = {
+        "starlink": starlink_snapshot,
         "system": {
             "status": system_status,
             "uptime": system_items.get("Uptime", "unknown"),
@@ -3390,6 +3462,19 @@ if PUBLIC_VIEW:
             "rail_5v_power": power_5v.get("power"),
             "rail_5v_charge_since_boot_mah": power_5v.get("charge_since_boot_mah"),
             "rail_5v_energy_since_boot_wh": power_5v.get("energy_since_boot_wh"),
+            "rail_12v_online": bool(power_12v.get("online")),
+            "starlink_configured": "starlink" in power_monitors,
+            "starlink_online": bool(power_starlink.get("online")),
+            "rail_12v_voltage": power_12v.get("voltage"),
+            "starlink_voltage": power_starlink.get("voltage"),
+            "rail_12v_current": power_12v.get("current"),
+            "starlink_current": power_starlink.get("current"),
+            "rail_12v_power": power_12v.get("power"),
+            "starlink_power": power_starlink.get("power"),
+            "rail_12v_charge_since_boot_mah": power_12v.get("charge_since_boot_mah"),
+            "starlink_charge_since_boot_mah": power_starlink.get("charge_since_boot_mah"),
+            "rail_12v_energy_since_boot_wh": power_12v.get("energy_since_boot_wh"),
+            "starlink_energy_since_boot_wh": power_starlink.get("energy_since_boot_wh"),
             "energy_tracking_elapsed_seconds": power_energy.get("elapsed_seconds"),
             "estimated_non_5v_power": power_runtime.get("estimated_non_5v_power"),
             "low_voltage_active": bool(low_voltage.get("active")),
@@ -4454,11 +4539,21 @@ case "${ACTION}" in
         journalctl -u pcs-restart-services.service -n 120 --no-pager
         ;;
 
+    starlink-status)
+        /usr/local/sbin/pcs-starlink status
+        ;;
+    starlink-reboot)
+        /usr/local/sbin/pcs-starlink control reboot
+        ;;
+    starlink-shutdown)
+        /usr/local/sbin/pcs-starlink control shutdown
+        ;;
+
     reboot-system)
         header "Reboot PCS"
         echo "Reboot requested from PCS Control Panel."
         echo "The dashboard will disconnect while the Pi restarts."
-        systemctl --no-block reboot
+        queue_pcs_power_action reboot
         ;;
 
     shutdown-system)
@@ -4466,7 +4561,7 @@ case "${ACTION}" in
         echo "Shutdown requested from PCS Control Panel."
         request_pistar_poweroff
         echo "Wait for the Pi activity LED to settle before removing power."
-        systemctl --no-block poweroff
+        queue_pcs_power_action shutdown
         ;;
 
     ""|-h|--help|help)

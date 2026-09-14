@@ -17,6 +17,18 @@
       "address": "0x4c",
       "shunt_ohms": 0.002,
       "max_current_amps": 20
+    },
+    "rail_12v": {
+      "enabled": false,
+      "address": "0x4d",
+      "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS",
+      "max_current_amps": "REPLACE_WITH_RATED_AMPS"
+    },
+    "starlink": {
+      "enabled": false,
+      "address": "0x4e",
+      "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS",
+      "max_current_amps": "REPLACE_WITH_RATED_AMPS"
     }
   }
 }

@@ -24,6 +24,9 @@
     const data = object(raw), network = object(data.network), gps = object(data.gnss);
     const system = object(data.system), power = object(data.power), aprs = object(data.aprs);
     const mesh = object(data.meshtastic), time = object(data.time), pistar = object(data.pistar);
+    const starlink = object(data.starlink);
+    const slReady = starlink.configured === true && starlink.available === true;
+    const slMetric = (key, suffix, scale = 1) => slReady && typeof starlink[key] === 'number' && Number.isFinite(starlink[key]) && starlink[key] >= 0 ? (starlink[key] / scale).toFixed(1) + suffix : 'Unavailable';
     const state = Object.hasOwn(states, data.overall) ? data.overall : null;
     const offline = data.offline === true || network.offline === true;
     const inputWatts = power.configured === true && power.input_online === true ? watts(power.input_power) : 'Unavailable';
@@ -35,10 +38,17 @@
       return `${text(u.name, 'WAN')}: ${text(u.state, 'unknown')}${u.active === true ? ' / active' : ''} · ${traffic}`;
     }) : [];
     return {
+      starlinkState: starlink.configured === false ? 'Not commissioned' : slReady ? text(starlink.state) : 'Unavailable',
+      starlinkLatency: slMetric('latency_ms', ' ms'), starlinkLoss: slMetric('packet_loss_percent', '%'),
+      starlinkObstruction: slMetric('obstruction_percent', '%'), starlinkDown: slMetric('downlink_bps', ' Mbps', 1e6),
+      starlinkUp: slMetric('uplink_bps', ' Mbps', 1e6), starlinkUptime: slMetric('uptime_seconds', ' s'),
+      starlinkAge: slMetric('sample_age_seconds', ' s'), starlinkAlerts: slReady ? text(starlink.alerts_summary) : 'Unavailable',
       state, health: state ? states[state] + (offline ? ' - OFFLINE' : '') : '— Status unavailable',
       callsign: text(aprs.callsign, 'PCS FIELD STATION'), localTime: text(system.local_time), uptime: text(system.uptime),
       uplink: offline || network.internet_available === false ? 'Offline' : text(network.uplink_type),
       wanUsage: text(network.usage_summary),
+      starlinkPower: power.configured === true && power.starlink_online === true ? watts(power.starlink_power) : power.configured === true && power.starlink_configured === true ? 'Unavailable' : 'Not commissioned',
+      starlinkEnergy: power.configured === true && power.starlink_online === true && typeof power.starlink_energy_since_boot_wh === 'number' && Number.isFinite(power.starlink_energy_since_boot_wh) ? power.starlink_energy_since_boot_wh.toFixed(3) + ' Wh' : 'Unavailable',
       wanRows, wanBreakdown: wanRows.join(' • ') || 'Unavailable',
       coordinates: text(gps.coordinates), grid: text(gps.grid_square),
       voltage: power.configured === true && power.input_online === true && typeof power.input_voltage === "number" && Number.isFinite(power.input_voltage) ? power.input_voltage.toFixed(2) + " V" : "Unavailable",

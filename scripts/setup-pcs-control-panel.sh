@@ -96,6 +96,7 @@ sudo install -o root -g root -m 0755 "${DISPATCHER_SRC}" "${DISPATCHER_DST}"
 sudo install -d -o root -g root -m 0755 /usr/local/lib/pcs
 sudo install -o root -g root -m 0644 "${NETWORK_CLIENTS_SRC}" /usr/local/lib/pcs/pcs_network_clients.py
 sudo install -o root -g root -m 0644 "${REPO_DIR}/scripts/pcs_uplink_manager.py" /usr/local/lib/pcs/pcs_uplink_manager.py
+sudo install -o root -g root -m 0644 "${REPO_DIR}/scripts/pcs_starlink.py" /usr/local/lib/pcs/pcs_starlink.py
 
 echo "Installing root-owned PCS admin password helper..."
 sudo install -o root -g root -m 0755 "${PASSWORD_HELPER_SRC}" "${PASSWORD_HELPER_DST}"
@@ -106,7 +107,7 @@ echo "Installing sudoers allowlist..."
 SUDOERS_TEMP="$(mktemp)"
 cat >"${SUDOERS_TEMP}" <<EOF
 # Allow the PCS web application to invoke only its fixed dispatcher actions.
-pi ALL=(root) NOPASSWD: ${DISPATCHER_DST} dashboard-public-json, ${DISPATCHER_DST} dashboard-json, ${DISPATCHER_DST} status, ${DISPATCHER_DST} self-test, ${DISPATCHER_DST} meshtastic-status, ${DISPATCHER_DST} restart-meshtastic, ${DISPATCHER_DST} aprs-mailbox-read, ${DISPATCHER_DST} storage-status, ${DISPATCHER_DST} wifi-status, ${DISPATCHER_DST} wifi-connect, ${DISPATCHER_DST} wifi-disconnect, ${DISPATCHER_DST} cellular-status, ${DISPATCHER_DST} cellular-connect, ${DISPATCHER_DST} cellular-disconnect, ${DISPATCHER_DST} cellular-test, ${DISPATCHER_DST} sync-backup, ${DISPATCHER_DST} mount-usb, ${DISPATCHER_DST} mount-new-usb, ${DISPATCHER_DST} safe-unmount-usb, ${DISPATCHER_DST} restart-services, ${DISPATCHER_DST} restart-samba, ${DISPATCHER_DST} restart-modemmanager, ${DISPATCHER_DST} sync-time, ${DISPATCHER_DST} restart-chrony, ${DISPATCHER_DST} restart-gpsd, ${DISPATCHER_DST} restart-logs, ${DISPATCHER_DST} buzzer-mute, ${DISPATCHER_DST} buzzer-unmute, ${DISPATCHER_DST} reboot-system, ${DISPATCHER_DST} shutdown-system
+pi ALL=(root) NOPASSWD: ${DISPATCHER_DST} dashboard-public-json, ${DISPATCHER_DST} dashboard-json, ${DISPATCHER_DST} status, ${DISPATCHER_DST} self-test, ${DISPATCHER_DST} meshtastic-status, ${DISPATCHER_DST} restart-meshtastic, ${DISPATCHER_DST} aprs-mailbox-read, ${DISPATCHER_DST} storage-status, ${DISPATCHER_DST} wifi-status, ${DISPATCHER_DST} wifi-connect, ${DISPATCHER_DST} wifi-disconnect, ${DISPATCHER_DST} cellular-status, ${DISPATCHER_DST} cellular-connect, ${DISPATCHER_DST} cellular-disconnect, ${DISPATCHER_DST} cellular-test, ${DISPATCHER_DST} sync-backup, ${DISPATCHER_DST} mount-usb, ${DISPATCHER_DST} mount-new-usb, ${DISPATCHER_DST} safe-unmount-usb, ${DISPATCHER_DST} restart-services, ${DISPATCHER_DST} restart-samba, ${DISPATCHER_DST} restart-modemmanager, ${DISPATCHER_DST} sync-time, ${DISPATCHER_DST} restart-chrony, ${DISPATCHER_DST} restart-gpsd, ${DISPATCHER_DST} restart-logs, ${DISPATCHER_DST} buzzer-mute, ${DISPATCHER_DST} buzzer-unmute, ${DISPATCHER_DST} starlink-status, ${DISPATCHER_DST} starlink-reboot, ${DISPATCHER_DST} starlink-shutdown, ${DISPATCHER_DST} reboot-system, ${DISPATCHER_DST} shutdown-system
 pi ALL=(root) NOPASSWD: ${PASSWORD_HELPER_DST} --change-from-stdin
 pi ALL=(root) NOPASSWD: ${BACKUP_CONFIG_HELPER_DST} show, ${BACKUP_CONFIG_HELPER_DST} set-from-stdin
 EOF

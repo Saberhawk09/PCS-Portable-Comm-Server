@@ -246,7 +246,7 @@ class HighRatePowerLogger:
         os.chmod(self.path, 0o644)
         self._bus = pcs_power_monitor.open_bus()
         try:
-            for name in ("input", "rail_5v"):
+            for name in monitor_configs:
                 monitor = pcs_power_monitor.Ina226(self._bus, monitor_configs[name])
                 monitor._write(0x00, self.FAST_INA226_CONFIG)  # pylint: disable=protected-access
                 self._monitors[name] = monitor

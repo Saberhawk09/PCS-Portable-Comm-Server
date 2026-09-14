@@ -100,3 +100,23 @@ test('alert strings are rendered as text without HTML insertion',async()=>{
   assert.match(ui.nodes.alerts.children[0].textContent,/<script>/);
   assert.equal(ui.nodes.alerts.children[0].children.length,0);
 });
+
+test('Starlink branch distinguishes uncommissioned, failed and measured zero', () => {
+  assert.equal(viewModel({}).starlinkPower, 'Not commissioned');
+  assert.equal(viewModel({power: {configured: true, starlink_configured: true, starlink_online: false, starlink_power: 40}}).starlinkPower, 'Unavailable');
+  const live = viewModel({power: {configured: true, starlink_configured: true, starlink_online: true, starlink_power: 0, starlink_energy_since_boot_wh: 1.25}});
+  assert.equal(live.starlinkPower, '0.0 W');
+  assert.equal(live.starlinkEnergy, '1.250 Wh');
+});
+
+test('Starlink telemetry tab keeps missing and stale metrics unavailable', () => {
+  assert.equal(viewModel({starlink: {configured: false}}).starlinkState, 'Not commissioned');
+  const stale = viewModel({starlink: {configured: true, available: false, state: 'CONNECTED', latency_ms: 10}});
+  assert.equal(stale.starlinkState, 'Unavailable');
+  assert.equal(stale.starlinkLatency, 'Unavailable');
+  const model = viewModel({starlink: {configured: true, available: true, state: 'CONNECTED', latency_ms: 0, downlink_bps: 12500000, packet_loss_percent: 0}});
+  assert.equal(model.starlinkLatency, '0.0 ms');
+  assert.equal(model.starlinkDown, '12.5 Mbps');
+  assert.equal(model.starlinkLoss, '0.0%');
+  assert.equal(model.starlinkUptime, 'Unavailable');
+});
