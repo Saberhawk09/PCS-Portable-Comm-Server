@@ -4,6 +4,10 @@
 
 A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and multi-protocol radio interface/hotspot.
 
+PCS v1.9.4 displays WAN usage in decimal MB and fixes cellular failover by
+preserving modem-provided IP configuration during [WAN route selection](docs/uplink-manager.md).
+Manually started cellular sessions remain connected and unowned.
+
 PCS v1.9.3 records the verified [dual home-LAN HTTPS correction](docs/pcs-stats-api.md#multiple-home-lan-server-addresses):
 Ethernet `192.168.50.237` and Wi-Fi `192.168.50.236` are both valid Companion
 endpoints after importing the updated deployment certificate and pairing again.

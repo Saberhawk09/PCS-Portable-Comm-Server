@@ -407,6 +407,8 @@ class NetworkManager:
         if current != o.session:
             raise RuntimeError('activation changed during route update')
         settings, version = self.applied(o)
+        if settings.get('connection', {}).get('type') == 'gsm':
+            raise ValueError('refusing modem reapply: preserve bearer IP configuration')
         if settings.get('ipv4', {}).get('method') == 'shared' or settings.get('connection', {}).get('interface-name') == 'eth0':
             raise ValueError('refusing to reapply a LAN sharing profile')
         for family, fields in values.items():
@@ -416,6 +418,17 @@ class NetworkManager:
                 else:
                     settings[family][key] = self.dbus.Int64(value) if key == 'route-metric' else self.dbus.Int32(value)
         self.iface(o.device, BUS + '.Device').Reapply(settings, version, 0, timeout=10)
+
+    def fixed_metrics(self, o):
+        """Read installed modem defaults; automatic NM metrics need not be 900."""
+        result = {}
+        for family, flag in [('ipv4', '-4'), ('ipv6', '-6')]:
+            routes = subprocess.run(['ip', flag, '-j', 'route', 'show', 'default', 'dev', o.interface],
+                                    capture_output=True, text=True, timeout=3, check=True)
+            metrics = [int(row.get('metric', 0)) for row in json.loads(routes.stdout or '[]')]
+            if metrics:
+                result[family] = min(metrics)
+        return result
 
     def effective(self, target='1.1.1.1'):
         family = '-4' if ipaddress.ip_address(target).version == 4 else '-6'
@@ -459,6 +472,11 @@ class Controller:
     def restore(self, observations):
         for uid, saved in list(self.state['original'].items()):
             o = observations.get(uid)
+            if any(u.id == uid and u.type == 'cellular' for u in self.config.uplinks):
+                # Older controllers journaled modem Reapply changes. Restoring
+                # those also discards the bearer address on affected NM versions.
+                del self.state['original'][uid]
+                continue
             if o and o.session == saved['session']:
                 settings, _ = self.nm.applied(o)
                 values = {family: {key: value for key, value in fields.items() if settings.get(family, {}).get(key) == saved.get('applied', {}).get(family, {}).get(key)} for family, fields in saved['values'].items()}
@@ -469,9 +487,22 @@ class Controller:
     def route(self, desired, observations, desired6=None):
         # Promote the replacement before demoting the old path. DHCP settings
         # and connected routes remain NetworkManager-owned throughout.
+        fixed = {'ipv4': [], 'ipv6': []}
+        for u in self.config.uplinks:
+            o = observations[u.id]
+            if u.type == 'cellular' and o.session and not o.error:
+                for family, metric in self.nm.fixed_metrics(o).items():
+                    if not 1 < metric < 4_000_000_000:
+                        raise RuntimeError('cellular default metric leaves no safe WAN preference range')
+                    fixed[family].append(metric)
         ordered = sorted(self.config.uplinks, key=lambda u: u.id != desired)
         for u in ordered:
             o = observations[u.id]
+            if u.type == 'cellular':
+                # NetworkManager 1.52 discards modem-provided addresses on
+                # Reapply. Select around its existing routes without bouncing
+                # or adopting the operator's bearer session.
+                continue
             if not o.session or o.error or not (o.address or o.address6):
                 continue
             settings, _ = self.nm.applied(o)
@@ -485,7 +516,11 @@ class Controller:
                 if family not in settings:
                     continue
                 selected = u.id == (desired if family == 'ipv4' else desired6)
-                metric = 50 if selected else (1000 + u.priority if health else 20000 + u.priority)
+                anchors = fixed[family]
+                preferred = min([50] + [metric - 1 for metric in anchors])
+                standby = max([1000] + [metric + 1 for metric in anchors])
+                failed = max(20000, standby)
+                metric = preferred if selected else ((standby if health else failed) + u.priority)
                 dns = original['values'][family]['dns-priority']
                 # Preserve negative split-DNS/VPN policy; use positive ordering
                 # otherwise, without excluding another connection's DNS zones.

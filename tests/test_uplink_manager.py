@@ -106,10 +106,15 @@ class FakeNM:
         return self.settings.setdefault(o.device, {'ipv4': {'route-metric': 900, 'dns-priority': 0}, 'ipv6': {'route-metric': 900, 'dns-priority': 0}}), 1
 
     def reapply(self, o, values):
+        if o.interface == 'wwan0':
+            raise AssertionError('modem reapply would discard bearer IP configuration')
         self.changes.append((o.interface, values))
         settings, _ = self.applied(o)
         for family, fields in values.items():
             settings[family].update(fields)
+
+    def fixed_metrics(self, o):
+        return {family: values['route-metric'] for family, values in self.applied(o)[0].items()}
 
     def effective(self, target='1.1.1.1'):
         active = [o for o in self.obs.values() if o.address and o.session]
@@ -130,6 +135,37 @@ class ControllerTests(unittest.TestCase):
     def make(self, folder, obs):
         nm = FakeNM(obs)
         return m.Controller(config(), nm, folder, boot='boot'), nm
+
+    @patch.object(m.subprocess, 'run')
+    def test_manual_cellular_survives_standby_failover_and_recovery(self, run):
+        for metric in (20, 900, 25000):
+            with self.subTest(metric=metric), tempfile.TemporaryDirectory() as folder:
+                c, nm = self.make(folder, observations(starlink=True, cellular=True, manual=True))
+                nm.settings['/device/cellular'] = {f: {'route-metric': metric, 'dns-priority': 0} for f in ('ipv4', 'ipv6')}
+                c.step(0)
+                c.step(30)
+                self.assertEqual(nm.effective(), 'enx001122334455')
+                nm.obs['starlink'].internet = False
+                c.step(40)
+                self.assertEqual(c.step(70)['active_id'], 'cellular')
+                c = m.Controller(config(), nm, folder, boot='boot')
+                nm.obs['starlink'].internet = True
+                self.assertEqual(c.step(80)['active_id'], 'cellular')
+                self.assertEqual(c.step(110)['active_id'], 'starlink')
+                self.assertEqual(nm.disconnected, [])
+                self.assertEqual(c.state['owned'], {})
+                self.assertTrue(nm.obs['cellular'].address)
+                self.assertFalse(any(iface == 'wwan0' for iface, _ in nm.changes))
+
+    @patch.object(m.subprocess, 'run')
+    def test_manual_mode_does_not_reapply_legacy_modem_journal(self, run):
+        with tempfile.TemporaryDirectory() as folder:
+            nm = FakeNM(observations(cellular=True, manual=True))
+            c = m.Controller(config(mode='manual'), nm, folder, boot='boot')
+            c.state['original']['cellular'] = {'session': '/active/cellular', 'values': {'ipv4': {'route-metric': 900}}}
+            c.step(0)
+            self.assertNotIn('cellular', c.state['original'])
+            self.assertEqual(nm.disconnected, [])
 
     @patch.object(m.subprocess, 'run')
     def test_manual_cellular_never_claimed_or_disconnected_after_restart(self, run):

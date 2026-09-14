@@ -68,6 +68,22 @@ IPv6 is probed and selected independently with the same stability windows;
 this does not enable IPv6 on the PCS LAN. A connected failed path retains its
 gateway and routes so bound probes can detect recovery. When all paths fail,
 the status reports offline even if a demoted default remains installed.
+Cellular is an exception to runtime Reapply: NetworkManager 1.52.1 on the
+EM7565 can discard its bearer-provided address and DNS during a metric update,
+while still reporting the connection as activated. The manager leaves modem
+routes and DNS untouched. It reads installed cellular default metrics and puts
+the selected Ethernet/Wi-Fi route below them and standby/unhealthy routes above
+them. Cellular therefore takes over without reconnecting its bearer. The usual
+cellular metric remains 900; custom metrics are handled relative to the installed
+route. A metric without room for a preferred route is reported as a routing error.
+Multiple simultaneously connected cellular modems retain their fixed route
+ordering; automatic selection between them requires a separate routing design.
+Additional Ethernet WANs remain supported.
+
+An existing cellular session whose address was already lost must be reconnected
+by the operator (or with explicit permission); restarting the manager alone does
+not restore it. Old journal entries never authorize a modem Reapply or reconnect.
+
 Physical link removal can make NetworkManager withdraw its route immediately;
 already-connected standby traffic can then move earlier than the controller's
 failure window. Paid cellular activation still waits for sustained failure.
