@@ -4,6 +4,18 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-09-14
+
+- Correct the live Android HTTPS identity for home-LAN Ethernet
+  `192.168.50.237`, retaining Wi-Fi `192.168.50.236`, PCS LAN, WireGuard and
+  `pcs.local` in the same certificate. No firewall widening was required.
+- Preserve the server private key and existing pairing/admin records. Document
+  Companion's explicit certificate re-trust and re-pairing step; no APK update
+  or hostname-verification bypass is required.
+- Add a reusable multi-address SAN policy example and record successful strict
+  TLS tests plus operator-confirmed Android acceptance. Deployment certificates
+  and private keys remain outside the release source.
+
 ## [1.9.2] - 2026-09-14
 
 - Add optional read-only Starlink telemetry, a dedicated homepage tab, sanitized
