@@ -27,6 +27,14 @@ def config(**values):
 
 
 class TelemetryTests(unittest.TestCase):
+    def test_both_installers_authorize_only_fixed_starlink_dispatcher_actions(self):
+        for name, prefix in [('setup-pcs-control-panel.sh', '${DISPATCHER_DST}'),
+                             ('setup-pcs-stats-api.sh', '/usr/local/sbin/pcs-web-action')]:
+            installer = (ROOT / 'scripts' / name).read_text()
+            for action in ('starlink-status', 'starlink-reboot', 'starlink-shutdown'):
+                self.assertIn(prefix + ' ' + action + ',', installer)
+            self.assertNotIn(prefix + ' starlink-*', installer)
+
     def test_mac_resolution_follows_usb_rename_and_excludes_lan(self):
         uplink = SimpleNamespace(id='starlink', type='ethernet', mac='00:11:22:33:44:55', interface='')
         loader = SimpleNamespace(load_config=lambda: SimpleNamespace(uplinks=[uplink]))
@@ -54,6 +62,7 @@ class TelemetryTests(unittest.TestCase):
         call.assert_not_called()
         self.assertFalse(result['available'])
         self.assertEqual(result['state'], 'DISABLED')
+        self.assertEqual(result['status'], 'ok')
 
     def test_only_status_polled_and_private_fields_removed(self):
         call = Mock(return_value={'state': 'CONNECTED', 'status': 'ok', 'latency_ms': 0,
@@ -84,6 +93,7 @@ class TelemetryTests(unittest.TestCase):
         result = s.sample(config(enabled=True), Mock(side_effect=subprocess.TimeoutExpired('fake', 10)))
         self.assertFalse(result['available'])
         self.assertNotIn('latency_ms', result)
+        self.assertEqual(result['status'], 'ok')
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / 'status.json'
             p.write_text(json.dumps(dict(result, collected_at=100, available=True, latency_ms=12)))
@@ -92,6 +102,7 @@ class TelemetryTests(unittest.TestCase):
                 stale = s.cached_status(p, now=now)
                 self.assertFalse(stale['available'])
                 self.assertNotIn('latency_ms', stale)
+                self.assertEqual(stale['status'], 'ok')
 
     def test_outer_child_deadline_is_enforced(self):
         with patch.object(s.subprocess, 'run', side_effect=subprocess.TimeoutExpired('child', 10)) as run:

@@ -3226,7 +3226,7 @@ try:
     from pcs_starlink import cached_status as starlink_cached, load_config as starlink_config
     starlink_snapshot = starlink_cached()
 except (ImportError, OSError, ValueError, TypeError):
-    starlink_snapshot = {"configured": False, "available": False, "state": "UNAVAILABLE", "status": "warn"}
+    starlink_snapshot = {"configured": False, "available": False, "state": "UNAVAILABLE", "status": "ok"}
 starlink_items = [{"label": label, "value": starlink_snapshot.get(key) if starlink_snapshot.get(key) is not None else "Unavailable"}
     for key, label in [("state", "Dish state"), ("latency_ms", "Latency (ms)"),
         ("packet_loss_percent", "Packet loss (%)"), ("obstruction_percent", "Obstruction (%)"),
@@ -3241,7 +3241,7 @@ if not PUBLIC_VIEW:
             {"label": "Follow PCS shutdown", "value": "Staged; requires DC switching hardware"}])
     except (NameError, OSError, ValueError, TypeError):
         pass
-cards.append({"id": "starlink", "title": "Starlink Telemetry", "status": starlink_snapshot.get("status", "warn"),
+cards.append({"id": "starlink", "title": "Starlink Telemetry", "status": starlink_snapshot.get("status", "ok"),
     "summary": "Read-only diagnostics" if starlink_snapshot.get("available") else "Telemetry unavailable or not commissioned",
     "items": starlink_items})
 

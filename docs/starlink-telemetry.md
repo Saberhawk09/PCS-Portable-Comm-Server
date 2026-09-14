@@ -22,6 +22,13 @@ failure does not become a PCS hard fault or change route selection. This first
 version supplies current diagnostics; historical charts and obstruction maps are
 not included.
 
+An absent Mini, disabled collector, failed reachability attempt or expired sample
+has `available: false` and an informational `status: ok`; it does not raise a
+Starlink-card warning, PCS alarm or fault. The state still reads disabled or
+unavailable, never connected. A responding dish can report its own warnings,
+which remain separate from overall PCS health. The uninstalled third and fourth
+INA226 monitors remain disabled; the fourth is staged at `0x4e`.
+
 Local gRPC reflection is an unofficial firmware-dependent interface. The target
 is fixed at `192.168.100.1:9200`; its TCP socket is explicitly bound to the selected
 MAC-bound Ethernet uplink. A loopback-only relay supplies that bound socket to
@@ -113,3 +120,10 @@ served `/starlink/` without control forms. The simulated dashboard was inspected
 in a browser. Optional installation was repeated successfully in Debian 13 with
 configuration preserved and dependency consistency checked. No live PCS or Mini
 was contacted; power-action tests used mocks and the fake device.
+
+Pre-deployment follow-up: 600 Python tests and 12 portal tests passed after
+making optional absence informational, staging the fourth INA226 at `0x4e`,
+and adding the fixed Starlink actions to both installer sudoers allowlists.
+An enabled collector with no Mini was exercised under systemd in the disposable
+VM: it remained active and reported `available: false`, `status: ok`. This test
+does not enable or commission the uninstalled power monitors.

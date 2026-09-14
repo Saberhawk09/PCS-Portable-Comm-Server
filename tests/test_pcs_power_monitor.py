@@ -79,6 +79,7 @@ class PowerTests(unittest.TestCase):
         raw = json.loads((ROOT / "config/power-monitor.pcs.json").read_text())
         self.assertFalse(raw["monitors"]["rail_12v"]["enabled"])
         self.assertFalse(raw["monitors"]["starlink"]["enabled"])
+        self.assertEqual(raw["monitors"]["starlink"]["address"], "0x4e")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             raw["monitors"]["starlink"]["enabled"] = True

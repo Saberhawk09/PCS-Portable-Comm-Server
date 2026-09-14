@@ -124,7 +124,8 @@ def cached_status(path=CACHE, now=None):
             raise ValueError('stale')
         return sanitize(value | {'sample_age_seconds': round(age, 1)})
     except (OSError, ValueError, KeyError, TypeError):
-        return dict(configured=CONFIG.exists(), available=False, status='warn', state='UNAVAILABLE')
+        # Optional hardware/cache absence is informational, not an appliance warning.
+        return dict(configured=CONFIG.exists(), available=False, status='ok', state='UNAVAILABLE')
 
 
 def rpc_request(stub, request_class, operation, expected_id=''):
@@ -224,7 +225,7 @@ def follow(operation, cfg=None, call=invoke):
 
 
 def sample(cfg, call=invoke):
-    result = dict(configured=cfg['enabled'], available=False, status='warn',
+    result = dict(configured=cfg['enabled'], available=False, status='ok',
                   state='UNAVAILABLE' if cfg['enabled'] else 'DISABLED')
     if cfg['enabled']:
         try:

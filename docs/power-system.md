@@ -368,8 +368,11 @@ not enabled until they are replaced and configuration validation passes.
 Monitor roles are `input`, `rail_5v`, optional `rail_12v` (third), and optional
 `starlink` (fourth). The third 12V monitor is still physically uninstalled and
 staged disabled at `0x4d`. Both templates also stage `starlink.enabled: false`,
-with explicit placeholders for its address, shunt resistance and current range.
-No fourth-module address, wiring, calibration or voltage limits are commissioned.
+at planned address `0x4e`, with explicit placeholders for shunt resistance and
+current range. Select A1 to SCL and A0 to SDA (the module's L and SDA/A pads).
+Disconnect module power and remove conflicting solder bridges before changing
+links. This follows TI's 7-bit address table: SCL/SDA = `1001110` = `0x4e`.
+Wiring, calibration and voltage limits remain uncommissioned.
 
 When installed and enabled, the Starlink branch exposes voltage, current, power,
 charge (mAh) and energy (Wh) since boot. Existing same-boot totals survive a
