@@ -851,6 +851,20 @@ def parse_network_uplink(output: str) -> str:
 
 
 def read_network_uplink() -> str:
+    if Path('/etc/pcs/uplinks.json').exists():
+        # Share the controller's verified health instead of treating a new
+        # Ethernet default route as offline. This adds no display layout.
+        try:
+            from pcs_uplink_manager import cached_status
+            status = cached_status(public=True)
+            if not status.get('available'):
+                return 'Unknown'
+            if status.get('internet') is not True:
+                return 'Offline'
+            active = next((u for u in status.get('uplinks', []) if u.get('active')), {})
+            return {'wifi': 'WiFi', 'cellular': 'Cellular', 'ethernet': 'Ethernet'}.get(active.get('type'), 'WAN')
+        except (ImportError, OSError, ValueError, TypeError):
+            return 'Unknown'
     try:
         result = subprocess.run(
             ["ip", "route", "get", "8.8.8.8"],
@@ -1251,6 +1265,8 @@ def lcd_status_pages(
     gps_view = "--" if snapshot.gps_satellites is None else f"{snapshot.gps_satellites:02d}"
     gps_used = "--" if snapshot.gps_satellites_used is None else f"{snapshot.gps_satellites_used:02d}"
     network_uplink = snapshot.network_uplink or "Offline"
+    if network_uplink == "Ethernet":
+        network_uplink = "Ethernet WAN"
     ap_clients = "--" if snapshot.ap_clients is None else str(snapshot.ap_clients)
     grid_square = snapshot.grid_square or "------"
     aprs_state = (
@@ -1648,6 +1664,8 @@ def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator,
         network = ("cellular", LED_HEALTHY)
     elif uplink == "WiFi":
         network = ("wifi", LED_HEALTHY)
+    elif uplink in {"Ethernet", "WAN"}:
+        network = ("ethernet" if uplink == "Ethernet" else "wan", LED_HEALTHY)
     elif uplink == "Offline":
         network = ("offline", LED_WARNING)
     else:

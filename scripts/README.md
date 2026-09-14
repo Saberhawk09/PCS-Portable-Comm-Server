@@ -1120,3 +1120,12 @@ activates the validated API after its prerequisites are installed. Different
 live files are never overwritten. Base setup runs both phases when
 `PCS_REINSTALL_STATE_DIR` is selected; fresh installs leave it blank. See
 `docs/full-stack-reinstall.md` for ordering and acceptance limits.
+
+# Uplink manager
+
+`setup-uplink-manager.sh --list` discovers eligible non-LAN Ethernet NICs;
+`--interface enx... --mode auto` explicitly configures the optional USB WAN.
+`--check` is read-only. `pcs_uplink_manager.py` owns health-based selection and
+since-boot WAN accounting; `pcs_uplink_setup.py` implements repeatable setup.
+See [configuration and migration](../docs/uplink-manager.md) and
+[testing](../docs/testing-uplinks.md). Never select `eth0` as WAN.

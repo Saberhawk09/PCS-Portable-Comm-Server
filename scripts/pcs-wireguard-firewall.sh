@@ -233,6 +233,9 @@ table inet ${PCS_TABLE} {
 EOF
 
     install_nm_compat_rules
+    if [[ -x /usr/local/sbin/pcs-uplink-management ]]; then
+        /usr/local/sbin/pcs-uplink-management --apply
+    fi
     echo "PCS WireGuard isolation is active: trusted management may enter; PCS LAN cannot initiate through ${WG_INTERFACE}."
 }
 

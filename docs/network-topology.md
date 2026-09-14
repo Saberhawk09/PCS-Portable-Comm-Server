@@ -273,3 +273,9 @@ ping google.com
 This topology replaces the older design where the Pi fed the WAN port of a router.
 
 The current architecture is better for PCS because the Pi can see clients directly and provide dashboard/status visibility.
+# Optional USB Ethernet WAN
+
+Starlink Mini Ethernet -> selected USB Gigabit NIC -> Pi NAT -> `eth0` PCS LAN.
+The EA4500 remains a bridge/AP/switch. Normal Starlink router mode (double NAT)
+is supported; bypass mode is optional. Wi-Fi remains independent on `wlan0`.
+See [Uplink manager](uplink-manager.md) for configuration and recovery.

@@ -1,0 +1,11 @@
+[Unit]
+Description=PCS opt-in trusted Ethernet management firewall rules
+After=NetworkManager.service pcs-wireguard-firewall.service pcs-stats-api-firewall.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-uplink-management --apply
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

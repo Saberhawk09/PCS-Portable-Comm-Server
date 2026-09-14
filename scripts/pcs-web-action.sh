@@ -561,6 +561,11 @@ from datetime import datetime
 import sys
 sys.path.insert(0, "/usr/local/lib/pcs")
 from pcs_network_clients import read_ap_client_count
+try:
+    from pcs_uplink_manager import cached_status
+except ImportError:
+    def cached_status(*args, **kwargs):
+        return {"available": False, "uplinks": [], "usage": None}
 
 INSTALL_CONFIG = os.environ.get(
     "PCS_INSTALL_CONFIG",
@@ -2255,7 +2260,11 @@ core_services = {
     "cockpit.socket": active("cockpit.socket"),
     "pcs-control-panel.service": active("pcs-control-panel.service"),
 }
-if CELLULAR_FALLBACK_MODE == "wifi-fallback":
+uplink_manager_installed = os.path.isfile("/etc/pcs/uplinks.json")
+uplink_initial = cached_status(public=PUBLIC_VIEW)
+if uplink_manager_installed:
+    core_services["pcs-uplink-manager.service"] = active("pcs-uplink-manager.service")
+elif CELLULAR_FALLBACK_MODE == "wifi-fallback":
     core_services["pcs-cellular-fallback.service"] = active("pcs-cellular-fallback.service")
 
 mm_rc, mm_out, _ = run(["mmcli", "-L"], timeout=5)
@@ -2270,6 +2279,10 @@ cell_route_metric = cellular_route_metric(cell_profile_name)
 cellular_fallback_enabled = CELLULAR_FALLBACK_MODE == "wifi-fallback"
 cellular_fallback_service_active = active("pcs-cellular-fallback.service")
 cellular_fallback_owned = file_text("/run/pcs-cellular-fallback-owned") == cell_profile_name
+if uplink_manager_installed:
+    cellular_fallback_enabled = uplink_initial.get("mode") == "auto"
+    cellular_fallback_service_active = active("pcs-uplink-manager.service")
+    cellular_fallback_owned = any(u.get("owned") for u in uplink_initial.get("uplinks", []) if u.get("type") == "cellular")
 gpsd_active = active("gpsd")
 gps_info = merge_gps_info(merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
 
@@ -2504,14 +2517,14 @@ cellular_registered = cell_info.get("registration") in {"home", "roaming"}
 cellular_connected = cell_nm.get("state") == "connected"
 cellular_status = "ok" if modem_present and (cellular_registered or cellular_connected) else "warn"
 cellular_policy_label = (
-    "Automatic when Wi-Fi is unavailable"
+    ("Automatic after preferred uplinks fail" if uplink_manager_installed else "Automatic when Wi-Fi is unavailable")
     if cellular_fallback_enabled
     else "Manual"
 )
 cellular_summary = (
     "Cellular data connected"
     if cellular_connected
-    else "Modem ready; automatic Wi-Fi fallback armed"
+    else "Modem ready; automatic uplink fallback armed"
     if cellular_registered and cellular_fallback_enabled and cellular_fallback_service_active
     else "Modem ready; fallback configured but service inactive"
     if cellular_registered and cellular_fallback_enabled
@@ -2536,6 +2549,9 @@ gps_status = "ok" if gps_has_valid_fix else "warn" if gps_has_modem_data or (gps
 
 
 # BEGIN PCS ACTIVE UPLINK MODE
+uplink_snapshot = cached_status(public=PUBLIC_VIEW)
+if uplink_snapshot.get("available"):
+    internet_ok = uplink_snapshot.get("internet") is True
 active_uplink_ok = bool(default_iface) and default_iface not in {"lo"}
 internet_uplink_ok = active_uplink_ok and internet_ok and dns_ok
 offline_mode = not internet_uplink_ok and eth_ok and eth_ip_ok
@@ -2579,10 +2595,20 @@ active_uplink_label = (
     if default_iface == "wlan0"
     else "Cellular / WWAN"
     if default_iface in {"wwan0", "ppp0"} or str(default_iface).startswith("wwan") or str(default_iface).startswith("ppp")
-    else default_iface
+    else "Other WAN"
     if default_iface
     else "Offline"
 )
+if uplink_snapshot.get("available"):
+    active_uplink_label = next((u["name"] for u in uplink_snapshot["uplinks"] if u.get("active")), "Offline")
+
+def usage_label(usage):
+    if not isinstance(usage, dict):
+        return "Unavailable"
+    def size(key):
+        value = usage.get(key)
+        return f"{value / (1024 ** 3):.3f} GiB" if isinstance(value, (int, float)) else "Unavailable"
+    return f"Down {size('rx_bytes')} / Up {size('tx_bytes')} / Total {size('total_bytes')}" + (" (partial)" if usage.get("partial") else "")
 
 network_core_ok = eth_ok and eth_ip_ok
 network_status = (
@@ -3156,6 +3182,14 @@ if POWER_CONFIGURED:
         "items": power_items,
     })
 
+network_card = next(card for card in cards if card.get("id") == "network")
+network_card["items"].append({"label": "WAN traffic since boot", "value": usage_label(uplink_snapshot.get("usage"))})
+for uplink in uplink_snapshot.get("uplinks", []):
+    network_card["items"].append({"label": uplink["name"], "value": str(uplink.get("state", "unknown")) + (" / active" if uplink.get("active") else " / standby")})
+    network_card["items"].append({"label": uplink["name"] + " traffic", "value": usage_label(uplink.get("usage"))})
+    if not PUBLIC_VIEW:
+        network_card["items"].append({"label": uplink["name"] + " interface / ownership", "value": f"{uplink.get('interface') or 'absent'} / {'automatic' if uplink.get('owned') else 'operator or NetworkManager'}"})
+
 card_order = [
     "system-stats",
     "services",
@@ -3215,6 +3249,8 @@ client_info = {
     "wan_public_ip": wan_ip or "unavailable",
     "uplink_interface": uplink_info.get("interface") or "unknown",
     "uplink_source_ip": uplink_info.get("source_ip") or "unknown",
+    "uplinks": uplink_snapshot.get("uplinks", []),
+    "wan_usage": uplink_snapshot.get("usage"),
     "router_side_clients": router_clients,
 }
 
@@ -3264,7 +3300,12 @@ if PUBLIC_VIEW:
             "openwrt_online": openwrt_online,
             "openwrt_url": "http://10.42.0.2/",
             "internet_available": internet_ok and dns_ok,
+            "ip_internet_available": internet_ok,
+            "dns_available": dns_ok,
             "uplink_type": active_uplink_label,
+            "uplinks": uplink_snapshot.get("uplinks", []),
+            "usage": uplink_snapshot.get("usage"),
+            "usage_summary": usage_label(uplink_snapshot.get("usage")),
             "connected_client_count": len(router_clients),
             "ap_client_count": read_ap_client_count(),
         },
@@ -3798,6 +3839,11 @@ cellular_connect() {
     local cell_iface
     local gsm_state
 
+    if [[ -r /etc/pcs/uplinks.json && -x /usr/local/sbin/pcs-uplink-manager ]]; then
+        /usr/local/sbin/pcs-uplink-manager --operator connect --uplink cellular
+        return
+    fi
+
     echo "=== PCS Cellular Connect ==="
     echo
     cellular_ensure_profile
@@ -3856,6 +3902,11 @@ cellular_connect() {
 
 cellular_disconnect() {
     local cell_con
+    if [[ -r /etc/pcs/uplinks.json && -x /usr/local/sbin/pcs-uplink-manager ]]; then
+        /usr/local/sbin/pcs-uplink-manager --operator disconnect --uplink cellular
+        echo "Automatic cellular activation is paused until Connect Cellular or operator resume."
+        return
+    fi
     cell_con="$(cellular_profile_name)"
 
     echo "=== PCS Cellular Disconnect ==="

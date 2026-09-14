@@ -97,6 +97,10 @@ else
 fi
 
 report_state() {
+    if [[ -r /etc/pcs/uplinks.json && -x /usr/local/sbin/pcs-uplink-manager ]]; then
+        /usr/local/sbin/pcs-uplink-manager --check
+        return
+    fi
     local autoconnect="missing"
     if command -v nmcli >/dev/null 2>&1 && nmcli -t -f NAME connection show | grep -Fxq -- "${CONNECTION_NAME}"; then
         autoconnect="$(nmcli -g connection.autoconnect connection show "${CONNECTION_NAME}" 2>/dev/null || true)"
@@ -171,14 +175,17 @@ EOF
 "${SUDO[@]}" install -m 0644 "${fallback_config}" "${FALLBACK_CONFIG_TARGET}"
 "${SUDO[@]}" systemctl daemon-reload
 
-if [[ "${FALLBACK_MODE}" == "wifi-fallback" ]]; then
-    "${SUDO[@]}" systemctl enable pcs-cellular-fallback.service
-    "${SUDO[@]}" systemctl restart pcs-cellular-fallback.service
-else
-    "${SUDO[@]}" systemctl disable --now pcs-cellular-fallback.service 2>/dev/null || true
-    # Release only a cellular session bearing the fallback service's ownership marker.
-    "${SUDO[@]}" "${FALLBACK_HELPER_TARGET}" --config "${FALLBACK_CONFIG_TARGET}" --release-owned
+# The generalized installer owns service migration. Never start the old daemon.
+# Explicit legacy --fallback flags remain a supported policy-setting interface.
+uplink_args=()
+if (( PERSIST_FALLBACK_MODE )); then
+    if [[ "${FALLBACK_MODE}" == "wifi-fallback" ]]; then
+        uplink_args=(--mode auto)
+    else
+        uplink_args=(--mode manual)
+    fi
 fi
+PCS_INSTALL_CONFIG="${INSTALL_CONFIG}" bash "${REPO_DIR}/scripts/setup-uplink-manager.sh" "${uplink_args[@]}"
 
 if (( PERSIST_FALLBACK_MODE )); then
     install_config_dir="$(dirname "${INSTALL_CONFIG}")"
@@ -193,13 +200,7 @@ if (( PERSIST_FALLBACK_MODE )); then
 fi
 
 echo
-if [[ "${FALLBACK_MODE}" == "wifi-fallback" ]]; then
-    echo "Automatic Wi-Fi-to-cellular fallback is enabled."
-    echo "Cellular starts after ${WIFI_LOSS_SECONDS}s without active Wi-Fi and is released after ${WIFI_RECOVERY_SECONDS}s of restored Wi-Fi."
-    echo "Only cellular sessions started by the fallback service are automatically disconnected."
-else
-    echo "Cellular remains under manual control from the PCS Control Panel."
-fi
+echo "The generalized uplink manager now owns Internet policy; see the state below."
 echo "The NetworkManager profile remains non-autoconnecting in both modes."
 echo
 report_state

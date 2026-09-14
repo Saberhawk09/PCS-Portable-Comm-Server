@@ -59,10 +59,12 @@ HARDWARE_PACKAGES=(
     util-linux-extra
     rfkill
     ethtool
+    nftables
 )
 
 NETWORK_PACKAGES=(
     network-manager
+    python3-dbus
     modemmanager
     usb-modeswitch
     libqmi-utils

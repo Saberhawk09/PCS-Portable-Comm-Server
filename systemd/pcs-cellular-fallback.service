@@ -2,6 +2,8 @@
 Description=PCS automatic Wi-Fi-to-cellular fallback
 After=NetworkManager.service
 Wants=NetworkManager.service
+Conflicts=pcs-uplink-manager.service
+ConditionPathExists=!/etc/pcs/uplinks.json
 
 [Service]
 Type=simple
@@ -13,6 +15,7 @@ RestartSec=5
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
+ReadWritePaths=/run/lock
 ProtectHome=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

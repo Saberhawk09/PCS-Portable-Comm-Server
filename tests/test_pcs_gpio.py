@@ -375,6 +375,15 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(pcs_gpio.parse_network_uplink("8.8.8.8 dev ppp1"), "Cellular")
         self.assertEqual(pcs_gpio.parse_network_uplink(""), "Offline")
 
+    def test_network_indicator_uses_verified_ethernet_health(self):
+        with patch.object(pcs_gpio.Path, 'exists', return_value=True), patch('pcs_uplink_manager.cached_status') as cached:
+            cached.return_value = {'available': True, 'internet': True, 'uplinks': [{'type': 'ethernet', 'active': True}]}
+            self.assertEqual(pcs_gpio.read_network_uplink(), 'Ethernet')
+            cached.return_value['internet'] = False
+            self.assertEqual(pcs_gpio.read_network_uplink(), 'Offline')
+            cached.return_value = {'available': False}
+            self.assertEqual(pcs_gpio.read_network_uplink(), 'Unknown')
+
     def test_ap_client_count_excludes_infrastructure_and_inactive_neighbors(self):
         neighbors = "\n".join((
             "10.42.0.2 lladdr aa:aa:aa:aa:aa:02 STALE",
@@ -464,6 +473,10 @@ class PcsGpioTests(unittest.TestCase):
             self.assertEqual(pcs_gpio.read_uptime_seconds(path), 93784)
         self.assertEqual(pcs_gpio.format_uptime(93784), "Up: 1d 02h 03m")
         self.assertEqual(pcs_gpio.format_uptime(None), "Up: --d --h --m")
+
+    def test_lcd_healthy_ethernet_page_uses_requested_wan_label(self):
+        snapshot = pcs_gpio.StatsSnapshot(None, None, None, None, network_uplink="Ethernet")
+        self.assertIn(("Network Uplink", "Ethernet WAN"), pcs_gpio.lcd_status_pages(snapshot, 60))
 
     def test_lcd_status_pages_are_concise_and_cover_unknown_gps(self):
         snapshot = pcs_gpio.StatsSnapshot(

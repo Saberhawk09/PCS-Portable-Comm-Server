@@ -178,10 +178,20 @@ class UplinkRecovery:
         if age is not None and age < self.cooldown_seconds:
             return True, f"Dire Wolf recovery restart suppressed by the {self.cooldown_seconds}-second cooldown."
 
-        result = self.runner.run(["systemctl", "restart", "direwolf.service"], timeout=90)
-        if result.returncode != 0:
-            detail = (result.stderr or result.stdout).strip() or "systemctl returned an error"
-            return False, f"Dire Wolf recovery restart failed: {detail}"
+        if not direwolf_active(self.runner):
+            return True, "Dire Wolf stopped during the recovery grace period; leaving it stopped."
+        # ExecStopPost starts the conflicting PTT guard. A single restart
+        # transaction lets that guard cancel the pending engine start. Finish
+        # stopping and settle the guard before requesting a separate start.
+        for operation, unit, timeout in (
+            ("stop", "direwolf.service", 30),
+            ("start", "pcs-aprs-ptt-safe.service", 15),
+            ("start", "direwolf.service", 90),
+        ):
+            result = self.runner.run(["systemctl", operation, unit], timeout=timeout)
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout).strip() or "systemctl returned an error"
+                return False, f"Dire Wolf recovery {operation} {unit} failed: {detail}"
         _atomic_write(self.restart_marker, str(now))
         if not self._wait_for_connection(port, self.verify_seconds):
             return False, f"Dire Wolf restarted after the uplink change, but APRS-IS did not reconnect within {self.verify_seconds} seconds."

@@ -100,6 +100,13 @@ ADMIN_DASHBOARD = {
 
 
 class ContractTests(unittest.TestCase):
+    def test_wan_counters_are_additive_and_nested_fields_are_redacted(self):
+        dashboard = {'network': {'usage': {'rx_bytes': 0, 'tx_bytes': 5, 'total_bytes': 5, 'interface': 'private'}, 'uplinks': [{'id': 'starlink', 'name': 'Starlink', 'interface': 'private', 'profile': 'private', 'owned': True, 'usage': {'total_bytes': 5, 'secret': 'private'}}]}}
+        document = api.api_document('network', dashboard)
+        self.assertNotIn('private', json.dumps(document))
+        self.assertEqual(document['data']['usage']['rx_bytes'], 0)
+        self.assertEqual(document['data']['uplinks'][0]['usage']['total_bytes'], 5)
+
     def test_power_resource_exposes_alarm_and_shutdown_state(self):
         document = api.api_document("power", PUBLIC_DASHBOARD)
         self.assertEqual(document["health"]["severity"], "bad")

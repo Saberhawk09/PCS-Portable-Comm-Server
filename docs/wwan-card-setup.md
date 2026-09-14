@@ -716,3 +716,9 @@ Enabled: 1
 Output Rate: 1
 !GPSNMEASENTENCE: 0xCF
 ```
+# Generalized uplink policy
+
+The cellular profile remains non-autoconnecting and last-resort by default.
+The generalized [uplink manager](uplink-manager.md) replaces the legacy
+Wi-Fi-only controller during setup, preserves manual sessions, and checks real
+Internet reachability. Legacy setup flags remain migration entry points.

@@ -8,6 +8,14 @@ const path = require('node:path');
 const source = path.join(__dirname, '../web/pcs-home/js/pcs.js');
 const {viewModel, safeURL} = require(source);
 
+test('WAN totals and breakdown preserve unknowns and measured zero', () => {
+  const model = viewModel({network: {usage_summary: 'Down 1 GiB / Up 2 GiB / Total 3 GiB', uplinks: [null, {name: 'Starlink', state: 'healthy', active: true, usage: {rx_bytes: 0, tx_bytes: 1073741824, total_bytes: 1073741824}}]}});
+  assert.match(model.wanUsage, /Total 3 GiB/);
+  assert.match(model.wanBreakdown, /Starlink: healthy \/ active/);
+  assert.match(model.wanBreakdown, /Down 0.000 GiB/);
+  assert.equal(viewModel({}).wanUsage, 'Unavailable');
+});
+
 test('missing, null and malformed optional sections never become measured zero', () => {
   for (const data of [null, {}, [], {system:null, power:null, aprs:null, meshtastic:[], network:null}, {power:{configured:true,input_online:true,input_power:null}}]) {
     const model = viewModel(data);

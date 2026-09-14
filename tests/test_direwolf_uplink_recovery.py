@@ -25,6 +25,7 @@ class FakeRunner:
         self.resolves = resolves
         self.active = active
         self.restart_calls = 0
+        self.lifecycle = []
 
     def run(self, arguments, timeout=20):
         if arguments[:4] == ["ip", "-4", "route", "get"]:
@@ -36,8 +37,17 @@ class FakeRunner:
         if arguments and arguments[0] == "ss":
             output = '0 0 192.0.2.10:40000 198.51.100.8:14580 users:(("direwolf",pid=10,fd=5))\n' if self.connected else ""
             return Result(stdout=output)
-        if arguments == ["systemctl", "restart", "direwolf.service"]:
+        if arguments == ["systemctl", "stop", "direwolf.service"]:
+            self.lifecycle.append(('stop', 'direwolf.service'))
+            self.active = False
+            return Result()
+        if arguments == ["systemctl", "start", "pcs-aprs-ptt-safe.service"]:
+            self.lifecycle.append(('start', 'pcs-aprs-ptt-safe.service'))
+            return Result()
+        if arguments == ["systemctl", "start", "direwolf.service"]:
+            self.lifecycle.append(('start', 'direwolf.service'))
             self.restart_calls += 1
+            self.active = True
             self.connected = True
             return Result()
         raise AssertionError(arguments)
@@ -114,6 +124,7 @@ class RecoveryTests(unittest.TestCase):
             self.assertTrue(ok)
             self.assertIn("Restarted", message)
             self.assertEqual(runner.restart_calls, 1)
+            self.assertEqual(runner.lifecycle, [('stop', 'direwolf.service'), ('start', 'pcs-aprs-ptt-safe.service'), ('start', 'direwolf.service')])
 
     def test_dns_failure_does_not_trigger_rf_capable_restart(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -124,6 +135,35 @@ class RecoveryTests(unittest.TestCase):
             self.assertTrue(ok)
             self.assertIn("DNS is unavailable", message)
             self.assertEqual(runner.restart_calls, 0)
+
+    def test_operator_stop_during_grace_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner(interface="eth1", connected=False)
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wlan0\n", encoding="utf-8")
+            def stopped_during_wait(port, seconds):
+                runner.active = False
+                return False
+            subject._wait_for_connection = stopped_during_wait
+            ok, message = subject.recover()
+            self.assertTrue(ok)
+            self.assertIn("leaving it stopped", message)
+            self.assertEqual(runner.lifecycle, [])
+
+    def test_failed_stop_does_not_start_guard_or_engine(self):
+        class StopFails(FakeRunner):
+            def run(self, arguments, timeout=20):
+                if arguments == ["systemctl", "stop", "direwolf.service"]:
+                    return Result(1, stderr="stop failed")
+                return super().run(arguments, timeout)
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = StopFails(interface="eth1", connected=False)
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wlan0\n", encoding="utf-8")
+            ok, message = subject.recover()
+            self.assertFalse(ok)
+            self.assertIn("stop direwolf.service failed", message)
+            self.assertEqual(runner.lifecycle, [])
 
     def test_restart_cooldown_prevents_repeated_startup_beacons(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -143,7 +183,7 @@ class IntegrationSourceTests(unittest.TestCase):
         service = (ROOT / "systemd" / "pcs-direwolf-uplink-recovery.service").read_text(encoding="utf-8")
         self.assertIn("systemctl --no-block start pcs-direwolf-uplink-recovery.service", dispatcher)
         self.assertIn("ExecStart=/usr/local/sbin/pcs-direwolf-uplink-recovery --recover", service)
-        self.assertIn("TimeoutStartSec=150", service)
+        self.assertIn("TimeoutStartSec=300", service)
 
 
 if __name__ == "__main__":
