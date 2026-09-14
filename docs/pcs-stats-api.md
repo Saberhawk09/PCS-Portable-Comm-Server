@@ -315,3 +315,13 @@ aggregate `partial` flag. An unavailable aggregate is null or has no measured
 byte values, not a fabricated zero. Counts include all configured WAN interface
 traffic since boot, including the Pi and clients, and survive service restart.
 See [uplink accounting and migration](uplink-manager.md).
+
+### Optional Starlink branch power monitor
+
+The additive power fields are `starlink_configured`, `starlink_online`,
+`starlink_voltage`, `starlink_current`, `starlink_power`,
+`starlink_charge_since_boot_mah`, and `starlink_energy_since_boot_wh`.
+`configured` here means the role is present in the collector snapshot; a disabled
+planned module is not present. Public output includes readings but no sensor
+address or calibration. Missing readings are unavailable, never fabricated zero.
+These power readings are independent of network uplink health and usage counters.

@@ -1129,3 +1129,7 @@ live files are never overwritten. Base setup runs both phases when
 since-boot WAN accounting; `pcs_uplink_setup.py` implements repeatable setup.
 See [configuration and migration](../docs/uplink-manager.md) and
 [testing](../docs/testing-uplinks.md). Never select `eth0` as WAN.
+
+The power collector supports an optional fourth `starlink` INA226 alongside the
+planned `rail_12v` monitor. Both remain disabled in the templates pending physical
+installation and calibration. See [power staging](../docs/power-system.md#planned-fourth-ina226-starlink-branch).

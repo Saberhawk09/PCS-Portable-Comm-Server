@@ -100,3 +100,11 @@ test('alert strings are rendered as text without HTML insertion',async()=>{
   assert.match(ui.nodes.alerts.children[0].textContent,/<script>/);
   assert.equal(ui.nodes.alerts.children[0].children.length,0);
 });
+
+test('Starlink branch distinguishes uncommissioned, failed and measured zero', () => {
+  assert.equal(viewModel({}).starlinkPower, 'Not commissioned');
+  assert.equal(viewModel({power: {configured: true, starlink_configured: true, starlink_online: false, starlink_power: 40}}).starlinkPower, 'Unavailable');
+  const live = viewModel({power: {configured: true, starlink_configured: true, starlink_online: true, starlink_power: 0, starlink_energy_since_boot_wh: 1.25}});
+  assert.equal(live.starlinkPower, '0.0 W');
+  assert.equal(live.starlinkEnergy, '1.250 Wh');
+});

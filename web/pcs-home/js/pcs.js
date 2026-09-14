@@ -39,6 +39,8 @@
       callsign: text(aprs.callsign, 'PCS FIELD STATION'), localTime: text(system.local_time), uptime: text(system.uptime),
       uplink: offline || network.internet_available === false ? 'Offline' : text(network.uplink_type),
       wanUsage: text(network.usage_summary),
+      starlinkPower: power.configured === true && power.starlink_online === true ? watts(power.starlink_power) : power.configured === true && power.starlink_configured === true ? 'Unavailable' : 'Not commissioned',
+      starlinkEnergy: power.configured === true && power.starlink_online === true && typeof power.starlink_energy_since_boot_wh === 'number' && Number.isFinite(power.starlink_energy_since_boot_wh) ? power.starlink_energy_since_boot_wh.toFixed(3) + ' Wh' : 'Unavailable',
       wanRows, wanBreakdown: wanRows.join(' • ') || 'Unavailable',
       coordinates: text(gps.coordinates), grid: text(gps.grid_square),
       voltage: power.configured === true && power.input_online === true && typeof power.input_voltage === "number" && Number.isFinite(power.input_voltage) ? power.input_voltage.toFixed(2) + " V" : "Unavailable",

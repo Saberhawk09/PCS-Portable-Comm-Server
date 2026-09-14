@@ -381,3 +381,7 @@ windows. The Pi remains the gateway; `eth0` is always the PCS LAN. Public/admin
 dashboards include WAN traffic totals since boot. See the
 [uplink manager guide](docs/uplink-manager.md) and
 [acceptance tests](docs/testing-uplinks.md) before installation.
+
+The planned third (12V rail) and fourth (Starlink branch) INA226 monitors are
+optional and staged disabled. See [power-monitor commissioning](docs/power-system.md#planned-fourth-ina226-starlink-branch);
+software support does not imply either module is installed.

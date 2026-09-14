@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PCS dual-INA226 power monitor and persistent low-voltage protection.
+"""PCS multi-INA226 power monitor and persistent low-voltage protection.
 
 The service is inert unless explicitly configured.  It publishes an atomic,
 non-secret JSON snapshot for the dashboard, self-test, displays, and buzzer.
@@ -129,7 +129,7 @@ class EnergyTracker:
                     float(monitors[name]["charge_since_boot_mah"]),
                     float(monitors[name]["energy_since_boot_wh"]),
                 )
-                for name in monitor_names
+                for name in monitor_names if name in monitors
             }
             return cls(
                 monitor_names,
@@ -197,12 +197,19 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     monitors = raw.get("monitors")
     if not isinstance(monitors, dict) or "input" not in monitors:
         raise ValueError("input monitor is required")
-    if not set(monitors).issubset({"input", "rail_5v", "rail_12v"}):
+    if not set(monitors).issubset({"input", "rail_5v", "rail_12v", "starlink"}):
         raise ValueError("unsupported monitor role")
     parsed: dict[str, MonitorConfig] = {}
     addresses: set[int] = set()
     for name in monitors:
         item = monitors[name]
+        enabled = item.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError("monitor enabled must be a JSON boolean")
+        if not enabled:
+            if name == "input":
+                raise ValueError("input monitor cannot be disabled")
+            continue
         address = parse_address(item["address"])
         if address in addresses:
             raise ValueError("INA226 monitors must use unique addresses")

@@ -2628,6 +2628,8 @@ power_fresh = power_age is not None and power_age <= 15
 power_monitors = power_runtime.get("monitors", {}) if isinstance(power_runtime.get("monitors"), dict) else {}
 power_input = power_monitors.get("input", {}) if isinstance(power_monitors.get("input"), dict) else {}
 power_5v = power_monitors.get("rail_5v", {}) if isinstance(power_monitors.get("rail_5v"), dict) else {}
+power_12v = power_monitors.get("rail_12v", {}) if isinstance(power_monitors.get("rail_12v"), dict) else {}
+power_starlink = power_monitors.get("starlink", {}) if isinstance(power_monitors.get("starlink"), dict) else {}
 power_energy = power_runtime.get("energy_tracking", {}) if isinstance(power_runtime.get("energy_tracking"), dict) else {}
 power_status = str(power_runtime.get("status", "warn")) if power_fresh else "warn"
 if power_status not in {"ok", "warn", "bad"}:
@@ -3159,6 +3161,28 @@ if POWER_CONFIGURED:
         ])
     else:
         power_items.append({"label": "5V monitor", "value": "not commissioned"})
+    if "rail_12v" in power_monitors:
+        power_items.extend([
+            {"label": "12V monitor", "value": power_monitor_state(power_12v)},
+            {"label": "12V rail voltage", "value": power_value(power_12v.get("voltage"), "V")},
+            {"label": "12V rail current", "value": power_value(power_12v.get("current"), "A")},
+            {"label": "12V rail power", "value": power_value(power_12v.get("power"), "W")},
+            {"label": "12V charge since boot", "value": power_value(power_12v.get("charge_since_boot_mah"), "mAh", 1)},
+            {"label": "12V energy since boot", "value": power_value(power_12v.get("energy_since_boot_wh"), "Wh", 3)},
+        ])
+    else:
+        power_items.append({"label": "12V monitor", "value": "not commissioned"})
+    if "starlink" in power_monitors:
+        power_items.extend([
+            {"label": "Starlink monitor", "value": power_monitor_state(power_starlink)},
+            {"label": "Starlink branch voltage", "value": power_value(power_starlink.get("voltage"), "V")},
+            {"label": "Starlink branch current", "value": power_value(power_starlink.get("current"), "A")},
+            {"label": "Starlink branch power", "value": power_value(power_starlink.get("power"), "W")},
+            {"label": "Starlink charge since boot", "value": power_value(power_starlink.get("charge_since_boot_mah"), "mAh", 1)},
+            {"label": "Starlink energy since boot", "value": power_value(power_starlink.get("energy_since_boot_wh"), "Wh", 3)},
+        ])
+    else:
+        power_items.append({"label": "Starlink monitor", "value": "not commissioned"})
     power_items.extend([
         {"label": "Low-voltage protection", "value": "active" if low_voltage.get("active") else "normal"},
         {"label": "Automatic shutdown", "value": "armed" if low_voltage.get("shutdown_armed") else "disarmed"},
@@ -3390,6 +3414,19 @@ if PUBLIC_VIEW:
             "rail_5v_power": power_5v.get("power"),
             "rail_5v_charge_since_boot_mah": power_5v.get("charge_since_boot_mah"),
             "rail_5v_energy_since_boot_wh": power_5v.get("energy_since_boot_wh"),
+            "rail_12v_online": bool(power_12v.get("online")),
+            "starlink_configured": "starlink" in power_monitors,
+            "starlink_online": bool(power_starlink.get("online")),
+            "rail_12v_voltage": power_12v.get("voltage"),
+            "starlink_voltage": power_starlink.get("voltage"),
+            "rail_12v_current": power_12v.get("current"),
+            "starlink_current": power_starlink.get("current"),
+            "rail_12v_power": power_12v.get("power"),
+            "starlink_power": power_starlink.get("power"),
+            "rail_12v_charge_since_boot_mah": power_12v.get("charge_since_boot_mah"),
+            "starlink_charge_since_boot_mah": power_starlink.get("charge_since_boot_mah"),
+            "rail_12v_energy_since_boot_wh": power_12v.get("energy_since_boot_wh"),
+            "starlink_energy_since_boot_wh": power_starlink.get("energy_since_boot_wh"),
             "energy_tracking_elapsed_seconds": power_energy.get("elapsed_seconds"),
             "estimated_non_5v_power": power_runtime.get("estimated_non_5v_power"),
             "low_voltage_active": bool(low_voltage.get("active")),

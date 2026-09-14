@@ -38,6 +38,91 @@ def config():
 
 
 class PowerTests(unittest.TestCase):
+    def test_third_monitor_is_staged_with_planned_bus_address(self):
+        cfg = power.load_config(ROOT / "config" / "power-monitor.pcs.json")
+        self.assertEqual(set(cfg["monitors"]), {"input", "rail_5v"})
+        raw = json.loads((ROOT / "config" / "power-monitor.pcs.json").read_text())
+        self.assertEqual(raw["monitors"]["rail_12v"]["address"], "0x4d")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            raw["monitors"]["rail_12v"].update(enabled=True)
+            path.write_text(json.dumps(raw))
+            with self.assertRaises(ValueError):
+                power.load_config(path)
+            raw["monitors"]["rail_12v"].update(address="0x42", shunt_ohms=0.002, max_current_amps=20)
+            path.write_text(json.dumps(raw))
+            self.assertEqual(power.load_config(path)["monitors"]["rail_12v"].address, 0x42)
+            raw["monitors"]["rail_12v"]["address"] = "0x40"
+            path.write_text(json.dumps(raw))
+            with self.assertRaisesRegex(ValueError, "unique"):
+                power.load_config(path)
+
+    def test_third_monitor_measurements_energy_and_failure_isolation(self):
+        cfg = config()
+        cfg["monitors"]["rail_12v"] = power.MonitorConfig("rail_12v", 0x42, 0.002, 20)
+        tracker = power.EnergyTracker(list(cfg["monitors"]))
+        guard = power.LowVoltageGuard(cfg)
+        readings = [power.Reading(True, 13.8, 2, 27.6), power.Reading(True, 5, 1, 5), power.Reading(True, 12, 1, 12)]
+        with mock.patch.object(power, "safe_read", side_effect=readings * 2):
+            power.collect(None, cfg, guard, 0, tracker)
+            value = power.collect(None, cfg, guard, 3600, tracker)
+        self.assertEqual(value["monitors"]["rail_12v"]["energy_since_boot_wh"], 12)
+        self.assertEqual(value["monitors"]["input"]["energy_since_boot_wh"], 27.6)
+        self.assertEqual(value["estimated_non_5v_power"], 22.6)
+        with mock.patch.object(power, "safe_read", side_effect=readings[:2] + [power.Reading(False, error="missing")]):
+            value = power.collect(None, cfg, guard, 3602, tracker)
+        self.assertEqual(value["status"], "warn")
+        self.assertTrue(value["monitors"]["input"]["online"])
+        self.assertFalse(value["low_voltage"]["active"])
+
+    def test_fourth_monitor_requires_explicit_address_and_calibration(self):
+        raw = json.loads((ROOT / "config/power-monitor.pcs.json").read_text())
+        self.assertFalse(raw["monitors"]["rail_12v"]["enabled"])
+        self.assertFalse(raw["monitors"]["starlink"]["enabled"])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            raw["monitors"]["starlink"]["enabled"] = True
+            path.write_text(json.dumps(raw))
+            with self.assertRaises(ValueError):
+                power.load_config(path)
+            raw["monitors"]["rail_12v"].update(enabled=True, shunt_ohms=0.002, max_current_amps=20)
+            raw["monitors"]["starlink"].update(address="0x4e", shunt_ohms=0.002, max_current_amps=20)
+            path.write_text(json.dumps(raw))
+            self.assertEqual(set(power.load_config(path)["monitors"]), {"input", "rail_5v", "rail_12v", "starlink"})
+            raw["monitors"]["starlink"]["address"] = "0x4d"
+            path.write_text(json.dumps(raw))
+            with self.assertRaisesRegex(ValueError, "unique"):
+                power.load_config(path)
+
+    def test_four_monitors_do_not_double_count_branch_power_or_trigger_shutdown(self):
+        cfg = config()
+        cfg["monitors"].update(rail_12v=power.MonitorConfig("rail_12v", 0x4d, 0.002, 20),
+                               starlink=power.MonitorConfig("starlink", 0x4e, 0.002, 20))
+        tracker = power.EnergyTracker(list(cfg["monitors"]))
+        guard = power.LowVoltageGuard(cfg)
+        readings = [power.Reading(True, 24, 3, 72), power.Reading(True, 5, 2, 10),
+                    power.Reading(True, 12, 1, 12), power.Reading(True, 24, 2, 48)]
+        with mock.patch.object(power, "safe_read", side_effect=readings * 2):
+            power.collect(None, cfg, guard, 0, tracker)
+            value = power.collect(None, cfg, guard, 3600, tracker)
+        self.assertEqual(value["monitors"]["starlink"]["energy_since_boot_wh"], 48)
+        self.assertEqual(value["monitors"]["input"]["energy_since_boot_wh"], 72)
+        self.assertEqual(value["estimated_non_5v_power"], 62)
+        for branch in [power.Reading(True, 0, 0, 0), power.Reading(False, error="missing")]:
+            with mock.patch.object(power, "safe_read", side_effect=readings[:3] + [branch]):
+                value = power.collect(None, cfg, guard, 3602, tracker)
+            self.assertFalse(value["low_voltage"]["active"])
+            self.assertTrue(value["monitors"]["input"]["online"])
+        self.assertEqual(value["status"], "warn")
+
+    def test_disabled_planned_monitors_are_never_read(self):
+        cfg = power.load_config(ROOT / "config/power-monitor.pcs.json")
+        with mock.patch.object(power, "safe_read", return_value=power.Reading(True, 12, 1, 12)) as read:
+            value = power.collect(None, cfg, power.LowVoltageGuard(cfg), 0)
+        self.assertEqual(read.call_count, 2)
+        self.assertNotIn("starlink", value["monitors"])
+        self.assertNotIn("rail_12v", value["monitors"])
+
     def test_runtime_directory_preserves_energy_totals_across_service_restart(self):
         service = (ROOT / "systemd" / "pcs-power-monitor.service").read_text(encoding="utf-8")
         self.assertIn("RuntimeDirectoryPreserve=restart", service)
@@ -130,7 +215,8 @@ class PowerTests(unittest.TestCase):
                     },
                 },
             }), encoding="utf-8")
-            resumed = power.EnergyTracker.resume(path, ["input"], "boot-1")
+            resumed = power.EnergyTracker.resume(path, ["input", "rail_12v"], "boot-1")
+            self.assertEqual(resumed.fields("rail_12v")["energy_since_boot_wh"], 0)
             reset = power.EnergyTracker.resume(path, ["input"], "boot-2")
         self.assertEqual(resumed.fields("input")["charge_since_boot_mah"], 12.5)
         self.assertEqual(resumed.started_at_epoch, 100)
