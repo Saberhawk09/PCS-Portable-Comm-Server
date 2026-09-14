@@ -2629,7 +2629,7 @@ def usage_label(usage):
         return "Unavailable"
     def size(key):
         value = usage.get(key)
-        return f"{value / (1024 ** 3):.3f} GiB" if isinstance(value, (int, float)) else "Unavailable"
+        return f"{value / 1_000_000:.3f} MB" if isinstance(value, (int, float)) else "Unavailable"
     return f"Down {size('rx_bytes')} / Up {size('tx_bytes')} / Total {size('total_bytes')}" + (" (partial)" if usage.get("partial") else "")
 
 network_core_ok = eth_ok and eth_ip_ok

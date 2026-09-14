@@ -142,7 +142,8 @@ they are not carrier billing counters. LAN transfers and tunnel interfaces are
 not added again. Upstream-local traffic traversing a WAN NIC is also counted.
 
 `network.uplinks`, `network.usage` and `network.usage_summary` are additive public
-fields. Byte values are `rx_bytes`, `tx_bytes`, `total_bytes`; per-uplink entries
+fields. Usage displays use decimal MB (1 MB = 1,000,000 bytes), while raw
+byte values remain `rx_bytes`, `tx_bytes`, `total_bytes`; per-uplink entries
 contain their own `usage`. Authenticated details additionally expose interface,
 profile, address and ownership. Public output excludes these identifiers.
 The root-writable cache is `/run/pcs-uplink-manager/status.json`; dashboard reads

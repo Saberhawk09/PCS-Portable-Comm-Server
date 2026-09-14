@@ -710,7 +710,7 @@ def render_public_page(data: dict) -> bytes:
         if not isinstance(uplink, dict):
             continue
         usage = uplink.get("usage") or {}
-        traffic = " / ".join(f"{label} {usage[key] / (1024 ** 3):.3f} GiB" for key, label in [("rx_bytes", "Down"), ("tx_bytes", "Up"), ("total_bytes", "Total")] if type(usage.get(key)) is int)
+        traffic = " / ".join(f"{label} {usage[key] / 1_000_000:.3f} MB" for key, label in [("rx_bytes", "Down"), ("tx_bytes", "Up"), ("total_bytes", "Total")] if type(usage.get(key)) is int)
         cards.append(public_card(str(uplink.get("name", "WAN")), {"status": "ok" if uplink.get("internet") is True else "warn", "state": uplink.get("state", "unknown"), "active": uplink.get("active", False), "traffic": traffic or "Unavailable"}, [("Internet health", "state", "unknown"), ("Active", "active", False), ("Traffic since boot", "traffic", "Unavailable")]))
 
     if remote_management.get("configured"):

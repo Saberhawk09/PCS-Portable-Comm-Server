@@ -4,6 +4,13 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.4] - 2026-09-14
+
+- Display WAN download, upload and total usage in decimal megabytes (MB,
+  1,000,000 bytes) across the homepage, detailed status and usage summaries.
+  Convert the values as well as the labels; preserve raw byte counters,
+  cumulative accounting, unavailable readings and partial-usage indicators.
+
 ## [1.9.3] - 2026-09-14
 
 - Correct the live Android HTTPS identity for home-LAN Ethernet
