@@ -27,6 +27,25 @@ def config(**values):
 
 
 class TelemetryTests(unittest.TestCase):
+    def test_present_failed_wan_warns_but_absence_and_stale_observer_do_not(self):
+        row = dict(id='starlink', type='ethernet', link=True, internet=False)
+        self.assertTrue(s.connected_without_internet(dict(available=True, uplinks=[row])))
+        for value in (row | {'link': False}, row | {'internet': True}, row | {'id': 'other'}):
+            self.assertFalse(s.connected_without_internet(dict(available=True, uplinks=[value])))
+        self.assertFalse(s.connected_without_internet(dict(available=False, uplinks=[row])))
+
+    def test_dashboard_warns_for_no_working_uplink_without_claiming_lan_fault(self):
+        source = (ROOT / 'scripts/pcs-web-action.sh').read_text()
+        block = source[source.index('overall_cards = ['):source.index('client_info = {')]
+        for present_failed, working_fallback, expected in [(False, False, 'ok'), (True, False, 'warn'), (True, True, 'ok')]:
+            values = dict(cards=[dict(id='network', title='Network', status='ok' if working_fallback else 'warn', summary='Internet uplink offline'),
+                                 dict(id='starlink', title='Starlink', status='warn', summary='Optional diagnostics')],
+                          offline_mode=not working_fallback, openwrt_online=True,
+                          no_uplink_warning=present_failed and not working_fallback)
+            exec(block, values)
+            self.assertEqual(values['overall'], expected)
+            self.assertFalse(any(a['severity']=='bad' for a in values['alerts']))
+
     def test_both_installers_authorize_only_fixed_starlink_dispatcher_actions(self):
         for name, prefix in [('setup-pcs-control-panel.sh', '${DISPATCHER_DST}'),
                              ('setup-pcs-stats-api.sh', '/usr/local/sbin/pcs-web-action')]:

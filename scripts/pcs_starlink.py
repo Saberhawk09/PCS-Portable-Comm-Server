@@ -128,6 +128,19 @@ def cached_status(path=CACHE, now=None):
         return dict(configured=CONFIG.exists(), available=False, status='ok', state='UNAVAILABLE')
 
 
+def connected_without_internet(uplinks, uplink_id='starlink'):
+    """Carrier-present WAN failure differs from an unplugged optional Mini.
+
+    Use the uplink manager's probes, never gRPC availability as Internet health.
+    A stale observer cannot establish physical presence or a current failure.
+    """
+    if uplinks.get('available') is not True:
+        return False
+    return any(isinstance(row, dict) and row.get('id') == uplink_id
+               and row.get('type') == 'ethernet' and row.get('link') is True
+               and row.get('internet') is False for row in uplinks.get('uplinks', []))
+
+
 def rpc_request(stub, request_class, operation, expected_id=''):
     """No raw arbitrary RPC entry point; verify identity immediately before reboot."""
     response = stub.Handle(request_class(get_status={}), timeout=3)

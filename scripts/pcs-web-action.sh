@@ -2571,6 +2571,12 @@ if uplink_snapshot.get("available"):
 active_uplink_ok = bool(default_iface) and default_iface not in {"lo"}
 internet_uplink_ok = active_uplink_ok and internet_ok and dns_ok
 offline_mode = not internet_uplink_ok and eth_ok and eth_ip_ok
+try:
+    from pcs_starlink import connected_without_internet, load_config as starlink_config
+    starlink_wan_unhealthy = connected_without_internet(uplink_snapshot, starlink_config()['uplink_id'])
+except (ImportError, OSError, ValueError, TypeError):
+    starlink_wan_unhealthy = False
+no_uplink_warning = starlink_wan_unhealthy and not internet_uplink_ok
 
 wireguard = wireguard_runtime()
 wireguard_handshake_current = (
@@ -3227,6 +3233,8 @@ try:
     starlink_snapshot = starlink_cached()
 except (ImportError, OSError, ValueError, TypeError):
     starlink_snapshot = {"configured": False, "available": False, "state": "UNAVAILABLE", "status": "ok"}
+if starlink_wan_unhealthy:
+    starlink_snapshot['status'] = 'warn'
 starlink_items = [{"label": label, "value": starlink_snapshot.get(key) if starlink_snapshot.get(key) is not None else "Unavailable"}
     for key, label in [("state", "Dish state"), ("latency_ms", "Latency (ms)"),
         ("packet_loss_percent", "Packet loss (%)"), ("obstruction_percent", "Obstruction (%)"),
@@ -3242,7 +3250,7 @@ if not PUBLIC_VIEW:
     except (NameError, OSError, ValueError, TypeError):
         pass
 cards.append({"id": "starlink", "title": "Starlink Telemetry", "status": starlink_snapshot.get("status", "ok"),
-    "summary": "Read-only diagnostics" if starlink_snapshot.get("available") else "Telemetry unavailable or not commissioned",
+    "summary": "Ethernet WAN connected; Internet unavailable" if starlink_wan_unhealthy else "Read-only diagnostics" if starlink_snapshot.get("available") else "Telemetry unavailable or not commissioned",
     "items": starlink_items})
 
 network_card = next(card for card in cards if card.get("id") == "network")
@@ -3280,7 +3288,7 @@ overall_cards = [
     card
     for card in cards
     if card.get("id") != "starlink" and not (
-        offline_mode
+        offline_mode and not no_uplink_warning
         and (
             card.get("id") == "uplink-details"
             or (card.get("id") == "network" and openwrt_online)

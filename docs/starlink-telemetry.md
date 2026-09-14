@@ -29,6 +29,14 @@ unavailable, never connected. A responding dish can report its own warnings,
 which remain separate from overall PCS health. The uninstalled third and fourth
 INA226 monitors remain disabled; the fourth is staged at `0x4e`.
 
+Physical WAN presence is checked separately using the uplink manager's Ethernet
+carrier and Internet probes. Connected Starlink Ethernet with failed Internet
+gets a Starlink-card warning even if telemetry is disabled or unreachable. A
+healthy fallback keeps PCS overall healthy. If no WAN provides Internet while
+that Ethernet link is present, the Network card raises an overall no-uplink
+warning instead of suppressing it as intentional offline operation. This is not
+a hard LAN fault; the existing LCD/buzzer no-uplink warning remains applicable.
+
 Local gRPC reflection is an unofficial firmware-dependent interface. The target
 is fixed at `192.168.100.1:9200`; its TCP socket is explicitly bound to the selected
 MAC-bound Ethernet uplink. A loopback-only relay supplies that bound socket to
