@@ -251,6 +251,26 @@ temporary staging directory or original checkout is unavailable.
 
 ## Client smoke test
 
+### Multiple home-LAN server addresses
+
+The commissioned PCS uses Wi-Fi `192.168.50.236` and Ethernet `192.168.50.237`.
+Both must be included in `PCS_API_CERTIFICATE_IDENTITIES` and in the certificate
+SAN, alongside `10.42.0.1`, `10.6.0.7` and `pcs.local`. Adding a firewall rule does
+not authorize an IP address in a TLS certificate. The existing trusted Ethernet
+source policy `192.168.50.0/24` already covered home-LAN clients; no widening was
+needed for the address correction.
+
+On September 14, 2026, the live certificate was reissued with all five identities
+while preserving its private key, existing pairing records and administrator
+credentials. Strict HTTPS verification passed from Windows against both home
+addresses and on PCS against LAN/WireGuard endpoints. The operator confirmed
+Companion worked after importing the replacement certificate and pairing again.
+PCS v1.9.3 records this deployment correction and the reusable policy example;
+the deployment certificate/private key remain outside Git. Future certificate
+updates must preserve every commissioned endpoint and require explicit app trust.
+
+### Verification commands
+
 [`scripts/pcs-api-smoke-test.py`](../scripts/pcs-api-smoke-test.py) provides a
 safe external verification pass after activation. It requires an HTTPS origin
 and an operator-supplied CA or self-signed certificate, then checks discovery,

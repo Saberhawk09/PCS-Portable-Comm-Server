@@ -16,7 +16,8 @@ and the [roadmap](remote-management-api-android-roadmap.md) for the dated histor
 
 Try a short HTTPS connection to these operator-configured candidates in order:
 
-1. home-LAN PCS address, currently `https://192.168.50.236:9443`;
+1. home-LAN PCS address: `https://192.168.50.237:9443` for Ethernet,
+   or `https://192.168.50.236:9443` for Wi-Fi;
 2. PCS local LAN, `https://10.42.0.1:9443`;
 3. PCS WireGuard address, `https://10.6.0.7:9443`.
 
@@ -26,6 +27,20 @@ downgrade to HTTP or disable hostname/certificate checks. The first app build
 should let the operator import or confirm the deployment certificate out of
 band and pin its public key or certificate. Certificate replacement needs an
 explicit re-trust flow; it must never silently accept a changed identity.
+
+PCS v1.9.3 records the verified dual-address certificate correction. Both home
+addresses are server identities, not client source addresses. The existing app
+has one Home LAN endpoint setting; choose either address there while retaining
+the PCS LAN and WireGuard settings. It does not automatically cycle through two
+Home LAN addresses in that single setting.
+
+Companion v0.2.0 pins the exact certificate. Expanding SANs changes its fingerprint
+even when the private key is retained. Import and explicitly trust the replacement
+public certificate; the app clears its old token and must pair again. Use a new
+device ID or deliberately revoke the old ID on PCS before reusing it. Existing
+server pairing records need not be erased. The operator confirmed successful
+re-trust, re-pairing and access after the September 14, 2026 correction; no new APK
+or relaxed hostname verification was required.
 
 ## Enrollment
 
