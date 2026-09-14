@@ -9,10 +9,11 @@ const source = path.join(__dirname, '../web/pcs-home/js/pcs.js');
 const {viewModel, safeURL} = require(source);
 
 test('WAN totals and breakdown preserve unknowns and measured zero', () => {
-  const model = viewModel({network: {usage_summary: 'Down 1 GiB / Up 2 GiB / Total 3 GiB', uplinks: [null, {name: 'Starlink', state: 'healthy', active: true, usage: {rx_bytes: 0, tx_bytes: 1073741824, total_bytes: 1073741824}}]}});
-  assert.match(model.wanUsage, /Total 3 GiB/);
+  const model = viewModel({network: {usage_summary: 'Down 1 MB / Up 2 MB / Total 3 MB', uplinks: [null, {name: 'Starlink', state: 'healthy', active: true, usage: {rx_bytes: 0, tx_bytes: 1073741824, total_bytes: 1073741824}}]}});
+  assert.match(model.wanUsage, /Total 3 MB/);
   assert.match(model.wanBreakdown, /Starlink: healthy \/ active/);
-  assert.match(model.wanBreakdown, /Down 0.000 GiB/);
+  assert.match(model.wanBreakdown, /Down 0.000 MB/);
+  assert.match(model.wanBreakdown, /Up 1073.742 MB/);
   assert.equal(viewModel({}).wanUsage, 'Unavailable');
 });
 

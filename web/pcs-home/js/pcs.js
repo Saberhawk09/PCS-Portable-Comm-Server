@@ -33,7 +33,7 @@
     const clients = typeof network.ap_client_count === 'number' && Number.isInteger(network.ap_client_count) && network.ap_client_count >= 0 ? String(network.ap_client_count) : 'Unavailable';
     const wanRows = Array.isArray(network.uplinks) ? network.uplinks.filter(u => u && typeof u === 'object' && !Array.isArray(u)).slice(0, 32).map(u => {
       const usage = object(u.usage);
-      const bytes = key => typeof usage[key] === 'number' && Number.isFinite(usage[key]) && usage[key] >= 0 ? (usage[key] / (1024 ** 3)).toFixed(3) + ' GiB' : 'Unavailable';
+      const bytes = key => typeof usage[key] === 'number' && Number.isFinite(usage[key]) && usage[key] >= 0 ? (usage[key] / 1_000_000).toFixed(3) + ' MB' : 'Unavailable';
       const traffic = Object.keys(usage).length ? `Down ${bytes('rx_bytes')} / Up ${bytes('tx_bytes')} / Total ${bytes('total_bytes')}` : 'Traffic unavailable';
       return `${text(u.name, 'WAN')}: ${text(u.state, 'unknown')}${u.active === true ? ' / active' : ''} · ${traffic}`;
     }) : [];
