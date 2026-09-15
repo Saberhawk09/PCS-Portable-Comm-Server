@@ -116,13 +116,16 @@ def sanitize(value):
             and (v is None or type(v) in (str, bool, int, float))}
 
 
-def cached_status(path=CACHE, now=None):
+def cached_status(path=CACHE, now=None, include_uplink=False):
     try:
         value = json.loads(path.read_text())
         age = (time.time() if now is None else now) - value['collected_at']
         if not 0 <= age <= 2 * value['poll_seconds'] + 15:
             raise ValueError('stale')
-        return sanitize(value | {'sample_age_seconds': round(age, 1)})
+        result = sanitize(value | {'sample_age_seconds': round(age, 1)})
+        if include_uplink and isinstance(value.get('uplink_id'), str):
+            result['uplink_id'] = value['uplink_id']
+        return result
     except (OSError, ValueError, KeyError, TypeError):
         # Optional hardware/cache absence is informational, not an appliance warning.
         return dict(configured=CONFIG.exists(), available=False, status='ok', state='UNAVAILABLE')
@@ -246,7 +249,7 @@ def sample(cfg, call=invoke):
             result['available'] = True
         except (OSError, ValueError, subprocess.SubprocessError):
             pass
-    return result | {'collected_at': time.time(), 'poll_seconds': cfg['poll_seconds']}
+    return result | {'collected_at': time.time(), 'poll_seconds': cfg['poll_seconds'], 'uplink_id': cfg['uplink_id']}
 
 
 def main():

@@ -117,11 +117,14 @@ class TelemetryTests(unittest.TestCase):
             p = Path(directory) / 'status.json'
             p.write_text(json.dumps(dict(result, collected_at=100, available=True, latency_ms=12)))
             self.assertTrue(s.cached_status(p, now=110)['available'])
+            self.assertNotIn('uplink_id', s.cached_status(p, now=110))
+            self.assertEqual(s.cached_status(p, now=110, include_uplink=True)['uplink_id'], config()['uplink_id'])
             for now in (99, 146):
                 stale = s.cached_status(p, now=now)
                 self.assertFalse(stale['available'])
                 self.assertNotIn('latency_ms', stale)
                 self.assertEqual(stale['status'], 'ok')
+                self.assertNotIn('uplink_id', s.cached_status(p, now=now, include_uplink=True))
 
     def test_outer_child_deadline_is_enforced(self):
         with patch.object(s.subprocess, 'run', side_effect=subprocess.TimeoutExpired('child', 10)) as run:
