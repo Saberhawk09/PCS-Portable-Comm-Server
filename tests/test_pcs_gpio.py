@@ -384,6 +384,19 @@ class PcsGpioTests(unittest.TestCase):
             cached.return_value = {'available': False}
             self.assertEqual(pcs_gpio.read_network_uplink(), 'Unknown')
 
+    def test_lcd_starlink_label_requires_matching_fresh_telemetry(self):
+        with patch.object(pcs_gpio.Path, 'exists', return_value=True), patch('pcs_uplink_manager.cached_status') as cached, patch('pcs_starlink.cached_status') as telemetry:
+            cached.return_value = {'available': True, 'internet': True, 'uplinks': [{'id': 'satellite', 'type': 'ethernet', 'active': True}]}
+            for sample, label in [({}, 'Ethernet'), ({'configured': True, 'available': False}, 'Ethernet'),
+                                  ({'configured': True, 'available': True, 'uplink_id': 'other'}, 'Ethernet'),
+                                  ({'configured': True, 'available': True, 'uplink_id': 'satellite'}, 'Starlink')]:
+                telemetry.return_value = sample
+                self.assertEqual(pcs_gpio.read_network_uplink(), label)
+            snapshot = pcs_gpio.StatsSnapshot(None, None, None, None, network_uplink='Starlink')
+            self.assertIn(('Network Uplink', 'Starlink'), pcs_gpio.lcd_status_pages(snapshot, 60))
+            health = pcs_gpio.MatrixHealthSnapshot(snapshot, 20, True, 0, True, True)
+            self.assertEqual(pcs_gpio.led_status_indicators(health)[4].color, pcs_gpio.LED_HEALTHY)
+
     def test_ap_client_count_excludes_infrastructure_and_inactive_neighbors(self):
         neighbors = "\n".join((
             "10.42.0.2 lladdr aa:aa:aa:aa:aa:02 STALE",

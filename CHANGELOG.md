@@ -6,6 +6,9 @@ All notable user-facing PCS changes are recorded here.
 
 ## [1.9.4] - 2026-09-14
 
+- Apply the telemetry-based Ethernet WAN / Starlink label to the LCD as well.
+  Keep Starlink's private configuration inaccessible to display services and
+  preserve healthy network LED behavior for either label.
 - Beep once on Internet uplink selection changes, including offline/recovery,
   through the existing buzzer owner. Respect mute and higher-priority alarms;
   avoid duplicate notifications on startup, restart or individual probe failures.

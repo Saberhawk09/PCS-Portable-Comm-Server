@@ -129,6 +129,12 @@ may not produce a new NetworkManager activation identity.
 
 ## Usage and API
 
+The LCD network page displays `Ethernet WAN` unless fresh available Starlink
+telemetry matches the active uplink. It then displays `Starlink`. The LCD reads
+only the sanitized telemetry cache plus its non-secret uplink ID; private pairing
+configuration stays root-only. Missing, stale or mismatched telemetry falls back
+to the generic Ethernet label. Both labels retain healthy network LED status.
+
 ### Optional trusted Ethernet management
 
 WAN Internet access does not automatically expose PCS services on a WAN.

@@ -862,6 +862,16 @@ def read_network_uplink() -> str:
             if status.get('internet') is not True:
                 return 'Offline'
             active = next((u for u in status.get('uplinks', []) if u.get('active')), {})
+            if active.get('type') == 'ethernet':
+                try:
+                    from pcs_starlink import cached_status as starlink_status
+                    telemetry = starlink_status(include_uplink=True)
+                    if (telemetry.get('configured') is True and telemetry.get('available') is True
+                            and active.get('id') and active['id'] == telemetry.get('uplink_id')):
+                        return 'Starlink'
+                except (ImportError, OSError, ValueError, TypeError):
+                    pass
+                return 'Ethernet'
             return {'wifi': 'WiFi', 'cellular': 'Cellular', 'ethernet': 'Ethernet'}.get(active.get('type'), 'WAN')
         except (ImportError, OSError, ValueError, TypeError):
             return 'Unknown'
@@ -1664,8 +1674,8 @@ def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator,
         network = ("cellular", LED_HEALTHY)
     elif uplink == "WiFi":
         network = ("wifi", LED_HEALTHY)
-    elif uplink in {"Ethernet", "WAN"}:
-        network = ("ethernet" if uplink == "Ethernet" else "wan", LED_HEALTHY)
+    elif uplink in {"Ethernet", "Starlink", "WAN"}:
+        network = ("ethernet" if uplink in {"Ethernet", "Starlink"} else "wan", LED_HEALTHY)
     elif uplink == "Offline":
         network = ("offline", LED_WARNING)
     else:
