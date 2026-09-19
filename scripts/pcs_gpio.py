@@ -506,6 +506,8 @@ class PowerSnapshot:
     rail_5v_charge_since_boot_mah: float | None = None
     rail_5v_energy_since_boot_wh: float | None = None
     energy_tracking_elapsed_seconds: float | None = None
+    total_charge_since_boot_mah: float | None = None
+    total_energy_since_boot_wh: float | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -1100,6 +1102,9 @@ def read_power_status(
         low_voltage = payload.get("low_voltage", {})
         if not isinstance(low_voltage, dict):
             low_voltage = {}
+        aggregate = payload.get("aggregate")
+        if not isinstance(aggregate, dict):
+            aggregate = input_monitor
 
         def number(record: dict[str, object], name: str) -> float | None:
             value = record.get(name)
@@ -1134,6 +1139,8 @@ def read_power_status(
                 else {},
                 "elapsed_seconds",
             ),
+            total_charge_since_boot_mah=number(aggregate, "charge_since_boot_mah"),
+            total_energy_since_boot_wh=number(aggregate, "energy_since_boot_wh"),
         )
     except (KeyError, TypeError, ValueError):
         return PowerSnapshot("warn", False, None, None, None, False, None, None, None)
@@ -1224,14 +1231,21 @@ def compact_energy(value: float | None) -> str:
 
 
 def lcd_energy_page(power: PowerSnapshot) -> tuple[str, str] | None:
-    """Show total PCS input charge and energy accumulated this boot."""
-    if power.input_charge_since_boot_mah is None and power.input_energy_since_boot_wh is None:
+    """Show source-aware total charge and energy accumulated this boot."""
+    charge = power.total_charge_since_boot_mah
+    energy = power.total_energy_since_boot_wh
+    if charge is None and energy is None:
+        # Preserve direct construction and status compatibility from before the
+        # source-aware aggregate was added to the power monitor.
+        charge = power.input_charge_since_boot_mah
+        energy = power.input_energy_since_boot_wh
+    if charge is None and energy is None:
         return None
     return (
         "Total PWR Usage",
         (
-            f"{compact_amp_hours(power.input_charge_since_boot_mah)} - "
-            f"{compact_energy(power.input_energy_since_boot_wh)}"
+            f"{compact_amp_hours(charge)} - "
+            f"{compact_energy(energy)}"
         )[:LCD_COLUMNS],
     )
 
