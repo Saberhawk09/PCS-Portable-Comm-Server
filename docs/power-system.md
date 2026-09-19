@@ -323,8 +323,10 @@ as a fail-safe fallback if that dispatcher itself cannot run.
 
 The normal 16x2 LCD rotation includes one compact power page. Its first row
 shows input voltage and total input watts, and its second row shows 5V rail
-voltage and watts. A second `Total PWR Usage` page shows total PCS input charge
-in Ah and energy in Wh since boot. The standard concise self-test reports separate Input Power,
+voltage and watts. A second `Total PWR Usage` page shows the source-aware total
+charge in Ah and energy in Wh since boot: PCS input plus the separate Starlink
+branch in Battery mode, or PCS input alone in Power Supply mode. The standard
+concise self-test reports separate Input Power,
 5V Rail, and Power Protection rows with live measurements. The public and
 authenticated web status views expose the full voltage, current, power,
 since-boot mAh/Wh totals, per-monitor health, low-voltage state, and explicitly

@@ -554,6 +554,12 @@ class PcsGpioTests(unittest.TestCase):
                 },
                 "energy_tracking": {"elapsed_seconds": 505},
                 "low_voltage": {"active": False, "remaining_seconds": None},
+                "dc_source": "battery",
+                "aggregate": {
+                    "roles": ["input", "starlink"],
+                    "charge_since_boot_mah": 456.7,
+                    "energy_since_boot_wh": 8.91,
+                },
             }), encoding="utf-8")
             power = pcs_gpio.read_power_status(path, now=lambda: 1005)
 
@@ -565,9 +571,22 @@ class PcsGpioTests(unittest.TestCase):
         stats = pcs_gpio.StatsSnapshot(None, None, None, None)
         pages = pcs_gpio.lcd_status_pages(stats, 60, power)
         self.assertEqual(pages[1], pcs_gpio.lcd_power_page(power))
-        self.assertEqual(pages[2], ("Total PWR Usage", "0.12Ah - 2.96Wh"))
+        self.assertEqual(pages[2], ("Total PWR Usage", "0.46Ah - 8.91Wh"))
         self.assertTrue(all(len(line) <= 16 for page in pages[1:3] for line in page))
         self.assertEqual(power.energy_tracking_elapsed_seconds, 505)
+        self.assertEqual(power.total_charge_since_boot_mah, 456.7)
+        self.assertEqual(power.total_energy_since_boot_wh, 8.91)
+
+    def test_lcd_energy_page_falls_back_to_input_totals_without_aggregate(self):
+        power = pcs_gpio.PowerSnapshot(
+            "ok", True, 24, 1, 24, True, 5, 1, 5,
+            input_charge_since_boot_mah=123.4,
+            input_energy_since_boot_wh=2.96,
+        )
+        self.assertEqual(
+            pcs_gpio.lcd_energy_page(power),
+            ("Total PWR Usage", "0.12Ah - 2.96Wh"),
+        )
 
     def test_stale_or_faulted_power_snapshot_is_an_lcd_warning(self):
         with tempfile.TemporaryDirectory() as temp_dir:
