@@ -1551,6 +1551,12 @@ fi
 
 run_step "Install PCS Control Panel" "./scripts/setup-pcs-control-panel.sh"
 
+# A commissioned Mini is part of normal upgrades. Preserve its private pairing
+# and enabled state; generic appliances without this optional hardware stay inert.
+if sudo test -f /etc/pcs/starlink.json; then
+    run_optional_step "Update configured Starlink telemetry" "sudo bash ./scripts/setup-starlink-telemetry.sh --install"
+fi
+
 if [[ -n "${PCS_REINSTALL_STATE_DIR}" ]]; then
     bash ./scripts/setup-pcs-reinstall-restore.sh --api "${PCS_REINSTALL_STATE_DIR}"
 fi

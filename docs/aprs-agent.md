@@ -195,3 +195,16 @@ profile and channel 0. The installer does not edit or restart Dire Wolf, collect
 credentials, or directly touch GPIO/PTT/audio. Once RF access is enabled, an
 addressed radio command can cause Dire Wolf to transmit the protocol ACK and
 numbered response on 144.550 MHz.
+
+
+### v1.9.5 telemetry
+
+`STATUS` and `NET` use the uplink manager's fresh observed active route, including
+Ethernet WAN, telemetry-identified Starlink, Wi-Fi and LTE. A selected standby
+uplink is not reported as active; stale manager data reports Unknown.
+`POWER` and `STATUS` retain DC IN and Total PWR and use the same source-dependent
+aggregate mAh/Wh as the dashboard. New snapshots also report source, load,
+shutdown armed state, optional estimated battery Wh remaining and separate
+Starlink watts/Wh. All fields use existing numbered, acknowledged reply splitting.
+The agent reads cached JSON only and retains the existing Dire Wolf KISS ownership,
+RF configuration, persistent ACK/retry state and 67-character payload limit.

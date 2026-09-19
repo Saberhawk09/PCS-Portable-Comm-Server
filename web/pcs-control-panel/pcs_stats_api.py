@@ -194,6 +194,8 @@ API_FIELDS = {
     },
     "power": {
         "configured", "status", "input_online", "input_voltage",
+        "dc_source", "battery_capacity_wh", "battery_remaining_wh", "battery_remaining_percent", "battery_capacity_warning",
+        "total_power", "total_charge_since_boot_mah", "total_energy_since_boot_wh",
         "input_current", "input_power", "rail_5v_online",
         "input_charge_since_boot_mah", "input_energy_since_boot_wh",
         "rail_5v_voltage", "rail_5v_current", "rail_5v_power",

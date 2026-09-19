@@ -400,3 +400,37 @@ monitors, duplicate-address rejection, disabled sensors not being read, separate
 branch energy without double-counting, missing-branch shutdown isolation and
 public API field filtering. This is software validation; both planned modules
 remain uninstalled and disabled. No live deployment or service restart occurred.
+
+
+## DC source and Starlink accounting (v1.9.5)
+
+The Power tab shows boot-scoped totals. Authenticated operators select Battery
+or Power Supply and optionally enter nominal battery capacity in Wh under
+Admin > DC source. The selection lives in `/run/pcs-power-monitor/source.json`,
+validated against the kernel boot ID. Every boot defaults to Battery with no
+capacity entered; service restarts preserve the same-boot selection and counters.
+
+Battery mode uses the existing voltage detection, thresholds, confirmation,
+hysteresis and coordinated shutdown. Power Supply cancels the low-voltage
+countdown and disables automatic low-voltage shutdown; switching back to Battery
+re-enables it and requires fresh confirming samples. Monitoring continues in both
+modes. The configured 12V/24V source detection is unchanged: the existing guard
+applies its 11.5V cutoff to a detected/configured 12V source, not a 24V input.
+
+Battery totals sum the input and Starlink branches; 5V and 12V downstream rails
+are not added again. Power Supply totals use only the PCS input. Every branch
+keeps independent mAh and Wh counters regardless of source selection. Totals use
+the counters accumulated this boot, including consumption before mode/capacity
+entry. Remaining Wh = max(0, capacity - aggregate consumed Wh); an estimate at or
+below 10% is flagged on the Power tab. Capacity never triggers shutdown. Missing
+capacity leaves voltage protection and energy integration unchanged.
+
+The commissioned PCS profile enables the Starlink INA226 at **0x48**, with the
+live configured 0.002-ohm shunt and 20A maximum. The operator confirmed installation
+and operation; software readback confirmed online measurements. This is not a new
+bench calibration. The 12V monitor remains disabled at 0x4d; the live configuration
+still contains uncommissioned calibration placeholders for that role.
+
+Starlink voltage/current/power/mAh/Wh remain separate. Aggregate instantaneous
+power is unavailable when a required branch is offline. Cumulative counters retain
+measured energy across interruptions; unmeasured gaps are not reconstructed.

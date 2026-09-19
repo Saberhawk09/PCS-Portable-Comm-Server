@@ -46,9 +46,9 @@ The helper does not install routes, modify NetworkManager profiles, or open WAN
 management ports. A three-second RPC deadline plus ten-second child-process
 limit bounds reflection and requests. Responses and relay traffic are bounded.
 
-## Future installation and commissioning
+## Installation and commissioning
 
-These commands are documentation, not authorization to deploy on the live PCS:
+Install or update the configured optional hardware using:
 
 ```sh
 sudo ./scripts/setup-starlink-telemetry.sh --install
@@ -159,3 +159,16 @@ PCS status OK. The final report is
 `/root/.local/state/pcs/self-test-20260914T134758Z-8443.log`.
 Real Mini telemetry, paired reboot and physical power monitoring still require
 hardware commissioning. This deployment did not publish a GitHub release.
+
+
+## v1.9.5 commissioned deployment
+
+The operator confirmed the Mini Ethernet installation and Starlink DC branch.
+Live inspection found healthy Starlink IPv4/IPv6 on eth1, fresh CONNECTED telemetry,
+and the enabled 0x48 INA226 with 0.002-ohm / 20A configured calibration.
+The normal base installer now updates an existing Starlink installation while
+preserving private configuration and pairing. Generic installs remain optional.
+The commissioned power profile includes the Starlink branch; aggregate battery
+accounting and independent branch counters are described in `power-system.md`.
+Mini true power-off still requires DC switching hardware; telemetry commissioning
+does not make the unsupported shutdown hook capable of removing power.

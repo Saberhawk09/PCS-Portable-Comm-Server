@@ -25,11 +25,12 @@
     const system = object(data.system), power = object(data.power), aprs = object(data.aprs);
     const mesh = object(data.meshtastic), time = object(data.time), pistar = object(data.pistar);
     const starlink = object(data.starlink);
+    const metric = (value, decimals = 1, fallback = 'Unavailable') => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value.toFixed(decimals) : fallback;
     const slReady = starlink.configured === true && starlink.available === true;
     const slMetric = (key, suffix, scale = 1) => slReady && typeof starlink[key] === 'number' && Number.isFinite(starlink[key]) && starlink[key] >= 0 ? (starlink[key] / scale).toFixed(1) + suffix : 'Unavailable';
     const state = Object.hasOwn(states, data.overall) ? data.overall : null;
     const offline = data.offline === true || network.offline === true;
-    const inputWatts = power.configured === true && power.input_online === true ? watts(power.input_power) : 'Unavailable';
+    const inputWatts = power.configured === true ? watts(Object.hasOwn(power, 'total_power') ? power.total_power : power.input_online === true ? power.input_power : null) : 'Unavailable';
     const clients = typeof network.ap_client_count === 'number' && Number.isInteger(network.ap_client_count) && network.ap_client_count >= 0 ? String(network.ap_client_count) : 'Unavailable';
     const uplinks = Array.isArray(network.uplinks) ? network.uplinks.filter(u => u && typeof u === 'object' && !Array.isArray(u)).slice(0, 32) : [];
     const wanName = u => u.type === 'ethernet' ? (u.id === 'starlink' && slReady ? 'Starlink' : 'Ethernet WAN') : text(u.name, 'WAN');
@@ -41,6 +42,12 @@
       return `${wanName(u)}: ${text(u.state, 'unknown')}${u.active === true ? ' / active' : ''} · ${traffic}`;
     });
     return {
+      powerCharge: metric(power.total_charge_since_boot_mah, 0), powerEnergy: metric(power.total_energy_since_boot_wh),
+      dcSource: power.dc_source === 'battery' ? 'Battery' : power.dc_source === 'power_supply' ? 'Power Supply' : 'Unknown',
+      batteryCapacity: metric(power.battery_capacity_wh, 1, 'Not entered'), batteryRemaining: metric(power.battery_remaining_wh, 1, 'Not available'),
+      batteryPercent: text(power.battery_remaining_percent, 'Not available'),
+      batteryWarning: power.battery_capacity_warning === true ? 'Estimated capacity is at or below 10%. Voltage protection remains authoritative.' : 'Capacity is an estimate; voltage protection operates independently.',
+      shutdownProtection: power.shutdown_armed === true ? 'Enabled' : power.shutdown_armed === false ? 'Disabled' : 'Unknown',
       starlinkState: starlink.configured === false ? 'Not commissioned' : slReady ? text(starlink.state) : 'Unavailable',
       starlinkLatency: slMetric('latency_ms', ' ms'), starlinkLoss: slMetric('packet_loss_percent', '%'),
       starlinkObstruction: slMetric('obstruction_percent', '%'), starlinkDown: slMetric('downlink_bps', ' Mbps', 1e6),

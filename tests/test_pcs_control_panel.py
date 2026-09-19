@@ -477,6 +477,32 @@ class PublicDataTests(unittest.TestCase):
 
 
 class RouteSecurityTests(unittest.TestCase):
+    def test_power_settings_requires_session_csrf_and_valid_capacity(self):
+        form = {"dc_source": "power_supply", "battery_capacity_wh": "500"}
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        with mock.patch.object(pcs.subprocess, "run") as run:
+            status, _, _ = self.request("POST", "/admin/power-settings", urlencode(form), headers)
+            self.assertEqual(status, 303)
+            run.assert_not_called()
+        cookie = self.login()
+        headers["Cookie"] = cookie
+        _, _, page = self.request("GET", "/admin/", headers={"Cookie": cookie})
+        csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+        with mock.patch.object(pcs.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            status, _, _ = self.request("POST", "/admin/power-settings", urlencode(form), headers)
+            self.assertEqual(status, 403)
+            run.assert_not_called()
+            form["csrf"] = csrf
+            form["battery_capacity_wh"] = "nan"
+            status, _, _ = self.request("POST", "/admin/power-settings", urlencode(form), headers)
+            self.assertEqual(status, 400)
+            run.assert_not_called()
+            form["battery_capacity_wh"] = "500"
+            status, _, _ = self.request("POST", "/admin/power-settings", urlencode(form), headers)
+            self.assertEqual(status, 303)
+            self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"dc_source": "power_supply", "battery_capacity_wh": 500})
+            self.assertEqual(run.call_args.args[0], ["sudo", "-n", "/usr/local/sbin/pcs-power-monitor", "set-session"])
+
     @classmethod
     def setUpClass(cls):
         cls.tempdir = tempfile.TemporaryDirectory()
