@@ -404,3 +404,22 @@ temperature.
 
 This stops and disables the PCS gateway and records software-staged state. It
 does not change the RAK4631 MQTT, channel, telemetry, or RF configuration.
+
+
+## September 19 v1.9.5 recovery
+
+A persistent warning was traced to actual radio-side configuration: the MQTT
+module and client proxy, LongFast uplink/downlink, LoRa OK-to-MQTT, and map
+reporting were disabled, with the radio broker at its default instead of NeoMesh.
+An independent USB serial read after pausing the gateway confirmed the same
+settings; this was not an old dashboard snapshot. The initiating cause of the
+configuration change was not established.
+
+With operator approval, the existing gateway/map policy above was restored,
+including its private broker credentials, `msh/US/OH` root, encryption, 3600-second
+map reporting, and matching 15-bit map/channel precision. Previous configuration
+was saved privately on the appliance. Fresh gateway status confirmed both MQTT
+connections and every readiness flag, with successful primary/mirror publishes.
+Status is recomputed from current readiness conditions and clears when they
+recover; warnings are not suppressed or acknowledged away. v1.9.5 names the
+individual failed conditions in the dashboard summary.

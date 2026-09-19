@@ -345,6 +345,8 @@ PUBLIC_FIELDS = {
     },
     "services": {"status", "homepage_available", "file_sharing_available", "cockpit_available", "gpsd_lan_enabled"},
     "power": {
+        "dc_source", "battery_capacity_wh", "battery_remaining_wh", "battery_remaining_percent", "battery_capacity_warning",
+        "total_power", "total_charge_since_boot_mah", "total_energy_since_boot_wh",
         "configured", "status", "input_online", "input_voltage",
         "input_current", "input_power", "rail_5v_online",
         "input_charge_since_boot_mah", "input_energy_since_boot_wh",
@@ -753,6 +755,13 @@ def render_public_page(data: dict) -> bytes:
 
     if power.get("configured"):
         cards.append(public_card("PCS Power", power, [
+            ("DC source", "dc_source", "unknown"),
+            ("Total consumption (W)", "total_power", "unavailable"),
+            ("Total charge since boot (mAh)", "total_charge_since_boot_mah", "unavailable"),
+            ("Total energy since boot (Wh)", "total_energy_since_boot_wh", "unavailable"),
+            ("Battery capacity (Wh)", "battery_capacity_wh", "not entered"),
+            ("Estimated remaining (Wh)", "battery_remaining_wh", "unavailable"),
+            ("Estimated remaining (%)", "battery_remaining_percent", "unavailable"),
             ("Input monitor", "input_online", False),
             ("Input voltage", "input_voltage", "unavailable"),
             ("Total input current", "input_current", "unavailable"),
@@ -888,6 +897,20 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
             <button class="{danger}" type="submit">{esc(label)}</button><p>{esc(description)}</p></form>""")
         action_groups.append(f'<section class="action-group"><h3>{esc(title)}</h3><div class="action-grid">{"".join(forms)}</div></section>')
 
+    power = data.get("power", {})
+    supply = power.get("dc_source") == "power_supply"
+    capacity = power.get("battery_capacity_wh")
+    power_settings_html = f'''<section class="card" id="power-settings"><h2>DC source</h2>
+    <form method="POST" action="/admin/power-settings" class="settings-form">
+    <input type="hidden" name="csrf" value="{esc(csrf)}">
+    <label for="dc-source">Source for this boot</label><select id="dc-source" name="dc_source">
+    <option value="battery" {"" if supply else "selected"}>Battery</option>
+    <option value="power_supply" {"selected" if supply else ""}>Power Supply</option></select>
+    <label for="battery-capacity">Nominal battery capacity (Wh, optional)</label>
+    <input id="battery-capacity" name="battery_capacity_wh" type="number" min="0.01" max="1000000" step="any" value="{esc(capacity if capacity is not None else '')}" placeholder="500">
+    <p>Battery enables the configured voltage protection and includes Starlink in totals. Power Supply disables automatic low-voltage shutdown and keeps PCS totals separate. Switching back to Battery re-enables protection. Every boot starts in Battery mode.</p>
+    <p>Capacity estimates deduct consumption already recorded this boot. Saving never resets energy counters.</p>
+    <button type="submit">Apply DC source</button></form></section>'''
     result_html = ""
     if result:
         result_html = f'<section class="output"><h2>Result: {esc(action_name)} <span class="small">exit {esc(return_code)}</span></h2><pre>{esc(result)}</pre></section>'
@@ -925,6 +948,7 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
     <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
     <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}{graywolf_admin_card}</section>
     <h2 class="section-title">Detailed field access</h2><section class="card">{''.join(access_rows)}</section>
+    {power_settings_html}
     {backup_settings_html}
     <h2 class="section-title">Administrator access</h2><section class="card password-card"><div><h2>Admin panel password</h2><p>Change it here while the current password is known. A forgotten password cannot be recovered in the browser; rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from the Pi terminal.</p></div><a class="button" href="/admin/password">Change Admin Password</a></section>
     <h2 class="section-title">Operator commands</h2>{''.join(action_groups)}{result_html}</main>"""
@@ -1195,6 +1219,32 @@ class Handler(BaseHTTPRequestHandler):
             SESSIONS.destroy_all()
             expired = cookie_header("pcs_admin_session", "", "/admin", max_age=0)
             self.redirect("/admin/login?changed=1", cookies=[expired])
+            return
+
+        if path == "/admin/power-settings":
+            _, session = self.require_session()
+            if not session:
+                return
+            if not self.csrf_valid(form, session):
+                self.send_body(403, b"CSRF validation failed\n", "text/plain; charset=utf-8")
+                return
+            try:
+                capacity_text = form.get("battery_capacity_wh", "").strip()
+                capacity = float(capacity_text) if capacity_text else None
+                source = form.get("dc_source")
+                if source not in {"battery", "power_supply"} or (capacity is not None and not 0 < capacity <= 1_000_000):
+                    raise ValueError("Invalid DC source or battery capacity")
+                result = subprocess.run(
+                    ["sudo", "-n", "/usr/local/sbin/pcs-power-monitor", "set-session"],
+                    input=json.dumps({"dc_source": source, "battery_capacity_wh": capacity}),
+                    text=True, capture_output=True, timeout=10, check=False,
+                )
+                if result.returncode:
+                    raise ValueError("Could not apply DC source settings")
+            except (ValueError, OSError, subprocess.SubprocessError) as error:
+                self.send_body(400, (str(error) + "\n").encode(), "text/plain; charset=utf-8")
+                return
+            self.redirect("/admin/#power-settings")
             return
 
         if path == "/admin/backup-settings":

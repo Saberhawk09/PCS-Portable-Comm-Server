@@ -1057,6 +1057,8 @@ class StatusProvider:
         temperature_path: str | Path = "/sys/class/thermal/thermal_zone0/temp",
         uptime_path: str | Path = "/proc/uptime",
         power_status_path: str | Path = DEFAULT_POWER_STATUS_FILE,
+        uplink_status_path: str | Path = "/run/pcs-uplink-manager/status.json",
+        starlink_status_path: str | Path = "/run/pcs-starlink/status.json",
         wall_time: Callable[[], float] = time.time,
     ) -> None:
         self.runner = runner or CommandRunner()
@@ -1066,6 +1068,8 @@ class StatusProvider:
         self.temperature_path = Path(temperature_path)
         self.uptime_path = Path(uptime_path)
         self.power_status_path = Path(power_status_path)
+        self.uplink_status_path = Path(uplink_status_path)
+        self.starlink_status_path = Path(starlink_status_path)
         self.wall_time = wall_time
 
     def temperature_c(self) -> int | None:
@@ -1181,6 +1185,8 @@ class StatusProvider:
         return f"LTE {self.lte_value()}"
 
     def network_value(self) -> str:
+        if self.uplink_status_path.exists():
+            return self.uplink_value()
         states = self._network_states()
         connected = {kind for kind, state in states if state.startswith("connected")}
         if "ethernet" in connected:
@@ -1196,6 +1202,28 @@ class StatusProvider:
         return f"NET {self.network_value()}"
 
     def uplink_value(self) -> str:
+        if self.uplink_status_path.exists():
+            try:
+                payload = json.loads(self.uplink_status_path.read_text(encoding="utf-8"))
+                if not 0 <= self.wall_time() - float(payload["generated_at"]) <= 90:
+                    return "Unknown"
+                if payload.get("internet") is not True:
+                    return "Down"
+                active = next((row for row in payload["uplinks"] if row.get("active") is True), {})
+                label = {"ethernet": "Ethernet WAN", "wifi": "WiFi", "cellular": "LTE"}.get(active.get("type"), "Unknown")
+                if active.get("type") == "ethernet":
+                    try:
+                        dish = json.loads(self.starlink_status_path.read_text(encoding="utf-8"))
+                        age = self.wall_time() - float(dish["collected_at"])
+                        if (dish.get("configured") is True and dish.get("available") is True
+                                and active.get("id") and active["id"] == dish.get("uplink_id")
+                                and 0 <= age <= 2 * float(dish["poll_seconds"]) + 15):
+                            label = "Starlink"
+                    except (OSError, ValueError, TypeError, KeyError):
+                        pass
+                return label
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                return "Unknown"
         route = self.runner.run(["ip", "-4", "route", "get", "8.8.8.8"], self.timeout)
         if route.returncode == 0:
             match = re.search(r"\bdev\s+(\S+)", route.stdout)
@@ -1204,6 +1232,8 @@ class StatusProvider:
                 return "WiFi"
             if interface.startswith(("wwan", "ppp", "cdc", "rmnet")):
                 return "LTE"
+            if interface.startswith(("eth", "en")):
+                return "Ethernet WAN"
         states = self._network_states()
         if any(kind == "gsm" and state.startswith("connected") for kind, state in states):
             return "LTE"
@@ -1237,8 +1267,11 @@ class StatusProvider:
             if not isinstance(input_monitor, dict):
                 raise ValueError("invalid input power monitor")
             voltage = self._power_number(input_monitor, "voltage")
-            charge = self._power_number(input_monitor, "charge_since_boot_mah")
-            energy = self._power_number(input_monitor, "energy_since_boot_wh")
+            totals = payload.get("aggregate", input_monitor)
+            if not isinstance(totals, dict):
+                raise ValueError("invalid aggregate power")
+            charge = self._power_number(totals, "charge_since_boot_mah")
+            energy = self._power_number(totals, "energy_since_boot_wh")
             if input_monitor.get("online") is not True:
                 voltage = None
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
@@ -1252,13 +1285,38 @@ class StatusProvider:
     def power(self) -> str:
         voltage, charge, energy = self.power_values()
         total = "N/A" if charge == "N/A" and energy == "N/A" else f"{charge} / {energy}"
-        return f"DC IN - {voltage} | Total PWR - {total}"
+        fields = [f"DC IN - {voltage}", f"Total PWR - {total}"]
+        try:
+            payload = json.loads(self.power_status_path.read_text(encoding="utf-8"))
+            if payload.get("version") != 1 or not 0 <= self.wall_time() - float(payload["collected_at_epoch"]) <= POWER_STATUS_MAX_AGE_SECONDS:
+                raise ValueError("stale power status")
+            source = payload.get("dc_source")
+            if source in {"battery", "power_supply"}:
+                fields.append("Source - " + ("Battery" if source == "battery" else "Power Supply"))
+                aggregate = payload.get("aggregate", {})
+                watts = self._power_number(aggregate, "power")
+                fields.append("Load - " + (f"{watts:.1f}W" if watts is not None else "N/A"))
+                low = payload.get("low_voltage", {})
+                fields.append("LV shutdown - " + ("Armed" if low.get("shutdown_armed") is True else "Disarmed"))
+                remaining = self._power_number(aggregate, "battery_remaining_wh")
+                if source == "battery" and remaining is not None:
+                    fields.append(f"Battery est - {remaining:.1f}Wh left")
+                branch = payload.get("monitors", {}).get("starlink")
+                if isinstance(branch, dict):
+                    branch_watts = self._power_number(branch, "power") if branch.get("online") is True else None
+                    branch_wh = self._power_number(branch, "energy_since_boot_wh")
+                    watts_label = f"{branch_watts:.1f}W" if branch_watts is not None else "N/A"
+                    wh_label = f"{branch_wh:.1f}Wh" if branch_wh is not None else "N/A"
+                    fields.append(f"Starlink - {watts_label} / {wh_label}")
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            pass
+        return " | ".join(fields)
 
     def status(self) -> str:
         uplink = self.uplink_value()
         gps = "3D" if self.gps_value() == "3D" else "NoFX"
         temperature = self.temperature_c()
-        health = "BAD" if uplink == "Down" or temperature is None or temperature >= 85 else "OK"
+        health = "BAD" if uplink in {"Down", "Unknown"} or temperature is None or temperature >= 85 else "OK"
         temperature_label = "N/A" if temperature is None else f"{temperature}C"
         base = (
             f"PCS {health} | Uplink - {uplink} | GPS {gps} | "

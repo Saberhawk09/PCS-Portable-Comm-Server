@@ -23,6 +23,7 @@ CONFIG_PATH = Path(os.environ.get("PCS_POWER_CONFIG", "/etc/pcs/power-monitor.js
 STATUS_PATH = Path(os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/status.json"))
 SHUTDOWN_DISPATCHER = os.environ.get("PCS_SHUTDOWN_DISPATCHER", "/usr/local/sbin/pcs-web-action")
 BOOT_ID_PATH = Path(os.environ.get("PCS_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id"))
+SESSION_PATH = Path("/run/pcs-power-monitor/source.json")
 CONVERSION_SETTLE_SECONDS = 0.05
 
 
@@ -292,8 +293,13 @@ class LowVoltageGuard:
         self.nominal: str | None = None
         self.low_samples = 0
         self.started: float | None = None
+        self.dc_source = "battery"
 
     def update(self, voltage: float | None, now: float) -> tuple[bool, int | None]:
+        if self.dc_source == "power_supply":
+            self.low_samples = 0
+            self.started = None
+            return False, None
         if voltage is None or not math.isfinite(voltage):
             return self.started is not None, self.remaining(now)
         mode = self.config["source_mode"]
@@ -338,13 +344,54 @@ def atomic_json(path: Path, value: dict) -> None:
             pass
 
 
+def source_settings(value: dict) -> dict:
+    if not isinstance(value, dict) or value.get("dc_source") not in {"battery", "power_supply"}:
+        raise ValueError("DC source must be battery or power_supply")
+    capacity = value.get("battery_capacity_wh")
+    if capacity is not None:
+        if isinstance(capacity, bool) or not isinstance(capacity, (int, float)) or not math.isfinite(capacity) or not 0 < capacity <= 1_000_000:
+            raise ValueError("Battery capacity must be greater than zero and at most 1,000,000 Wh")
+    return {"dc_source": value["dc_source"], "battery_capacity_wh": capacity}
+
+
+def read_source_settings(path: Path, boot_id: str | None) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if not boot_id or value.get("boot_id") != boot_id:
+            raise ValueError("different boot")
+        return source_settings(value)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {"dc_source": "battery", "battery_capacity_wh": None}
+
+
+def aggregate_power(monitors: dict, settings: dict) -> dict:
+    roles = ["input"]
+    if settings["dc_source"] == "battery" and "starlink" in monitors:
+        roles.append("starlink")
+    result = {"roles": roles, "online": all(monitors[role].get("online") is True for role in roles)}
+    for field in ("power", "charge_since_boot_mah", "energy_since_boot_wh"):
+        values = [monitors[role].get(field) for role in roles]
+        valid = all(type(value) in (int, float) and math.isfinite(value) and value >= 0 for value in values)
+        result[field] = round(sum(values), 4) if valid and (field != "power" or result["online"]) else None
+    capacity = settings.get("battery_capacity_wh")
+    consumed = result["energy_since_boot_wh"]
+    remaining = max(0.0, capacity - consumed) if settings["dc_source"] == "battery" and capacity is not None and consumed is not None else None
+    result["battery_remaining_wh"] = round(remaining, 4) if remaining is not None else None
+    result["battery_remaining_percent"] = round(100 * remaining / capacity, 1) if remaining is not None else None
+    result["battery_capacity_warning"] = remaining is not None and remaining <= capacity * 0.1
+    return result
+
+
 def collect(
     bus: Bus,
     config: dict,
     guard: LowVoltageGuard,
     now: float,
     energy: EnergyTracker | None = None,
+    settings: dict | None = None,
 ) -> dict:
+    settings = settings or {"dc_source": "battery", "battery_capacity_wh": None}
+    guard.dc_source = settings["dc_source"]
     readings = {name: safe_read(bus, monitor) for name, monitor in config["monitors"].items()}
     if energy is not None:
         energy.update(readings, now)
@@ -358,11 +405,12 @@ def collect(
         for name, value in readings.items()
     }
     overall = "bad" if low or "bad" in states.values() else "warn" if "warn" in states.values() else "ok"
-    return {
+    result = {
         "version": 1,
         "collected_at_epoch": int(now),
         "status": overall,
         "source_mode": config["source_mode"],
+        **settings,
         "detected_nominal_source": guard.nominal,
         "configured_roles": list(readings),
         "monitors": {
@@ -391,9 +439,11 @@ def collect(
             "threshold": config["low_voltage_threshold"],
             "hysteresis": config["low_voltage_hysteresis"],
             "remaining_seconds": remaining,
-            "shutdown_armed": config["allow_shutdown"],
+            "shutdown_armed": config["allow_shutdown"] and settings["dc_source"] == "battery",
         },
     }
+    result["aggregate"] = aggregate_power(result["monitors"], settings)
+    return result
 
 
 def request_coordinated_shutdown() -> None:
@@ -415,6 +465,7 @@ def run_service(
     bus_factory: Callable[[], Bus] = open_bus,
     sleeper: Callable[[float], None] = time.sleep,
     shutdown_requester: Callable[[], None] = request_coordinated_shutdown,
+    session_path: Path = SESSION_PATH,
 ) -> None:
     guard = LowVoltageGuard(config)
     energy = EnergyTracker.resume(status_path, list(config["monitors"]), read_boot_id())
@@ -423,11 +474,15 @@ def run_service(
     try:
         while True:
             now = time.monotonic()
-            status = collect(bus, config, guard, now, energy)
+            settings = read_source_settings(session_path, energy.boot_id)
+            status = collect(bus, config, guard, now, energy, settings)
             status["collected_at_epoch"] = int(time.time())
             atomic_json(status_path, status)
             remaining = status["low_voltage"]["remaining_seconds"]
-            if remaining == 0 and config["allow_shutdown"] and not shutdown_requested:
+            if remaining == 0 and status["low_voltage"]["shutdown_armed"] and not shutdown_requested:
+                # Recheck an operator change that arrived during sensor collection.
+                if read_source_settings(session_path, energy.boot_id)["dc_source"] != "battery":
+                    continue
                 shutdown_requested = True
                 shutdown_requester()
             if not status["low_voltage"]["active"]:
@@ -439,10 +494,21 @@ def run_service(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("once", "service", "check-config"))
+    parser.add_argument("command", choices=("once", "service", "check-config", "set-session"))
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
     parser.add_argument("--status", type=Path, default=STATUS_PATH)
     args = parser.parse_args()
+    if args.command == "set-session":
+        try:
+            settings = source_settings(json.loads(sys.stdin.read(4097)))
+            boot_id = read_boot_id()
+            if not boot_id:
+                raise ValueError("Cannot identify current boot")
+            atomic_json(SESSION_PATH, {**settings, "boot_id": boot_id})
+        except (OSError, ValueError, TypeError) as error:
+            parser.error(str(error))
+        print("DC source updated for this boot. Energy counters were preserved.")
+        return 0
     try:
         config = load_config(args.config)
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:

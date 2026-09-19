@@ -1,5 +1,5 @@
 [Unit]
-Description=PCS dual INA226 power monitor and low-voltage guard
+Description=PCS multi-INA226 power monitor and low-voltage guard
 After=local-fs.target
 
 [Service]

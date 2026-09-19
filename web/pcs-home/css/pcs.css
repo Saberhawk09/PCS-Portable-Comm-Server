@@ -536,3 +536,15 @@ body.public-status {
 .dashboard-tabs a { padding:.8rem 1.2rem; color:var(--muted); text-decoration:none; border-bottom:3px solid transparent; }
 .dashboard-tabs a[aria-current="page"] { color:var(--cyan); border-color:var(--cyan); }
 .dashboard-tabs a:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+
+/* Power details retain readable values at tablet and handset widths. */
+.power-panel { padding: 24px; margin-bottom: 22px; }
+.power-panel .metrics { grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); }
+.power-panel .metrics > div { padding: 18px; }
+.power-panel .metrics strong { font-size: 24px; }
+.power-panel .metrics strong span { display: inline; }
+@media(max-width:600px) {
+  .power-panel { padding: 16px; }
+  .power-panel .metrics { grid-template-columns: 1fr; }
+  .power-panel .metrics > div { border-right: 0; border-bottom: 1px solid var(--line); }
+}

@@ -133,3 +133,14 @@ test('Starlink telemetry tab keeps missing and stale metrics unavailable', () =>
   assert.equal(model.starlinkLoss, '0.0%');
   assert.equal(model.starlinkUptime, 'Unavailable');
 });
+
+
+test('source-dependent aggregate preserves unavailable totals', () => {
+  const model = viewModel({power: {configured: true, input_online: true, input_power: 20, total_power: 50,
+    total_charge_since_boot_mah: 670, total_energy_since_boot_wh: 8, dc_source: 'battery', battery_remaining_wh: 492}});
+  assert.equal(model.power, '50.0 W');
+  assert.equal(model.powerEnergy, '8.0');
+  assert.equal(model.batteryRemaining, '492.0');
+  assert.equal(model.dcSource, 'Battery');
+  assert.equal(viewModel({power: {configured: true, input_online: true, input_power: 20, total_power: null}}).power, 'Unavailable');
+});

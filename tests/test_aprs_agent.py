@@ -803,7 +803,7 @@ class ConfigurationAndStatusTests(unittest.TestCase):
                 completed([], 0, "ethernet:connected\ngsm:disconnected\n", ""),
             ]
         )
-        provider = pcs_aprs_agent.StatusProvider(runner=runner, timeout=2)
+        provider = pcs_aprs_agent.StatusProvider(runner=runner, timeout=2, uplink_status_path=ROOT / "tests/absent-uplink.json")
 
         self.assertEqual("LTE UP", provider.lte())
         self.assertEqual("NET ETH", provider.network())

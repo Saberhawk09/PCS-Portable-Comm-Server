@@ -2663,6 +2663,7 @@ power_runtime = json_object(POWER_STATUS_FILE) if POWER_CONFIGURED else {}
 power_age = epoch_age(power_runtime.get("collected_at_epoch")) if power_runtime else None
 power_fresh = power_age is not None and power_age <= 15
 power_monitors = power_runtime.get("monitors", {}) if isinstance(power_runtime.get("monitors"), dict) else {}
+power_aggregate = power_runtime.get("aggregate", {}) if isinstance(power_runtime.get("aggregate"), dict) else {}
 power_input = power_monitors.get("input", {}) if isinstance(power_monitors.get("input"), dict) else {}
 power_5v = power_monitors.get("rail_5v", {}) if isinstance(power_monitors.get("rail_5v"), dict) else {}
 power_12v = power_monitors.get("rail_12v", {}) if isinstance(power_monitors.get("rail_12v"), dict) else {}
@@ -2847,7 +2848,19 @@ elif MESHTASTIC_CONFIGURED:
     elif meshtastic_core_ok and offline_mode:
         meshtastic_summary = "Meshtastic radio connected; MQTT waiting for an uplink"
     else:
-        meshtastic_summary = "Configured Meshtastic gateway needs attention"
+        meshtastic_reasons = [label for label, ready in (
+            ("gateway software missing", meshtastic_software),
+            ("service inactive", meshtastic_service_active),
+            ("service not enabled", meshtastic_service_enabled),
+            ("stale status", meshtastic_snapshot_fresh),
+            ("radio disconnected", meshtastic_connected),
+            ("radio MQTT disabled", meshtastic_radio_mqtt_enabled),
+            ("client proxy disabled", meshtastic_radio_proxy_enabled),
+            ("radio broker mismatch", meshtastic_radio_broker_matches),
+            ("MQTT disconnected", meshtastic_broker_ok),
+            ("map gateway policy or connection not ready", meshtastic_map_broker_ok),
+        ) if not ready]
+        meshtastic_summary = "Meshtastic: " + "; ".join(meshtastic_reasons)
     meshtastic_service_label = "active" if meshtastic_service_active else "inactive"
 else:
     meshtastic_status = "ok"
@@ -3221,6 +3234,12 @@ if POWER_CONFIGURED:
     else:
         power_items.append({"label": "Starlink monitor", "value": "not commissioned"})
     power_items.extend([
+        {"label": "DC source this boot", "value": power_runtime.get("dc_source", "battery")},
+        {"label": "Total consumption", "value": power_value(power_aggregate.get("power"), "W")},
+        {"label": "Total charge since boot", "value": power_value(power_aggregate.get("charge_since_boot_mah"), "mAh", 1)},
+        {"label": "Total energy since boot", "value": power_value(power_aggregate.get("energy_since_boot_wh"), "Wh", 3)},
+        {"label": "Battery nominal capacity", "value": power_value(power_runtime.get("battery_capacity_wh"), "Wh", 1)},
+        {"label": "Estimated battery remaining", "value": power_value(power_aggregate.get("battery_remaining_wh"), "Wh", 1)},
         {"label": "Low-voltage protection", "value": "active" if low_voltage.get("active") else "normal"},
         {"label": "Automatic shutdown", "value": "armed" if low_voltage.get("shutdown_armed") else "disarmed"},
         {"label": "Shutdown countdown", "value": f"{countdown} seconds" if countdown is not None else "inactive"},
@@ -3339,6 +3358,10 @@ if PI_STAR_CONFIGURED:
     client_info["pi_star_url"] = "http://10.42.0.3/"
 
 data = {
+    "power": {
+        "dc_source": power_runtime.get("dc_source", "battery"),
+        "battery_capacity_wh": power_runtime.get("battery_capacity_wh"),
+    },
     "generated_at": datetime.now().isoformat(timespec="seconds"),
     "overall": overall,
     "offline": offline_mode,
@@ -3459,6 +3482,14 @@ if PUBLIC_VIEW:
         },
         "power": {
             "configured": POWER_CONFIGURED,
+            "dc_source": power_runtime.get("dc_source", "battery") if power_fresh else "unknown",
+            "battery_capacity_wh": power_runtime.get("battery_capacity_wh") if power_fresh else None,
+            "battery_remaining_wh": power_aggregate.get("battery_remaining_wh") if power_fresh else None,
+            "battery_remaining_percent": power_aggregate.get("battery_remaining_percent") if power_fresh else None,
+            "battery_capacity_warning": power_aggregate.get("battery_capacity_warning") if power_fresh else None,
+            "total_power": power_aggregate.get("power") if power_fresh else None,
+            "total_charge_since_boot_mah": power_aggregate.get("charge_since_boot_mah") if power_fresh else None,
+            "total_energy_since_boot_wh": power_aggregate.get("energy_since_boot_wh") if power_fresh else None,
             "status": power_status,
             "input_online": bool(power_input.get("online")),
             "input_voltage": power_input.get("voltage"),

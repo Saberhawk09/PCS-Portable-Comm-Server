@@ -26,7 +26,7 @@
     },
     "starlink": {
       "enabled": false,
-      "address": "0x4e",
+      "address": "0x48",
       "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS",
       "max_current_amps": "REPLACE_WITH_RATED_AMPS"
     }

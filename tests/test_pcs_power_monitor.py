@@ -40,7 +40,8 @@ def config():
 class PowerTests(unittest.TestCase):
     def test_third_monitor_is_staged_with_planned_bus_address(self):
         cfg = power.load_config(ROOT / "config" / "power-monitor.pcs.json")
-        self.assertEqual(set(cfg["monitors"]), {"input", "rail_5v"})
+        self.assertEqual(set(cfg["monitors"]), {"input", "rail_5v", "starlink"})
+        self.assertEqual(cfg["monitors"]["starlink"].address, 0x48)
         raw = json.loads((ROOT / "config" / "power-monitor.pcs.json").read_text())
         self.assertEqual(raw["monitors"]["rail_12v"]["address"], "0x4d")
         with tempfile.TemporaryDirectory() as directory:
@@ -76,10 +77,12 @@ class PowerTests(unittest.TestCase):
         self.assertFalse(value["low_voltage"]["active"])
 
     def test_fourth_monitor_requires_explicit_address_and_calibration(self):
-        raw = json.loads((ROOT / "config/power-monitor.pcs.json").read_text())
+        raw = json.loads((ROOT / "config/power-monitor.example.json").read_text())
+        for role in ("input", "rail_5v"):
+            raw["monitors"][role].update(shunt_ohms=0.002, max_current_amps=20)
         self.assertFalse(raw["monitors"]["rail_12v"]["enabled"])
         self.assertFalse(raw["monitors"]["starlink"]["enabled"])
-        self.assertEqual(raw["monitors"]["starlink"]["address"], "0x4e")
+        self.assertEqual(raw["monitors"]["starlink"]["address"], "0x48")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             raw["monitors"]["starlink"]["enabled"] = True
@@ -87,7 +90,7 @@ class PowerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 power.load_config(path)
             raw["monitors"]["rail_12v"].update(enabled=True, shunt_ohms=0.002, max_current_amps=20)
-            raw["monitors"]["starlink"].update(address="0x4e", shunt_ohms=0.002, max_current_amps=20)
+            raw["monitors"]["starlink"].update(address="0x48", shunt_ohms=0.002, max_current_amps=20)
             path.write_text(json.dumps(raw))
             self.assertEqual(set(power.load_config(path)["monitors"]), {"input", "rail_5v", "rail_12v", "starlink"})
             raw["monitors"]["starlink"]["address"] = "0x4d"
@@ -120,8 +123,8 @@ class PowerTests(unittest.TestCase):
         cfg = power.load_config(ROOT / "config/power-monitor.pcs.json")
         with mock.patch.object(power, "safe_read", return_value=power.Reading(True, 12, 1, 12)) as read:
             value = power.collect(None, cfg, power.LowVoltageGuard(cfg), 0)
-        self.assertEqual(read.call_count, 2)
-        self.assertNotIn("starlink", value["monitors"])
+        self.assertEqual(read.call_count, 3)
+        self.assertIn("starlink", value["monitors"])
         self.assertNotIn("rail_12v", value["monitors"])
 
     def test_runtime_directory_preserves_energy_totals_across_service_restart(self):

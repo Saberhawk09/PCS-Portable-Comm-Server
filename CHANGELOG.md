@@ -4,6 +4,33 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.5] - 2026-09-19
+
+- Commission the installed Starlink DC monitor at 0x48 using its existing
+  0.002-ohm / 20A configuration. Preserve separate branch measurements and
+  update existing Starlink installations through the normal base installer.
+- Add boot-scoped Battery / Power Supply controls and optional nominal Wh
+  capacity behind existing admin authentication and CSRF protection. Battery
+  mode uses the existing voltage guard; Power Supply cancels and disables its
+  shutdown countdown. Switching back to Battery re-enables protection.
+- Add source-dependent aggregate watts, mAh and Wh, a Power tab, compact homepage
+  counters, and estimated remaining battery Wh. Capacity entry preserves energy
+  already measured this boot; capacity estimates never initiate shutdown.
+- Correct APRS Ethernet/Starlink uplink reporting using fresh observed routing
+  telemetry. STATUS/POWER include aggregate consumption, source, load, protection
+  state, optional remaining Wh and separate Starlink power/energy while retaining
+  the established 67-character multipart ACK/retry handling.
+- Explain individual Meshtastic gateway faults in status summaries. Live diagnosis
+  found disabled radio MQTT/proxy/channel/map settings, not a stale warning;
+  restore the operator-authorized NeoMesh and map policy while preserving secrets.
+- Validate 619 Python tests on Debian/Python 3.13 and 14 portal JavaScript tests,
+  including source transitions, boot scoping, aggregate accounting and admin
+  session/CSRF/input validation.
+
+Mini true power removal remains unsupported without DC switching hardware.
+The third 12V INA226 remains disabled because its live calibration is unconfigured.
+The original voltage guard's 12V/24V detection and threshold behavior are retained.
+
 ## [1.9.4] - 2026-09-14
 
 - Apply the telemetry-based Ethernet WAN / Starlink label to the LCD as well.
