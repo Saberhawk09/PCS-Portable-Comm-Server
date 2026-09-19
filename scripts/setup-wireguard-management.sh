@@ -496,6 +496,15 @@ EOF
 Requires=pcs-wireguard-firewall.service
 After=pcs-wireguard-firewall.service network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=180
+StartLimitBurst=8
+
+[Service]
+# network-online can be reached before a newly selected WAN has usable DNS.
+# Retry wg-quick at a paced interval; a permanent configuration error remains
+# visibly failed after this bounded startup window.
+Restart=on-failure
+RestartSec=15
 EOF
 
     sudo install -o root -g root -m 0600 "${config_temp}" "${WG_CONFIG}"

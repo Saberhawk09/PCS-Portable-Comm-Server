@@ -35,9 +35,10 @@ The design enforces these invariants:
   back automatically.
 - WireGuard does not start cellular or alter the selected manual/automatic
   cellular policy.
-- If a hostname endpoint cannot resolve during an offline boot, an enabled
-  tunnel is retried only after NetworkManager reports that an operator-selected
-  uplink became available.
+- If a hostname endpoint cannot resolve during boot, systemd retries the enabled
+  tunnel every 15 seconds for a bounded three-minute startup window. A later
+  NetworkManager uplink event also starts it, so ordinary local PCS services do
+  not depend on the tunnel or a working WAN.
 - Hostname endpoints are refreshed through IPv4 at activation, on uplink
   changes, and every five minutes. This avoids an unusable DDNS IPv6 result on
   uplinks where the home router's WireGuard listener is reachable only by IPv4.
@@ -310,7 +311,7 @@ Do not call the feature deployed until every applicable row is demonstrated.
 | PCS to public Internet | continues through ordinary Wi-Fi/cellular path |
 | NetworkManager `eth0` down/up | dispatcher restores the narrow compatibility rules |
 | Reboot with WAN | firewall starts before tunnel and checks pass |
-| Reboot without WAN | PCS local services boot normally; no disruptive retry loop; later uplink availability passively retries the enabled tunnel |
+| Reboot without WAN | PCS local services boot normally; the tunnel retries at 15-second intervals for three minutes and a later uplink event retries it again |
 
 Also run the full PCS self-test and inspect `ip route`, `ip rule`, `wg show`,
 and `nft list ruleset`. A successful handshake alone is not proof of isolation.
