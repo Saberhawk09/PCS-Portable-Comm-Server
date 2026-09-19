@@ -244,6 +244,14 @@ class WireGuardManagementTests(unittest.TestCase):
         self.assertIn("sudo systemctl start pcs-wireguard-endpoint-refresh.service", setup)
         self.assertIn("sudo systemctl disable --now pcs-wireguard-endpoint-refresh.timer", setup)
 
+    def test_wg_quick_dropin_retries_transient_boot_dns_failure_with_a_bound(self):
+        setup = SETUP.read_text(encoding="utf-8")
+        self.assertIn("StartLimitIntervalSec=180", setup)
+        self.assertIn("StartLimitBurst=8", setup)
+        self.assertIn("Restart=on-failure", setup)
+        self.assertIn("RestartSec=15", setup)
+        self.assertNotIn("Restart=always", setup)
+
     def test_activation_is_firewall_first_handshake_gated_and_reversible(self):
         setup = SETUP.read_text(encoding="utf-8")
         service = SERVICE.read_text(encoding="utf-8")

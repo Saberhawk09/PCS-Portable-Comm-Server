@@ -23,6 +23,9 @@ All notable user-facing PCS changes are recorded here.
 - Explain individual Meshtastic gateway faults in status summaries. Live diagnosis
   found disabled radio MQTT/proxy/channel/map settings, not a stale warning;
   restore the operator-authorized NeoMesh and map policy while preserving secrets.
+- Recover WireGuard automatically when its endpoint hostname cannot resolve at
+  initial boot: retry every 15 seconds within a bounded three-minute window,
+  while retaining later NetworkManager-triggered recovery.
 - Validate 619 Python tests on Debian/Python 3.13 and 14 portal JavaScript tests,
   including source transitions, boot scoping, aggregate accounting and admin
   session/CSRF/input validation.
