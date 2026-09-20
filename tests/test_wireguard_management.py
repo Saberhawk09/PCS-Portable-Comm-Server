@@ -240,6 +240,7 @@ class WireGuardManagementTests(unittest.TestCase):
         self.assertNotIn("ip route", helper)
         self.assertIn("ConditionPathExists=/sys/class/net/wg-pcs", service)
         self.assertIn("OnUnitActiveSec=5min", timer)
+        self.assertIn("OnBootSec=2min", timer)
         self.assertIn("pcs-wireguard-endpoint-refresh.timer", setup)
         self.assertIn("sudo systemctl start pcs-wireguard-endpoint-refresh.service", setup)
         self.assertIn("sudo systemctl disable --now pcs-wireguard-endpoint-refresh.timer", setup)

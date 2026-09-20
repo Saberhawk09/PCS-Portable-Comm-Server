@@ -108,8 +108,8 @@ never starts Wi-Fi or cellular itself. See
 
 ### pcs-wireguard-endpoint-refresh.sh
 
-Normally managed by `pcs-wireguard-endpoint-refresh.service` and its five-minute
-timer. It resolves the configured DDNS hostname over IPv4 and updates only the
+Normally managed by `pcs-wireguard-endpoint-refresh.service` and its delayed-
+boot, five-minute timer. It resolves the configured DDNS hostname over IPv4 and updates only the
 active WireGuard peer endpoint. It does not change routes, DNS policy, or uplink
 state. NetworkManager also requests a refresh after relevant uplink events.
 

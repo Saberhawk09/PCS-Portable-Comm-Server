@@ -103,7 +103,7 @@ other ASUS VPN peers remain blocked by the PCS firewall.
 | `scripts/pcs-wireguard-endpoint-refresh.sh` | IPv4-only DDNS endpoint refresh without route or DNS-policy changes |
 | `systemd/pcs-wireguard-firewall.service` | installs isolation before `wg-quick@wg-pcs` |
 | `systemd/pcs-wireguard-endpoint-refresh.service` | applies the current IPv4 DDNS result to the active peer |
-| `systemd/pcs-wireguard-endpoint-refresh.timer` | repeats endpoint refresh every five minutes |
+| `systemd/pcs-wireguard-endpoint-refresh.timer` | delays the first boot refresh for two minutes, then repeats every five minutes |
 | `networkmanager/90-pcs-wireguard-firewall` | restores compatibility rules after NetworkManager rebuilds its shared-LAN table |
 | `config/pcs-wireguard-management.example.conf` | fake, non-secret configuration contract |
 

@@ -88,6 +88,14 @@ Physical link removal can make NetworkManager withdraw its route immediately;
 already-connected standby traffic can then move earlier than the controller's
 failure window. Paid cellular activation still waits for sustained failure.
 
+If an exact configured Ethernet profile retains carrier and activation but has
+no IPv4 address for three minutes, automatic mode performs one guarded in-place
+NetworkManager reapply to retrigger DHCP. It does not disconnect or take
+ownership of the session, does not touch `eth0`, requires another healthy
+Internet path, and rate-limits another attempt for five minutes. This covers a
+cold Starlink/USB-Ethernet path that remains alive on IPv6 while IPv4 DHCP is
+stalled, without requiring a physical cable cycle.
+
 On configured WANs only, strict IPv4 reverse-path filtering is temporarily
 changed to loose filtering so standby probe replies are accepted. The global
 and LAN settings are untouched. Runtime originals are journaled and restored
