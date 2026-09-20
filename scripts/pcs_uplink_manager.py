@@ -408,12 +408,19 @@ class NetworkManager:
         current = str(self.prop(o.device, BUS + '.Device', 'ActiveConnection'))
         if current != o.session:
             raise RuntimeError('activation changed during Ethernet DHCP renewal')
-        settings, version = self.applied(o)
+        settings, _ = self.applied(o)
         if settings.get('connection', {}).get('type') != '802-3-ethernet':
             raise ValueError('refusing DHCP renewal on a non-Ethernet profile')
         if settings.get('ipv4', {}).get('method') != 'auto':
             raise ValueError('refusing DHCP renewal on a non-DHCP profile')
-        self.iface(o.device, BUS + '.Device').Reapply(settings, version, 0, timeout=10)
+        metric = int(settings.get('ipv4', {}).get('route-metric', -1))
+        # NetworkManager treats an identical Reapply as a no-op. A bounded
+        # one-step runtime metric change makes it restart DHCP without changing
+        # the saved profile or active-connection identity. The next controller
+        # pass restores the policy metric.
+        if not 1 < metric < 4_000_000_000 - 1:
+            raise ValueError('Ethernet route metric leaves no safe DHCP-renewal step')
+        self.reapply(o, {'ipv4': {'route-metric': metric + 1}})
 
     def applied(self, o):
         return self.iface(o.device, BUS + '.Device').GetAppliedConnection(0, timeout=5)
