@@ -23,6 +23,8 @@ BUS = 'org.freedesktop.NetworkManager'
 ROOT = '/org/freedesktop/NetworkManager'
 PROPS = 'org.freedesktop.DBus.Properties'
 LOCK = '/run/lock/pcs-uplink-policy.lock'
+ETHERNET_IPV4_RECOVERY_SECONDS = 180
+ETHERNET_IPV4_RETRY_SECONDS = 300
 
 
 def atomic_json(path, value):
@@ -397,6 +399,22 @@ class NetworkManager:
     def deactivate(self, session):
         self.manager.DeactivateConnection(session, timeout=10)
 
+    def renew_ipv4(self, u, o):
+        """Retrigger DHCP on one exact Ethernet profile without disconnecting it."""
+        if u.type != 'ethernet' or not u.profile or o.profile != u.profile or not o.session:
+            raise ValueError('refusing to renew an unverified Ethernet profile')
+        if not interface_name(o.interface) or o.interface == 'eth0':
+            raise ValueError('refusing to renew a protected interface')
+        current = str(self.prop(o.device, BUS + '.Device', 'ActiveConnection'))
+        if current != o.session:
+            raise RuntimeError('activation changed during Ethernet DHCP renewal')
+        settings, version = self.applied(o)
+        if settings.get('connection', {}).get('type') != '802-3-ethernet':
+            raise ValueError('refusing DHCP renewal on a non-Ethernet profile')
+        if settings.get('ipv4', {}).get('method') != 'auto':
+            raise ValueError('refusing DHCP renewal on a non-DHCP profile')
+        self.iface(o.device, BUS + '.Device').Reapply(settings, version, 0, timeout=10)
+
     def applied(self, o):
         return self.iface(o.device, BUS + '.Device').GetAppliedConnection(0, timeout=5)
 
@@ -443,6 +461,8 @@ class Controller:
         self.boot = boot or Path('/proc/sys/kernel/random/boot_id').read_text().strip()
         self.policy = Policy(config)
         self.policy6 = Policy(config)
+        self.address_missing_at = {}
+        self.address_retry_at = {}
         self.startup = True
         self.state = read_json(self.runtime / 'state.json', {})
         if self.state.get('boot') != self.boot:
@@ -483,6 +503,43 @@ class Controller:
                 if any(values.values()):
                     self.nm.reapply(o, {k: v for k, v in values.items() if v})
             del self.state['original'][uid]
+
+    def recover_stalled_ethernet(self, observations, now):
+        """Renew DHCP after a bound WAN keeps carrier but loses IPv4.
+
+        NetworkManager normally retries DHCP itself. A dual-stack Ethernet
+        profile can nevertheless remain activated on IPv6 after IPv4 DHCP has
+        stalled. After a bounded grace period, reapply only the exact configured
+        DHCP profile while another Internet path remains healthy. The active
+        session is retained; eth0 and operator-selected profiles stay untouched.
+        """
+        for u in self.config.uplinks:
+            o = observations[u.id]
+            healthy_alternative = any(
+                uid != u.id and candidate.internet
+                for uid, candidate in observations.items()
+            )
+            waiting = (
+                u.type == 'ethernet' and o.link and o.session
+                and o.profile == u.profile and not o.address and not o.error
+            )
+            if not waiting:
+                self.address_missing_at.pop(u.id, None)
+                self.address_retry_at.pop(u.id, None)
+                continue
+            since = self.address_missing_at.setdefault(u.id, now)
+            if (
+                not healthy_alternative
+                or now - since < ETHERNET_IPV4_RECOVERY_SECONDS
+                or now < self.address_retry_at.get(u.id, 0)
+            ):
+                continue
+            self.nm.renew_ipv4(u, o)
+            self.address_missing_at[u.id] = now
+            self.address_retry_at[u.id] = now + ETHERNET_IPV4_RETRY_SECONDS
+            print(f'Renewed {u.name} DHCP after sustained carrier without IPv4', flush=True)
+            return u.id
+        return None
 
     def route(self, desired, observations, desired6=None):
         # Promote the replacement before demoting the old path. DHCP settings
@@ -599,6 +656,7 @@ class Controller:
                             self.state['owned'].pop(u.id, None)
                     if changed:
                         subprocess.run(['systemctl', '--no-block', 'start', 'pcs-direwolf-uplink-recovery.service'], capture_output=True, timeout=3, check=False)
+                self.recover_stalled_ethernet(obs, now)
             else:
                 self.restore(obs)
                 self.state['owned'].clear()  # Manual mode leaves sessions alive.

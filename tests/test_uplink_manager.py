@@ -17,7 +17,7 @@ CELL_UUID = '11111111-1111-1111-1111-111111111111'
 def config(starlink=True, mode='auto'):
     rows = [m.Uplink('wifi', 'Wi-Fi', 'wifi', 2, interface='wlan0'), m.Uplink('cellular', 'Cellular', 'cellular', 3, profile=CELL_UUID, activation='fallback')]
     if starlink:
-        rows.insert(0, m.Uplink('starlink', 'Starlink', 'ethernet', 1, interface='enx001122334455'))
+        rows.insert(0, m.Uplink('starlink', 'Starlink', 'ethernet', 1, interface='enx001122334455', profile='starlink'))
     return m.Config(tuple(rows), mode=mode)
 
 
@@ -94,6 +94,7 @@ class FakeNM:
         self.changes = []
         self.disconnected = []
         self.activated = []
+        self.renewed = []
         self.settings = {}
 
     def daemon(self):
@@ -117,10 +118,12 @@ class FakeNM:
         return {family: values['route-metric'] for family, values in self.applied(o)[0].items()}
 
     def effective(self, target='1.1.1.1'):
-        active = [o for o in self.obs.values() if o.address and o.session]
+        family = 'ipv6' if ':' in target else 'ipv4'
+        address = 'address6' if family == 'ipv6' else 'address'
+        active = [o for o in self.obs.values() if getattr(o, address) and o.session]
         if not active:
             return ''
-        return min(active, key=lambda o: self.applied(o)[0]['ipv4']['route-metric']).interface
+        return min(active, key=lambda o: self.applied(o)[0][family]['route-metric']).interface
 
     def activate(self, u):
         self.activated.append(u.id)
@@ -129,6 +132,9 @@ class FakeNM:
 
     def deactivate(self, session):
         self.disconnected.append(session)
+
+    def renew_ipv4(self, u, o):
+        self.renewed.append(u.id)
 
 
 class ControllerTests(unittest.TestCase):
@@ -242,6 +248,39 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(nm.effective(), 'enx001122334455')
             c.step(30)
             self.assertEqual(nm.effective(), 'wlan0')
+
+    @patch.object(m.subprocess, 'run')
+    def test_stalled_bound_ethernet_ipv4_is_reactivated_without_cable_cycle(self, run):
+        with tempfile.TemporaryDirectory() as folder:
+            obs = observations(wifi=True)
+            obs['starlink'] = m.Observation(
+                interface='enx001122334455', device='/device/starlink',
+                profile='starlink', session='/active/starlink', link=True,
+                address=False, address6=True, internet=False, internet6=True,
+            )
+            c, nm = self.make(folder, obs)
+            c.step(0)
+            c.step(m.ETHERNET_IPV4_RECOVERY_SECONDS - 1)
+            self.assertNotIn('starlink', nm.renewed)
+            c.step(m.ETHERNET_IPV4_RECOVERY_SECONDS)
+            self.assertEqual(nm.disconnected, [])
+            self.assertIn('starlink', nm.renewed)
+            self.assertEqual(c.state['owned'], {})
+
+    @patch.object(m.subprocess, 'run')
+    def test_stalled_operator_ethernet_profile_is_never_reactivated(self, run):
+        with tempfile.TemporaryDirectory() as folder:
+            obs = observations(wifi=True)
+            obs['starlink'] = m.Observation(
+                interface='enx001122334455', device='/device/starlink',
+                profile='operator-profile', session='/active/operator', link=True,
+                address=False, address6=True, internet=False, internet6=True,
+            )
+            c, nm = self.make(folder, obs)
+            c.step(0)
+            c.step(m.ETHERNET_IPV4_RECOVERY_SECONDS + 1)
+            self.assertEqual(nm.disconnected, [])
+            self.assertNotIn('starlink', nm.renewed)
 
     @patch.object(m.subprocess, 'run')
     def test_manual_mode_restores_only_unchanged_manager_fields(self, run):

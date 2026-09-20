@@ -34,8 +34,8 @@ class WireGuardDnsRetryTests(unittest.TestCase):
         status, output, calls = self.run_resolver([socket.gaierror(socket.EAI_AGAIN, "temporary")] * 3)
         self.assertEqual((status, output, calls), (75, "", 3))
 
-    def test_permanent_failure_is_not_suppressed(self):
-        status, output, calls = self.run_resolver([socket.gaierror(socket.EAI_NONAME, "missing")])
-        self.assertNotEqual(status, 75)
-        self.assertNotEqual(status, 0)
-        self.assertEqual((output, calls), ("", 1))
+    def test_noname_during_boot_defers_without_a_hard_fault(self):
+        status, output, calls = self.run_resolver(
+            [socket.gaierror(socket.EAI_NONAME, "resolver not ready")] * 3
+        )
+        self.assertEqual((status, output, calls), (75, "", 3))

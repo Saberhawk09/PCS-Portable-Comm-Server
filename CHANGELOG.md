@@ -4,6 +4,18 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.6] - 2026-09-19
+
+- Defer the first WireGuard endpoint refresh until two minutes after boot and
+  treat early resolver failures as retryable. The active tunnel retains its
+  last endpoint, the five-minute timer keeps retrying, and unavailable startup
+  DNS no longer creates an appliance hard fault.
+- Recover a configured Ethernet WAN that retains carrier/profile activation but
+  loses IPv4 DHCP. After a three-minute grace period, the uplink manager
+  retriggers DHCP in place only on the exact bound profile while a healthy
+  fallback remains available; the session, `eth0`, and operator-selected
+  profiles remain protected.
+
 ## [1.9.5] - 2026-09-19
 
 - Commission the installed Starlink DC monitor at 0x48 using its existing

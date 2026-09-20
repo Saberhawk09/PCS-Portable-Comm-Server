@@ -64,9 +64,11 @@ except ipaddress.AddressValueError:
         try:
             results = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_DGRAM)
             break
-        except socket.gaierror as exc:
-            if exc.errno != socket.EAI_AGAIN:
-                raise SystemExit("ERROR: endpoint DNS lookup failed permanently") from None
+        except socket.gaierror:
+            # Resolver state during early boot is not authoritative. Even
+            # EAI_NONAME can be returned while NetworkManager is still
+            # installing the selected uplink's DNS configuration. Retain the
+            # last endpoint and let the timer retry without faulting PCS.
             if attempt == 2:
                 deferred()
             time.sleep(2)
