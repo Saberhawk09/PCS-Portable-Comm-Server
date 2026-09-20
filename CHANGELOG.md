@@ -8,8 +8,8 @@ All notable user-facing PCS changes are recorded here.
 
 - Show source-aware total instantaneous watts on the LCD in Battery mode,
   combining PCS input and the separately monitored Starlink branch. Preserve
-  PCS input-only watts in Power Supply mode and label the two cases `TOT` and
-  `IN` respectively.
+  PCS input-only watts in Power Supply mode while retaining the established
+  `IN` display wording.
 - Defer the first WireGuard endpoint refresh until two minutes after boot and
   treat early resolver failures as retryable. The active tunnel retains its
   last endpoint, the five-minute timer keeps retrying, and unavailable startup

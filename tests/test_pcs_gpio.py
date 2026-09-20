@@ -566,7 +566,7 @@ class PcsGpioTests(unittest.TestCase):
 
         self.assertIsNotNone(power)
         self.assertEqual(pcs_gpio.lcd_power_page(power), (
-            "TOT 24.0V 34.9W",
+            "IN 24.0V 34.9W",
             "5V 5.23V 7.4W",
         ))
         stats = pcs_gpio.StatsSnapshot(None, None, None, None)
