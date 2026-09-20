@@ -508,6 +508,8 @@ class PowerSnapshot:
     energy_tracking_elapsed_seconds: float | None = None
     total_charge_since_boot_mah: float | None = None
     total_energy_since_boot_wh: float | None = None
+    dc_source: str = "battery"
+    total_power: float | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -1141,6 +1143,12 @@ def read_power_status(
             ),
             total_charge_since_boot_mah=number(aggregate, "charge_since_boot_mah"),
             total_energy_since_boot_wh=number(aggregate, "energy_since_boot_wh"),
+            dc_source=(
+                str(payload.get("dc_source"))
+                if payload.get("dc_source") in {"battery", "power_supply"}
+                else "battery"
+            ),
+            total_power=number(aggregate, "power"),
         )
     except (KeyError, TypeError, ValueError):
         return PowerSnapshot("warn", False, None, None, None, False, None, None, None)
@@ -1196,9 +1204,15 @@ def compact_counter(value: int | None) -> str:
 def lcd_power_page(power: PowerSnapshot) -> tuple[str, str]:
     """Fit both commissioned rails and their present power onto one 16x2 page."""
 
+    displayed_power = (
+        power.total_power
+        if power.dc_source == "battery" and power.total_power is not None
+        else power.input_power
+    )
+    input_label = "TOT" if power.dc_source == "battery" and power.total_power is not None else "IN"
     input_line = (
-        f"IN {power.input_voltage:.1f}V {power.input_power:.1f}W"
-        if power.input_online and power.input_voltage is not None and power.input_power is not None
+        f"{input_label} {power.input_voltage:.1f}V {displayed_power:.1f}W"
+        if power.input_online and power.input_voltage is not None and displayed_power is not None
         else "IN --.-V --.-W"
     )
     rail_5v_line = (

@@ -557,6 +557,7 @@ class PcsGpioTests(unittest.TestCase):
                 "dc_source": "battery",
                 "aggregate": {
                     "roles": ["input", "starlink"],
+                    "power": 34.881,
                     "charge_since_boot_mah": 456.7,
                     "energy_since_boot_wh": 8.91,
                 },
@@ -565,7 +566,7 @@ class PcsGpioTests(unittest.TestCase):
 
         self.assertIsNotNone(power)
         self.assertEqual(pcs_gpio.lcd_power_page(power), (
-            "IN 24.0V 21.0W",
+            "TOT 24.0V 34.9W",
             "5V 5.23V 7.4W",
         ))
         stats = pcs_gpio.StatsSnapshot(None, None, None, None)
@@ -576,6 +577,18 @@ class PcsGpioTests(unittest.TestCase):
         self.assertEqual(power.energy_tracking_elapsed_seconds, 505)
         self.assertEqual(power.total_charge_since_boot_mah, 456.7)
         self.assertEqual(power.total_energy_since_boot_wh, 8.91)
+        self.assertEqual(power.dc_source, "battery")
+        self.assertEqual(power.total_power, 34.881)
+
+    def test_lcd_power_page_uses_input_watts_for_power_supply_mode(self):
+        power = pcs_gpio.PowerSnapshot(
+            "ok", True, 24, 1, 24, True, 5, 1, 5,
+            dc_source="power_supply", total_power=42,
+        )
+        self.assertEqual(
+            pcs_gpio.lcd_power_page(power),
+            ("IN 24.0V 24.0W", "5V 5.00V 5.0W"),
+        )
 
     def test_lcd_energy_page_falls_back_to_input_totals_without_aggregate(self):
         power = pcs_gpio.PowerSnapshot(
