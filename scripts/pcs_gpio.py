@@ -1209,9 +1209,8 @@ def lcd_power_page(power: PowerSnapshot) -> tuple[str, str]:
         if power.dc_source == "battery" and power.total_power is not None
         else power.input_power
     )
-    input_label = "TOT" if power.dc_source == "battery" and power.total_power is not None else "IN"
     input_line = (
-        f"{input_label} {power.input_voltage:.1f}V {displayed_power:.1f}W"
+        f"IN {power.input_voltage:.1f}V {displayed_power:.1f}W"
         if power.input_online and power.input_voltage is not None and displayed_power is not None
         else "IN --.-V --.-W"
     )
