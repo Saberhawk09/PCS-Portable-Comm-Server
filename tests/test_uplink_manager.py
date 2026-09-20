@@ -135,6 +135,8 @@ class FakeNM:
 
     def renew_ipv4(self, u, o):
         self.renewed.append(u.id)
+        settings, _ = self.applied(o)
+        self.reapply(o, {'ipv4': {'route-metric': settings['ipv4']['route-metric'] + 1}})
 
 
 class ControllerTests(unittest.TestCase):
@@ -266,6 +268,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(nm.disconnected, [])
             self.assertIn('starlink', nm.renewed)
             self.assertEqual(c.state['owned'], {})
+            self.assertEqual(nm.settings['/device/starlink']['ipv4']['route-metric'], 20002)
 
     @patch.object(m.subprocess, 'run')
     def test_stalled_operator_ethernet_profile_is_never_reactivated(self, run):
