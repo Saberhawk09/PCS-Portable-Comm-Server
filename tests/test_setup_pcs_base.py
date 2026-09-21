@@ -245,6 +245,7 @@ class ReinstallStateTests(unittest.TestCase):
         self.assertIn('Encrypted archive verification failed', source)
         self.assertIn('tar -tzf - >/dev/null', source)
         self.assertIn('sudo chmod 0600 "${archive}"', source)
+        self.assertIn('rm -f -- "${list_file:-}"', source)
         self.assertIn('digest="$(sudo sha256sum "${archive}"', source)
         self.assertIn('etc/pcs', source)
         self.assertIn('etc/wireguard', source)

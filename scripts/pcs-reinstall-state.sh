@@ -140,7 +140,7 @@ export_state() {
         || { echo "ERROR: openssl is required for credential-bearing export encryption." >&2; exit 1; }
 
     list_file="$(mktemp)"
-    trap 'rm -f -- "${list_file}"' EXIT
+    trap 'rm -f -- "${list_file:-}"' EXIT
     for path in "${STATE_PATHS[@]}"; do
         if sudo test -e "/${path}"; then
             printf '%s\0' "${path}" >> "${list_file}"
