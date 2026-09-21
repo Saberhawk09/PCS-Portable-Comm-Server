@@ -244,6 +244,8 @@ class ReinstallStateTests(unittest.TestCase):
         self.assertIn('removed the incomplete archive', source)
         self.assertIn('Encrypted archive verification failed', source)
         self.assertIn('tar -tzf - >/dev/null', source)
+        self.assertIn('find -P "${path}" -xdev', source)
+        self.assertIn('--no-recursion', source)
         self.assertIn('sudo chmod 0600 "${archive}"', source)
         self.assertIn('rm -f -- "${list_file:-}"', source)
         self.assertIn('digest="$(sudo sha256sum "${archive}"', source)

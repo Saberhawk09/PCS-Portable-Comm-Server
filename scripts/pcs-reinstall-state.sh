@@ -143,7 +143,13 @@ export_state() {
     trap 'rm -f -- "${list_file:-}"' EXIT
     for path in "${STATE_PATHS[@]}"; do
         if sudo test -e "/${path}"; then
-            printf '%s\0' "${path}" >> "${list_file}"
+            if sudo test -d "/${path}"; then
+                # Enumerate without following links. Generated distro links and
+                # device/socket nodes are neither credentials nor safe restore input.
+                (cd / && sudo find -P "${path}" -xdev \( -type d -o -type f \) -print0) >> "${list_file}"
+            elif sudo test -f "/${path}" && ! sudo test -L "/${path}"; then
+                printf '%s\0' "${path}" >> "${list_file}"
+            fi
             count=$((count + 1))
         fi
     done
@@ -157,7 +163,7 @@ export_state() {
     [[ "${passphrase}" == "${passphrase_confirm}" ]] \
         || { echo "ERROR: Passphrases did not match." >&2; exit 2; }
 
-    if ! sudo tar --create --gzip --acls --xattrs --numeric-owner \
+    if ! sudo tar --create --gzip --acls --xattrs --numeric-owner --no-recursion \
             --directory=/ --null --files-from="${list_file}" --file=- \
             | PCS_REINSTALL_PASSPHRASE="${passphrase}" openssl enc -aes-256-cbc -pbkdf2 -salt \
                 -pass env:PCS_REINSTALL_PASSPHRASE \
