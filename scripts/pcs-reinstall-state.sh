@@ -189,7 +189,10 @@ export_state() {
 }
 
 require_normal_pi_user
-sudo -v
+sudo -n true || {
+    echo "ERROR: PCS reinstall-state handling requires noninteractive sudo." >&2
+    exit 1
+}
 
 case "${1:-}" in
     --check)
