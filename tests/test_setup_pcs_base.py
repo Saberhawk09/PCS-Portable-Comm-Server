@@ -39,7 +39,7 @@ class SetupPcsBaseTests(unittest.TestCase):
             self.source,
         )
         self.assertIn(
-            'if [[ "${PCS_SETUP_PISTAR}" == "yes" ]]; then',
+            'if [[ "${PCS_SETUP_PISTAR}" == "yes" && "${PCS_PISTAR_PAIR}" != "no" ]]; then',
             self.source,
         )
 
@@ -182,6 +182,40 @@ class SetupPcsBaseTests(unittest.TestCase):
         success = self.source.rindex('PCS one-command installation completed successfully.')
         self.assertLess(failure_gate, success)
 
+    def test_commissioned_rebuild_mode_restores_local_hardware_without_secrets(self):
+        self.assertIn('COMMISSIONED - Rebuild this PCS hardware profile', self.source)
+        self.assertIn('PCS_SETUP_MODE="COMMISSIONED"', self.source)
+        commissioned = self.source.index('        COMMISSIONED)')
+        defaults = self.source.index('        DEFAULTS)', commissioned)
+        block = self.source[commissioned:defaults]
+        for expected in (
+            'PCS_CELLULAR_FALLBACK_MODE="wifi-fallback"',
+            'PCS_UPLINK_MODE="auto"',
+            'PCS_SETUP_WWAN_GPS="yes"',
+            'PCS_SETUP_GPSD_LAN="yes"',
+            'PCS_SETUP_APRS="staged"',
+            'PCS_SETUP_MESHTASTIC="staged"',
+            'PCS_POWER_PROFILE="commissioned-pcs"',
+            'PCS_SETUP_STARLINK_TELEMETRY="yes"',
+            'PCS_STARLINK_AUTODETECT="yes"',
+        ):
+            self.assertIn(expected, block)
+        self.assertIn('PCS_SETUP_WIREGUARD="no"', block)
+        self.assertIn('PCS_SETUP_PISTAR="yes"', block)
+        self.assertIn('PCS_PISTAR_PAIR="no"', block)
+        self.assertNotIn('PCS_APRS_IS_PASSCODE=', block)
+
+    def test_starlink_telemetry_is_an_explicit_repeatable_installer_choice(self):
+        self.assertIn('PCS_SETUP_STARLINK_TELEMETRY="${PCS_SETUP_STARLINK_TELEMETRY:-no}"', self.source)
+        self.assertIn('printf "PCS_SETUP_STARLINK_TELEMETRY=%q\\n"', self.source)
+        self.assertIn('setup-starlink-telemetry.sh --install', self.source)
+
+    def test_commissioned_uplink_detection_is_fail_closed(self):
+        source = (ROOT / "scripts" / "pcs_uplink_setup.py").read_text(encoding="utf-8")
+        self.assertIn("env.get('PCS_STARLINK_AUTODETECT'", source)
+        self.assertIn("multiple Ethernet WAN candidates found", source)
+        self.assertIn("no non-LAN Ethernet WAN candidate found", source)
+
 
 class PowerSetupTests(unittest.TestCase):
     def test_power_install_enables_bounded_persistent_diagnostics(self):
@@ -219,7 +253,8 @@ class ReinstallStateTests(unittest.TestCase):
         self.assertIn('etc/NetworkManager/system-connections', source)
         self.assertIn('var/lib/samba/private', source)
         self.assertIn('var/lib/bluetooth', source)
-        self.assertNotIn('etc/shadow', source)
+        self.assertIn('etc/shadow', source)
+        self.assertIn('pi account password hash', source)
 
 
 if __name__ == "__main__":

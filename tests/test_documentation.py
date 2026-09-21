@@ -74,9 +74,11 @@ class DocumentationTests(unittest.TestCase):
         ):
             self.assertIn(required, runbook)
         installer = runbook.index("./scripts/setup-pcs-base.sh")
-        recovery = runbook.index("## Optional Post-Acceptance Credential Recovery")
+        recovery = runbook.index("## Private Identity Recovery During the Reinstall")
         self.assertLess(installer, recovery)
         self.assertNotIn("/root/pcs-reinstall-state", runbook[:installer])
+        self.assertIn("single encrypted reinstall archive", runbook)
+        self.assertIn("pi` account password hash", runbook)
 
     def test_main_setup_documents_external_wireguard_profile(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

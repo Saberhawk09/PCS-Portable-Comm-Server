@@ -30,11 +30,14 @@ WRAPPER
 chmod 0755 /usr/local/sbin/pcs-starlink
 if [[ ! -e /etc/pcs/starlink.json ]]; then
     install -o root -g root -m 0600 "${ROOT}/config/starlink.example.json" /etc/pcs/starlink.json
+    if [[ "${PCS_STARLINK_ENABLED:-no}" == "yes" ]]; then
+        sed -i 's/"enabled": false/"enabled": true/' /etc/pcs/starlink.json
+    fi
 fi
 /usr/local/sbin/pcs-starlink check-config
 install -o root -g root -m 0644 "${ROOT}/systemd/pcs-starlink.service" /etc/systemd/system/pcs-starlink.service
 systemctl daemon-reload
 systemctl enable pcs-starlink.service
 systemctl restart pcs-starlink.service
-echo "Starlink telemetry installed. Existing config preserved; fresh installs are disabled."
+echo "Starlink telemetry installed. Existing config preserved; fresh-install state follows PCS_STARLINK_ENABLED."
 echo "Install the matching control-panel release to expose cards and staged API actions."

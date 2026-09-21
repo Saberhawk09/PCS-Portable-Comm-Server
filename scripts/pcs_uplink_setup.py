@@ -280,6 +280,16 @@ def main():
             cfg['uplinks'].append({'id': 'cellular', 'name': 'Cellular', 'type': 'cellular', 'priority': max(u['priority'] for u in cfg['uplinks']) + 1, 'profile': uuid, 'activation': 'fallback'})
     iface = args.interface or env.get('PCS_STARLINK_IFACE', '')
     mac = args.mac or env.get('PCS_STARLINK_MAC', '')
+    if not iface and not mac and env.get('PCS_STARLINK_AUTODETECT', '').lower() in ('1', 'true', 'yes'):
+        detected = candidates()
+        if len(detected) > 1:
+            raise ValueError('multiple Ethernet WAN candidates found; set PCS_STARLINK_MAC explicitly')
+        if detected:
+            iface = detected[0]['interface']
+            mac = detected[0]['mac']
+            print(f'Auto-detected commissioned Ethernet uplink: {iface} ({mac})')
+        else:
+            raise ValueError('no non-LAN Ethernet WAN candidate found; attach Starlink or set PCS_STARLINK_MAC')
     create = None
     if iface or mac:
         if iface and not interface_name(iface):

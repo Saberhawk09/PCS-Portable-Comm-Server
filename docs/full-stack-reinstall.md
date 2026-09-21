@@ -89,23 +89,23 @@ INA226 calibration/shutdown policy, APRS and Meshtastic credentials/configuratio
 WireGuard source and generated key material, Pi-Star shutdown key,
 administrator/API state, SSH host identity and permanent authorized keys,
 NetworkManager profiles, Samba credentials, Bluetooth bonds, and retained APRS
-application state when those paths exist. It deliberately does not archive
-`PCS-Share` itself, OpenWrt, Pi-Star, `/etc/shadow`, or a raw Android app token.
+application state and the `pi` login password hash when those paths exist. It
+deliberately does not archive `PCS-Share` itself, OpenWrt, Pi-Star, other
+accounts' password hashes, or a raw Android app token.
 The Stats API stores only a hash of each app token: restoring that server state
 keeps an unchanged paired phone working, but deleted Android app data must be
 paired again.
 
 Record separately:
 
-- a known Raspberry Pi OS login password and the PCS administrator password,
-  or the decision to set new ones
+- a known recovery passphrase and an emergency login path in case validation fails
 - the intended USB filesystem identity and current mount
 - the archive filename and matching SHA-256 checksum
 - the archive passphrase, retained separately from the archive
 - any files that exist only on `PCS-Share`
 
-The installer never writes the Samba password to `pcs-install.conf`. Record
-that password separately.
+The installer never writes the Samba password to `pcs-install.conf`; its Samba
+database is retained only inside the encrypted archive.
 
 ### OpenWrt
 
@@ -166,11 +166,27 @@ PCS installer command:
 ./scripts/setup-pcs-base.sh
 ```
 
+On the exact commissioned PCS hardware, select `COMMISSIONED`. This preset
+recreates the fitted, non-secret Pi-side stack and automatic uplink policy. It
+auto-selects only when exactly one non-LAN Ethernet NIC is present, binds that
+adapter by permanent MAC as Starlink, enables read-only Starlink telemetry,
+and installs the commissioned displays, fan, power monitor, and buzzer. If
+multiple Ethernet WAN candidates exist, setup fails closed until
+`PCS_STARLINK_MAC` identifies the intended adapter.
+
+The preset enables PCS-side Pi-Star monitoring without pairing and does not log
+into or alter OpenWrt, Pi-Star, Starlink, or the Meshtastic radio. Without a
+private archive it stages Dire Wolf and Meshtastic with services/RF disabled,
+does not restore credentials, and requires a new Samba password. When the
+single encrypted reinstall archive is supplied, the software is still freshly
+installed first; allowlisted credentials and identities are restored afterward.
+APRS engines remain disabled until physical/RF validation is recorded again.
+
 Answer its prompts interactively. Do not run individual component setup scripts
 first. A failure or skipped selected component is an installer failure, even if
 the script continues to present diagnostics.
 
-For the current GPS-sharing build, select:
+When using `ALL` instead of the commissioned preset, select:
 
 ```text
 Configure WWAN modem NMEA GPS:       yes
@@ -193,6 +209,7 @@ The generated `config/pcs-install.conf` should therefore contain:
 PCS_SETUP_WWAN_GPS=yes
 PCS_SETUP_GPSD_LAN=yes
 PCS_SETUP_PISTAR=yes
+PCS_PISTAR_PAIR=no
 PCS_SETUP_APRS=staged
 PCS_SETUP_MESHTASTIC=staged
 PCS_SETUP_GPIO_LCD=yes
@@ -202,6 +219,11 @@ PCS_SETUP_GPIO_FAN=yes
 PCS_SETUP_POWER_MONITOR=yes
 PCS_POWER_PROFILE=commissioned-pcs
 PCS_SETUP_BUZZER=yes
+PCS_SETUP_STARLINK_TELEMETRY=yes
+PCS_STARLINK_ENABLED=yes
+PCS_STARLINK_AUTODETECT=yes
+PCS_UPLINK_MODE=auto
+PCS_UPLINK_PRIORITY=starlink,wifi,cellular
 ```
 
 The GPSD setting installs a socket proxy bound only to
@@ -212,7 +234,9 @@ GPS-first, Internet-second, RTC-holdover time hierarchy. See
 [PCS Time-Source Hierarchy](time-sources.md).
 
 `PCS_SETUP_PISTAR=yes` enables the hotspot health checks and local-access
-links. Set it to `no` on builds without Pi-Star; the dashboard and self-test
+links. `PCS_PISTAR_PAIR=no` keeps those PCS-side features without changing the
+external hotspot; pairing remains a supervised post-install step. Set
+`PCS_SETUP_PISTAR=no` on builds without Pi-Star; the dashboard and self-test
 then omit those optional checks without degrading overall PCS health.
 In `ALL` or `DEFAULTS` input mode this answer is collected up front. After the
 installer establishes the PCS LAN on `eth0`, it immediately attempts the
@@ -470,24 +494,31 @@ complete when:
 - Meshtastic is safely staged, or its active mode has a stable selected USB/BLE transport, broker connection, policy-safe allowlisted uplink/downlink, GPSD position health, and map policy when enabled
 - required radio modes pass an operator-supervised on-air test
 
-## Optional Post-Acceptance Credential Recovery
+## Private Identity Recovery During the Reinstall
 
-### Restore network and Android identity during base setup
+### Restore the exact private PCS identity during base setup
 
-After verifying and decrypting your trusted recovery archive into a root-owned
-mode `0700` directory (for example `/root/pcs-reinstall-state`), enter that
-directory at the base installer's recovery prompt. The saved answer is
-`PCS_REINSTALL_STATE_DIR`; leave it blank for a new installation. The installer
-does not decrypt archives or record their passphrases.
+Enter the absolute path of the encrypted archive at the base installer's
+recovery prompt. The installer verifies the optional adjacent checksum,
+prompts once for the passphrase, validates every archive member against the PCS
+allowlist, and extracts into a temporary root-owned mode `0700` directory under
+`/run`. The temporary plaintext is removed on success or failure. Neither the
+archive contents nor passphrase are written to Git or the persistent install
+configuration. A previously decrypted root-owned directory remains supported
+for recovery work, but the archive and directory options are mutually exclusive.
 
 Recovery loads saved Wi-Fi profiles, preserves the complete WireGuard runtime
-policy and keys, and restores the Android HTTPS certificate, matching private
-key, and hashed pairing records after the control panel is installed. It
-regenerates the API runtime environment and validates TLS, firewall policy,
-and public response before accepting activation. Existing different live files
-cause recovery to stop. It does not restore RF configuration, SSH host identity,
-or unrelated system files. An unchanged paired app should retain its trust and
-token; deleted app data still requires pairing again.
+policy and keys, and restores Android HTTPS identity and hashed pairing records.
+After every owning package/service is installed, a separate private overlay
+restores SSH host/client keys, Samba credential databases, Bluetooth bonds,
+control-panel authentication, backup credentials, Pi-Star shutdown pairing,
+Meshtastic transport/broker secrets, Starlink pairing state, APRS-IS protected
+configuration, and optional private repository material. Generated services,
+helpers, firewall scripts, and hardware-validation evidence are not restored.
+The `pi` account password hash is restored from `/etc/shadow` without importing
+any other account entry. Raw Android bearer tokens do not exist in recoverable
+server state; restoring their hashes preserves already-paired clients, while a
+client whose app data was erased must pair again.
 
 The network and API phases can also be run independently as `pi` on a fresh
 installation, with the required components installed:
@@ -515,46 +546,14 @@ does not prove client-to-PCS access. The opt-in installer recovery flow still
 requires a fresh wipe acceptance test; live repair is not that test.
 
 
-Only after the clean one-command installer and cold-boot acceptance pass, mount
-the retained USB without formatting and verify/decrypt the recovery archive into
-a root-only staging directory:
-
-```bash
-lsblk -f
-sudo install -d -m 0755 /mnt/pcs-recovery
-sudo mount -o ro /dev/disk/by-uuid/RECORDED_PCS_USB_UUID /mnt/pcs-recovery
-cd /mnt/pcs-recovery/PCS-Share
-sudo sha256sum --check pcs-reinstall-state-YYYYMMDD.tar.gz.enc.sha256
-sudo install -d -o root -g root -m 0700 /root/pcs-reinstall-state
-openssl enc -d -aes-256-cbc -pbkdf2 \
-  -in pcs-reinstall-state-YYYYMMDD.tar.gz.enc \
-  | sudo tar -xzf - -C /root/pcs-reinstall-state
-```
-
-Do not bulk-copy the staging tree over `/`. Restore only state that is still
-needed, preserving its recorded ownership/mode, and rerun the owning setup
-script plus self-test afterward. Generated units and helpers must always come
-from the candidate repository.
-
-- `/etc/pcs`, `/etc/wireguard`, and the ignored repository `private-config`
-  carry WireGuard, APRS, Meshtastic, power, and Pi-Star shutdown material
-- `/etc/pcs-stats-api` restores server token hashes and TLS state; it cannot
-  recreate a lost raw Android token
-- `/etc/ssh` and `/home/pi/.ssh` restore host identity and permanent authorized
-  keys after confirming that no temporary access key is present
-- `/var/lib/samba/private` can restore Samba credentials only when the clean
-  image's Samba version is compatible; otherwise reset them through PCS setup
-- `/var/lib/bluetooth` restores bonds only when deliberately retaining BLE
-
 ## Remaining Manual Checkpoints
 
 The setup is repeatable, but intentionally not credential-free or fully
 unattended. These actions remain manual:
 
 - flashing SD cards and OpenWrt firmware
-- entering or restoring Wi-Fi, callsign, and radio-network credentials
-- restoring the RAK4631 identity/configuration, MQTT broker credentials, and topic allowlist; BLE pairing is needed only when BLE is deliberately selected instead of deployed USB
-- entering the Samba password
+- providing the encrypted archive passphrase; secrets are restored automatically
+- restoring the RAK4631 firmware-side identity/configuration only if the external radio itself was reset; the PCS-side MQTT credentials and topic allowlist come from the private archive
 - selecting the correct USB storage device if detection is ambiguous
 - validating RF behavior on air
 - comparing the RAK4631 environment sensor with a known reference before using it for thermal alarms
