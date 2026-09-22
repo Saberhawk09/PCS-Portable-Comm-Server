@@ -2,6 +2,16 @@
 
 ## September 2026 recovery evidence
 
+The September 21-22 v1.9.7 acceptance rebuilt a freshly imaged Raspberry Pi OS
+Lite 64-bit PCS from the source installer and a single encrypted exact-recovery
+archive. After the mandatory reboot, the full enabled self-test passed with no
+failed units. WireGuard, Dire Wolf/APRS, Meshtastic, power monitoring, buzzer,
+control panel, display, and hardware-support services were active. The aging
+USB drive needed a physical reconnect before its managed mount recovered; that
+was a media/hardware recovery step rather than an installer software failure.
+
+The older observations below explain the fixes that led to this accepted path.
+
 The September 9 Raspberry Pi OS Lite wipe exposed these issues, repaired on the
 live appliance before v1.8.2 deployment:
 
@@ -23,9 +33,9 @@ refresh failure triggered a hard buzzer alarm; PR #68 added bounded retries
 and preserved the current WireGuard endpoint while awaiting the next timer.
 Agent RF channel 0 was subsequently explicitly enabled by the operator.
 
-These are repaired-appliance observations. The final version has not undergone
-another fresh end-to-end wipe acceptance, nor a new full three-appliance rebuild.
-Do not mark those gates complete from a successful enabled-services self-test.
+Those were repaired-appliance observations. v1.9.7 subsequently completed the
+fresh PCS wipe/reinstall gate. A new full three-appliance rebuild remains a
+separate gate and is not implied by the PCS acceptance.
 
 This runbook rebuilds the tested PCS field LAN:
 
@@ -428,13 +438,11 @@ was not reachable then, use the standalone command above.
 
 ## Verification
 
-The PCS Pi SD-card wipe/rebuild path was most recently verified on Raspberry Pi
-OS 64-bit Desktop on August 18, 2026. This run is the first full Raspberry Pi OS
-Lite 64-bit acceptance and the first wipe test of the v1.8 power/buzzer stack.
-Do not update the README to call Lite validated until every acceptance item
-below passes after a cold boot. OpenWrt/Pi-Star flashing, credentials, appliance
-backups, USB identity decisions, and on-air RF checks remain intentionally
-manual.
+The PCS Pi SD-card wipe/rebuild path was accepted on Raspberry Pi OS Lite 64-bit
+on September 22, 2026 using the v1.9.7 exact commissioned recovery flow. The
+post-reboot full enabled self-test passed. OpenWrt/Pi-Star reflashing and a new
+full three-appliance rebuild remain separate from this PCS acceptance; future
+hardware changes and on-air RF changes still require operator supervision.
 
 On PCS:
 

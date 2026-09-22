@@ -4,6 +4,34 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.7] - 2026-09-22
+
+- Add an exact commissioned reinstall path that rebuilds PCS from source and
+  then restores a single passphrase-encrypted, allowlisted private recovery
+  archive. Wi-Fi and WireGuard identities, SSH host keys, admin and Samba
+  credentials, API/TLS pairing, Bluetooth, Pi-Star, Meshtastic, Starlink, and
+  APRS identity/audio state remain outside Git.
+- Validate archive members and recorded identity families before extraction,
+  keep plaintext recovery data in a root-only temporary directory, reject
+  links and generated executable content, and parse saved settings without
+  executing the archive.
+- Make interrupted or repeated commissioned recovery safe: discard stale
+  temporary directories, accept already-restored VPN state, preserve ownership
+  and permissions, and defer hardware-dependent activation across the required
+  reboot boundary.
+- Restore the complete recorded Dire Wolf 1.8.1 and APRS runtime only when its
+  validation set is complete. Install SA818, audio, firewall, APRS Agent, and
+  Meshtastic services before activation and persist the recovered active state
+  without attempting radio programming before the UART reboot takes effect.
+- Prefer the intended home-network download route during installation, retry
+  removable-storage discovery, and keep the source checkout clean after a
+  commissioned restore.
+- Complete a fresh Raspberry Pi OS Lite 64-bit wipe/reinstall acceptance using
+  the encrypted exact-recovery archive. After the required reboot, all enabled
+  checks passed with no failed units; WireGuard, APRS, Meshtastic, power,
+  control-panel, display, and hardware-support services were active. The aging
+  USB drive required a physical reconnect before its managed mount recovered.
+
 ## [1.9.6] - 2026-09-19
 
 - Show source-aware total instantaneous watts on the LCD in Battery mode,
@@ -748,7 +776,15 @@ The original voltage guard's 12V/24V detection and threshold behavior are retain
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.3...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.7...HEAD
+[1.9.7]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.6...v1.9.7
+[1.9.6]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.5...v1.9.6
+[1.9.5]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.4...v1.9.5
+[1.9.4]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.3...v1.9.4
+[1.9.3]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.2...v1.9.3
+[1.9.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.1...v1.9.2
+[1.9.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9...v1.9.1
+[1.9]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.3...v1.9
 [1.8.3]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.2...v1.8.3
 [1.8.2]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.8...v1.8.1

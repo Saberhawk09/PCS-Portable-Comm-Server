@@ -117,10 +117,11 @@ also unfinished.
 - Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
   dashboard status, guarded restart, broker/proxy policy validation, GPSD
   position delivery, public-map forwarding status, and local environment telemetry
-- PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; the
-  v1.8 power/alarm/shutdown stack completed supervised appliance acceptance on
-  September 7, 2026; credentials, external-device recovery, and RF checks
-  remain manual
+- Exact commissioned PCS recovery from a fresh Raspberry Pi OS Lite 64-bit
+  image was accepted on September 22, 2026. The installer rebuilt the managed
+  software, restored the encrypted private identity archive, and passed its
+  full post-reboot self-test. The aging USB drive required a physical reconnect
+  before its managed mount recovered.
 
 ### Current Finish Work
 
@@ -138,7 +139,9 @@ also unfinished.
 
 Before running setup, connect the hardware you want the installer to configure:
 
-- Raspberry Pi booted from the target SD card. Raspberry Pi OS 64-bit Desktop is validated; the installer also supports a headless Raspberry Pi OS Lite 64-bit path, whose first full appliance wipe acceptance remains pending.
+- Raspberry Pi booted from the target SD card. Raspberry Pi OS 64-bit Desktop
+  and the headless Raspberry Pi OS Lite 64-bit exact commissioned reinstall
+  path are validated.
 - Ethernet from the Pi to the PCS router/AP through a LAN port, not the WAN/Internet port.
 - The PCS router/AP powered on.
 - The RTC module installed, if this build includes the RTC.
