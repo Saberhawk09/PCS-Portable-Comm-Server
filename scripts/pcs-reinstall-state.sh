@@ -10,11 +10,45 @@ usage() {
 Usage:
   ./scripts/pcs-reinstall-state.sh --check
   ./scripts/pcs-reinstall-state.sh --export /absolute/path/pcs-reinstall-state.tar.gz.enc
+  ./scripts/pcs-reinstall-state.sh --extract /absolute/path/pcs-reinstall-state.tar.gz.enc /root/empty-directory
 
 The export contains credentials and private keys and is encrypted with a
 passphrase you enter interactively. Write it only to trusted removable storage,
 retain the passphrase separately, and never commit or upload it.
 EOF
+}
+
+extract_state() {
+    local archive="$1"
+    local destination="$2"
+    local encrypted_temp
+    local passphrase
+
+    [[ "${archive}" == /* && "${destination}" == /* ]] \
+        || { echo "ERROR: Archive and extraction directory must be absolute." >&2; exit 2; }
+    [[ -f "${archive}" && ! -L "${archive}" ]] \
+        || { echo "ERROR: Recovery archive must be a regular non-symlink file." >&2; exit 2; }
+    sudo test -d "${destination}" && sudo test "$(sudo stat -c '%u:%a' "${destination}")" = "0:700" \
+        || { echo "ERROR: Extraction directory must be root-owned mode 0700." >&2; exit 2; }
+    if [[ -f "${archive}.sha256" ]]; then
+        (cd "$(dirname "${archive}")" && sudo sha256sum --check "$(basename "${archive}.sha256")")
+    fi
+    encrypted_temp="$(sudo mktemp /run/pcs-reinstall-state.XXXXXX.tar.gz)"
+    trap 'sudo rm -f -- "${encrypted_temp:-}"' EXIT
+    sudo chmod 0600 "${encrypted_temp}"
+    read -r -s -p "Reinstall archive passphrase: " passphrase
+    echo
+    if ! printf '%s' "${passphrase}" | sudo openssl enc -d -aes-256-cbc -pbkdf2 \
+            -pass stdin -in "${archive}" \
+            | sudo tee "${encrypted_temp}" >/dev/null; then
+        echo "ERROR: Recovery archive decryption failed." >&2
+        exit 1
+    fi
+    unset passphrase
+    sudo python3 "${REPO_DIR}/scripts/pcs_reinstall_archive.py" "${encrypted_temp}" "${destination}" --check
+    sudo python3 "${REPO_DIR}/scripts/pcs_reinstall_archive.py" "${encrypted_temp}" "${destination}"
+    sudo rm -f -- "${encrypted_temp}"
+    trap - EXIT
 }
 
 STATE_PATHS=(
@@ -28,6 +62,7 @@ STATE_PATHS=(
     "etc/direwolf.conf"
     "etc/wireguard"
     "etc/ssh"
+    "etc/shadow"
     "etc/samba"
     "etc/NetworkManager/system-connections"
     "var/lib/pcs-aprs-agent"
@@ -65,7 +100,8 @@ show_state() {
     done
     echo "Inventory: ${present} present, ${absent} absent/unused"
     echo "External OpenWrt and Pi-Star native backups must be collected separately."
-    echo "Raw Android app tokens and OS login passwords are not recoverable from server state."
+    echo "Raw Android app tokens are not recoverable; server-side pairing hashes are included."
+    echo "The pi account password hash is included without copying other shadow entries on restore."
     echo "Record the archive passphrase separately and retain a known PCS login password."
 }
 
@@ -104,10 +140,16 @@ export_state() {
         || { echo "ERROR: openssl is required for credential-bearing export encryption." >&2; exit 1; }
 
     list_file="$(mktemp)"
-    trap 'rm -f -- "${list_file}"' EXIT
+    trap 'rm -f -- "${list_file:-}"' EXIT
     for path in "${STATE_PATHS[@]}"; do
         if sudo test -e "/${path}"; then
-            printf '%s\0' "${path}" >> "${list_file}"
+            if sudo test -d "/${path}"; then
+                # Enumerate without following links. Generated distro links and
+                # device/socket nodes are neither credentials nor safe restore input.
+                (cd / && sudo find -P "${path}" -xdev \( -type d -o -type f \) -print0) >> "${list_file}"
+            elif sudo test -f "/${path}" && ! sudo test -L "/${path}"; then
+                printf '%s\0' "${path}" >> "${list_file}"
+            fi
             count=$((count + 1))
         fi
     done
@@ -121,7 +163,7 @@ export_state() {
     [[ "${passphrase}" == "${passphrase_confirm}" ]] \
         || { echo "ERROR: Passphrases did not match." >&2; exit 2; }
 
-    if ! sudo tar --create --gzip --acls --xattrs --numeric-owner \
+    if ! sudo tar --create --gzip --acls --xattrs --numeric-owner --no-recursion \
             --directory=/ --null --files-from="${list_file}" --file=- \
             | PCS_REINSTALL_PASSPHRASE="${passphrase}" openssl enc -aes-256-cbc -pbkdf2 -salt \
                 -pass env:PCS_REINSTALL_PASSPHRASE \
@@ -153,7 +195,10 @@ export_state() {
 }
 
 require_normal_pi_user
-sudo -v
+sudo -n true || {
+    echo "ERROR: PCS reinstall-state handling requires noninteractive sudo." >&2
+    exit 1
+}
 
 case "${1:-}" in
     --check)
@@ -164,6 +209,10 @@ case "${1:-}" in
         [[ $# -eq 2 ]] || { usage; exit 2; }
         show_state
         export_state "$2"
+        ;;
+    --extract)
+        [[ $# -eq 3 ]] || { usage; exit 2; }
+        extract_state "$2" "$3"
         ;;
     *)
         usage

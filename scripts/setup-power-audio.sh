@@ -39,7 +39,16 @@ install_power() {
     if command -v raspi-config >/dev/null 2>&1; then
         sudo raspi-config nonint do_i2c 0
     fi
-    [[ -e /dev/i2c-1 ]] || { echo "ERROR: /dev/i2c-1 is unavailable; reboot after enabling I2C, then rerun."; exit 1; }
+    i2c_ready=yes
+    if [[ ! -e /dev/i2c-1 ]]; then
+        if [[ "${PCS_ALLOW_REBOOT_DEFER:-no}" == "yes" ]]; then
+            i2c_ready=no
+            echo "I2C was enabled but /dev/i2c-1 requires a reboot; staging the service for next boot."
+        else
+            echo "ERROR: /dev/i2c-1 is unavailable; reboot after enabling I2C, then rerun."
+            exit 1
+        fi
+    fi
     sudo install -o root -g root -m 0755 "${REPO_DIR}/scripts/pcs_power_monitor.py" /usr/local/sbin/pcs-power-monitor
     sudo install -o root -g root -m 0644 "${REPO_DIR}/systemd/pcs-power-monitor.service" /etc/systemd/system/pcs-power-monitor.service
     sudo install -d -o root -g root -m 0755 /etc/systemd/journald.conf.d
@@ -75,8 +84,13 @@ install_power() {
         exit 2
     fi
     sudo systemctl daemon-reload
-    sudo systemctl enable --now pcs-power-monitor.service
-    check_state
+    if [[ "${i2c_ready}" == "yes" ]]; then
+        sudo systemctl enable --now pcs-power-monitor.service
+        check_state
+    else
+        sudo systemctl enable pcs-power-monitor.service
+        echo "pcs-power-monitor.service will start and validate the commissioned sensors after reboot."
+    fi
 }
 
 install_buzzer() {

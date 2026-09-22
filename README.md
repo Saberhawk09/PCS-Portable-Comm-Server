@@ -94,10 +94,11 @@ also unfinished.
 - Repeatable Meshtastic USB/BLE MQTT gateway with privacy-safe public/admin
   dashboard status, guarded restart, broker/proxy policy validation, GPSD
   position delivery, public-map forwarding status, and local environment telemetry
-- PCS Pi SD-card wipe/rebuild most recently verified on August 18, 2026; the
-  v1.8 power/alarm/shutdown stack completed supervised appliance acceptance on
-  September 7, 2026; credentials, external-device recovery, and RF checks
-  remain manual
+- Exact commissioned PCS recovery from a fresh Raspberry Pi OS Lite 64-bit
+  image was accepted on September 22, 2026. The installer rebuilt the managed
+  software, restored the encrypted private identity archive, and passed its
+  full post-reboot self-test. The aging USB drive required a physical reconnect
+  before its managed mount recovered.
 
 ### Current Finish Work
 
@@ -115,7 +116,9 @@ also unfinished.
 
 Before running setup, connect the hardware you want the installer to configure:
 
-- Raspberry Pi booted from the target SD card. Raspberry Pi OS 64-bit Desktop is validated; the installer also supports a headless Raspberry Pi OS Lite 64-bit path, whose first full appliance wipe acceptance remains pending.
+- Raspberry Pi booted from the target SD card. Raspberry Pi OS 64-bit Desktop
+  and the headless Raspberry Pi OS Lite 64-bit exact commissioned reinstall
+  path are validated.
 - Ethernet from the Pi to the PCS router/AP through a LAN port, not the WAN/Internet port.
 - The PCS router/AP powered on.
 - The RTC module installed, if this build includes the RTC.
@@ -163,7 +166,47 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-Once setup is completed, you will see a FAILS related to the RTC and other hardware/software. This is expected and fixed with a reboot.
+For a wipe/reinstall of this exact commissioned PCS, choose `COMMISSIONED`.
+That mode recreates the non-secret Pi-side configuration for the fitted USB
+storage, WWAN/GNSS and LAN GPSD, automatic Wi-Fi/Starlink/cellular uplinks,
+read-only Starlink telemetry, LCD, WS2812 indicators, MAX7219 matrix, PWM fan,
+dual INA226 commissioned power profile, buzzer, and staged Dire Wolf and
+Meshtastic software. A single attached non-LAN Ethernet adapter is detected and
+MAC-bound as the Starlink uplink; multiple candidates fail closed so the
+operator can set `PCS_STARLINK_MAC` explicitly.
+
+The commissioned rebuild can accept the single encrypted archive created by
+`pcs-reinstall-state.sh --export`. The installer first rebuilds every managed
+software component from the checked-out source, then restores the allowlisted
+Wi-Fi/WireGuard, API/TLS, SSH, Samba, Bluetooth, Pi-Star pairing, Meshtastic,
+Starlink pairing, APRS-IS, and other private identity state. The archive and
+passphrase stay outside Git, extraction is limited to a temporary root-only
+directory, and generated units/helpers are never restored from the archive.
+Without an archive, setup asks for a new Samba password and creates fresh
+identities. It does not log into or modify Pi-Star, the Meshtastic radio,
+OpenWrt, or Starlink.
+An exact archive also restores the generated non-secret commissioning settings.
+If its complete recorded APRS audio, channel, PTT, transmit-audio, and timing
+validation set is present, the installer restores the managed Dire Wolf 1.8.1,
+audio/radio helpers, APRS Agent, and recorded RX/TX service state. Otherwise it
+fails safe with APRS stopped. This does not replace the post-reboot network, RF,
+and physical acceptance test.
+
+Create the private archive on the working PCS before wiping it:
+
+```bash
+./scripts/pcs-reinstall-state.sh --export /mnt/pcs-usb/PCS-Share/pcs-private-reinstall.tar.gz.enc
+```
+
+During `COMMISSIONED` setup, enter that archive's absolute path at the encrypted
+recovery prompt and enter its passphrase once. Supplying the archive restores
+credentials after their owning software has been freshly installed; it is not
+a system-image restore. Keep the archive, passphrase, and optional checksum in
+separate trusted locations.
+
+When boot configuration must expose I2C, the installer stages the power monitor
+for first boot and exits at an explicit reboot boundary. After reboot, run the
+self-test below; no component installer rerun is required.
 
 
 ## After Setup

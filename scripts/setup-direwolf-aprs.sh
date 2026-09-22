@@ -189,7 +189,11 @@ Usage: ./scripts/setup-direwolf-aprs.sh COMMAND [ARGUMENTS]
                          replaced by a visible placeholder; nothing is changed.
   --validate-config PROFILE
                          Lint a proposed rx or tx configuration and report all
-                         activation blockers without changing the system.
+                          activation blockers without changing the system.
+  --restore-exact-runtime
+                         Reinstall managed APRS runtime helpers around an exact
+                         recovered /etc/direwolf.conf. Requires the complete
+                         saved validation record and explicit installer consent.
   --activate-rx          Transactionally install a receive/IGate configuration.
                          Playback, PTT, beaconing, digipeating, FX.25 TX, and
                          Internet-to-RF message gating remain disabled.
@@ -1728,6 +1732,12 @@ EOF
     sudo systemctl daemon-reload
     sudo udevadm control --reload-rules
     sudo systemctl enable pcs-sa818.service pcs-aprs-audio.service pcs-aprs-kiss-firewall.service
+    if [[ "${PCS_APRS_ALLOW_REBOOT_DEFER:-no}" == "yes" && ! -e "${PCS_APRS_RADIO_DEVICE}" ]]; then
+        sudo systemctl stop pcs-sa818.service >/dev/null 2>&1 || true
+        sudo touch /run/pcs-aprs-reboot-required
+        echo "APRS runtime helpers are installed and enabled for the required UART reboot."
+        return 0
+    fi
     sudo systemctl restart pcs-sa818.service
     sudo systemctl restart pcs-aprs-audio.service
     sudo systemctl restart pcs-aprs-kiss-firewall.service
@@ -1749,6 +1759,29 @@ install_staged_ptt_safety() {
     sudo install -o root -g root -m 0644 "${PTT_SAFE_SERVICE_SRC}" "${PTT_SAFE_SERVICE_DST}"
     sudo install -o root -g root -m 0644 "${ptt_safe_env}" "${PTT_SAFE_CONFIG}"
     sudo systemctl daemon-reload
+    rm -rf -- "${temp_dir}"
+}
+
+restore_exact_runtime() {
+    local temp_dir
+
+    require_normal_user
+    [[ "${PCS_APRS_EXACT_RESTORE_CONFIRM:-no}" == "yes" ]] \
+        || { echo "ERROR: exact APRS runtime restore was not confirmed." >&2; return 1; }
+    [[ "${PCS_REINSTALL_EXACT:-no}" == "yes" ]] \
+        || { echo "ERROR: exact APRS runtime restore requires validated exact recovery." >&2; return 1; }
+    [[ "${PCS_APRS_ACTIVE_MODE:-staged}" =~ ^(rx|tx)$ ]] \
+        || { echo "ERROR: saved APRS mode is not active." >&2; return 1; }
+    for validation in PCS_APRS_RX_AUDIO_VALIDATED PCS_APRS_RADIO_CHANNEL_VALIDATED \
+        PCS_APRS_PTT_VALIDATED PCS_APRS_TX_AUDIO_VALIDATED PCS_APRS_TX_TIMING_VALIDATED; do
+        [[ "${!validation:-no}" == "yes" ]] \
+            || { echo "ERROR: exact APRS recovery is missing ${validation}." >&2; return 1; }
+    done
+    sudo test -s "${DIREWOLF_CONFIG}" \
+        || { echo "ERROR: recovered ${DIREWOLF_CONFIG} is missing." >&2; return 1; }
+    temp_dir="$(mktemp -d)"
+    chmod 0700 "${temp_dir}"
+    install_runtime_support "${temp_dir}"
     rm -rf -- "${temp_dir}"
 }
 
@@ -1999,6 +2032,9 @@ case "${MODE}" in
         ;;
     --validate-config)
         validate_config_command "${PROFILE}"
+        ;;
+    --restore-exact-runtime)
+        restore_exact_runtime
         ;;
     --activate-rx)
         activate_profile rx

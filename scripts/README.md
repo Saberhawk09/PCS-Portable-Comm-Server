@@ -1112,13 +1112,19 @@ w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
 ```
 ## Recovery installer
 
-`setup-pcs-reinstall-restore.sh --network TRUSTED_DIRECTORY` restores saved
+`pcs-reinstall-state.sh --export ARCHIVE.tar.gz.enc` creates the single private
+reinstall bundle. `--extract ARCHIVE DIRECTORY` decrypts it into a temporary
+root-only staging directory after validating every member against the bounded
+PCS allowlist. `setup-pcs-reinstall-restore.sh --network TRUSTED_DIRECTORY` restores saved
 Wi-Fi profiles and the complete VPN policy/key material from an explicitly
 selected, decrypted, root-owned `0700` backup. `--api TRUSTED_DIRECTORY`
 restores the original Android TLS certificate/key and pairing records and
-activates the validated API after its prerequisites are installed. Different
-live files are never overwritten. Base setup runs both phases when
-`PCS_REINSTALL_STATE_DIR` is selected; fresh installs leave it blank. See
+activates the validated API after its prerequisites are installed.
+`--private TRUSTED_DIRECTORY` replaces only allowlisted generated identities
+and credential stores after their owning software is freshly installed. It
+keeps APRS engines disabled. Base setup runs all phases when
+`PCS_REINSTALL_ARCHIVE` or `PCS_REINSTALL_STATE_DIR` is selected; fresh installs
+leave both blank. See
 `docs/full-stack-reinstall.md` for ordering and acceptance limits.
 
 # Uplink manager
@@ -1127,6 +1133,11 @@ live files are never overwritten. Base setup runs both phases when
 `--interface enx... --mode auto` explicitly configures the optional USB WAN.
 `--check` is read-only. `pcs_uplink_manager.py` owns health-based selection and
 since-boot WAN accounting; `pcs_uplink_setup.py` implements repeatable setup.
+The base installer's `COMMISSIONED` mode sets `PCS_STARLINK_AUTODETECT=yes`.
+That setting adopts exactly one eligible non-LAN Ethernet adapter by permanent
+MAC; zero or multiple candidates abort without changing the uplink
+configuration. Set `PCS_STARLINK_MAC` explicitly
+when the appliance has more than one eligible Ethernet WAN adapter.
 See [configuration and migration](../docs/uplink-manager.md) and
 [testing](../docs/testing-uplinks.md). Never select `eth0` as WAN.
 

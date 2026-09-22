@@ -39,7 +39,7 @@ class SetupPcsBaseTests(unittest.TestCase):
             self.source,
         )
         self.assertIn(
-            'if [[ "${PCS_SETUP_PISTAR}" == "yes" ]]; then',
+            'if [[ "${PCS_SETUP_PISTAR}" == "yes" && "${PCS_PISTAR_PAIR}" != "no" ]]; then',
             self.source,
         )
 
@@ -146,6 +146,34 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertLess(control_panel, buzzer)
         self.assertLess(buzzer, final_status)
 
+    def test_power_monitor_can_finish_across_required_i2c_reboot(self):
+        power = POWER_SETUP_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('PCS_ALLOW_REBOOT_DEFER:-no', power)
+        self.assertIn('systemctl enable pcs-power-monitor.service', power)
+        self.assertIn('run ./scripts/pcs-self-test.sh to complete hardware validation', self.source)
+
+    def test_installer_does_not_change_tracked_source_modes(self):
+        self.assertNotIn('chmod +x "${script}"', self.source)
+        self.assertNotIn('chmod +x web/pcs-control-panel', self.source)
+
+    def test_exact_recovery_preserves_admin_credential_without_prompt(self):
+        control = (ROOT / "scripts" / "setup-pcs-control-panel.sh").read_text(encoding="utf-8")
+        self.assertIn('PCS_PRESERVE_ADMIN_PASSWORD:-no', control)
+        self.assertIn('PCS_PRESERVE_ADMIN_PASSWORD=yes ./scripts/setup-pcs-control-panel.sh', self.source)
+
+    def test_interrupted_archive_recovery_does_not_persist_plaintext_runtime_path(self):
+        self.assertIn('/run/pcs-reinstall.*) printf "PCS_REINSTALL_STATE_DIR=%q\\n" ""', self.source)
+        self.assertIn('[[ -n "${PCS_REINSTALL_ARCHIVE}" ]] && recovery_directory_default=""', self.source)
+        extraction = self.source.index('PCS_REINSTALL_STATE_DIR="${PCS_REINSTALL_RUNTIME_DIR}"')
+        completion = self.source.index('PCS_REINSTALL_ARCHIVE=""', extraction)
+        self.assertGreater(completion, self.source.index('setup-pcs-reinstall-restore.sh --api', extraction))
+
+    def test_exact_aprs_reboot_stage_persists_active_install_state(self):
+        marker = self.source.index('[[ -e /run/pcs-aprs-reboot-required ]]')
+        block = self.source[marker:marker + 240]
+        self.assertIn('PCS_SETUP_APRS="yes"', block)
+        self.assertIn('write_install_config', block)
+
     def test_aprs_identity_and_passcode_are_collected_without_persisting_secret(self):
         self.assertIn('ask_value "APRS base callsign"', self.source)
         self.assertIn('ask_choice "APRS SSID"', self.source)
@@ -182,6 +210,40 @@ class SetupPcsBaseTests(unittest.TestCase):
         success = self.source.rindex('PCS one-command installation completed successfully.')
         self.assertLess(failure_gate, success)
 
+    def test_commissioned_rebuild_mode_restores_local_hardware_without_secrets(self):
+        self.assertIn('COMMISSIONED - Rebuild this PCS hardware profile', self.source)
+        self.assertIn('PCS_SETUP_MODE="COMMISSIONED"', self.source)
+        commissioned = self.source.index('        COMMISSIONED)')
+        defaults = self.source.index('        DEFAULTS)', commissioned)
+        block = self.source[commissioned:defaults]
+        for expected in (
+            'PCS_CELLULAR_FALLBACK_MODE="wifi-fallback"',
+            'PCS_UPLINK_MODE="auto"',
+            'PCS_SETUP_WWAN_GPS="yes"',
+            'PCS_SETUP_GPSD_LAN="yes"',
+            'PCS_SETUP_APRS="staged"',
+            'PCS_SETUP_MESHTASTIC="staged"',
+            'PCS_POWER_PROFILE="commissioned-pcs"',
+            'PCS_SETUP_STARLINK_TELEMETRY="yes"',
+            'PCS_STARLINK_AUTODETECT="yes"',
+        ):
+            self.assertIn(expected, block)
+        self.assertIn('PCS_SETUP_WIREGUARD="no"', block)
+        self.assertIn('PCS_SETUP_PISTAR="yes"', block)
+        self.assertIn('PCS_PISTAR_PAIR="no"', block)
+        self.assertNotIn('PCS_APRS_IS_PASSCODE=', block)
+
+    def test_starlink_telemetry_is_an_explicit_repeatable_installer_choice(self):
+        self.assertIn('PCS_SETUP_STARLINK_TELEMETRY="${PCS_SETUP_STARLINK_TELEMETRY:-no}"', self.source)
+        self.assertIn('printf "PCS_SETUP_STARLINK_TELEMETRY=%q\\n"', self.source)
+        self.assertIn('setup-starlink-telemetry.sh --install', self.source)
+
+    def test_commissioned_uplink_detection_is_fail_closed(self):
+        source = (ROOT / "scripts" / "pcs_uplink_setup.py").read_text(encoding="utf-8")
+        self.assertIn("env.get('PCS_STARLINK_AUTODETECT'", source)
+        self.assertIn("multiple Ethernet WAN candidates found", source)
+        self.assertIn("no non-LAN Ethernet WAN candidate found", source)
+
 
 class PowerSetupTests(unittest.TestCase):
     def test_power_install_enables_bounded_persistent_diagnostics(self):
@@ -210,7 +272,10 @@ class ReinstallStateTests(unittest.TestCase):
         self.assertIn('removed the incomplete archive', source)
         self.assertIn('Encrypted archive verification failed', source)
         self.assertIn('tar -tzf - >/dev/null', source)
+        self.assertIn('find -P "${path}" -xdev', source)
+        self.assertIn('--no-recursion', source)
         self.assertIn('sudo chmod 0600 "${archive}"', source)
+        self.assertIn('rm -f -- "${list_file:-}"', source)
         self.assertIn('digest="$(sudo sha256sum "${archive}"', source)
         self.assertIn('etc/pcs', source)
         self.assertIn('etc/wireguard', source)
@@ -219,7 +284,8 @@ class ReinstallStateTests(unittest.TestCase):
         self.assertIn('etc/NetworkManager/system-connections', source)
         self.assertIn('var/lib/samba/private', source)
         self.assertIn('var/lib/bluetooth', source)
-        self.assertNotIn('etc/shadow', source)
+        self.assertIn('etc/shadow', source)
+        self.assertIn('pi account password hash', source)
 
 
 if __name__ == "__main__":

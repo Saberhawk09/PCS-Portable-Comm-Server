@@ -134,6 +134,8 @@ sudo chmod 0640 "${SESSION_KEY_FILE}"
 CONFIGURE_ADMIN_PASSWORD=0
 if [[ "${RESET_ADMIN_PASSWORD}" -eq 1 || ! -s "${ADMIN_FILE}" ]]; then
     CONFIGURE_ADMIN_PASSWORD=1
+elif [[ "${PCS_PRESERVE_ADMIN_PASSWORD:-no}" == "yes" ]]; then
+    echo "Preserving the recovered PCS administrator credential."
 elif [[ -t 0 ]]; then
     echo
     read -r -p "A PCS admin password is already configured. Change it now? [y/N] " CHANGE_ADMIN_REPLY

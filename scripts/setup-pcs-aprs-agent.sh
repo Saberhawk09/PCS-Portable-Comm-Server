@@ -85,6 +85,7 @@ EOF
 }
 
 validate_live_mapping() {
+    local allow_inactive="${1:-no}"
     if [[ "${PCS_APRS_AGENT_ENABLED}" != "yes" ]]; then
         echo "ERROR: PCS_APRS_AGENT_ENABLED is not yes." >&2
         return 1
@@ -105,7 +106,7 @@ validate_live_mapping() {
         echo "ERROR: APRS Agent RF access requires the guarded commissioned TX profile." >&2
         return 1
     fi
-    if ! systemctl is-active --quiet direwolf.service; then
+    if [[ "${allow_inactive}" != "yes" ]] && ! systemctl is-active --quiet direwolf.service; then
         echo "ERROR: direwolf.service must be active before the APRS agent is installed or started." >&2
         return 1
     fi
@@ -129,6 +130,7 @@ validate_live_mapping() {
 }
 
 install_agent() {
+    local stage_only="${1:-no}"
     local config_file
     [[ "${EUID}" -ne 0 ]] || { echo "ERROR: run as the normal PCS user, not root." >&2; return 1; }
     for source in "${AGENT_SRC}" "${SERVICE_SRC}" "${DOC_SRC}"; do
@@ -137,7 +139,7 @@ install_agent() {
     if ! sudo -n true 2>/dev/null; then
         sudo -v
     fi
-    validate_live_mapping
+    validate_live_mapping "${stage_only}"
     TEMP_DIR="$(mktemp -d)"
     config_file="${TEMP_DIR}/aprs-agent.conf"
     render_config >"${config_file}"
@@ -148,9 +150,14 @@ install_agent() {
     sudo install -o root -g root -m 0644 "${DOC_SRC}" "${DOC_DST}"
     sudo install -o root -g root -m 0644 "${config_file}" "${CONFIG_DST}"
     sudo systemctl daemon-reload
-    sudo systemctl enable --now pcs-aprs-agent.service
-    sudo systemctl is-active --quiet pcs-aprs-agent.service
-    echo "PCS APRS Agent installed and active; Dire Wolf remains authoritative."
+    if [[ "${stage_only}" == "yes" ]]; then
+        sudo systemctl enable pcs-aprs-agent.service
+        echo "PCS APRS Agent installed and enabled for the required reboot."
+    else
+        sudo systemctl enable --now pcs-aprs-agent.service
+        sudo systemctl is-active --quiet pcs-aprs-agent.service
+        echo "PCS APRS Agent installed and active; Dire Wolf remains authoritative."
+    fi
 }
 
 check_agent() {
@@ -175,6 +182,7 @@ check_agent() {
 
 case "${1:---help}" in
     --install) install_agent ;;
+    --stage) install_agent yes ;;
     --check) check_agent ;;
     -h|--help) usage ;;
     *) usage >&2; exit 2 ;;
