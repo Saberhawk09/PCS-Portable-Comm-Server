@@ -146,6 +146,21 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertLess(control_panel, buzzer)
         self.assertLess(buzzer, final_status)
 
+    def test_power_monitor_can_finish_across_required_i2c_reboot(self):
+        power = POWER_SETUP_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('PCS_ALLOW_REBOOT_DEFER:-no', power)
+        self.assertIn('systemctl enable pcs-power-monitor.service', power)
+        self.assertIn('run ./scripts/pcs-self-test.sh to complete hardware validation', self.source)
+
+    def test_installer_does_not_change_tracked_source_modes(self):
+        self.assertNotIn('chmod +x "${script}"', self.source)
+        self.assertNotIn('chmod +x web/pcs-control-panel', self.source)
+
+    def test_exact_recovery_preserves_admin_credential_without_prompt(self):
+        control = (ROOT / "scripts" / "setup-pcs-control-panel.sh").read_text(encoding="utf-8")
+        self.assertIn('PCS_PRESERVE_ADMIN_PASSWORD:-no', control)
+        self.assertIn('PCS_PRESERVE_ADMIN_PASSWORD=yes ./scripts/setup-pcs-control-panel.sh', self.source)
+
     def test_aprs_identity_and_passcode_are_collected_without_persisting_secret(self):
         self.assertIn('ask_value "APRS base callsign"', self.source)
         self.assertIn('ask_choice "APRS SSID"', self.source)

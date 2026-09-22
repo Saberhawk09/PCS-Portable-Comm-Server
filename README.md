@@ -205,9 +205,12 @@ directory, and generated units/helpers are never restored from the archive.
 Without an archive, setup asks for a new Samba password and creates fresh
 identities. It does not log into or modify Pi-Star, the Meshtastic radio,
 OpenWrt, or Starlink.
-APRS remains stopped with RF disabled until the post-wipe hardware validations
-are recorded again. This is a repeatable software target, not a substitute for
-the cold-boot, network, RF, and physical acceptance test.
+An exact archive also restores the generated non-secret commissioning settings.
+If its complete recorded APRS audio, channel, PTT, transmit-audio, and timing
+validation set is present, the installer restores the managed Dire Wolf 1.8.1,
+audio/radio helpers, APRS Agent, and recorded RX/TX service state. Otherwise it
+fails safe with APRS stopped. This does not replace the post-reboot network, RF,
+and physical acceptance test.
 
 Create the private archive on the working PCS before wiping it:
 
@@ -221,7 +224,9 @@ credentials after their owning software has been freshly installed; it is not
 a system-image restore. Keep the archive, passphrase, and optional checksum in
 separate trusted locations.
 
-Once setup is completed, you will see a FAILS related to the RTC and other hardware/software. This is expected and fixed with a reboot.
+When boot configuration must expose I2C, the installer stages the power monitor
+for first boot and exits at an explicit reboot boundary. After reboot, run the
+self-test below; no component installer rerun is required.
 
 
 ## After Setup

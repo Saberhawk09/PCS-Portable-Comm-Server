@@ -44,5 +44,24 @@ elif [[ "${component}" == "private" ]]; then
     fi
     sudo systemctl start smbd.service bluetooth.service pcs-control-panel.service >/dev/null 2>&1 || true
     echo "Private PCS identities restored. SSH host keys, Bluetooth state, and Meshtastic transport take full effect after reboot."
-    echo "APRS engines remain disabled until hardware/RF validation is recorded again."
+    if [[ "${PCS_REINSTALL_EXACT:-no}" == "yes" \
+        && "${PCS_APRS_ENGINE:-direwolf}" == "direwolf" \
+        && "${PCS_APRS_ACTIVE_MODE:-staged}" =~ ^(rx|tx)$ \
+        && "${PCS_APRS_RX_AUDIO_VALIDATED:-no}" == "yes" \
+        && "${PCS_APRS_RADIO_CHANNEL_VALIDATED:-no}" == "yes" \
+        && "${PCS_APRS_PTT_VALIDATED:-no}" == "yes" \
+        && "${PCS_APRS_TX_AUDIO_VALIDATED:-no}" == "yes" \
+        && "${PCS_APRS_TX_TIMING_VALIDATED:-no}" == "yes" ]]; then
+        echo "Exact commissioned recovery includes the complete recorded APRS validation set."
+        sudo systemctl disable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
+        sudo systemctl enable --now pcs-sa818.service pcs-aprs-audio.service pcs-aprs-kiss-firewall.service
+        sudo systemctl enable --now direwolf.service
+        if [[ "${PCS_APRS_AGENT_ENABLED:-no}" == "yes" ]]; then
+            bash "${REPO_DIR}/scripts/setup-pcs-aprs-agent.sh" --install
+        fi
+        echo "Restored the recorded ${PCS_APRS_ACTIVE_MODE} Dire Wolf service state."
+    else
+        sudo systemctl enable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
+        echo "APRS engines remain disabled because exact recovery or the complete hardware/RF validation record was not present."
+    fi
 fi

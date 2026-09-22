@@ -180,7 +180,10 @@ private archive it stages Dire Wolf and Meshtastic with services/RF disabled,
 does not restore credentials, and requires a new Samba password. When the
 single encrypted reinstall archive is supplied, the software is still freshly
 installed first; allowlisted credentials and identities are restored afterward.
-APRS engines remain disabled until physical/RF validation is recorded again.
+An exact archive restores the saved non-secret commissioned settings through a
+strict non-executing parser. A complete recorded APRS validation set restores
+the managed Dire Wolf, audio/radio helpers, APRS Agent, and saved RX/TX service
+state; an incomplete record leaves RF disabled.
 
 Answer its prompts interactively. Do not run individual component setup scripts
 first. A failure or skipped selected component is an installer failure, even if
@@ -514,7 +517,10 @@ restores SSH host/client keys, Samba credential databases, Bluetooth bonds,
 control-panel authentication, backup credentials, Pi-Star shutdown pairing,
 Meshtastic transport/broker secrets, Starlink pairing state, APRS-IS protected
 configuration, and optional private repository material. Generated services,
-helpers, firewall scripts, and hardware-validation evidence are not restored.
+helpers, and firewall scripts are rebuilt from source. The generated install
+settings are parsed as data (never sourced directly from the archive) so audio
+levels, APRS timing, validation flags, agent policy, and service intent can be
+reconciled after restore.
 The `pi` account password hash is restored from `/etc/shadow` without importing
 any other account entry. Raw Android bearer tokens do not exist in recoverable
 server state; restoring their hashes preserves already-paired clients, while a

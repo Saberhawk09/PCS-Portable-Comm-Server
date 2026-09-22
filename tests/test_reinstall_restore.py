@@ -81,6 +81,24 @@ class RecoveryTests(unittest.TestCase):
         self.assertNotIn("etc/pcs/power-monitor.json", paths)
         self.assertNotIn("etc/samba/smb.conf", paths)
 
+    def test_saved_install_settings_are_parsed_without_shell_execution(self):
+        self.write(
+            "home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf",
+            "PCS_APRS_ACTIVE_MODE=tx\nPCS_APRS_CAPTURE_LEVEL=69%\n",
+        )
+        self.assertEqual(restore.recovered_settings(self.root)["PCS_APRS_ACTIVE_MODE"], "tx")
+        self.write(
+            "home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf",
+            "PCS_APRS_ACTIVE_MODE=$(touch /tmp/pcs-unsafe)\n",
+        )
+        with self.assertRaises(ValueError):
+            restore.recovered_settings(self.root)
+
+    def test_private_admin_verifier_is_readable_by_pi_group(self):
+        self.write("etc/pcs-control-panel/admin.json", "{}")
+        plan = restore.plan_restore(self.root, "private")
+        self.assertIn(("etc/pcs-control-panel/admin.json", 0o640, "pi"), plan)
+
     def test_shadow_restore_reads_only_the_pi_hash(self):
         self.write("etc/shadow", "root:root-hash:1:2:3\npi:$6$pcs$hash:1:2:3\nservice:other:1:2:3\n")
         self.assertEqual(restore.pi_password_hash(self.root), "$6$pcs$hash")
@@ -95,6 +113,7 @@ class RecoveryTests(unittest.TestCase):
 
     def test_exact_bundle_requires_all_commissioned_identity_families(self):
         for relative in (
+            "home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf",
             "etc/pcs-control-panel/admin.json",
             "etc/pcs-backup/config.json",
             "etc/pcs/meshtastic.env",
@@ -166,11 +185,14 @@ class RecoveryTests(unittest.TestCase):
     def test_base_recovery_orders_network_before_vpn_and_api_after_panel(self):
         source = (ROOT / "scripts/setup-pcs-base.sh").read_text()
         self.assertLess(source.index('setup-pcs-reinstall-restore.sh --network'), source.index('if [[ "${PCS_SETUP_WIREGUARD}" == "yes" ]]; then\n    WIREGUARD_PROFILE_PATH'))
+        self.assertLess(source.index('setup-pcs-reinstall-restore.sh --private'), source.index('run_step "Install PCS Control Panel"'))
         self.assertLess(source.index('run_step "Install PCS Control Panel"'), source.index('setup-pcs-reinstall-restore.sh --api'))
-        self.assertLess(source.index('setup-pcs-reinstall-restore.sh --api'), source.index('setup-pcs-reinstall-restore.sh --private'))
         self.assertLess(source.index('setup-pcs-reinstall-restore.sh --private'), source.index('STEP: PCS self-test'))
         self.assertIn('pcs-reinstall-state.sh --extract', source)
         self.assertIn('PCS_REINSTALL_EXACT="yes"', source)
+        restore_script = (ROOT / "scripts/setup-pcs-reinstall-restore.sh").read_text()
+        self.assertIn('pcs-sa818.service pcs-aprs-audio.service pcs-aprs-kiss-firewall.service', restore_script)
+        self.assertIn('setup-pcs-aprs-agent.sh" --install', restore_script)
         self.assertIn('[[ "${PCS_WIREGUARD_RESTORED}" != "yes" ]] && ! PCS_WIREGUARD_IMPORT_REPLACE_CONFIRM', source)
 
 

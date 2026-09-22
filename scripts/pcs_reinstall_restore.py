@@ -13,6 +13,16 @@ import shlex
 import stat
 
 
+INSTALL_CONFIG = "home/pi/Projects/PCS-Portable-Comm-Server/config/pcs-install.conf"
+SAFE_SETTING = re.compile(r"PCS_[A-Z0-9_]+")
+SECRET_SETTING_PARTS = ("PASSWORD", "PASSCODE", "PRIVATE_KEY", "TOKEN", "SECRET")
+IGNORED_RECOVERY_SETTINGS = {"PCS_REINSTALL_ARCHIVE", "PCS_REINSTALL_STATE_DIR"}
+FORBIDDEN_CONTROL_SETTINGS = {
+    "PCS_ASSUME_YES", "PCS_EXACT_RECOVERY", "PCS_INSTALL_CONFIG",
+    "PCS_PRESERVE_ADMIN_PASSWORD", "PCS_REINSTALL_EXACT",
+}
+
+
 def source_file(root: Path, relative: str) -> Path:
     path = root / relative
     for part in (path, *path.parents):
@@ -60,6 +70,44 @@ def restore_pi_password(root: Path, destination: Path) -> bool:
     os.chown(temporary, info.st_uid, info.st_gid)
     os.replace(temporary, target)
     return True
+
+
+def recovered_settings(root: Path) -> dict[str, str]:
+    """Parse the generated install config without executing shell content."""
+    path = source_file(root, INSTALL_CONFIG)
+    values: dict[str, str] = {}
+    for number, raw in enumerate(path.read_text().splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.fullmatch(r"([A-Z0-9_]+)=(.*)", line)
+        if not match or not SAFE_SETTING.fullmatch(match[1]):
+            raise ValueError(f"unsafe install setting on line {number}")
+        name, encoded = match.groups()
+        if name in IGNORED_RECOVERY_SETTINGS:
+            continue
+        if name in FORBIDDEN_CONTROL_SETTINGS:
+            raise ValueError(f"installer control setting is not recoverable: {name}")
+        if any(part in name for part in SECRET_SETTING_PARTS):
+            raise ValueError(f"secret must not be stored in install settings: {name}")
+        parsed = shlex.split(encoded, posix=True)
+        if len(parsed) > 1 or name in values:
+            raise ValueError(f"ambiguous install setting: {name}")
+        values[name] = parsed[0] if parsed else ""
+    if not values:
+        raise ValueError("saved install settings are empty")
+    return values
+
+
+def write_recovered_settings(root: Path, output: Path) -> int:
+    if not output.is_absolute() or output.exists() or output.is_symlink():
+        raise ValueError("settings output must be a new absolute path")
+    values = recovered_settings(root)
+    fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        for name, value in sorted(values.items()):
+            stream.write(f"{name}={shlex.quote(value)}\n")
+    return len(values)
 
 
 def plan_restore(root: Path, component: str) -> list[tuple[str, int, str]]:
@@ -125,7 +173,7 @@ def plan_restore(root: Path, component: str) -> list[tuple[str, int, str]]:
             optional(path.relative_to(root).as_posix(), 0o644 if path.name.endswith(".pub") else 0o600)
         optional_tree("home/pi/.ssh", 0o600, "pi")
         optional_tree("home/pi/Projects/PCS-Portable-Comm-Server/private-config", 0o600, "pi")
-        optional_tree("etc/pcs-control-panel")
+        optional_tree("etc/pcs-control-panel", 0o640, "pi")
         optional("etc/pcs-backup/config.json")
         optional("etc/pcs/meshtastic.env")
         optional("etc/pcs/meshtastic-mqtt.env")
@@ -139,6 +187,7 @@ def plan_restore(root: Path, component: str) -> list[tuple[str, int, str]]:
         optional("var/lib/alsa/asound.state")
     elif component == "exact":
         required = (
+            INSTALL_CONFIG,
             "etc/pcs-control-panel/admin.json",
             "etc/pcs-backup/config.json",
             "etc/pcs/meshtastic.env",
@@ -228,6 +277,10 @@ def restore(root: Path, component: str, destination: Path = Path("/"), replace: 
     if component == "private":
         import pwd
         pi = pwd.getpwnam("pi")
+        control_panel = destination / "etc/pcs-control-panel"
+        if control_panel.exists():
+            os.chown(control_panel, 0, pi.pw_gid)
+            os.chmod(control_panel, 0o750)
         for directory in (destination / "home/pi/.ssh", destination / "home/pi/Projects/PCS-Portable-Comm-Server/private-config"):
             if directory.exists():
                 for child in (directory, *(path for path in directory.rglob("*") if path.is_dir())):
@@ -243,6 +296,7 @@ def main() -> int:
     parser.add_argument("directory", type=Path)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--replace", action="store_true", help="Replace generated identity files after exact-bundle validation")
+    parser.add_argument("--settings-output", type=Path, help="Write safely parsed PCS settings to a new root-only file")
     args = parser.parse_args()
     try:
         root = args.directory
@@ -253,8 +307,14 @@ def main() -> int:
             raise ValueError("recovery directory must be root-owned mode 0700")
         if args.check and args.replace:
             raise ValueError("--replace cannot be combined with --check")
-        count = len(plan_restore(root, args.component)) if args.check else restore(root, args.component, replace=args.replace)
-        print(f"Recovery {args.component}: {count} files {'validated' if args.check else 'restored'}")
+        if args.settings_output:
+            if args.component != "exact" or args.check or args.replace:
+                raise ValueError("--settings-output requires exact recovery without --check/--replace")
+            count = write_recovered_settings(root, args.settings_output)
+            print(f"Recovery settings: {count} values validated")
+        else:
+            count = len(plan_restore(root, args.component)) if args.check else restore(root, args.component, replace=args.replace)
+            print(f"Recovery {args.component}: {count} files {'validated' if args.check else 'restored'}")
     except (OSError, ValueError, KeyError, configparser.Error) as exc:
         parser.exit(1, f"ERROR: {exc}\n")
     return 0

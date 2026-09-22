@@ -60,6 +60,8 @@ PCS_WIREGUARD_HOME_NETWORK="${PCS_WIREGUARD_HOME_NETWORK:-}"
 PCS_REINSTALL_STATE_DIR="${PCS_REINSTALL_STATE_DIR:-}"
 PCS_REINSTALL_ARCHIVE="${PCS_REINSTALL_ARCHIVE:-}"
 PCS_WIREGUARD_RESTORED="no"
+PCS_EXACT_RECOVERY="no"
+PCS_REBOOT_REQUIRED="no"
 PCS_SETUP_APRS="${PCS_SETUP_APRS:-ask}"
 PCS_APRS_ENGINE="${PCS_APRS_ENGINE:-direwolf}"
 PCS_GRAYWOLF_HTTP_ADDRESS="${PCS_GRAYWOLF_HTTP_ADDRESS:-10.42.0.1}"
@@ -957,6 +959,20 @@ if [[ -n "${PCS_REINSTALL_ARCHIVE}" ]]; then
     PCS_REINSTALL_EXACT="yes"
     export PCS_REINSTALL_STATE_DIR PCS_REINSTALL_EXACT
     sudo python3 ./scripts/pcs_reinstall_restore.py exact "${PCS_REINSTALL_STATE_DIR}" --check
+    RECOVERED_SETTINGS_FILE="${PCS_REINSTALL_RUNTIME_DIR}/pcs-install-settings.sh"
+    sudo python3 ./scripts/pcs_reinstall_restore.py exact "${PCS_REINSTALL_STATE_DIR}" \
+        --settings-output "${RECOVERED_SETTINGS_FILE}"
+    sudo chown "$(id -u):$(id -g)" "${RECOVERED_SETTINGS_FILE}"
+    # This file was re-emitted by the strict Python parser above. It contains
+    # only non-secret PCS_* scalar assignments and is safe to source.
+    set -a
+    # shellcheck source=/dev/null
+    source "${RECOVERED_SETTINGS_FILE}"
+    set +a
+    PCS_EXACT_RECOVERY="yes"
+    PCS_REINSTALL_STATE_DIR="${PCS_REINSTALL_RUNTIME_DIR}"
+    PCS_REINSTALL_ARCHIVE=""
+    export PCS_EXACT_RECOVERY PCS_REINSTALL_STATE_DIR PCS_REINSTALL_ARCHIVE
     write_install_config
 fi
 
@@ -1000,8 +1016,12 @@ run_optional_step() {
 ensure_executable() {
     local script="$1"
 
-    if [[ -f "${script}" ]]; then
-        chmod +x "${script}"
+    if [[ -x "${script}" || ( "${script}" == *.py && -f "${script}" ) ]]; then
+        return 0
+    elif [[ -f "${script}" ]]; then
+        echo "ERROR: Tracked installer file is not executable: ${script}" >&2
+        echo "Repair the source checkout instead of mutating it during installation." >&2
+        exit 1
     else
         echo "ERROR: Missing script: ${script}"
         exit 1
@@ -1064,12 +1084,6 @@ ensure_executable "scripts/pcs-self-test.sh"
 ensure_executable "scripts/pcs-status.sh"
 ensure_executable "scripts/pcs-reinstall-state.sh"
 
-if [[ -d "web/pcs-control-panel" ]]; then
-    chmod +x web/pcs-control-panel/*.py 2>/dev/null || true
-fi
-
-run_step "Install dependencies" "PCS_DEFER_MODEMMANAGER_START=1 ./scripts/install-dependencies.sh"
-
 if [[ -n "${PCS_REINSTALL_STATE_DIR}" ]]; then
     bash ./scripts/setup-pcs-reinstall-restore.sh --network "${PCS_REINSTALL_STATE_DIR}"
     if sudo test -f "${PCS_REINSTALL_STATE_DIR}/etc/pcs/wireguard-management.conf"; then
@@ -1077,6 +1091,22 @@ if [[ -n "${PCS_REINSTALL_STATE_DIR}" ]]; then
         PCS_WIREGUARD_RESTORED="yes"
     fi
 fi
+
+prefer_installer_wifi_route() {
+    local wifi_interface wifi_gateway default_interface
+    command -v nmcli >/dev/null 2>&1 || return 0
+    command -v ip >/dev/null 2>&1 || return 0
+    default_interface="$(ip -4 route show default | awk 'NR == 1 { for (i=1; i<=NF; i++) if ($i == "dev") print $(i+1) }')"
+    wifi_interface="$(nmcli -t -f DEVICE,TYPE,STATE device status | awk -F: '$2 == "wifi" && $3 == "connected" {print $1; exit}')"
+    [[ -n "${wifi_interface}" && "${default_interface}" != "${wifi_interface}" ]] || return 0
+    wifi_gateway="$(nmcli -g IP4.GATEWAY device show "${wifi_interface}" | head -n1)"
+    [[ -n "${wifi_gateway}" ]] || return 0
+    echo "Temporarily preferring connected Wi-Fi ${wifi_interface} for installer downloads."
+    sudo ip -4 route replace default via "${wifi_gateway}" dev "${wifi_interface}" metric 25
+}
+
+prefer_installer_wifi_route
+run_step "Install dependencies" "PCS_DEFER_MODEMMANAGER_START=1 ./scripts/install-dependencies.sh"
 
 run_step "Configure client LAN/AP handoff on eth0" "./scripts/setup-router-wan-share.sh"
 
@@ -1497,7 +1527,14 @@ if [[ "${power_monitor_answer}" == "yes" ]]; then
         export PCS_POWER_PROFILE
         write_install_config
     fi
-    run_optional_step "Install dual INA226 power monitoring" "PCS_POWER_PROFILE=${PCS_POWER_PROFILE} ./scripts/setup-power-audio.sh --install-power"
+    if [[ ! -e /dev/i2c-1 ]]; then
+        PCS_REBOOT_REQUIRED="yes"
+        run_optional_step "Stage dual INA226 power monitoring for first boot" \
+            "PCS_ALLOW_REBOOT_DEFER=yes PCS_POWER_PROFILE=${PCS_POWER_PROFILE} ./scripts/setup-power-audio.sh --install-power"
+        echo "INA226 runtime validation is deferred until the required reboot exposes /dev/i2c-1."
+    else
+        run_optional_step "Install dual INA226 power monitoring" "PCS_POWER_PROFILE=${PCS_POWER_PROFILE} ./scripts/setup-power-audio.sh --install-power"
+    fi
 else
     echo "Skipping dual INA226 power monitoring."
 fi
@@ -1661,7 +1698,20 @@ else
     echo "Skipping Cockpit/systemd restart button install."
 fi
 
-run_step "Install PCS Control Panel" "./scripts/setup-pcs-control-panel.sh"
+if [[ -n "${PCS_REINSTALL_STATE_DIR}" ]]; then
+    # Restore credentials before installing the panel so it validates and keeps
+    # the recovered verifier instead of prompting for a throwaway password.
+    bash ./scripts/setup-pcs-reinstall-restore.sh --private "${PCS_REINSTALL_STATE_DIR}"
+    if [[ -x /usr/local/sbin/pcs-backup-config ]]; then
+        sudo /usr/local/sbin/pcs-backup-config initialize
+    fi
+fi
+
+if [[ "${PCS_EXACT_RECOVERY}" == "yes" ]]; then
+    run_step "Install PCS Control Panel" "PCS_PRESERVE_ADMIN_PASSWORD=yes ./scripts/setup-pcs-control-panel.sh"
+else
+    run_step "Install PCS Control Panel" "./scripts/setup-pcs-control-panel.sh"
+fi
 
 # A commissioned Mini is part of normal upgrades. Preserve its private pairing
 # and enabled state; generic appliances without this optional hardware stay inert.
@@ -1671,7 +1721,6 @@ fi
 
 if [[ -n "${PCS_REINSTALL_STATE_DIR}" ]]; then
     bash ./scripts/setup-pcs-reinstall-restore.sh --api "${PCS_REINSTALL_STATE_DIR}"
-    bash ./scripts/setup-pcs-reinstall-restore.sh --private "${PCS_REINSTALL_STATE_DIR}"
     if sudo grep -q '^PCS_MESHTASTIC_PORT=/dev/ttyACM0$' /etc/pcs/meshtastic.env \
         && sudo grep -Eq '^PCS_MESHTASTIC_MQTT_HOST=.+$' /etc/pcs/meshtastic.env; then
         PCS_SETUP_MESHTASTIC="yes"
@@ -1772,6 +1821,11 @@ if (( OPTIONAL_STEP_FAILURES > 0 )); then
 fi
 if (( FINAL_SELF_TEST_PASSED == 0 )); then
     echo "ERROR: Final PCS self-test did not pass." >&2
+fi
+if [[ "${PCS_REBOOT_REQUIRED}" == "yes" && "${OPTIONAL_STEP_FAILURES}" -eq 0 ]]; then
+    echo "PCS installation is paused at a required reboot boundary." >&2
+    echo "Reboot, then run ./scripts/pcs-self-test.sh to complete hardware validation." >&2
+    exit 2
 fi
 if (( OPTIONAL_STEP_FAILURES > 0 || FINAL_SELF_TEST_PASSED == 0 )); then
     echo "PCS base setup is incomplete; correct the reported issue and rerun this one command." >&2
