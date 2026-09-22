@@ -168,6 +168,12 @@ class SetupPcsBaseTests(unittest.TestCase):
         completion = self.source.index('PCS_REINSTALL_ARCHIVE=""', extraction)
         self.assertGreater(completion, self.source.index('setup-pcs-reinstall-restore.sh --api', extraction))
 
+    def test_exact_aprs_reboot_stage_persists_active_install_state(self):
+        marker = self.source.index('[[ -e /run/pcs-aprs-reboot-required ]]')
+        block = self.source[marker:marker + 240]
+        self.assertIn('PCS_SETUP_APRS="yes"', block)
+        self.assertIn('write_install_config', block)
+
     def test_aprs_identity_and_passcode_are_collected_without_persisting_secret(self):
         self.assertIn('ask_value "APRS base callsign"', self.source)
         self.assertIn('ask_choice "APRS SSID"', self.source)
