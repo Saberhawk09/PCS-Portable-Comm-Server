@@ -2,6 +2,12 @@
 
 set -Eeuo pipefail
 
+# Never let a failed or still-starting gateway inherit a connected status from
+# the previous boot. The gateway recreates this file after it has established
+# the current radio and MQTT sessions.
+status_file="${PCS_MESHTASTIC_STATUS_FILE:-/var/lib/pcs-meshtastic/status.json}"
+rm -f -- "${status_file}"
+
 port="${PCS_MESHTASTIC_PORT:-}"
 [[ -n "${port}" ]] || exit 0
 [[ "${port}" == "/dev/ttyACM0" ]] || {

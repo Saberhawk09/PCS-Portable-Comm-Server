@@ -321,6 +321,8 @@ class MeshtasticStatusTests(unittest.TestCase):
         self.assertIn("power_retries", bluetooth_ready_script)
         self.assertIn("/proc/uptime", radio_ready_script)
         self.assertIn("minimum_boot_seconds=110", radio_ready_script)
+        self.assertIn('PCS_MESHTASTIC_STATUS_FILE:-/var/lib/pcs-meshtastic/status.json', radio_ready_script)
+        self.assertIn('rm -f -- "${status_file}"', radio_ready_script)
         self.assertIn("ExecStartPre=/usr/local/sbin/pcs-meshtastic-ready", service)
         self.assertIn("python3-venv rfkill", setup)
         self.assertIn("BT ready unit:", setup)

@@ -4,6 +4,14 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.8] - 2026-09-22
+
+### Fixed
+
+- Clear stale Meshtastic gateway status before each boot/start readiness check,
+  so a failed or warming-up radio cannot be reported as connected using status
+  inherited from the previous boot.
+
 ## [1.9.7] - 2026-09-22
 
 - Add an exact commissioned reinstall path that rebuilds PCS from source and
@@ -776,7 +784,8 @@ The original voltage guard's 12V/24V detection and threshold behavior are retain
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.7...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.8...HEAD
+[1.9.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.7...v1.9.8
 [1.9.7]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.6...v1.9.7
 [1.9.6]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.5...v1.9.6
 [1.9.5]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.4...v1.9.5
