@@ -191,7 +191,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn('pcs-reinstall-state.sh --extract', source)
         self.assertIn('PCS_REINSTALL_EXACT="yes"', source)
         restore_script = (ROOT / "scripts/setup-pcs-reinstall-restore.sh").read_text()
-        self.assertIn('pcs-sa818.service pcs-aprs-audio.service pcs-aprs-kiss-firewall.service', restore_script)
+        self.assertIn('setup-direwolf-aprs.sh" --restore-exact-runtime', restore_script)
         self.assertIn('setup-pcs-aprs-agent.sh" --install', restore_script)
         self.assertIn('[[ "${PCS_WIREGUARD_RESTORED}" != "yes" ]] && ! PCS_WIREGUARD_IMPORT_REPLACE_CONFIRM', source)
 

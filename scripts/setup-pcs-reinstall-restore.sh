@@ -53,8 +53,8 @@ elif [[ "${component}" == "private" ]]; then
         && "${PCS_APRS_TX_AUDIO_VALIDATED:-no}" == "yes" \
         && "${PCS_APRS_TX_TIMING_VALIDATED:-no}" == "yes" ]]; then
         echo "Exact commissioned recovery includes the complete recorded APRS validation set."
+        PCS_APRS_EXACT_RESTORE_CONFIRM=yes bash "${REPO_DIR}/scripts/setup-direwolf-aprs.sh" --restore-exact-runtime
         sudo systemctl disable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
-        sudo systemctl enable --now pcs-sa818.service pcs-aprs-audio.service pcs-aprs-kiss-firewall.service
         sudo systemctl enable --now direwolf.service
         if [[ "${PCS_APRS_AGENT_ENABLED:-no}" == "yes" ]]; then
             bash "${REPO_DIR}/scripts/setup-pcs-aprs-agent.sh" --install
