@@ -161,6 +161,13 @@ class SetupPcsBaseTests(unittest.TestCase):
         self.assertIn('PCS_PRESERVE_ADMIN_PASSWORD:-no', control)
         self.assertIn('PCS_PRESERVE_ADMIN_PASSWORD=yes ./scripts/setup-pcs-control-panel.sh', self.source)
 
+    def test_interrupted_archive_recovery_does_not_persist_plaintext_runtime_path(self):
+        self.assertIn('/run/pcs-reinstall.*) printf "PCS_REINSTALL_STATE_DIR=%q\\n" ""', self.source)
+        self.assertIn('[[ -n "${PCS_REINSTALL_ARCHIVE}" ]] && recovery_directory_default=""', self.source)
+        extraction = self.source.index('PCS_REINSTALL_STATE_DIR="${PCS_REINSTALL_RUNTIME_DIR}"')
+        completion = self.source.index('PCS_REINSTALL_ARCHIVE=""', extraction)
+        self.assertGreater(completion, self.source.index('setup-pcs-reinstall-restore.sh --api', extraction))
+
     def test_aprs_identity_and_passcode_are_collected_without_persisting_secret(self):
         self.assertIn('ask_value "APRS base callsign"', self.source)
         self.assertIn('ask_choice "APRS SSID"', self.source)
