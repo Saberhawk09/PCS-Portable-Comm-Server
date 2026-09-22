@@ -962,12 +962,12 @@ if [[ -n "${PCS_REINSTALL_ARCHIVE}" ]]; then
     RECOVERED_SETTINGS_FILE="${PCS_REINSTALL_RUNTIME_DIR}/pcs-install-settings.sh"
     sudo python3 ./scripts/pcs_reinstall_restore.py exact "${PCS_REINSTALL_STATE_DIR}" \
         --settings-output "${RECOVERED_SETTINGS_FILE}"
-    sudo chown "$(id -u):$(id -g)" "${RECOVERED_SETTINGS_FILE}"
     # This file was re-emitted by the strict Python parser above. It contains
-    # only non-secret PCS_* scalar assignments and is safe to source.
+    # only non-secret PCS_* scalar assignments and is safe to source. Stream it
+    # through sudo so the decrypted recovery directory remains root-only.
     set -a
     # shellcheck source=/dev/null
-    source "${RECOVERED_SETTINGS_FILE}"
+    source <(sudo cat -- "${RECOVERED_SETTINGS_FILE}")
     set +a
     PCS_EXACT_RECOVERY="yes"
     PCS_REINSTALL_STATE_DIR="${PCS_REINSTALL_RUNTIME_DIR}"
