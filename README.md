@@ -4,29 +4,6 @@
 
 A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and multi-protocol radio interface/hotspot.
 
-PCS v1.9.4 displays WAN usage in decimal MB and fixes cellular failover by
-preserving modem-provided IP configuration during [WAN route selection](docs/uplink-manager.md).
-Manually started cellular sessions remain connected and unowned.
-
-PCS v1.9.3 records the verified [dual home-LAN HTTPS correction](docs/pcs-stats-api.md#multiple-home-lan-server-addresses):
-Ethernet `192.168.50.237` and Wi-Fi `192.168.50.236` are both valid Companion
-endpoints after importing the updated deployment certificate and pairing again.
-
-PCS v1.9.2 adds [optional Starlink telemetry](docs/starlink-telemetry.md), a dedicated
-dashboard tab, sanitized public/admin information, staged reboot coordination,
-and optional 12V/Starlink branch power monitoring. Uninstalled hardware stays
-disabled; actual Mini and sensor commissioning are still required.
-
-PCS v1.9.1 adds [generalized multi-WAN routing](docs/uplink-manager.md), optional
-Starlink/Ethernet WAN, verified Internet failover, and WAN data totals since boot.
-The Pi remains the gateway at `10.42.0.1`; Starlink hardware is optional.
-
-PCS v1.9 adds an offline [web service portal](docs/pcs-web-frontend.md) at
-`http://10.42.0.1/`. nginx serves the public interface while the existing
-authenticated Python administration stays behind it on loopback. The standard
-installer configures both layers; see the architecture guide for upgrades,
-validation and rollback.
-
 What started as an annoyance caused by Windows networking has evolved into my first end-to-end hardware and software project.
 
 ## Warning: AI-generated code
