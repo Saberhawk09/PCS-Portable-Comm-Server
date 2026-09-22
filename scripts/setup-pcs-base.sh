@@ -1708,6 +1708,7 @@ if [[ -n "${PCS_REINSTALL_STATE_DIR}" ]]; then
     # Restore credentials before installing the panel so it validates and keeps
     # the recovered verifier instead of prompting for a throwaway password.
     bash ./scripts/setup-pcs-reinstall-restore.sh --private "${PCS_REINSTALL_STATE_DIR}"
+    [[ -e /run/pcs-aprs-reboot-required ]] && PCS_REBOOT_REQUIRED="yes"
     if [[ -x /usr/local/sbin/pcs-backup-config ]]; then
         sudo /usr/local/sbin/pcs-backup-config initialize
     fi

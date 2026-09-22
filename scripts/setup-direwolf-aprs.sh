@@ -1732,6 +1732,12 @@ EOF
     sudo systemctl daemon-reload
     sudo udevadm control --reload-rules
     sudo systemctl enable pcs-sa818.service pcs-aprs-audio.service pcs-aprs-kiss-firewall.service
+    if [[ "${PCS_APRS_ALLOW_REBOOT_DEFER:-no}" == "yes" && ! -e "${PCS_APRS_RADIO_DEVICE}" ]]; then
+        sudo systemctl stop pcs-sa818.service >/dev/null 2>&1 || true
+        sudo touch /run/pcs-aprs-reboot-required
+        echo "APRS runtime helpers are installed and enabled for the required UART reboot."
+        return 0
+    fi
     sudo systemctl restart pcs-sa818.service
     sudo systemctl restart pcs-aprs-audio.service
     sudo systemctl restart pcs-aprs-kiss-firewall.service

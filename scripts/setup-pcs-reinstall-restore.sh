@@ -58,11 +58,20 @@ elif [[ "${component}" == "private" ]]; then
         && "${PCS_APRS_TX_AUDIO_VALIDATED:-no}" == "yes" \
         && "${PCS_APRS_TX_TIMING_VALIDATED:-no}" == "yes" ]]; then
         echo "Exact commissioned recovery includes the complete recorded APRS validation set."
-        PCS_APRS_EXACT_RESTORE_CONFIRM=yes bash "${REPO_DIR}/scripts/setup-direwolf-aprs.sh" --restore-exact-runtime
+        PCS_APRS_EXACT_RESTORE_CONFIRM=yes PCS_APRS_ALLOW_REBOOT_DEFER=yes \
+            bash "${REPO_DIR}/scripts/setup-direwolf-aprs.sh" --restore-exact-runtime
         sudo systemctl disable --now pcs-aprs-ptt-safe.service >/dev/null 2>&1 || true
-        sudo systemctl enable --now direwolf.service
-        if [[ "${PCS_APRS_AGENT_ENABLED:-no}" == "yes" ]]; then
-            bash "${REPO_DIR}/scripts/setup-pcs-aprs-agent.sh" --install
+        if [[ -e /run/pcs-aprs-reboot-required ]]; then
+            sudo systemctl enable direwolf.service
+            if [[ "${PCS_APRS_AGENT_ENABLED:-no}" == "yes" ]]; then
+                bash "${REPO_DIR}/scripts/setup-pcs-aprs-agent.sh" --stage
+            fi
+            echo "Restored APRS services are enabled and will start after the required UART reboot."
+        else
+            sudo systemctl enable --now direwolf.service
+            if [[ "${PCS_APRS_AGENT_ENABLED:-no}" == "yes" ]]; then
+                bash "${REPO_DIR}/scripts/setup-pcs-aprs-agent.sh" --install
+            fi
         fi
         echo "Restored the recorded ${PCS_APRS_ACTIVE_MODE} Dire Wolf service state."
     else
