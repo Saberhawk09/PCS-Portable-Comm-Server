@@ -4,6 +4,12 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Clear stale Meshtastic gateway status before each boot/start readiness check,
+  so a failed or warming-up radio cannot be reported as connected using status
+  inherited from the previous boot.
+
 ## [1.9.7] - 2026-09-22
 
 - Add an exact commissioned reinstall path that rebuilds PCS from source and
