@@ -18,8 +18,13 @@ if [[ "${PCS_REINSTALL_EXACT:-no}" == "yes" && "${component}" != "private" ]]; t
 fi
 if [[ "${component}" == "network" ]]; then
     if systemctl is-active --quiet wg-quick@wg-pcs.service; then
-        echo "ERROR: recovery must not replace an active VPN; use a fresh install." >&2
-        exit 1
+        if [[ "${PCS_REINSTALL_EXACT:-no}" == "yes" ]]; then
+            echo "Stopping the previously restored wg-pcs service for idempotent exact recovery."
+            sudo systemctl stop wg-quick@wg-pcs.service
+        else
+            echo "ERROR: recovery must not replace an active VPN; use a fresh install." >&2
+            exit 1
+        fi
     fi
     sudo python3 "${REPO_DIR}/scripts/pcs_reinstall_restore.py" network "${directory}" "${replace_args[@]}"
     # Load saved profiles without switching the uplink used by the installer.
