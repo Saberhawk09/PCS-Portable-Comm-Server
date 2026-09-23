@@ -4,6 +4,13 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Detect removable filesystems placed directly on a USB disk, not only
+  partitioned USB media, when using the dashboard replacement-drive action.
+- Remove legacy unmarked `/mnt/pcs-usb` fstab entries when configuring a
+  replacement drive so the new UUID becomes the single authoritative mount.
+
 ## [1.9.8] - 2026-09-22
 
 ### Fixed

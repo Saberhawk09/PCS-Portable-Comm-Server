@@ -121,6 +121,7 @@ if [[ ! -f /etc/fstab.pre-pcs-usb-primary ]]; then
 fi
 
 ${SUDO} sed -i '/# BEGIN PCS USB PRIMARY SHARE/,/# END PCS USB PRIMARY SHARE/d' /etc/fstab
+${SUDO} sed -i "\|[[:space:]]${USB_MOUNT}[[:space:]]|d" /etc/fstab
 
 case "${USB_TYPE}" in
     vfat)

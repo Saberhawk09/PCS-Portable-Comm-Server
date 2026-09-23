@@ -225,8 +225,14 @@ detect_usb_storage_candidates() {
     local parent_rm
     local parent_hotplug
 
-    while read -r name type fstype pkname rm hotplug tran; do
+    while read -r name; do
         [[ -n "${name}" ]] || continue
+        type="$(lsblk -dnro TYPE "${name}" 2>/dev/null || true)"
+        fstype="$(lsblk -dnro FSTYPE "${name}" 2>/dev/null || true)"
+        pkname="$(lsblk -dnro PKNAME "${name}" 2>/dev/null || true)"
+        rm="$(lsblk -dnro RM "${name}" 2>/dev/null || true)"
+        hotplug="$(lsblk -dnro HOTPLUG "${name}" 2>/dev/null || true)"
+        tran="$(lsblk -dnro TRAN "${name}" 2>/dev/null || true)"
         [[ -n "${fstype}" ]] || continue
         [[ "${name}" != /dev/mmcblk0* ]] || continue
 
@@ -248,7 +254,7 @@ detect_usb_storage_candidates() {
         if [[ "${parent_tran}" == "usb" || "${parent_rm}" == "1" || "${parent_hotplug}" == "1" ]]; then
             echo "${name}"
         fi
-    done < <(lsblk -rpno NAME,TYPE,FSTYPE,PKNAME,RM,HOTPLUG,TRAN 2>/dev/null)
+    done < <(lsblk -rpno NAME 2>/dev/null)
 }
 
 configure_detected_usb_primary() {

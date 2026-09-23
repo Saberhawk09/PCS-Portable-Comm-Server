@@ -1206,8 +1206,14 @@ USB_DEVICE=""
 USB_DEVICE_REASON=""
 
 detect_usb_storage_candidates() {
-    while read -r name type fstype pkname rm hotplug tran; do
+    while read -r name; do
         [[ -z "${name}" ]] && continue
+        type="$(lsblk -dnro TYPE "${name}" 2>/dev/null || true)"
+        fstype="$(lsblk -dnro FSTYPE "${name}" 2>/dev/null || true)"
+        pkname="$(lsblk -dnro PKNAME "${name}" 2>/dev/null || true)"
+        rm="$(lsblk -dnro RM "${name}" 2>/dev/null || true)"
+        hotplug="$(lsblk -dnro HOTPLUG "${name}" 2>/dev/null || true)"
+        tran="$(lsblk -dnro TRAN "${name}" 2>/dev/null || true)"
         [[ -z "${fstype}" ]] && continue
 
         parent_tran="${tran}"
@@ -1228,7 +1234,7 @@ detect_usb_storage_candidates() {
         if [[ "${parent_tran}" == "usb" || "${parent_rm}" == "1" || "${parent_hotplug}" == "1" ]]; then
             echo "${name}"
         fi
-    done < <(lsblk -rpno NAME,TYPE,FSTYPE,PKNAME,RM,HOTPLUG,TRAN 2>/dev/null)
+    done < <(lsblk -rpno NAME 2>/dev/null)
 }
 
 echo "Scanning for USB storage..."
