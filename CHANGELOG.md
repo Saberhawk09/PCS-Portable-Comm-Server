@@ -4,6 +4,15 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [1.9.9] - 2026-09-23
+
+### Fixed
+
+- Detect removable filesystems placed directly on a USB disk, not only
+  partitioned USB media, when using the dashboard replacement-drive action.
+- Remove legacy unmarked `/mnt/pcs-usb` fstab entries when configuring a
+  replacement drive so the new UUID becomes the single authoritative mount.
+
 ## [1.9.8] - 2026-09-22
 
 ### Fixed
@@ -784,7 +793,8 @@ The original voltage guard's 12V/24V detection and threshold behavior are retain
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.8...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.9...HEAD
+[1.9.9]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.8...v1.9.9
 [1.9.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.7...v1.9.8
 [1.9.7]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.6...v1.9.7
 [1.9.6]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.5...v1.9.6
