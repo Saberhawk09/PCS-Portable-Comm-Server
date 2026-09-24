@@ -77,11 +77,13 @@ class EnergyTracker:
         started_at_epoch: int | None = None,
         elapsed_seconds: float = 0.0,
         totals: dict[str, tuple[float, float]] | None = None,
+        accounting_baselines: dict[str, float] | None = None,
     ) -> None:
         self.boot_id = boot_id
         self.started_at_epoch = int(time.time()) if started_at_epoch is None else started_at_epoch
         self.elapsed_seconds = max(0.0, elapsed_seconds)
         self.last_monotonic: float | None = None
+        self.accounting_baselines = accounting_baselines or {}
         totals = totals or {}
         self.monitors = {
             name: EnergyTotal(*totals.get(name, (0.0, 0.0)))
@@ -125,6 +127,9 @@ class EnergyTracker:
             if not isinstance(tracking, dict) or tracking.get("boot_id") != boot_id:
                 raise ValueError("energy snapshot belongs to another boot")
             monitors = prior["monitors"]
+            baselines = dict(tracking.get("accounting_baselines", {}))
+            if "rail_12v" in monitor_names and "rail_12v" not in monitors and "rail_5v" in monitors:
+                baselines["rail_12v_5v_energy_wh"] = float(monitors["rail_5v"]["energy_since_boot_wh"])
             totals = {
                 name: (
                     float(monitors[name]["charge_since_boot_mah"]),
@@ -138,6 +143,7 @@ class EnergyTracker:
                 started_at_epoch=int(tracking["started_at_epoch"]),
                 elapsed_seconds=float(tracking["elapsed_seconds"]),
                 totals=totals,
+                accounting_baselines=baselines,
             )
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             return cls(monitor_names, boot_id=boot_id)
@@ -382,6 +388,33 @@ def aggregate_power(monitors: dict, settings: dict) -> dict:
     return result
 
 
+def apply_12v_distribution_accounting(monitors: dict, baselines: dict[str, float] | None = None) -> None:
+    """Publish the 12V branch net of its downstream 5V converter load."""
+    rail_12v = monitors.get("rail_12v")
+    rail_5v = monitors.get("rail_5v")
+    if not isinstance(rail_12v, dict) or not isinstance(rail_5v, dict):
+        return
+
+    raw_power = rail_12v.get("power")
+    raw_energy = rail_12v.get("energy_since_boot_wh")
+    rail_12v["power_accounting"] = "12V distribution minus downstream 5V output"
+
+    def subtract(upstream: object, downstream: object, digits: int) -> float | None:
+        values = (upstream, downstream)
+        if not all(type(value) in (int, float) and math.isfinite(value) and value >= 0 for value in values):
+            return None
+        return round(max(0.0, float(upstream) - float(downstream)), digits)
+
+    rail_12v["exclusive_power"] = subtract(raw_power, rail_5v.get("power"), 3)
+    baseline = (baselines or {}).get("rail_12v_5v_energy_wh", 0.0)
+    downstream_energy = rail_5v.get("energy_since_boot_wh")
+    if type(downstream_energy) in (int, float):
+        downstream_energy = max(0.0, float(downstream_energy) - baseline)
+    rail_12v["exclusive_energy_since_boot_wh"] = subtract(
+        raw_energy, downstream_energy, 4
+    )
+
+
 def collect(
     bus: Bus,
     config: dict,
@@ -428,6 +461,7 @@ def collect(
                 "boot_id": energy.boot_id,
                 "started_at_epoch": energy.started_at_epoch,
                 "elapsed_seconds": round(energy.elapsed_seconds, 3),
+                "accounting_baselines": energy.accounting_baselines,
             }
             if energy is not None
             else None
@@ -442,6 +476,9 @@ def collect(
             "shutdown_armed": config["allow_shutdown"] and settings["dc_source"] == "battery",
         },
     }
+    apply_12v_distribution_accounting(
+        result["monitors"], energy.accounting_baselines if energy is not None else None
+    )
     result["aggregate"] = aggregate_power(result["monitors"], settings)
     return result
 

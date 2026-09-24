@@ -4,6 +4,20 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-23
+
+### Added
+
+- Commission the main 12V distribution INA226 at `0x44` with the installed
+  0.002-ohm shunt and 20A range across PCS power surfaces.
+
+### Changed
+
+- Report raw 12V distribution W/Wh and 12V-only W/Wh, subtracting the
+  downstream 5V INA226 wattage from the latter to prevent double-counting.
+- Preserve raw energy counters across collector restarts while keeping derived
+  12V-only accounting restart-safe.
+
 ## [1.9.9] - 2026-09-23
 
 ### Fixed
@@ -793,7 +807,8 @@ The original voltage guard's 12V/24V detection and threshold behavior are retain
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.9...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.9...v2.0.0
 [1.9.9]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.8...v1.9.9
 [1.9.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.7...v1.9.8
 [1.9.7]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.6...v1.9.7

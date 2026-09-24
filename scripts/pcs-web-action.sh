@@ -3221,10 +3221,12 @@ if POWER_CONFIGURED:
         power_items.extend([
             {"label": "12V monitor", "value": power_monitor_state(power_12v)},
             {"label": "12V rail voltage", "value": power_value(power_12v.get("voltage"), "V")},
-            {"label": "12V rail current", "value": power_value(power_12v.get("current"), "A")},
-            {"label": "12V rail power", "value": power_value(power_12v.get("power"), "W")},
-            {"label": "12V charge since boot", "value": power_value(power_12v.get("charge_since_boot_mah"), "mAh", 1)},
-            {"label": "12V energy since boot", "value": power_value(power_12v.get("energy_since_boot_wh"), "Wh", 3)},
+            {"label": "12V distribution current (includes 5V converter)", "value": power_value(power_12v.get("current"), "A")},
+            {"label": "12V distribution power (includes 5V converter)", "value": power_value(power_12v.get("power"), "W")},
+            {"label": "12V-only power (5V output subtracted)", "value": power_value(power_12v.get("exclusive_power"), "W")},
+            {"label": "12V distribution charge since boot", "value": power_value(power_12v.get("charge_since_boot_mah"), "mAh", 1)},
+            {"label": "12V distribution energy since boot", "value": power_value(power_12v.get("energy_since_boot_wh"), "Wh", 3)},
+            {"label": "12V-only energy since monitor start (5V output subtracted)", "value": power_value(power_12v.get("exclusive_energy_since_boot_wh"), "Wh", 3)},
         ])
     else:
         power_items.append({"label": "12V monitor", "value": "not commissioned"})
@@ -3516,11 +3518,13 @@ if PUBLIC_VIEW:
             "starlink_voltage": power_starlink.get("voltage"),
             "rail_12v_current": power_12v.get("current"),
             "starlink_current": power_starlink.get("current"),
-            "rail_12v_power": power_12v.get("power"),
+            "rail_12v_power": power_12v.get("exclusive_power"),
+            "rail_12v_distribution_power": power_12v.get("power"),
             "starlink_power": power_starlink.get("power"),
             "rail_12v_charge_since_boot_mah": power_12v.get("charge_since_boot_mah"),
             "starlink_charge_since_boot_mah": power_starlink.get("charge_since_boot_mah"),
-            "rail_12v_energy_since_boot_wh": power_12v.get("energy_since_boot_wh"),
+            "rail_12v_energy_since_boot_wh": power_12v.get("exclusive_energy_since_boot_wh"),
+            "rail_12v_distribution_energy_since_boot_wh": power_12v.get("energy_since_boot_wh"),
             "starlink_energy_since_boot_wh": power_starlink.get("energy_since_boot_wh"),
             "energy_tracking_elapsed_seconds": power_energy.get("elapsed_seconds"),
             "estimated_non_5v_power": power_runtime.get("estimated_non_5v_power"),

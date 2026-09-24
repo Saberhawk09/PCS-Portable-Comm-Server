@@ -278,8 +278,8 @@ The intended roles are:
 - `input` (`0x40`, commissioned): upstream of PCS conversion and authoritative
   for source voltage, total current, and total PCS input power.
 - `rail_5v` (`0x4c`, commissioned): 5V voltage, current, and power.
-- `rail_12v` (staged, disabled): dedicated 12V voltage, current, power, and
-  since-boot charge/energy. Planned address is `0x4d`; solder selection and calibration await hardware confirmation.
+- `rail_12v` (`0x44`, commissioned): main 12V distribution voltage, current,
+  power, and charge/energy using the installed 0.002-ohm / 20A module.
 
 The input monitor may also be commissioned by itself if the 5V monitor is
 temporarily removed. In that state input measurements and low-voltage status
@@ -288,21 +288,17 @@ reported as not commissioned rather than as a monitor fault.
 
 The reported non-5V value is `input power - 5V power`. It is explicitly an
 estimate that includes DC/DC conversion losses, not an exact 12V rail reading.
-The dedicated `rail_12v` reading is separate from that estimate and is never
-added to total input power (which would double-count downstream consumption).
+The dedicated `rail_12v` raw reading includes the downstream 5V converter.
+PCS also publishes a 12V-only value as `rail_12v - rail_5v`; the remainder
+includes converter loss without counting 5V output as a 12V-only load. Neither
+branch is added to authoritative total input power.
 
-Both configuration templates include `rail_12v` with `enabled: false` and the
-planned address `0x4d` (A1 to SCL, A0 to VS/VCC). On the pictured module,
-select the `L` (SCL) pad pair on A1 and the `U` pad pair on A0, removing any
-previous selection on those rows. Change solder links only with power disconnected;
-VS/VCC means the module logic supply, not the monitored 12V rail. Confirm the
-address after wiring before enabling. Disabled monitors are not accessed or reported as offline.
-After confirming the third module's address, shunt, and rated current, fill in
-`address`, `shunt_ohms`, and `max_current_amps`, then set `enabled: true`.
+The commissioned template enables `rail_12v` at `0x44`; the generic template
+keeps optional hardware disabled until its address and calibration are known.
 Run `pcs-power-monitor check-config --config /etc/pcs/power-monitor.json`
-before a separately authorized installation/restart. Enabled addresses must be
-unique. Adding the monitor preserves existing same-boot energy totals; the new
-monitor starts at zero. Hardware wiring and meter comparison remain pending.
+before installation. Raw distribution current and mAh remain inclusive because
+current cannot be subtracted across voltage domains. Raw and 12V-only W/Wh are
+exposed separately.
 
 The collector, public dashboard, control panel, stats API, self-test, and stress
 logger support the third role. Its offline/current faults contribute to overall
@@ -369,14 +365,10 @@ not enabled until they are replaced and configuration validation passes.
 
 ## Planned fourth INA226: Starlink branch
 
-Monitor roles are `input`, `rail_5v`, optional `rail_12v` (third), and optional
-`starlink` (fourth). The third 12V monitor is still physically uninstalled and
-staged disabled at `0x4d`. Both templates also stage `starlink.enabled: false`,
-at planned address `0x4e`, with explicit placeholders for shunt resistance and
-current range. Select A1 to SCL and A0 to SDA (the module's L and SDA/A pads).
-Disconnect module power and remove conflicting solder bridges before changing
-links. This follows TI's 7-bit address table: SCL/SDA = `1001110` = `0x4e`.
-Wiring, calibration and voltage limits remain uncommissioned.
+Monitor roles are `input`, `rail_5v`, `rail_12v` (third), and `starlink`
+(fourth). The commissioned PCS profile enables the installed branches at
+`0x44` and `0x48`; the generic template leaves optional hardware disabled
+until its address and calibration are verified.
 
 When installed and enabled, the Starlink branch exposes voltage, current, power,
 charge (mAh) and energy (Wh) since boot. Existing same-boot totals survive a
@@ -432,8 +424,9 @@ capacity leaves voltage protection and energy integration unchanged.
 The commissioned PCS profile enables the Starlink INA226 at **0x48**, with the
 live configured 0.002-ohm shunt and 20A maximum. The operator confirmed installation
 and operation; software readback confirmed online measurements. This is not a new
-bench calibration. The 12V monitor remains disabled at 0x4d; the live configuration
-still contains uncommissioned calibration placeholders for that role.
+bench calibration. The main 12V distribution monitor is commissioned at
+**0x44** with the same 0.002-ohm / 20A configuration. Raw wattage includes the
+5V converter input; the 12V-only field subtracts measured 5V output wattage.
 
 Starlink voltage/current/power/mAh/Wh remain separate. Aggregate instantaneous
 power is unavailable when a required branch is offline. Cumulative counters retain

@@ -146,7 +146,8 @@ confirmed the homepage, Starlink tab, public/admin cards, HTTPS public allowlist
 protected action catalog and fixed dispatcher permissions. No power control was
 executed. The collector is enabled, active and quietly unavailable without a Mini.
 
-The third INA226 remains disabled at `0x4d`; the fourth remains disabled at `0x4e`.
+The main 12V distribution INA226 is commissioned at `0x44`; the Starlink branch
+is commissioned separately at `0x48`.
 Existing input/5V calibration and protection settings were preserved. The power
 monitor, uplink controller, Dire Wolf, GPSD and Chrony kept their running processes;
 TLS/pairing/admin credentials, NetworkManager profiles and eth0 LAN configuration

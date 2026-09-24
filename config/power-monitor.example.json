@@ -20,7 +20,7 @@
     },
     "rail_12v": {
       "enabled": false,
-      "address": "0x4d",
+      "address": "0x44",
       "shunt_ohms": "REPLACE_WITH_MEASURED_OHMS",
       "max_current_amps": "REPLACE_WITH_RATED_AMPS"
     },
