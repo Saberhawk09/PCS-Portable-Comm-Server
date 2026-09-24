@@ -415,8 +415,9 @@ dashboards include WAN traffic totals since boot. See the
 [uplink manager guide](docs/uplink-manager.md) and
 [acceptance tests](docs/testing-uplinks.md) before installation.
 
-The planned third (12V rail) and fourth (Starlink branch) INA226 monitors are
-optional and staged disabled. See [power-monitor commissioning](docs/power-system.md#planned-fourth-ina226-starlink-branch);
-software support does not imply either module is installed.
+PCS v2.0.0 commissions the main 12V distribution INA226 at `0x44`. Power
+surfaces expose both the raw distribution reading and a 12V-only total with
+downstream 5V wattage subtracted. Starlink remains separate at `0x48`. See
+[power-monitor commissioning](docs/power-system.md).
 
 Optional [Starlink telemetry](docs/starlink-telemetry.md) adds a homepage tab and sanitized public/admin cards. Reboot pairing is opt-in; Mini power-off remains staged pending DC switching hardware.
