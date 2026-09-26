@@ -564,18 +564,21 @@ class RouteSecurityTests(unittest.TestCase):
         )
         return session_cookie
 
-    def test_public_home_keeps_admin_login_in_footer_and_allowed_coordinates(self):
+    def test_public_home_keeps_admin_footer_and_loads_allowed_coordinates_from_api(self):
         status, _, page = self.request("GET", "/")
         self.assertEqual(status, 200)
         self.assertEqual(page.count("Admin Login"), 1)
         self.assertNotIn("Open Cockpit", page)
-        self.assertIn("38.123456, -77.123456", page)
-        self.assertIn("FM18kc", page)
+        self.assertIn('data-field="coordinates"', page)
+        self.assertIn('data-field="grid"', page)
+        self.assertNotIn("38.123456, -77.123456", page)
+        self.assertNotIn("FM18kc", page)
         self.assertNotIn("must-not-render", page)
 
         status, _, public_json = self.request("GET", "/api/public-status")
         self.assertEqual(status, 200)
         self.assertNotIn("imei", public_json.lower())
+        self.assertIn("38.123456, -77.123456", public_json)
         self.assertIn("FM18kc", public_json)
 
     def test_unauthenticated_admin_get_redirects_to_login(self):
