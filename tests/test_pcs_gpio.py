@@ -551,6 +551,11 @@ class PcsGpioTests(unittest.TestCase):
                         "charge_since_boot_mah": 198.7,
                         "energy_since_boot_wh": 1.04,
                     },
+                    "rail_12v": {
+                        "online": True, "voltage": 12.418,
+                        "current": 1.115, "power": 13.846,
+                        "exclusive_power": 6.491,
+                    },
                 },
                 "energy_tracking": {"elapsed_seconds": 505},
                 "low_voltage": {"active": False, "remaining_seconds": None},
@@ -567,18 +572,25 @@ class PcsGpioTests(unittest.TestCase):
         self.assertIsNotNone(power)
         self.assertEqual(pcs_gpio.lcd_power_page(power), (
             "IN 24.0V 34.9W",
+            "0.46Ah - 8.91Wh",
+        ))
+        self.assertEqual(pcs_gpio.lcd_rails_page(power), (
+            "12V 12.4V 6.5W",
             "5V 5.23V 7.4W",
         ))
         stats = pcs_gpio.StatsSnapshot(None, None, None, None)
         pages = pcs_gpio.lcd_status_pages(stats, 60, power)
         self.assertEqual(pages[1], pcs_gpio.lcd_power_page(power))
-        self.assertEqual(pages[2], ("Total PWR Usage", "0.46Ah - 8.91Wh"))
+        self.assertEqual(pages[2], pcs_gpio.lcd_rails_page(power))
         self.assertTrue(all(len(line) <= 16 for page in pages[1:3] for line in page))
         self.assertEqual(power.energy_tracking_elapsed_seconds, 505)
         self.assertEqual(power.total_charge_since_boot_mah, 456.7)
         self.assertEqual(power.total_energy_since_boot_wh, 8.91)
         self.assertEqual(power.dc_source, "battery")
         self.assertEqual(power.total_power, 34.881)
+        self.assertTrue(power.rail_12v_online)
+        self.assertEqual(power.rail_12v_voltage, 12.418)
+        self.assertEqual(power.rail_12v_power, 6.491)
 
     def test_lcd_power_page_uses_input_watts_for_power_supply_mode(self):
         power = pcs_gpio.PowerSnapshot(
@@ -587,18 +599,18 @@ class PcsGpioTests(unittest.TestCase):
         )
         self.assertEqual(
             pcs_gpio.lcd_power_page(power),
-            ("IN 24.0V 24.0W", "5V 5.00V 5.0W"),
+            ("IN 24.0V 24.0W", "--Ah - --Wh"),
         )
 
-    def test_lcd_energy_page_falls_back_to_input_totals_without_aggregate(self):
+    def test_lcd_power_page_falls_back_to_input_totals_without_aggregate(self):
         power = pcs_gpio.PowerSnapshot(
             "ok", True, 24, 1, 24, True, 5, 1, 5,
             input_charge_since_boot_mah=123.4,
             input_energy_since_boot_wh=2.96,
         )
         self.assertEqual(
-            pcs_gpio.lcd_energy_page(power),
-            ("Total PWR Usage", "0.12Ah - 2.96Wh"),
+            pcs_gpio.lcd_power_page(power),
+            ("IN 24.0V 24.0W", "0.12Ah - 2.96Wh"),
         )
 
     def test_stale_or_faulted_power_snapshot_is_an_lcd_warning(self):

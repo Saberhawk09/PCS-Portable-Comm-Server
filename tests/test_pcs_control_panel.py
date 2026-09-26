@@ -564,10 +564,11 @@ class RouteSecurityTests(unittest.TestCase):
         )
         return session_cookie
 
-    def test_public_home_has_prominent_admin_login_and_allowed_coordinates(self):
+    def test_public_home_keeps_admin_login_in_footer_and_allowed_coordinates(self):
         status, _, page = self.request("GET", "/")
         self.assertEqual(status, 200)
-        self.assertGreaterEqual(page.count("Admin Login"), 2)
+        self.assertEqual(page.count("Admin Login"), 1)
+        self.assertNotIn("Open Cockpit", page)
         self.assertIn("38.123456, -77.123456", page)
         self.assertIn("FM18kc", page)
         self.assertNotIn("must-not-render", page)

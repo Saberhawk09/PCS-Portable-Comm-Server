@@ -13,7 +13,6 @@
 <div class="shell">
   <header class="masthead">
     <a class="brand" href="/" aria-label="PCS home"><span class="brand-mark" aria-hidden="true">PCS</span><span>PORTABLE COMM SERVER<span class="brand-sub">FIELD COMMUNICATIONS APPLIANCE</span></span></a>
-    <a class="admin-link" href="/admin/">Admin Login <span aria-hidden="true">↗</span></a>
   </header>
   <main>
     <nav class="dashboard-tabs" aria-label="Dashboard tabs"><a href="/" aria-current="page">Overview</a><a href="/power/">Power</a><a href="/starlink/">Starlink</a></nav>
@@ -37,20 +36,17 @@
     <section id="services" aria-labelledby="services-title">
       <div class="section-heading"><h2 id="services-title">Services</h2><span>SELECT A SERVICE TO CONTINUE</span></div>
       <div class="service-grid">
-        <a class="tile" href="/starlink/"><span class="tile-top"><span class="icon" aria-hidden="true">↗</span><span class="tag" data-field="starlinkState">Unavailable</span></span><h3>Starlink</h3><p>Dish diagnostics, link quality and branch power.</p></a>
+        <a class="tile" href="/docs/"><span class="tile-top"><span class="icon" aria-hidden="true">≡</span><span class="tag">OFFLINE HELP</span></span><h3>Documentation <span aria-hidden="true">↗</span></h3><p>Quick start, file shares, service addresses and field reference.</p></a>
         <a class="tile" href="/status/"><span class="tile-top"><span class="icon" aria-hidden="true">▤</span><span class="tag">PUBLIC</span></span><h3>Status <span aria-hidden="true">↗</span></h3><p>Detailed health, position, storage and network information.</p></a>
-        <a class="tile" href="/files/"><span class="tile-top"><span class="icon" aria-hidden="true">▱</span><span class="tag">LOCAL SHARES</span></span><h3>Files <span aria-hidden="true">↗</span></h3><p>Connect to PCS-Share and PCS-Backup from your device.</p></a>
-        <a class="tile" href="/radio/#aprs"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag" data-field="aprs">Unknown</span></span><h3>APRS <span aria-hidden="true">↗</span></h3><p>Packet radio station and messaging service information.</p></a>
-        <a class="tile" href="/radio/#meshtastic"><span class="tile-top"><span class="icon" aria-hidden="true">⋈</span><span class="tag" data-field="mesh">Unknown</span></span><h3>Meshtastic <span aria-hidden="true">↗</span></h3><p>Mesh radio link and MQTT gateway information.</p></a>
+        <a class="tile" href="/openwrt/"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag">LOCAL NETWORK</span></span><h3>OpenWrt <span aria-hidden="true">↗</span></h3><p>Open the PCS access point and router interface.</p></a>
         <a class="tile" href="/pistar/" id="pistar-tile"><span class="tile-top"><span class="icon" aria-hidden="true">◉</span><span class="tag" data-field="pistar">Unknown</span></span><h3>Pi-Star <span aria-hidden="true">↗</span></h3><p>Open the paired digital voice hotspot dashboard.</p></a>
-        <a class="tile" href="/cockpit/"><span class="tile-top"><span class="icon" aria-hidden="true">▣</span><span class="tag">SIGN-IN REQUIRED</span></span><h3>Cockpit <span aria-hidden="true">↗</span></h3><p>System management for authorized operators.</p></a>
-        <a class="tile" href="/admin/"><span class="tile-top"><span class="icon" aria-hidden="true">⊞</span><span class="tag">SIGN-IN REQUIRED</span></span><h3>Admin <span aria-hidden="true">↗</span></h3><p>PCS network, services, backups and power controls.</p></a>
-        <a class="tile" href="/docs/"><span class="tile-top"><span class="icon" aria-hidden="true">≡</span><span class="tag">OFFLINE HELP</span></span><h3>Documentation <span aria-hidden="true">↗</span></h3><p>Quick start, service addresses and field reference.</p></a>
+        <a class="tile" href="/radio/#meshtastic"><span class="tile-top"><span class="icon" aria-hidden="true">⋈</span><span class="tag" data-field="mesh">Unknown</span></span><h3>Meshtastic <span aria-hidden="true">↗</span></h3><p>Mesh radio link and MQTT gateway information.</p></a>
+        <a class="tile" href="/radio/#aprs"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag" data-field="aprs">Unknown</span></span><h3>APRS <span aria-hidden="true">↗</span></h3><p>Packet radio station and messaging service information.</p></a>
       </div>
     </section>
     <aside class="future"><span>ROOM TO GROW</span><p>Maps · Library · Messages · Diagnostics <small>Future services · not installed by this update</small></p></aside>
   </main>
-  <footer><span>PCS / LOCAL SERVICE PORTAL</span><a href="/docs/#health">Understanding PCS health</a><span>No Internet required for local services</span></footer>
+  <footer><span>PCS / LOCAL SERVICE PORTAL</span><a href="/docs/#health">Understanding PCS health</a><a href="/admin/">Admin Login</a><span>No Internet required for local services</span></footer>
 </div>
 </body>
 </html>
