@@ -510,6 +510,9 @@ class PowerSnapshot:
     total_energy_since_boot_wh: float | None = None
     dc_source: str = "battery"
     total_power: float | None = None
+    rail_12v_online: bool = False
+    rail_12v_voltage: float | None = None
+    rail_12v_power: float | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -1099,7 +1102,12 @@ def read_power_status(
             raise ValueError("invalid monitor map")
         input_monitor = monitors.get("input", {})
         rail_5v = monitors.get("rail_5v", {})
-        if not isinstance(input_monitor, dict) or not isinstance(rail_5v, dict):
+        rail_12v = monitors.get("rail_12v", {})
+        if (
+            not isinstance(input_monitor, dict)
+            or not isinstance(rail_5v, dict)
+            or not isinstance(rail_12v, dict)
+        ):
             raise ValueError("invalid monitor record")
         low_voltage = payload.get("low_voltage", {})
         if not isinstance(low_voltage, dict):
@@ -1149,6 +1157,9 @@ def read_power_status(
                 else "battery"
             ),
             total_power=number(aggregate, "power"),
+            rail_12v_online=rail_12v.get("online") is True,
+            rail_12v_voltage=number(rail_12v, "voltage"),
+            rail_12v_power=number(rail_12v, "exclusive_power"),
         )
     except (KeyError, TypeError, ValueError):
         return PowerSnapshot("warn", False, None, None, None, False, None, None, None)
@@ -1202,7 +1213,7 @@ def compact_counter(value: int | None) -> str:
 
 
 def lcd_power_page(power: PowerSnapshot) -> tuple[str, str]:
-    """Fit both commissioned rails and their present power onto one 16x2 page."""
+    """Fit source-aware input power and accumulated usage onto one 16x2 page."""
 
     displayed_power = (
         power.total_power
@@ -1214,12 +1225,31 @@ def lcd_power_page(power: PowerSnapshot) -> tuple[str, str]:
         if power.input_online and power.input_voltage is not None and displayed_power is not None
         else "IN --.-V --.-W"
     )
+    charge = power.total_charge_since_boot_mah
+    energy = power.total_energy_since_boot_wh
+    if charge is None and energy is None:
+        charge = power.input_charge_since_boot_mah
+        energy = power.input_energy_since_boot_wh
+    usage_line = f"{compact_amp_hours(charge)} - {compact_energy(energy)}"
+    return input_line[:LCD_COLUMNS], usage_line[:LCD_COLUMNS]
+
+
+def lcd_rails_page(power: PowerSnapshot) -> tuple[str, str]:
+    """Show commissioned 12V-only and 5V rail power with rail voltages."""
+
+    rail_12v_line = (
+        f"12V {power.rail_12v_voltage:.1f}V {power.rail_12v_power:.1f}W"
+        if power.rail_12v_online
+        and power.rail_12v_voltage is not None
+        and power.rail_12v_power is not None
+        else "12V --.-V --.-W"
+    )
     rail_5v_line = (
         f"5V {power.rail_5v_voltage:.2f}V {power.rail_5v_power:.1f}W"
         if power.rail_5v_online and power.rail_5v_voltage is not None and power.rail_5v_power is not None
         else "5V --.--V --.-W"
     )
-    return input_line[:LCD_COLUMNS], rail_5v_line[:LCD_COLUMNS]
+    return rail_12v_line[:LCD_COLUMNS], rail_5v_line[:LCD_COLUMNS]
 
 
 def compact_amp_hours(value: float | None) -> str:
@@ -1241,26 +1271,6 @@ def compact_energy(value: float | None) -> str:
     if value < 100:
         return f"{value:.1f}Wh"
     return f"{value:.0f}Wh"
-
-
-def lcd_energy_page(power: PowerSnapshot) -> tuple[str, str] | None:
-    """Show source-aware total charge and energy accumulated this boot."""
-    charge = power.total_charge_since_boot_mah
-    energy = power.total_energy_since_boot_wh
-    if charge is None and energy is None:
-        # Preserve direct construction and status compatibility from before the
-        # source-aware aggregate was added to the power monitor.
-        charge = power.input_charge_since_boot_mah
-        energy = power.input_energy_since_boot_wh
-    if charge is None and energy is None:
-        return None
-    return (
-        "Total PWR Usage",
-        (
-            f"{compact_amp_hours(charge)} - "
-            f"{compact_energy(energy)}"
-        )[:LCD_COLUMNS],
-    )
 
 
 def lcd_power_alert_page(power: PowerSnapshot) -> tuple[str, str] | None:
@@ -1328,10 +1338,7 @@ def lcd_status_pages(
         (f"APRS Stats: {aprs_state}", aprs_counts),
     )
     if power is not None:
-        power_pages = (lcd_power_page(power),)
-        energy_page = lcd_energy_page(power)
-        if energy_page is not None:
-            power_pages += (energy_page,)
+        power_pages = (lcd_power_page(power), lcd_rails_page(power))
         pages = pages[:1] + power_pages + pages[1:]
     return pages
 

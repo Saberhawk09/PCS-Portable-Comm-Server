@@ -116,11 +116,15 @@ for the vendor's PWM capability and 100 Hz example.
 
 ## HD44780 Live Status
 
-The installed 16x2 LCD rotates seven pages every three seconds: PCS state and
+The installed 16x2 LCD rotates seven core pages every three seconds: PCS state and
 uptime; CPU temperature in Celsius and Fahrenheit; active Cellular/WiFi/Offline
 uplink; NetworkManager cellular data state and ModemManager signal quality; gpsd fix state with
 paired satellites in view/used; then active AP client count and the current
 six-character Maidenhead grid square; then APRS agent state and session counters.
+When power telemetry is available, two pages follow PCS state: source-aware
+input voltage/watts with aggregate since-boot Ah/Wh, then the commissioned
+12V-only rail voltage/watts and 5V rail voltage/watts. The 12V wattage subtracts
+the downstream 5V output to avoid double-counting it.
 The APRS page shows `APRS Stats: Ok` when connected, `APRS Stats: MSG` when the
 mailbox has unread entries, or `APRS Stats: Err` when status is unavailable.
 Its second line begins as `Pkt RX:0 Msgs:0` and compacts larger counts to remain

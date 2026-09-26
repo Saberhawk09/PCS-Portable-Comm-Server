@@ -13,6 +13,9 @@
     if (typeof value === 'string' && /^-?\d+(\.\d+)?\s*W$/i.test(value.trim())) value = Number.parseFloat(value);
     return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) + ' W' : 'Unavailable';
   }
+  function reading(value, suffix, decimals) {
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value.toFixed(decimals) + ' ' + suffix : 'Unavailable';
+  }
   function safeURL(value) {
     if (typeof value !== 'string') return null;
     try {
@@ -48,6 +51,22 @@
       batteryPercent: text(power.battery_remaining_percent, 'Not available'),
       batteryWarning: power.battery_capacity_warning === true ? 'Estimated capacity is at or below 10%. Voltage protection remains authoritative.' : 'Capacity is an estimate; voltage protection operates independently.',
       shutdownProtection: power.shutdown_armed === true ? 'Enabled' : power.shutdown_armed === false ? 'Disabled' : 'Unknown',
+      inputPower: power.configured === true && power.input_online === true ? watts(power.input_power) : 'Unavailable',
+      inputVoltage: power.configured === true && power.input_online === true ? reading(power.input_voltage, 'V', 2) : 'Unavailable',
+      inputCurrent: power.configured === true && power.input_online === true ? reading(power.input_current, 'A', 3) : 'Unavailable',
+      inputEnergy: power.configured === true && power.input_online === true ? reading(power.input_energy_since_boot_wh, 'Wh', 3) : 'Unavailable',
+      inputCharge: power.configured === true && power.input_online === true ? reading(power.input_charge_since_boot_mah, 'mAh', 1) : 'Unavailable',
+      rail12Voltage: power.configured === true && power.rail_12v_online === true ? reading(power.rail_12v_voltage, 'V', 2) : 'Unavailable',
+      rail12Current: power.configured === true && power.rail_12v_online === true ? reading(power.rail_12v_current, 'A', 3) : 'Unavailable',
+      rail12DistributionPower: power.configured === true && power.rail_12v_online === true ? watts(power.rail_12v_distribution_power) : 'Unavailable',
+      rail12DistributionEnergy: power.configured === true && power.rail_12v_online === true ? reading(power.rail_12v_distribution_energy_since_boot_wh, 'Wh this boot', 3) : 'Unavailable',
+      rail12OnlyPower: power.configured === true && power.rail_12v_online === true ? watts(power.rail_12v_power) : 'Unavailable',
+      rail12OnlyEnergy: power.configured === true && power.rail_12v_online === true ? reading(power.rail_12v_energy_since_boot_wh, 'Wh this boot', 3) : 'Unavailable',
+      rail5Power: power.configured === true && power.rail_5v_online === true ? watts(power.rail_5v_power) : 'Unavailable',
+      rail5Voltage: power.configured === true && power.rail_5v_online === true ? reading(power.rail_5v_voltage, 'V', 2) : 'Unavailable',
+      rail5Current: power.configured === true && power.rail_5v_online === true ? reading(power.rail_5v_current, 'A', 3) : 'Unavailable',
+      rail5Energy: power.configured === true && power.rail_5v_online === true ? reading(power.rail_5v_energy_since_boot_wh, 'Wh', 3) : 'Unavailable',
+      rail5Charge: power.configured === true && power.rail_5v_online === true ? reading(power.rail_5v_charge_since_boot_mah, 'mAh', 1) : 'Unavailable',
       starlinkState: starlink.configured === false ? 'Not commissioned' : slReady ? text(starlink.state) : 'Unavailable',
       starlinkLatency: slMetric('latency_ms', ' ms'), starlinkLoss: slMetric('packet_loss_percent', '%'),
       starlinkObstruction: slMetric('obstruction_percent', '%'), starlinkDown: slMetric('downlink_bps', ' Mbps', 1e6),
@@ -59,6 +78,9 @@
       wanUsage: text(network.usage_summary),
       starlinkPower: power.configured === true && power.starlink_online === true ? watts(power.starlink_power) : power.configured === true && power.starlink_configured === true ? 'Unavailable' : 'Not commissioned',
       starlinkEnergy: power.configured === true && power.starlink_online === true && typeof power.starlink_energy_since_boot_wh === 'number' && Number.isFinite(power.starlink_energy_since_boot_wh) ? power.starlink_energy_since_boot_wh.toFixed(3) + ' Wh' : 'Unavailable',
+      starlinkVoltage: power.configured === true && power.starlink_online === true ? reading(power.starlink_voltage, 'V', 2) : 'Unavailable',
+      starlinkCurrent: power.configured === true && power.starlink_online === true ? reading(power.starlink_current, 'A', 3) : 'Unavailable',
+      starlinkCharge: power.configured === true && power.starlink_online === true ? reading(power.starlink_charge_since_boot_mah, 'mAh', 1) : 'Unavailable',
       wanRows, wanBreakdown: wanRows.join(' • ') || 'Unavailable',
       coordinates: text(gps.coordinates), grid: text(gps.grid_square),
       voltage: power.configured === true && power.input_online === true && typeof power.input_voltage === "number" && Number.isFinite(power.input_voltage) ? power.input_voltage.toFixed(2) + " V" : "Unavailable",

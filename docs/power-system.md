@@ -303,8 +303,9 @@ exposed separately.
 The collector, public dashboard, control panel, stats API, self-test, and stress
 logger support the third role. Its offline/current faults contribute to overall
 health. No dedicated 12V voltage limits have been commissioned; source shutdown
-continues to use the input monitor alone. The LCD retains its input/5V power
-page and total-input usage page; APRS retains the total-input telemetry format.
+continues to use the input monitor alone. The LCD combines source-aware input
+voltage/watts and total-input usage on one page, then shows 12V-only and 5V
+voltage/watts on a second page. APRS retains the total-input telemetry format.
 
 Low-voltage protection defaults to 11.5V with 0.3V recovery hysteresis, three
 consecutive low samples, and a 90-second countdown. In `auto` source mode the

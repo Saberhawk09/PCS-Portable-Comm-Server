@@ -144,3 +144,79 @@ test('source-dependent aggregate preserves unavailable totals', () => {
   assert.equal(model.dcSource, 'Battery');
   assert.equal(viewModel({power: {configured: true, input_online: true, input_power: 20, total_power: null}}).power, 'Unavailable');
 });
+
+test('power tab formats every commissioned rail and both 12V accounting views', () => {
+  const model = viewModel({power: {
+    configured: true, dc_source: 'power_supply', shutdown_armed: false,
+    input_online: true, input_voltage: 23.956, input_current: 0.875, input_power: 20.96,
+    input_charge_since_boot_mah: 123.4, input_energy_since_boot_wh: 2.96,
+    rail_12v_online: true, rail_12v_voltage: 12.418, rail_12v_current: 1.115,
+    rail_12v_distribution_power: 13.846, rail_12v_power: 6.491,
+    rail_12v_distribution_energy_since_boot_wh: 4.25, rail_12v_energy_since_boot_wh: 2.11,
+    rail_5v_online: true, rail_5v_voltage: 5.234, rail_5v_current: 1.406,
+    rail_5v_power: 7.355, rail_5v_charge_since_boot_mah: 198.7, rail_5v_energy_since_boot_wh: 1.04,
+    starlink_configured: true, starlink_online: true, starlink_voltage: 23.951,
+    starlink_current: 0, starlink_power: 0, starlink_charge_since_boot_mah: 0.1,
+    starlink_energy_since_boot_wh: 0.184,
+  }});
+  assert.equal(model.dcSource, 'Power Supply');
+  assert.equal(model.inputPower, '21.0 W');
+  assert.equal(model.inputVoltage, '23.96 V');
+  assert.equal(model.inputCurrent, '0.875 A');
+  assert.equal(model.inputEnergy, '2.960 Wh');
+  assert.equal(model.rail12DistributionPower, '13.8 W');
+  assert.equal(model.rail12OnlyPower, '6.5 W');
+  assert.equal(model.rail12DistributionEnergy, '4.250 Wh this boot');
+  assert.equal(model.rail12OnlyEnergy, '2.110 Wh this boot');
+  assert.equal(model.rail5Power, '7.4 W');
+  assert.equal(model.starlinkPower, '0.0 W');
+  assert.equal(model.starlinkCurrent, '0.000 A');
+});
+
+test('public power tab is read-only and keeps the requested rail order', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../web/pcs-home/power/index.html'), 'utf8');
+  const headings = ['PCS Input', 'Rail 12V', 'Rail 5V', 'Starlink Passthrough'];
+  const positions = headings.map(value => html.indexOf('>' + value + '<'));
+  assert.ok(positions.every(value => value >= 0));
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions);
+  assert.doesNotMatch(html, /power-settings|Change DC source|Set Battery/);
+  assert.match(html, /This page is read-only/);
+  const rail12 = html.slice(html.indexOf('<h2>Rail 12V</h2>'), html.indexOf('<h2>Rail 5V</h2>'));
+  const labels = ['POWER', 'VOLTAGE', 'CURRENT', 'CONSUMED THIS BOOT'];
+  const labelPositions = labels.map(value => rail12.indexOf('>' + value + '<'));
+  assert.ok(labelPositions.every(value => value >= 0));
+  assert.deepEqual([...labelPositions].sort((a, b) => a - b), labelPositions);
+  assert.equal((rail12.match(/metric-label/g) || []).length, 4);
+  assert.match(rail12, /5V included/);
+  assert.match(rail12, /excluding 5V/);
+});
+
+test('overview service grid and public admin links follow the field layout', () => {
+  const root = path.join(__dirname, '../web/pcs-home');
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const headings = ['Documentation', 'Status', 'OpenWrt', 'Pi-Star', 'Meshtastic', 'APRS'];
+  const positions = headings.map(value => html.indexOf('<h3>' + value));
+  assert.ok(positions.every(value => value >= 0));
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions);
+  for (const removed of ['<h3>Starlink', '<h3>Files', '<h3>Cockpit', '<h3>Admin']) assert.doesNotMatch(html, new RegExp(removed));
+  assert.match(html, /Documentation[^]*file shares/i);
+  for (const relative of ['index.html', 'docs/index.html', 'files/index.html', 'pistar/index.html', 'power/index.html', 'radio/index.html', 'starlink/index.html']) {
+    const page = fs.readFileSync(path.join(root, relative), 'utf8');
+    const footer = page.slice(page.indexOf('<footer'));
+    assert.match(footer, /href="\/admin\/"[^>]*>Admin Login/);
+    assert.doesNotMatch(page.slice(0, page.indexOf('<footer')), /class="admin-link"/);
+  }
+  const docs = fs.readFileSync(path.join(root, 'docs/index.html'), 'utf8');
+  assert.match(docs, /PCS-Share/);
+  assert.match(docs, /PCS-Backup/);
+  assert.match(docs, /Start PCS/);
+  assert.match(docs, /Portable Comm Server/);
+  assert.match(docs, /90-second controlled shutdown/);
+  assert.match(docs, /Degraded and offline operation/);
+  assert.match(docs, /GPS time[^]*Internet time[^]*RTC holdover/);
+  assert.match(docs, /RAK4631/);
+  assert.match(docs, /Starlink Mini/);
+  assert.doesNotMatch(docs, /unplug[^]*Ethernet/i);
+  assert.doesNotMatch(docs, /<code>pi<\/code>/);
+  assert.doesNotMatch(docs, /Cockpit/);
+});

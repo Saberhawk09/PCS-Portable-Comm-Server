@@ -537,6 +537,10 @@ body.public-status {
 .dashboard-tabs a[aria-current="page"] { color:var(--cyan); border-color:var(--cyan); }
 .dashboard-tabs a:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
 
+/* The overview service launcher uses three deliberate two-card rows. */
+#services .service-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+@media(max-width:600px) { #services .service-grid { grid-template-columns:1fr; } }
+
 /* Power details retain readable values at tablet and handset widths. */
 .power-panel { padding: 24px; margin-bottom: 22px; }
 .power-panel .metrics { grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); }

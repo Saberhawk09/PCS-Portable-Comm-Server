@@ -607,14 +607,14 @@ main{max-width:1450px;margin:auto;padding:1.2rem}.admin-main{max-width:1600px}.h
 """
 
 
-def document(title: str, body: str, script: str = "", nonce: str = "", public_theme: bool = False) -> bytes:
+def document(title: str, body: str, script: str = "", nonce: str = "", public_theme: bool = False, footer: str = "PCS local field network interface") -> bytes:
     theme_html = '<link rel="stylesheet" href="/assets/css/pcs.css">' if public_theme else ""
     body_class = ' class="public-status"' if public_theme else ""
     script_html = f'<script nonce="{esc(nonce)}">{script}</script>' if script else ""
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{esc(title)}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"><style>{BASE_CSS}</style>{theme_html}</head>
-<body{body_class}>{body}{script_html}<footer>PCS local field network interface</footer></body></html>""".encode("utf-8")
+<body{body_class}>{body}{script_html}<footer>{footer}</footer></body></html>""".encode("utf-8")
 
 
 def badge(status: str, label: str | None = None) -> str:
@@ -857,17 +857,16 @@ def render_public_page(data: dict) -> bytes:
     service_directory = f"""
     <h2 class="section-title">Field Access</h2><section class="grid service-grid">
       <article class="card service-card"><h3>File shares</h3>{item('Windows discovery', 'PCS-FILE-SHARE')}{item('Primary share', r'\\10.42.0.1\PCS-Share')}{item('Backup share', r'\\10.42.0.1\PCS-Backup')}<p class="small">Windows: open Network or enter the share path in File Explorer. Linux: connect with SMB/CIFS.</p></article>
-      <article class="card service-card"><h3>Network services</h3>{item('LAN NTP server', '10.42.0.1')}{gpsd_line}{item('Cockpit', 'https://10.42.0.1:9090')}<a href="https://10.42.0.1:9090">Open Cockpit</a></article>
+      <article class="card service-card"><h3>Network services</h3>{item('LAN NTP server', '10.42.0.1')}{gpsd_line}</article>
       <article class="card service-card"><h3>Local devices</h3>{item('OpenWrt', 'http://10.42.0.2/')}{item('PCS administration', 'Authentication required')}<a href="http://10.42.0.2/">Open OpenWrt</a></article>
     </section>"""
 
     body = f"""
-    <header><div class="nav"><div class="brand-group"><div class="brand">PCS Field Network</div>{header_health(data)}</div><nav class="navlinks"><a class="button secondary" href="/">PCS Home</a><a class="button secondary" href="/status/">Refresh</a><a class="button" href="/admin/">Admin Login</a></nav></div></header>
-    <main><section class="hero"><div class="hero-main"><p class="eyebrow">Portable Communication Server</p><h1>Field Network Status</h1><p>Local services, communications, position, time, and storage information for devices connected on site.</p></div>
-    <aside class="admin-entry"><h2>PCS Administration</h2><p>Authorized operators can manage network, cellular, storage, services, time, and power.</p><a class="button" href="/admin/">Admin Login</a></aside></section>
+    <header><div class="nav"><div class="brand-group"><div class="brand">PCS Field Network</div>{header_health(data)}</div><nav class="navlinks"><a class="button secondary" href="/">PCS Home</a><a class="button secondary" href="/status/">Refresh</a></nav></div></header>
+    <main><section class="hero"><div class="hero-main"><p class="eyebrow">Portable Communication Server</p><h1>Field Network Status</h1><p>Local services, communications, position, time, and storage information for devices connected on site.</p></div></section>
     {error_html}<section class="overview"><div><h2>Overall system health</h2><p>Last refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
     <section class="grid public-grid">{''.join(cards)}</section>{service_directory}</main>"""
-    return document("PCS Field Network Status", body, public_theme=True)
+    return document("PCS Field Network Status", body, public_theme=True, footer='PCS local field network interface · <a href="/admin/">Admin Login</a>')
 
 
 def render_metric(metric: dict) -> str:

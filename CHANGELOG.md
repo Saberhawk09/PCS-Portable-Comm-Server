@@ -4,6 +4,23 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-26
+
+- Combine instantaneous input power and aggregate since-boot Ah/Wh on one LCD
+  page, and add a second compact page for 12V-only and 5V rail voltage/watts.
+- Expand the read-only public Power tab with ordered PCS Input, 12V rail, 5V
+  rail, and Starlink passthrough cards. Show the active DC source without
+  exposing Battery, Power Supply, or capacity controls on the public page.
+- Simplify the Overview launcher to Documentation, Status, OpenWrt, Pi-Star,
+  Meshtastic, and APRS; fold file-share help into Documentation, remove public
+  Cockpit access, and move administration access into public-page footers.
+- Standardize the 12V Power card to the same Power, Voltage, Current, and
+  consumed-this-boot order as the other rails, grouping its 5V-included and
+  5V-excluded readings within shared measurements.
+- Expand the offline Documentation page with reconciled quick-start, safe
+  power and shutdown, LAN, time, radio, Starlink, and degraded-operation
+  guidance from the PCS Quickstart Guide.
+
 ## [2.0.0] - 2026-09-23
 
 ### Added
@@ -807,7 +824,8 @@ The original voltage guard's 12V/24V detection and threshold behavior are retain
 - Raspberry Pi gateway, DHCP/DNS, Samba, Chrony, RTC, WWAN/GNSS, Cockpit, and control-panel setup
 - hardware-first installation documentation
 
-[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.9...v2.0.0
 [1.9.9]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.8...v1.9.9
 [1.9.8]: https://github.com/Saberhawk09/PCS-Portable-Comm-Server/compare/v1.9.7...v1.9.8

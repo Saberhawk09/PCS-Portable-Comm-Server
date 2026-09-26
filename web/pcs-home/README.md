@@ -11,7 +11,7 @@ association-table query. Unknown counts remain unavailable; the older total
 `connected_client_count` is preserved in the public API for compatibility.
 The public `/status/` page uses this stylesheet; admin styling is unchanged.
 
-- `index.html`: appliance header, four quick readings and eight service tiles.
+- `index.html`: appliance header, four quick readings and six ordered service tiles.
 - `css/pcs.css`, `js/pcs.js`: shared responsive styles and public status polling.
 - `files/`, `docs/`: Samba instructions and the offline field guide.
 - `radio/`, `pistar/`: optional radio-service information and configured links.
