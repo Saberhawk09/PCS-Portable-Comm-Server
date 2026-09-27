@@ -211,7 +211,7 @@ Install 16x2 HD44780 LCD display:    yes (when physically fitted)
 Install six-pixel WS2812 indicators: yes (when physically fitted)
 Install MAX7219 LED matrix display:  yes (only when physically fitted)
 Install GPIO18 hardware PWM fan:     yes (when the Armor Lite cooler is fitted)
-Install dual INA226 power monitoring: yes (only on the commissioned PCS hardware)
+Install four-monitor INA226 power monitoring: yes (only on the commissioned PCS hardware)
 INA226 configuration profile:        commissioned-pcs (only on this unchanged PCS hardware)
 Install active-low GPIO13 audible status: yes (when the pull-up/wiring is confirmed)
 ```
@@ -334,11 +334,12 @@ on GPIO18, and installs the fail-safe thermal controller. The USB Dire Wolf
 sound adapter is unaffected. The PWM overlay becomes active after the reboot
 below; before that reboot, self-test reports the pending transition as a warning.
 
-`PCS_SETUP_POWER_MONITOR=yes` installs the dual-INA226 monitor and persistent
+`PCS_SETUP_POWER_MONITOR=yes` installs the multi-INA226 collector and persistent
 diagnostic journal. Selecting `PCS_POWER_PROFILE=commissioned-pcs` makes the
 one-command installer validate and install the repository's versioned `0x40`
-input/`0x4c` 5V profile with the commissioned 2 milliohm shunts and guarded
-shutdown policy. This choice is valid only for the same unchanged PCS hardware.
+input, `0x4c` 5V, `0x44` 12V-distribution, and `0x48` Starlink profile with the
+commissioned 2 milliohm shunts and guarded shutdown policy. This choice is
+valid only for the same unchanged PCS hardware.
 Other builds must use `generic`, complete calibration, and explicitly arm
 shutdown later. An invalid profile or unavailable monitor is a reinstall
 failure and must not be ignored.

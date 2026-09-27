@@ -30,3 +30,19 @@ explicitly enabled; a new agent-specific over-air request/ACK/PONG test remains
 unobserved. Final clean-install acceptance, full three-device reinstall,
 electrical as-built measurements, and unresolved RF/I2C coupling remain open.
 See the [recovery record](full-stack-reinstall.md#september-2026-recovery-evidence).
+
+## September 26, 2026 v2.1.1 reconciliation
+
+The current-state summaries were reconciled after the v2.0.0 main-12V monitor
+commissioning and for the v2.1.1 documentation release. The root README, documentation
+index, project overview, reinstall runbook, script reference, and remote-client
+roadmap now describe the commissioned four-monitor input/12V/5V/Starlink
+profile, raw-versus-12V-only accounting, and the current public/LCD power
+surfaces.
+
+The same pass replaced the obsolete repaired-v1.8.2 status summary with the
+accepted September 22 commissioned reinstall boundary. Historical September 9
+recovery evidence remains dated in the reinstall runbook; it is context for the
+repairs, not the current acceptance result. Electrical as-built details,
+three-appliance recovery, RF/I2C hardening, extended RF validation, and physical
+commissioning checks remain explicitly open.

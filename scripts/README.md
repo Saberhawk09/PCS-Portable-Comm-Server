@@ -390,7 +390,7 @@ temperature are observable but actual fan RPM is not measured.
 
 ### pcs_power_monitor.py / pcs_buzzer.py
 
-`setup-power-audio.sh` installs or inspects the optional dual-INA226 power
+`setup-power-audio.sh` installs or inspects the optional multi-INA226 power
 collector and active-low GPIO13 passive-buzzer controller:
 
 ```bash
@@ -1084,7 +1084,7 @@ Includes:
 - Dire Wolf / APRS staged or active state
 - Meshtastic gateway, MQTT, GPSD position, and public-map policy state
 - GPIO display, indicator, matrix, and fan state when installed
-- INA226 input/5V power and passive-buzzer state when installed
+- INA226 input/12V/5V/Starlink power and passive-buzzer state when installed
 - Client access info
 
 The script describes the commissioned OpenWrt AP/switch topology while retaining
@@ -1160,8 +1160,10 @@ when the appliance has more than one eligible Ethernet WAN adapter.
 See [configuration and migration](../docs/uplink-manager.md) and
 [testing](../docs/testing-uplinks.md). Never select `eth0` as WAN.
 
-The power collector supports an optional fourth `starlink` INA226 alongside the
-planned `rail_12v` monitor. Both remain disabled in the templates pending physical
-installation and calibration. See [power staging](../docs/power-system.md#planned-fourth-ina226-starlink-branch).
+The power collector supports `input`, `rail_5v`, `rail_12v`, and `starlink`
+roles. The exact commissioned profile enables all four at their calibrated
+addresses; the generic template leaves optional hardware disabled pending
+physical installation and calibration. See
+[power monitoring](../docs/power-system.md#ina226-power-monitoring).
 
 `setup-starlink-telemetry.sh --install|--check` stages the optional collector; `pcs_starlink.py` and `pcs_starlink_lifecycle.py` provide bounded diagnostics and paired power-action coordination. See [Starlink telemetry](../docs/starlink-telemetry.md).
