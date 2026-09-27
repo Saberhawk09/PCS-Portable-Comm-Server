@@ -36,22 +36,23 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
 
-PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, storage, time, monitoring, WWAN/GNSS, and optional APRS, Pi-Star, and Meshtastic support. Modem firmware or USB-composition changes, credentials, unavailable external appliances, radio identity, and RF activation remain deliberate operator-supervised steps.
+PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, 
+storage, time, monitoring, WWAN/GNSS, and optional APRS, Pi-Star, and Meshtastic support. Modem firmware or USB-composition changes, credentials, 
+unavailable external appliances, radio identity, and RF activation remain deliberate operator-supervised steps.
 
-The PCS hardware is an operational v1 prototype. The AC/DC source selector,
-cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas,
-HD44780 LCD, MAX7219 matrix, WS2812 indicators, four INA226 power monitors,
-passive buzzer, WAN Ethernet and APRS subsystem are installed.
+The PCS hardware is an operational v2 prototype. 
+The main AC/DC power system with source selector, cooling fans, Pi-Star hotspot, 
+cellular/GNSS path, external SMA antennas, HD44780 LCD, MAX7219 matrix,
+WS2812 indicators, four INA226 power monitors, passive buzzer, WAN Ethernet
+and APRS subsystem are installed and vaildated.
 
-The SA818S, Easy Digi, GPIO6 PTT, USB audio, GNSS
-beaconing, two-way APRS-IS, messaging, and WIDE1-1 fill-in operation have been
-validated. The RAK4631 persistent USB/MQTT gateway and GPSD position delivery
-are live-validated, including successful encrypted proxy publishes to the
-NeoMesh broker, opted-in hourly map reporting, public-map appearance for IJC1,
-and RF-to-public-map forwarding of an opted-in IJC2 position heard over LoRa.
-PCS sends its GPSD-backed Meshtastic position every 30 minutes with 15-bit
-channel/map precision. The exact as-built electrical and mechanical record is
-also unfinished.
+The entire APRS subsystem, including fill-in operation, 2-way APRS-IS messaging, and the APRS message agent have all been validated. 
+The RAK4631 persistent USB/MQTT gateway and GPSD position delivery
+are validated as well, including successful encrypted proxy publishes to the
+configured MQTT broker. Local RF nodes opted into MQTT will be forwarded to their respective MQTT server.
+
+The most recent development has been intergration with a Starlink Mini user terminal. The respective telemetry and power monitoring has been successfully
+testing and implemented. Both the Ethernet WAN and the Starlink DC Passthrough ports have worked as designed.
 
 ### Hardware
 
@@ -63,13 +64,11 @@ also unfinished.
 - Removable USB primary storage with an SD-card backup mirror
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
 - AC/DC power system with source selector switch
-- INA226 power monitoring for PCS input, the 12 V distribution rail, the 5 V
-  rail, and the Starlink branch
+- INA226 power monitoring for PCS input, the 12 V distribution rail, the 5 V rail, and the Starlink branch
 - HD44780 16x2 character LCD, MAX7219 8x8 LED matrix annunciator, and six-pixel WS2812 RGB LED status chain
 - GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
 - SA818S VHF Radio Module/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
-- RAK4631 Meshtastic expansion connected over USB with validated persistent
-  NeoMesh MQTT proxy and 30-minute GPSD position delivery
+- RAK4631 Meshtastic expansion connected over USB with validated persistent NeoMesh MQTT proxy and 30-minute GPSD position delivery
 
 ### Software
 
@@ -168,47 +167,8 @@ Run the base setup:
 ./scripts/setup-pcs-base.sh
 ```
 
-For a wipe/reinstall of this exact commissioned PCS, choose `COMMISSIONED`.
-That mode recreates the non-secret Pi-side configuration for the fitted USB
-storage, WWAN/GNSS and LAN GPSD, automatic Wi-Fi/Starlink/cellular uplinks,
-read-only Starlink telemetry, LCD, WS2812 indicators, MAX7219 matrix, PWM fan,
-four-monitor INA226 commissioned power profile, buzzer, and staged Dire Wolf and
-Meshtastic software. A single attached non-LAN Ethernet adapter is detected and
-MAC-bound as the Starlink uplink; multiple candidates fail closed so the
-operator can set `PCS_STARLINK_MAC` explicitly.
 
-The commissioned rebuild can accept the single encrypted archive created by
-`pcs-reinstall-state.sh --export`. The installer first rebuilds every managed
-software component from the checked-out source, then restores the allowlisted
-Wi-Fi/WireGuard, API/TLS, SSH, Samba, Bluetooth, Pi-Star pairing, Meshtastic,
-Starlink pairing, APRS-IS, and other private identity state. The archive and
-passphrase stay outside Git, extraction is limited to a temporary root-only
-directory, and generated units/helpers are never restored from the archive.
-Without an archive, setup asks for a new Samba password and creates fresh
-identities. It does not log into or modify Pi-Star, the Meshtastic radio,
-OpenWrt, or Starlink.
-An exact archive also restores the generated non-secret commissioning settings.
-If its complete recorded APRS audio, channel, PTT, transmit-audio, and timing
-validation set is present, the installer restores the managed Dire Wolf 1.8.1,
-audio/radio helpers, APRS Agent, and recorded RX/TX service state. Otherwise it
-fails safe with APRS stopped. This does not replace the post-reboot network, RF,
-and physical acceptance test.
-
-Create the private archive on the working PCS before wiping it:
-
-```bash
-./scripts/pcs-reinstall-state.sh --export /mnt/pcs-usb/PCS-Share/pcs-private-reinstall.tar.gz.enc
-```
-
-During `COMMISSIONED` setup, enter that archive's absolute path at the encrypted
-recovery prompt and enter its passphrase once. Supplying the archive restores
-credentials after their owning software has been freshly installed; it is not
-a system-image restore. Keep the archive, passphrase, and optional checksum in
-separate trusted locations.
-
-When boot configuration must expose I2C, the installer stages the power monitor
-for first boot and exits at an explicit reboot boundary. After reboot, run the
-self-test below; no component installer rerun is required.
+### Please Note, the initial self test pre-reboot may fail. This is expected.
 
 
 ## After Setup
@@ -384,6 +344,22 @@ Remaining documentation and validation:
   thermal record; retain the measured rail and load references already captured
 - Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
 
+# Optional multi-WAN Internet
+
+PCS can prefer a MAC-bound USB Ethernet WAN (including Starlink Mini), then
+external Wi-Fi, then optional cellular, with Internet probes and stability
+windows. The Pi remains the gateway; `eth0` is always the PCS LAN. Public/admin
+dashboards include WAN traffic totals since boot. See the
+[uplink manager guide](docs/uplink-manager.md) and
+[acceptance tests](docs/testing-uplinks.md) before installation.
+
+PCS v2.0.0 commissions the main 12V distribution INA226 at `0x44`. Power
+surfaces expose both the raw distribution reading and a 12V-only total with
+downstream 5V wattage subtracted. Starlink remains separate at `0x48`. See
+[power-monitor commissioning](docs/power-system.md).
+
+Optional [Starlink telemetry](docs/starlink-telemetry.md) adds a homepage tab and sanitized public/admin cards. Reboot pairing is opt-in; Mini power-off remains staged pending DC switching hardware.
+
 ## The Issue That Started This Project
 
 As usual, when multi-billion dollar companies fail to understand how to code their software properly, open source comes to the rescue yet again.
@@ -407,19 +383,3 @@ It was an hour before start time, while everyone was setting up antennas I was c
 Once we had everything hooked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event. Needless to say I was annoyed. Not just at Windows, but at myself for assuming it would work properly and not planning ahead. Well the lessons from that mistake have evolved into this project.
 
 The goal of this project isn't to replace commercial networking equipment or build a portable homelab grade server, it's to build a communications appliance specifically tailored to emergency communications exercises and other portable operations.
-
-# Optional multi-WAN Internet
-
-PCS can prefer a MAC-bound USB Ethernet WAN (including Starlink Mini), then
-external Wi-Fi, then optional cellular, with Internet probes and stability
-windows. The Pi remains the gateway; `eth0` is always the PCS LAN. Public/admin
-dashboards include WAN traffic totals since boot. See the
-[uplink manager guide](docs/uplink-manager.md) and
-[acceptance tests](docs/testing-uplinks.md) before installation.
-
-PCS v2.0.0 commissions the main 12V distribution INA226 at `0x44`. Power
-surfaces expose both the raw distribution reading and a 12V-only total with
-downstream 5V wattage subtracted. Starlink remains separate at `0x48`. See
-[power-monitor commissioning](docs/power-system.md).
-
-Optional [Starlink telemetry](docs/starlink-telemetry.md) adds a homepage tab and sanitized public/admin cards. Reboot pairing is opt-in; Mini power-off remains staged pending DC switching hardware.
