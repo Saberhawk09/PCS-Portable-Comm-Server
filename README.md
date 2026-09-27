@@ -18,7 +18,7 @@ This GitHub will also use a mix of my own writing and AI-generated text. I am le
 
 At its core, initially PCS was little more than a portable Raspberry Pi 4 based networking appliance. It integrated a Pi 4, old Linksys EA4500 router, and surplus Sierra Wireless cell modem into a box with a USB drive Samba share. The power system was 2 separate AC-DC supplies, and the case was far from ideal. The Pi provides DNS and gateway services, while the EA4500 was simply a dumb AP/switch. The cell modem provided internet where available, and also functioned as a GNSS receiver thanks to its dedicated GPS antenna port.
 
-In its current state, PCS is *much* more feature complete. It integrates the core features, remote management, web portal, stats API, Samba share, AC/DC power system, Pi-Star, Meshtastic, APRS, and diagnostic indicators + power monitoring into one single cassette that fits neatly into an Apache 4800 rugged case. With the cellular and GNSS antennas installed in the lid, the entire system only needs opened, connected to power, and turned on. Everything else is automatic, and is fully water tight and very durable when the case is closed.
+In its current state, PCS is *much* more feature complete. It integrates the core features, remote management, web portal, stats API, Samba share, AC/DC power system, Pi-Star, Meshtastic, APRS, and diagnostic indicators + power monitoring into one single cassette that fits neatly into an Apache 4800 rugged case. With the cellular and GNSS antennas installed in the lid, the entire system only needs opened, connected to power, and turned on. Everything else is automatic, and is fully water tight and very durable when the case is closed. PCS can also optionally be configured to operate alongside a Starlink Mini user terminal when cellular is unavailable.
 
 ## Project Goals
 
@@ -26,7 +26,7 @@ In its current state, PCS is *much* more feature complete. It integrates the cor
 - Reliable LAN communication between connected clients
 - Samba file share reachable by connected clients
 - NMEA GPS-disciplined / internet NTP reference for connected clients
-- Optional cellular internet connectivity for connected clients
+- Support multiple redundant internet uplinks - Cellular, Ethernet, Starlink
 - Multi-Protocol radio interface (APRS, Meshtastic, Pi-Star)
 - Rugged and durable enclosure for field deployment
 - Emergency/grid power capable
