@@ -21,6 +21,8 @@ from urllib.parse import urlparse
 REPO_DIR = Path(__file__).resolve().parent.parent
 INSTALL_CONFIG = REPO_DIR / "config" / "pcs-install.conf"
 POWER_STATUS = Path("/run/pcs-power-monitor/status.json")
+MESHTASTIC_STATUS = Path("/var/lib/pcs-meshtastic/status.json")
+STARLINK_STATUS = Path("/run/pcs-starlink/status.json")
 POWER_LOG_DIR = Path(os.environ.get("PCS_POWER_STRESS_LOG_DIR", "/var/log/pcs/power-stress"))
 UPLOAD_URL = "https://speed.cloudflare.com/__up"
 APPLY_CONFIRMATION = "PCS-POWER-STRESS"
@@ -31,6 +33,12 @@ MAX_INPUT_SAG_FRACTION = 0.15
 POWER_SAMPLE_SECONDS = 0.05
 MAX_CONSECUTIVE_SAMPLE_ERRORS = 3
 STAGE_SETTLE_SECONDS = 2.0
+CONVERTER_POWER_LIMITS_WATTS = {
+    "rail_12v": 72.0,
+    "rail_5v": 25.0,
+    "starlink": 108.0,
+}
+REQUIRED_POWER_MONITORS = frozenset({"input", "rail_5v", "rail_12v", "starlink"})
 DISPLAY_SERVICES = ("pcs-gpio-leds.service", "pcs-gpio-stats.service")
 FAN_SERVICE = "pcs-gpio-fan.service"
 POWER_SERVICE = "pcs-power-monitor.service"
@@ -44,10 +52,14 @@ PROFILE_COMPONENTS = {
     "cellular": frozenset({"cellular"}),
     "cellular-idle": frozenset({"cellular", "cellular_idle"}),
     "wifi-upload": frozenset({"wifi_upload"}),
+    "starlink": frozenset({"starlink_upload"}),
     "displays": frozenset({"displays"}),
     "cpu-cellular": frozenset({"cpu", "cellular"}),
     "cpu-displays": frozenset({"cpu", "displays"}),
     "cellular-displays": frozenset({"cellular", "displays"}),
+    "cpu-starlink": frozenset({"cpu", "starlink_upload"}),
+    "starlink-displays": frozenset({"starlink_upload", "displays"}),
+    "full-starlink": frozenset({"cpu", "starlink_upload", "displays"}),
     "full": frozenset({"cpu", "cellular", "displays"}),
 }
 
@@ -111,6 +123,8 @@ def plan(args: argparse.Namespace) -> dict[str, object]:
         sequence.append("cellular_idle" if "cellular_idle" in components else "cellular_upload")
     if "wifi_upload" in components:
         sequence.append("wifi_upload")
+    if "starlink_upload" in components:
+        sequence.append("starlink_upload")
     if "cpu" in components:
         sequence.append("cpu")
     return {
@@ -119,6 +133,7 @@ def plan(args: argparse.Namespace) -> dict[str, object]:
         "cpu_workers": (os.cpu_count() or 1) if "cpu" in components else 0,
         "cellular_upload": args.upload_url if "cellular" in components and "cellular_idle" not in components else None,
         "wifi_upload": args.upload_url if "wifi_upload" in components else None,
+        "starlink_upload": args.upload_url if "starlink_upload" in components else None,
         "fan": "full duty",
         "max7219": "all pixels, intensity 15/15" if "displays" in components else "normal service",
         "ws2812": "six white pixels, brightness 255/255" if "displays" in components else "normal service",
@@ -127,6 +142,9 @@ def plan(args: argparse.Namespace) -> dict[str, object]:
         "abort_below_5v_voltage": STRESS_MIN_5V_VOLTAGE,
         "maximum_input_sag_percent": round(MAX_INPUT_SAG_FRACTION * 100),
         "power_sample_interval_ms": round(POWER_SAMPLE_SECONDS * 1000),
+        "converter_abort_limits_watts": CONVERTER_POWER_LIMITS_WATTS,
+        "temperature_sources": ["raspberry_pi_cpu", "meshtastic_case_environment"],
+        "starlink_thermal_alert_tracking": True,
         "persistent_jsonl_log_directory": str(POWER_LOG_DIR),
         "load_sequence": sequence,
         "writes_performed": False,
@@ -205,8 +223,27 @@ def connected_wifi_interface() -> str:
     raise RuntimeError("no connected Wi-Fi interface with an IP interface is present")
 
 
+def connected_starlink_interface() -> str:
+    """Resolve only the commissioned, MAC-bound Starlink Ethernet interface."""
+
+    sys.path.insert(0, str(REPO_DIR / "scripts"))
+    import pcs_starlink  # pylint: disable=import-outside-toplevel
+
+    config = pcs_starlink.load_config()
+    if not config["enabled"]:
+        raise RuntimeError("Starlink telemetry/configuration is not enabled")
+    interface = pcs_starlink.resolve_interface(config)
+    result = subprocess.run(
+        ("nmcli", "-g", "GENERAL.STATE", "device", "show", interface),
+        text=True, capture_output=True, check=True, timeout=5,
+    )
+    if not result.stdout.strip().startswith("100"):
+        raise RuntimeError(f"commissioned Starlink interface is not connected: {interface}")
+    return interface
+
+
 class HighRatePowerLogger:
-    """Own both INA226s during stress and durably record fast rail samples."""
+    """Own every commissioned INA226 and durably record fast rail samples."""
 
     FAST_INA226_CONFIG = 0x4007  # 1 average, 140 us bus/shunt, continuous mode.
 
@@ -225,8 +262,11 @@ class HighRatePowerLogger:
         self._last_throttled_check = 0.0
         self._throttled = None
         self._cpu_temperature_c = None
+        self._thermal_context: dict[str, object] = {"cpu_temperature_c": None}
         self.minimum_voltages: dict[str, float] = {}
         self.maximum_currents: dict[str, float] = {}
+        self.maximum_powers: dict[str, float] = {}
+        self.maximum_temperatures_c: dict[str, float] = {}
         self.latest_readings: dict[str, dict[str, object]] = {}
         self.input_abort_floor = STRESS_MIN_INPUT_VOLTAGE
         self.consecutive_sample_errors = 0
@@ -237,8 +277,12 @@ class HighRatePowerLogger:
 
         config = pcs_power_monitor.load_config()
         monitor_configs = config["monitors"]
-        if not {"input", "rail_5v"}.issubset(monitor_configs):
-            raise RuntimeError("stress logging requires input and rail_5v INA226 monitors")
+        missing = REQUIRED_POWER_MONITORS.difference(monitor_configs)
+        if missing:
+            raise RuntimeError(
+                "stress logging requires all commissioned INA226 monitors; missing: "
+                + ", ".join(sorted(missing))
+            )
         POWER_LOG_DIR.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         self.path = POWER_LOG_DIR / f"power-stress-{stamp}-{os.getpid()}.jsonl"
@@ -301,6 +345,44 @@ class HighRatePowerLogger:
         except (OSError, subprocess.SubprocessError, ValueError):
             return None
 
+    @staticmethod
+    def _read_json(path: Path) -> dict[str, object] | None:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            return value if isinstance(value, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def _read_thermal_context(self) -> dict[str, object]:
+        context: dict[str, object] = {"cpu_temperature_c": self._cpu_temperature_c}
+        if isinstance(self._cpu_temperature_c, (int, float)):
+            self.maximum_temperatures_c["cpu"] = max(
+                self.maximum_temperatures_c.get("cpu", self._cpu_temperature_c),
+                self._cpu_temperature_c,
+            )
+        meshtastic = self._read_json(MESHTASTIC_STATUS)
+        environment = meshtastic.get("case_environment") if meshtastic else None
+        if isinstance(environment, dict):
+            case_temperature = environment.get("temperature_c")
+            context["case_environment"] = {
+                "temperature_c": case_temperature,
+                "humidity_percent": environment.get("humidity_percent"),
+                "sample_age_seconds": environment.get("sample_age_seconds"),
+            }
+            if isinstance(case_temperature, (int, float)):
+                self.maximum_temperatures_c["case"] = max(
+                    self.maximum_temperatures_c.get("case", case_temperature),
+                    case_temperature,
+                )
+        starlink = self._read_json(STARLINK_STATUS)
+        if starlink:
+            context["starlink"] = {
+                "available": starlink.get("available"),
+                "state": starlink.get("state"),
+                "alerts_summary": starlink.get("alerts_summary"),
+            }
+        return context
+
     def _sample(self) -> None:
         readings: dict[str, dict[str, object]] = {}
         for name, monitor in self._monitors.items():
@@ -318,17 +400,22 @@ class HighRatePowerLogger:
             assert reading.voltage is not None and reading.current is not None
             self.minimum_voltages[name] = min(self.minimum_voltages.get(name, reading.voltage), reading.voltage)
             self.maximum_currents[name] = max(self.maximum_currents.get(name, reading.current), reading.current)
+            if isinstance(reading.power, (int, float)):
+                self.maximum_powers[name] = max(
+                    self.maximum_powers.get(name, reading.power), reading.power
+                )
         self.latest_readings = readings
         now = time.monotonic()
         if now - self._last_throttled_check >= 1.0:
             self._throttled = self._read_throttled()
             self._cpu_temperature_c = self._read_cpu_temperature()
+            self._thermal_context = self._read_thermal_context()
             self._last_throttled_check = now
         self._record({
             "type": "sample",
             "rails": readings,
             "pi_throttled": self._throttled,
-            "cpu_temperature_c": self._cpu_temperature_c,
+            "thermal": self._thermal_context,
         })
         self.consecutive_sample_errors = 0
         input_voltage = readings["input"]["voltage"]
@@ -337,6 +424,14 @@ class HighRatePowerLogger:
             self.abort_reason = f"input fell below {self.input_abort_floor:.2f}V ({input_voltage:.3f}V)"
         elif isinstance(rail_5v_voltage, (int, float)) and rail_5v_voltage < STRESS_MIN_5V_VOLTAGE:
             self.abort_reason = f"5V rail fell below {STRESS_MIN_5V_VOLTAGE:.2f}V ({rail_5v_voltage:.3f}V)"
+        if not self.abort_reason:
+            for name, limit in CONVERTER_POWER_LIMITS_WATTS.items():
+                measured = readings.get(name, {}).get("power")
+                if isinstance(measured, (int, float)) and measured > limit:
+                    self.abort_reason = (
+                        f"{name} converter exceeded {limit:.1f}W rating ({measured:.3f}W)"
+                    )
+                    break
         if self.abort_reason:
             self._record({"type": "abort", "reason": self.abort_reason})
             self._stop.set()
@@ -407,6 +502,8 @@ class HighRatePowerLogger:
                 "abort_reason": self.abort_reason,
                 "minimum_voltages": self.minimum_voltages,
                 "maximum_currents": self.maximum_currents,
+                "maximum_powers": self.maximum_powers,
+                "maximum_temperatures_c": self.maximum_temperatures_c,
             })
         if self._bus is not None:
             self._bus.close()
@@ -673,6 +770,12 @@ class StressRun:
             self.start_upload(iface)
             self.power_logger.set_stage("wifi_upload")
             self.power_logger.wait(STAGE_SETTLE_SECONDS)
+        if "starlink_upload" in components:
+            iface = connected_starlink_interface()
+            print(f"Starlink upload interface: {iface}", flush=True)
+            self.start_upload(iface)
+            self.power_logger.set_stage("starlink_upload")
+            self.power_logger.wait(STAGE_SETTLE_SECONDS)
         if "cpu" in components:
             self.start_cpu()
             self.power_logger.set_stage("cpu")
@@ -693,9 +796,13 @@ class StressRun:
             if time.monotonic() >= next_report:
                 input_rail = self.power_logger.latest_readings.get("input", {})
                 rail_5v = self.power_logger.latest_readings.get("rail_5v", {})
+                rail_12v = self.power_logger.latest_readings.get("rail_12v", {})
+                starlink = self.power_logger.latest_readings.get("starlink", {})
                 print(
                     f"Input {input_rail.get('voltage', '--')}V {input_rail.get('current', '--')}A; "
                     f"5V {rail_5v.get('voltage', '--')}V {rail_5v.get('current', '--')}A; "
+                    f"12V {rail_12v.get('power', '--')}W; "
+                    f"Starlink {starlink.get('power', '--')}W; "
                     f"{max(0, int(deadline - time.monotonic()))}s left",
                     flush=True,
                 )

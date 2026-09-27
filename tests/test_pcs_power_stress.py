@@ -30,11 +30,14 @@ class PowerStressTests(unittest.TestCase):
         self.assertEqual(4.75, plan["abort_below_5v_voltage"])
         self.assertEqual(15, plan["maximum_input_sag_percent"])
         self.assertEqual(50, plan["power_sample_interval_ms"])
+        self.assertEqual({"rail_12v": 72.0, "rail_5v": 25.0, "starlink": 108.0},
+                         plan["converter_abort_limits_watts"])
         self.assertEqual(
             ["baseline", "displays_and_fan", "cellular_upload", "cpu"],
             plan["load_sequence"],
         )
         self.assertFalse(plan["writes_performed"])
+        self.assertEqual(0, stress.parse_args(()).rf_seconds)
 
     def test_apply_and_rf_have_separate_exact_confirmations(self):
         with self.assertRaisesRegex(SystemExit, "--confirm PCS-POWER-STRESS"):
@@ -96,7 +99,13 @@ class PowerStressTests(unittest.TestCase):
         self.assertIsNotNone(wifi_upload["wifi_upload"])
         self.assertEqual(["baseline", "wifi_upload"], wifi_upload["load_sequence"])
 
-    def test_fast_sampler_records_both_rails_and_aborts_on_low_5v(self):
+        starlink = stress.plan(stress.parse_args(("--profile", "full-starlink")))
+        self.assertIsNotNone(starlink["starlink_upload"])
+        self.assertIsNone(starlink["cellular_upload"])
+        self.assertEqual(["baseline", "displays_and_fan", "starlink_upload", "cpu"],
+                         starlink["load_sequence"])
+
+    def test_fast_sampler_records_all_rails_thermal_context_and_aborts_on_low_5v(self):
         class FakeMonitor:
             def __init__(self, voltage, current, power):
                 self.result = SimpleNamespace(voltage=voltage, current=current, power=power)
@@ -115,19 +124,53 @@ class PowerStressTests(unittest.TestCase):
             logger._handle = logger.path.open("w", encoding="utf-8", buffering=1)
             input_monitor = FakeMonitor(18.0, 1.5, 27.0)
             rail_monitor = FakeMonitor(4.74, 2.0, 9.48)
-            logger._monitors = {"input": input_monitor, "rail_5v": rail_monitor}
-            with mock.patch.object(logger, "_read_throttled", return_value="0x0"):
+            rail_12v = FakeMonitor(12.3, 2.5, 30.75)
+            starlink = FakeMonitor(24.0, 2.0, 48.0)
+            logger._monitors = {"input": input_monitor, "rail_5v": rail_monitor,
+                                "rail_12v": rail_12v, "starlink": starlink}
+            meshtastic = {"case_environment": {"temperature_c": 31.5,
+                           "humidity_percent": 44.0, "sample_age_seconds": 2}}
+            starlink_status = {"available": True, "state": "CONNECTED",
+                               "alerts_summary": None}
+            with mock.patch.object(logger, "_read_throttled", return_value="0x0"), \
+                 mock.patch.object(logger, "_read_json",
+                                   side_effect=[meshtastic, starlink_status]):
                 logger._sample()
             logger._handle.close()
             logger._handle = None
 
             records = [json.loads(line) for line in logger.path.read_text(encoding="utf-8").splitlines()]
-            self.assertEqual({"input", "rail_5v"}, set(records[0]["rails"]))
+            self.assertEqual({"input", "rail_5v", "rail_12v", "starlink"},
+                             set(records[0]["rails"]))
             self.assertEqual("0x0", records[0]["pi_throttled"])
-            self.assertIn("cpu_temperature_c", records[0])
+            self.assertEqual(31.5, records[0]["thermal"]["case_environment"]["temperature_c"])
+            self.assertEqual("CONNECTED", records[0]["thermal"]["starlink"]["state"])
             self.assertIn("5V rail fell below", logger.abort_reason)
             self.assertEqual([(0, logger.FAST_INA226_CONFIG)], input_monitor.config_writes)
             self.assertEqual([(0, logger.FAST_INA226_CONFIG)], rail_monitor.config_writes)
+
+    def test_sampler_aborts_when_any_converter_exceeds_its_rating(self):
+        class FakeMonitor:
+            def __init__(self, voltage, current, power):
+                self.result = SimpleNamespace(voltage=voltage, current=current, power=power)
+
+            def _write(self, _register, _value):
+                pass
+
+            def reading(self):
+                return self.result
+
+        logger = stress.HighRatePowerLogger()
+        logger._monitors = {
+            "input": FakeMonitor(24, 2, 48),
+            "rail_5v": FakeMonitor(5, 2, 10),
+            "rail_12v": FakeMonitor(12.3, 2, 24.6),
+            "starlink": FakeMonitor(24, 4.51, 108.24),
+        }
+        with mock.patch.object(logger, "_record"), \
+             mock.patch.object(logger, "_read_json", return_value=None):
+            logger._sample()
+        self.assertIn("starlink converter exceeded 108.0W", logger.abort_reason)
 
     def test_baseline_sag_limit_scales_for_18v_but_preserves_12v_floor(self):
         logger = stress.HighRatePowerLogger()
