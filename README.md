@@ -41,7 +41,7 @@ PCS software is currently beta-quality but working. Pi-side installs are repeata
 The PCS hardware is an operational v1 prototype. The AC/DC source selector,
 cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas,
 HD44780 LCD, MAX7219 matrix, WS2812 indicators, four INA226 power monitors,
-passive buzzer, and APRS subsystem are installed.
+passive buzzer, WAN Ethernet and APRS subsystem are installed.
 
 The SA818S, Easy Digi, GPIO6 PTT, USB audio, GNSS
 beaconing, two-way APRS-IS, messaging, and WIDE1-1 fill-in operation have been
