@@ -344,7 +344,7 @@ Remaining documentation and validation:
   thermal record; retain the measured rail and load references already captured
 - Capture final enclosure dimensions, mounting details, photographs, and CAD/export references
 
-# Optional multi-WAN Internet
+## Optional multi-WAN Internet
 
 PCS can prefer a MAC-bound USB Ethernet WAN (including Starlink Mini), then
 external Wi-Fi, then optional cellular, with Internet probes and stability
