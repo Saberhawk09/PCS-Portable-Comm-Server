@@ -31,8 +31,11 @@ forwarded through PCS and appeared on that map, demonstrating the remote
 RF-to-map gateway path. Broader RF coverage and the local environment sensor's
 accuracy remain operator checkpoints. The exact as-built power, wiring,
 grounding, thermal, enclosure, and mounting records are also still pending.
-Dual INA226 input/5V monitoring, since-boot energy totals, audible status, and
-coordinated low-voltage shutdown are commissioned and bench-validated.
+Four INA226 channels monitor PCS input, the raw 12 V distribution rail, the 5 V
+rail, and the Starlink branch. PCS publishes raw and 12V-only distribution
+power/energy without double-counting the downstream 5 V output. Since-boot
+energy totals, audible status, and coordinated low-voltage shutdown are
+commissioned and bench-validated.
 
 Current focus:
 
@@ -60,7 +63,7 @@ Current tested hardware includes:
 - Armor Lite cooler with GPIO18 hardware-PWM fan control
 - SA818S, stock Easy Digi, Sabrent/C-Media USB audio, and GPIO6 APRS PTT path
 - RAK4631 USB Meshtastic gateway with demonstrated NeoMesh/public-map forwarding
-- Dual INA226 input/5V power monitors and GPIO13 passive buzzer
+- Four INA226 input/12V/5V/Starlink power monitors and GPIO13 passive buzzer
 
 Installed with as-built records or measurements pending:
 
@@ -131,6 +134,8 @@ The current software baseline includes:
 - Managed Dire Wolf 1.8.1 with SA818S boot programming, ALSA restoration, LAN-only AGW/KISS, telemetry, and guarded activation/rollback
 - Cockpit access
 - systemd service integration
+- Read-only public power page with ordered PCS input, 12 V, 5 V, and Starlink
+  cards, plus compact LCD input/energy and 12V-only/5V pages
 
 Meshtastic integration is deployed as a repeatable, persistent RAK4631
 USB-to-MQTT client-proxy gateway. The USB session, broker connection, bounded
@@ -245,15 +250,19 @@ The working build is operational. Remaining work is primarily documentation, mea
 - characterize a second input-current reference point if tighter calibration is needed
 - repeat the full three-device reinstall and on-air validation when OpenWrt or Pi-Star configuration changes materially
 
-The PCS Pi was wiped and rebuilt with Raspberry Pi OS Lite on September 9,
-2026. USB, dual-INA226, WireGuard, APRS, and Meshtastic recovery required the
-repairs recorded in the [reinstall runbook](full-stack-reinstall.md). PCS v1.8.2
-was then deployed and passed live operational checks, with operator-confirmed
-two-way APRS. This repaired installation does not prove a fresh unattended run
-of the final installer. The deployed stack previously passed its live power,
-alarm, shutdown, and five-minute full non-RF stress acceptance on September 7,
-2026. SA818S transmission still disrupts the shared I2C bus and can temporarily
-make both INA226s and potentially the RTC inaccessible; devices recover after
+The September 9, 2026 Lite wipe exposed USB, INA226, WireGuard, APRS, and
+Meshtastic recovery gaps recorded in the
+[reinstall runbook](full-stack-reinstall.md). After those repairs, the exact
+commissioned PCS recovery path was accepted from a fresh Raspberry Pi OS Lite
+64-bit image on September 22, 2026 using the encrypted identity archive. The
+managed software was rebuilt, the identity overlay restored, and the full
+post-reboot self-test passed; the aging USB drive required one physical
+reconnect before its managed mount recovered. This acceptance does not replace
+a future three-appliance rebuild or post-change RF/physical checks. The stack
+also passed its live power, alarm, shutdown, and five-minute full non-RF stress
+acceptance on September 7, 2026. SA818S transmission still disrupts the shared
+I2C bus and can temporarily make the INA226 sensors and potentially the RTC
+inaccessible; devices recover after
 unkeying and no RTC timekeeping damage has been observed, but RF/I2C hardening
 and monitored extended key-down remain unresolved. Credential entry,
 external-appliance recovery, radio identity, firmware flashing, and on-air RF

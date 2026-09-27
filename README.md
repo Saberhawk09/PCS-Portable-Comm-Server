@@ -10,15 +10,15 @@ What started as an annoyance caused by Windows networking has evolved into my fi
 
 ### I'm a high school dropout working at a convenience store; of course I'm using AI to help me code.
 
-Codex was heavily utilized in the creation of this project. I have thoroughly tested every aspect of the code and found it to be reliable and repeatable over several wipe/reinstall cycles. If for whatever reason you decide to recreate this project, you *should* be able to utilize this code with minimal changes/addtional LLM use depending on your hardware.
+Codex was heavily utilized in the creation of this project. I have thoroughly tested every aspect of the code and found it to be reliable and repeatable over several wipe/reinstall cycles. If for whatever reason you decide to recreate this project, you *should* be able to utilize this code with minimal changes/additional LLM use depending on your hardware.
 
 This GitHub will also use a mix of my own writing and AI-generated text. I am learning how to use GitHub, and I'd rather have a nice AI-generated page than a gross-looking human-generated one because I don't know what I'm doing.
 
 ## What is PCS?
 
-At its core, initially PCS was little more than a portable Raspberry Pi 4 based networking appliance. It intergrated a Pi 4, old Linksys EA4500 router, and surplus Sierra Wireless cell modem into a box with a USB drive samba share. The power system was 2 seperate AC-DC supplies, and the case was far from ideal. The Pi provides DNS and gateway services, while the EA4500 was simply a dumb AP/switch. The cell modem provided internet where available, and also functioned as a GNSS receiver thanks to its dedicated GPS antenna port.
+At its core, initially PCS was little more than a portable Raspberry Pi 4 based networking appliance. It integrated a Pi 4, old Linksys EA4500 router, and surplus Sierra Wireless cell modem into a box with a USB drive Samba share. The power system was 2 separate AC-DC supplies, and the case was far from ideal. The Pi provides DNS and gateway services, while the EA4500 was simply a dumb AP/switch. The cell modem provided internet where available, and also functioned as a GNSS receiver thanks to its dedicated GPS antenna port.
 
-In its current state, PCS is *much* more feature complete. It intergrates the core features, remote management, web portal, stats API, samba share, AC/DC power system, Pi-Star, Meshtastic, APRS, and diagnostic indicators + power monitoring into one single casette that fits neatly into an Apache 4800 rugged case. With the cellular and GNSS antennas installed in the lid, the entire system only needs opened, connected to power, and turned on. Everything else is automatic, and is fully water tight and very durable when the case is closed.
+In its current state, PCS is *much* more feature complete. It integrates the core features, remote management, web portal, stats API, Samba share, AC/DC power system, Pi-Star, Meshtastic, APRS, and diagnostic indicators + power monitoring into one single cassette that fits neatly into an Apache 4800 rugged case. With the cellular and GNSS antennas installed in the lid, the entire system only needs opened, connected to power, and turned on. Everything else is automatic, and is fully water tight and very durable when the case is closed.
 
 ## Project Goals
 
@@ -40,7 +40,7 @@ PCS software is currently beta-quality but working. Pi-side installs are repeata
 
 The PCS hardware is an operational v1 prototype. The AC/DC source selector,
 cooling fans, Pi-Star hotspot, cellular/GNSS path, external SMA antennas,
-HD44780 LCD, MAX7219 matrix, WS2812 indicators, dual INA226 power monitors,
+HD44780 LCD, MAX7219 matrix, WS2812 indicators, four INA226 power monitors,
 passive buzzer, and APRS subsystem are installed.
 
 The SA818S, Easy Digi, GPIO6 PTT, USB audio, GNSS
@@ -63,8 +63,9 @@ also unfinished.
 - Removable USB primary storage with an SD-card backup mirror
 - Optional Pi-Star hotspot integrated at `10.42.0.3`
 - AC/DC power system with source selector switch
-- INA226 power monitoring modules on the input and 5v rails
-- HD44780 16x2 Charactor LCD, MAX7219 8x8 LED Matrix annunciator, and six-pixel WS2812 RGB LED status chain
+- INA226 power monitoring for PCS input, the 12 V distribution rail, the 5 V
+  rail, and the Starlink branch
+- HD44780 16x2 character LCD, MAX7219 8x8 LED matrix annunciator, and six-pixel WS2812 RGB LED status chain
 - GPIO18 hardware-PWM fan control; commanded duty is validated but RPM is not measured
 - SA818S VHF Radio Module/Easy Digi APRS subsystem with Sabrent USB audio, GPIO6 PTT, direct UART control, and validated bidirectional RF/APRS-IS operation
 - RAK4631 Meshtastic expansion connected over USB with validated persistent
@@ -75,8 +76,9 @@ also unfinished.
 - Reliable unattended startup after power-on or reboot, with bounded GPIO boot indicators before live health alerts
 - Public PCS status homepage and password-protected administration at `10.42.0.1`
 - Pi-side self-test and status scripts
-- Commissioned dual-INA226 input/5V monitoring, estimated non-5V load,
-  since-boot mAh/Wh totals, and guarded nominal-12V low-voltage shutdown
+- Commissioned input, 12 V, 5 V, and Starlink INA226 monitoring; raw and
+  12V-only distribution accounting; since-boot mAh/Wh totals; and guarded
+  nominal-12V low-voltage shutdown
 - Active-low GPIO13 passive-buzzer patterns with alarm priority, debounced
   visual-health alert mirroring, mute control, and validated startup,
   shutdown, warning, fault, and low-voltage behavior
@@ -170,7 +172,7 @@ For a wipe/reinstall of this exact commissioned PCS, choose `COMMISSIONED`.
 That mode recreates the non-secret Pi-side configuration for the fitted USB
 storage, WWAN/GNSS and LAN GPSD, automatic Wi-Fi/Starlink/cellular uplinks,
 read-only Starlink telemetry, LCD, WS2812 indicators, MAX7219 matrix, PWM fan,
-dual INA226 commissioned power profile, buzzer, and staged Dire Wolf and
+four-monitor INA226 commissioned power profile, buzzer, and staged Dire Wolf and
 Meshtastic software. A single attached non-LAN Ethernet adapter is detected and
 MAC-bound as the Starlink uplink; multiple candidates fail closed so the
 operator can set `PCS_STARLINK_MAC` explicitly.
@@ -374,7 +376,7 @@ Installed and tested hardware:
 - Six-pixel WS2812 RGB LED status-indicator chain
 - SA818S VHF Radio, Easy Digi Audio Interface, Sabrent USB audio device, GPIO6 PTT, and managed Dire Wolf APRS
 - RAK4631 Meshtastic node over USB with NeoMesh MQTT, GPSD position, and public-map forwarding
-- Dual INA226 input/5V power monitoring and GPIO13 passive buzzer
+- Four-channel INA226 input/12V/5V/Starlink power monitoring and GPIO13 passive buzzer
 
 Remaining documentation and validation:
 
