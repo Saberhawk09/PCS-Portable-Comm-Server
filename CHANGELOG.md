@@ -6,6 +6,11 @@ All notable user-facing PCS changes are recorded here.
 
 ## [2.1.0] - 2026-09-26
 
+- Modernize the bounded PCS power-stress utility for all four commissioned
+  INA226 monitors, persistent CPU/case thermal context, and Starlink thermal
+  alert tracking. Add fail-closed 72W 12V, 25W 5V, and 108W Starlink converter
+  limits plus MAC-bound Starlink-only load profiles; RF remains separately
+  disabled and confirmed by default.
 - Combine instantaneous input power and aggregate since-boot Ah/Wh on one LCD
   page, and add a second compact page for 12V-only and 5V rail voltage/watts.
 - Expand the read-only public Power tab with ordered PCS Input, 12V rail, 5V

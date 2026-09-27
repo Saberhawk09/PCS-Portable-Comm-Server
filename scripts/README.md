@@ -422,9 +422,12 @@ shutdown and reboot without taking GPIO ownership from the daemon.
 system. Applied mode drives every Pi CPU, uploads explicitly through cellular,
 holds the fan at full duty, lights every MAX7219 pixel at intensity 15, and
 drives all six WS2812 pixels full-white at brightness 255. Loads are introduced
-in named stages (baseline, displays/fan, cellular upload, then full CPU). During
-the run it samples both INA226s every 50 ms in their fastest continuous mode,
-records Raspberry Pi throttling flags once per second, and flushes every JSONL
+in named stages (baseline, displays/fan, selected WAN upload, then full CPU).
+During
+the run it samples every enabled INA226 (input, 5V, 12V, and Starlink) every
+50 ms in their fastest continuous mode. Once per second it records Raspberry Pi
+throttling, Pi CPU temperature, Meshtastic case temperature/humidity, and
+Starlink thermal-alert state. It flushes every JSONL
 record to persistent storage under `/var/log/pcs/power-stress/`. The test stops
 the regular power-monitor daemon to give the 20 Hz logger exclusive INA226
 ownership, then restores it during fail-safe cleanup. LCD/web power snapshots
@@ -434,8 +437,13 @@ three consecutive failed samples abort it in approximately 150 ms.
 
 After the baseline stage, the test arms an input cutoff at no more than 15%
 below the measured baseline and never below 11.8V (before the commissioned
-11.5V shutdown threshold). It also aborts below 4.75V on the 5V rail and
-restores services after normal exit, error, Ctrl+C, or termination. Cellular activation is a single bounded
+11.5V shutdown threshold). It also aborts below 4.75V on the 5V rail or when
+measured branch power exceeds a converter nameplate rating: 72W on the main
+12.3V converter, 25W on the 5V converter, or 108W on the Starlink 30V
+converter. The run fails closed before loading the appliance unless all four
+commissioned monitors are configured. These checks do not infer unmeasured
+converter temperature. The script restores services after normal exit, error,
+Ctrl+C, or termination. Cellular activation is a single bounded
 NetworkManager attempt; modem recovery is deliberately not part of a power
 test. If PCS resets, inspect the final records in the newest JSONL file to see
 the last completed stage and rail samples before reboot.
@@ -449,9 +457,10 @@ sudo ./scripts/pcs_power_stress.py --duration 60 \
 ```
 
 For fault isolation, `--profile` selects `cpu`, `cellular`, `cellular-idle`,
-`wifi-upload`, `displays`,
-`cpu-cellular`, `cpu-displays`, `cellular-displays`, or `full`. Every profile
-keeps the fan at full duty and records CPU temperature as well as throttling
+`wifi-upload`, `starlink`, `displays`, `cpu-cellular`, `cpu-displays`,
+`cellular-displays`, `cpu-starlink`, `starlink-displays`, `full-starlink`, or
+`full`. Every profile keeps the fan at full duty and records CPU temperature
+as well as throttling
 flags. For example:
 
 ```bash
@@ -459,7 +468,17 @@ sudo ./scripts/pcs_power_stress.py --profile cpu --duration 60 \
   --apply --confirm PCS-POWER-STRESS
 ```
 
-Optional SA818S key-down is separately gated and limited to at most 60
+Starlink profiles resolve only the commissioned, MAC-bound Starlink Ethernet
+interface and fail closed if it is disabled, ambiguous, or disconnected. They
+never fall through another WAN:
+
+```bash
+sudo ./scripts/pcs_power_stress.py --profile full-starlink --duration 60 \
+  --apply --confirm PCS-POWER-STRESS
+```
+
+RF is excluded from every default profile. Optional SA818S key-down is
+separately gated and limited to at most 60
 seconds. Confirm 144.550 MHz is clear, connect a suitable antenna or dummy
 load, and comply with identification and local band-plan requirements:
 
