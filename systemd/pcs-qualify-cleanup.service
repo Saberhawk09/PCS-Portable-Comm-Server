@@ -1,0 +1,35 @@
+[Unit]
+Description=PCS qualification boot cleanup (qualification artifacts only)
+After=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-qualify boot-cleanup
+RemainAfterExit=yes
+User=root
+Group=root
+UMask=0077
+RuntimeDirectory=pcs-qualification
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+StateDirectory=pcs-qualification
+StateDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/run/pcs-qualification /var/lib/pcs-qualification
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=64M
+TasksMax=16
+CPUQuota=20%
+TimeoutStartSec=20s
+LimitCORE=0
+LimitFSIZE=3M
+
+[Install]
+WantedBy=multi-user.target
