@@ -77,7 +77,7 @@ def snapshot():
         matches = [u for u in configured if isinstance(u, dict) and u.get('id') == row.get('id')]
         if (len(matches) != 1 or matches[0].get('type') != row['type'] or
                 matches[0].get('interface', '') not in ('', row['interface']) or
-                matches[0].get('profile', '') != row.get('profile', '') or
+                (matches[0].get('profile') and matches[0]['profile'] != row.get('profile', '')) or
                 type(matches[0].get('priority')) is not int or
                 row.get('priority') != matches[0]['priority']):
             raise HarnessError('configured_wan_identity_changed')
@@ -95,7 +95,12 @@ def snapshot():
     slots = [raw['uplinks'].index(r) for r in ethernet + wifi]
     if ethernet[0]['priority'] >= wifi[0]['priority']:
         raise HarnessError('ethernet_must_be_preferred')
-    fixed = (target, str(lan), str(wan), config, slots, boot_id())
+    # Production permits interface-bound WANs without an activation profile.
+    # Pin their observed profile privately for this run; never export its UUID.
+    profiles = tuple(row.get('profile', '') for row in ethernet + wifi)
+    if any(not isinstance(profile, str) for profile in profiles):
+        raise HarnessError('configured_wan_identity_changed')
+    fixed = (target, str(lan), str(wan), config, slots, boot_id(), profiles)
     return {'fixed': fixed, 'target': target, 'lan': str(lan.network), 'wan': str(wan.network),
             'server': str(lan.ip), 'client': query[5], 'slots': slots, 'uplink': clean,
             'failure_seconds': config.get('failure_seconds', 30),

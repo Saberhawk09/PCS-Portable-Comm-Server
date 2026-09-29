@@ -153,6 +153,11 @@ APRS with `sudo systemctl start direwolf.service`, then rerun normal health chec
 
 ### Independent LAN witness for the WAN scenario
 
+Interface-bound WAN configurations may omit the optional activation profile UUID,
+as supported by the production uplink manager. Qualification pins the observed
+profile privately for the campaign and aborts if it changes; an explicitly
+configured profile must still match. Qualification never edits these profiles.
+
 On BCM2711 (Pi 4), `pinctrl get 6` can report `op -- pd | lo`: the drive
 control is write-only, while `lo` is the independently read pin level. The RF gate
 accepts either `dl` or `--` in that drive field, still requiring output mode,

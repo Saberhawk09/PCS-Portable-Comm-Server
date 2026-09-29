@@ -133,6 +133,17 @@ class WanScenario(unittest.TestCase):
                 patch.object(scenario, 'boot_id', return_value='boot'):
             result = scenario.snapshot()
             self.assertEqual(result['target'].index, 4)
+            # Interface-bound Wi-Fi has no required activation UUID in PCS.
+            config['uplinks'][1].pop('profile')
+            baseline = scenario.snapshot()
+            rows[1]['profile'] = 'operator-selected-other-profile'
+            self.assertNotEqual(scenario.snapshot()['fixed'], baseline['fixed'])
+            rows[1]['profile'] = 'fixture-profile'
+            self.assertEqual(scenario.snapshot()['fixed'], baseline['fixed'])
+            config['uplinks'][1]['profile'] = 'required-other-profile'
+            with self.assertRaisesRegex(scenario.HarnessError, 'configured_wan_identity_changed'):
+                scenario.snapshot()
+            config['uplinks'][1]['profile'] = 'fixture-profile'
             self.assertIn(['/usr/sbin/ip', '-j', '-4', 'route', 'get', '10.42.0.20', 'from', '10.42.0.1'], calls)
             for key, wrong, expected in [('dev', 'eth1', 'independent_direct_lan_control_required'),
                                          ('mac', '02:00:00:00:00:02', 'wan_permanent_identity_unverified')]:
