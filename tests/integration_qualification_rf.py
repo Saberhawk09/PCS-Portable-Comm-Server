@@ -34,7 +34,7 @@ class RealRF(unittest.TestCase):
                 return ('gpiochip0 6 "GPIO6" output bias=pull-down consumer="pcs-ptt-safe"\n'
                         'PCS APRS PTT guard holds gpiochip0 line 6 low.\n')
             if argv == ['/usr/bin/pinctrl', 'get', '6']:
-                return '6: op dl pd | lo // GPIO6 = output\n'
+                return '6: op -- pd | lo // GPIO6 = output\n'
             self.assertEqual(argv[1], 'show')
             return original(argv)
         try:

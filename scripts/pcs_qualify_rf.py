@@ -73,8 +73,10 @@ def observe():
                                     'PCS APRS PTT guard holds /dev/gpiochip0 line 6 low.')):
             return evidence
         # Same observation used by the PCS watchdog, never its corrective action.
+        # BCM2711 drive control is write-only: pinctrl prints '--' for its latch
+        # while independently reading the actual level after '|'. Require low.
         level = command(['/usr/bin/pinctrl', 'get', '6']).strip()
-        if not re.fullmatch(r'6:\s+op\s+dl\s+pd\s+\| lo\s+// GPIO6 = output', level):
+        if not re.fullmatch(r'6:\s+op\s+(?:dl|--)\s+pd\s+\| lo\s+// GPIO6 = output', level):
             return evidence
         if states() != before:
             evidence['reason'] = 'rf_state_changed'

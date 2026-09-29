@@ -52,6 +52,22 @@ class RFSafety(unittest.TestCase):
     def test_installed_recovery_inactive_engines_verified_ptt_pass(self):
         self.assertEqual(self.observe()['gate'], 'PASS')
 
+    def test_bcm2711_write_only_drive_still_requires_measured_low_and_guard(self):
+        self.level = LOW.replace('dl', '--')
+        self.assertEqual(self.observe()['gate'], 'PASS')
+        for level in (self.level.replace('| lo', '| hi'), self.level.replace('| lo', '| --'),
+                      self.level.replace('op', 'ip'), self.level.replace('pd', 'pu'),
+                      LOW.replace('dl', 'dh'), LOW.replace('dl', '??')):
+            with self.subTest(level=level):
+                self.level = level
+                self.assertEqual(self.observe()['gate'], 'BLOCKED')
+        self.level = LOW.replace('dl', '--')
+        self.ptt = PTT.replace('pcs-ptt-safe', 'DIREWOLF')
+        self.assertEqual(self.observe()['gate'], 'BLOCKED')
+        self.ptt = PTT
+        self.rows[0].update(ActiveState='active', SubState='running', MainPID='50')
+        self.assertEqual(self.observe()['gate'], 'BLOCKED')
+
     def test_active_direwolf_blocks_without_ptt_action(self):
         self.rows[0].update(ActiveState='active', SubState='running', MainPID='50')
         self.assertEqual(self.observe()['reason'], 'rf_engine_active')

@@ -153,6 +153,14 @@ APRS with `sudo systemctl start direwolf.service`, then rerun normal health chec
 
 ### Independent LAN witness for the WAN scenario
 
+On BCM2711 (Pi 4), `pinctrl get 6` can report `op -- pd | lo`: the drive
+control is write-only, while `lo` is the independently read pin level. The RF gate
+accepts either `dl` or `--` in that drive field, still requiring output mode,
+pull-down, measured low, the existing PTT-safe owner and inactive RF engines.
+High, unknown measured level, explicit drive-high, wrong ownership or malformed
+output still blocks. This is observation only, not a GPIO write or RF override.
+See the [upstream BCM GPIO implementation](https://github.com/raspberrypi/utils/blob/master/pinctrl/gpiochip_bcm2835.c).
+
 The witness uses the standard library on a separate Linux or native Windows
 client on the field LAN. Linux requires root for `SO_BINDTODEVICE`. It rechecks a direct
 source-specific route before every HTTP probe and binds both its HTTP and UDP
