@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -22,6 +23,119 @@ import uuid
 
 PORT = 39841
 MAX_SAMPLES = 310
+
+
+def validate_file(path, session, events_path):
+    """Correlate a completed client file with this campaign's durable PCS receipts.
+
+    Only fixed, typed summary fields escape this boundary. Client timestamps are
+    checked internally, never aligned to the independent PCS monotonic clock.
+    """
+    def reject():
+        raise ValueError('invalid_lan_witness')
+
+    def number(value):
+        return type(value) in (int, float) and math.isfinite(value) and value >= 0
+
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                reject()
+            result[key] = value
+        return result
+
+    def rows_from(filename):
+        if Path(filename).is_symlink():
+            reject()
+        fd = os.open(filename, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+        with os.fdopen(fd, 'rb') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                reject()
+            raw = stream.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024 or not raw.endswith(b'\n'):
+            reject()
+        try:
+            rows = [json.loads(line, object_pairs_hook=unique,
+                               parse_constant=lambda _: reject()) for line in raw.splitlines()]
+        except (UnicodeError, RecursionError):
+            reject()
+        if not rows or not all(isinstance(row, dict) for row in rows):
+            reject()
+        return rows
+
+    receipts = Receipts(session)
+    rows = rows_from(path)
+    if not 4 <= len(rows) <= MAX_SAMPLES + 2:
+        reject()
+    head, tail = rows[0], rows[-1]
+    if (set(head) != {'version', 'event', 'session', 'clock_id', 'boot_id', 'scope', 'platform', 'utc', 'monotonic'} or
+            type(head['version']) is not int or head['version'] != 1 or head['event'] != 'start' or
+            head['session'] != session or head['scope'] != 'lan_http_with_pcs_receipts' or
+            head['platform'] not in ('linux', 'windows') or not isinstance(head['clock_id'], str) or
+            not re.fullmatch('[0-9a-f]{32}', head['clock_id'])):
+        reject()
+    if head['boot_id'] is not None:
+        if not isinstance(head['boot_id'], str) or str(uuid.UUID(head['boot_id'])) != head['boot_id']:
+            reject()
+    elif head['platform'] != 'windows':
+        reject()
+    if (set(tail) != {'event', 'samples', 'complete', 'utc', 'monotonic'} or tail['event'] != 'end' or
+            tail['complete'] is not True or type(tail['samples']) is not int or tail['samples'] != len(rows) - 2):
+        reject()
+    previous, start_utc = None, None
+    for index, row in enumerate(rows):
+        mono = row.get('monotonic')
+        if not number(mono) or not isinstance(row.get('utc'), str):
+            reject()
+        utc = dt.datetime.fromisoformat(row['utc'])
+        if utc.tzinfo is None:
+            reject()
+        if previous is None:
+            start_utc = utc
+        elif mono < previous or abs((utc - start_utc).total_seconds() - (mono - head['monotonic'])) > 1:
+            reject()
+        previous = mono
+        if 0 < index < len(rows) - 1:
+            if (set(row) != {'event', 'seq', 'ok', 'pcs_before', 'pcs_after', 'utc', 'monotonic'} or
+                    row['event'] != 'sample' or type(row['seq']) is not int or row['seq'] != index - 1 or
+                    type(row['ok']) is not bool or not number(row['pcs_before']) or not number(row['pcs_after'])):
+                reject()
+            if receipts.samples and row['pcs_before'] < receipts.samples[-1]['after']:
+                reject()
+            for phase in ('before', 'after'):
+                packet = dict(version=1, session=session, seq=row['seq'], phase=phase)
+                if phase == 'after':
+                    packet['ok'] = row['ok']
+                receipts.receive(packet, row['pcs_' + phase])
+    if tail['monotonic'] - head['monotonic'] > 305 or receipts.invalid:
+        reject()
+    events = rows_from(events_path)
+    boot, last, recorded, starts, ends = None, -1, [], [], []
+    for index, event in enumerate(events):
+        mono = event.get('monotonic')
+        if (event.get('session') != session or type(event.get('seq')) is not int or event['seq'] != index or
+                not number(mono) or mono < last or not isinstance(event.get('boot_id'), str)):
+            reject()
+        if boot is None:
+            boot = str(uuid.UUID(event['boot_id']))
+        if event['boot_id'] != boot:
+            reject()
+        last = mono
+        if event.get('event') == 'lan_witness':
+            recorded.append(event.get('evidence'))
+        elif event.get('event') == 'wan_fault_started':
+            starts.append(mono)
+        elif event.get('event') == 'wan_recovery_observed':
+            ends.append(mono)
+    if recorded != receipts.samples or len(starts) != 1 or len(ends) != 1 or ends[0] <= starts[0]:
+        reject()
+    result = receipts.coverage(starts[0], ends[0])
+    gaps = [b['before'] - a['after'] for a, b in zip(receipts.samples, receipts.samples[1:])]
+    return {'result': result, 'scope': 'lan_http_with_pcs_receipts', 'matched_receipts': True,
+            'samples': len(receipts.samples), 'failures': sum(not s['ok'] for s in receipts.samples),
+            'max_gap_seconds': round(max(gaps, default=0), 6),
+            'elapsed_seconds': round(tail['monotonic'] - head['monotonic'], 6)}
 
 
 class Receipts:

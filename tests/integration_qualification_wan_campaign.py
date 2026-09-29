@@ -101,6 +101,18 @@ raise SystemExit(cli.campaign('FQ-301-v4',60))
                 rows = [json.loads(line) for line in output.read_text().splitlines()]
                 self.assertTrue(rows[-1]['complete'])
                 self.assertGreater(len(rows), 50)
+                imported = json.loads(cmd('pcs-qualify', 'witness', session, str(output)).stdout)
+                self.assertEqual(imported['result'], 'PASS')
+                self.assertTrue(imported['matched_receipts'])
+                self.assertEqual(json.loads(manifest.read_text()), value)
+                self.assertIn('Independent client HTTP sampling: **PASS**', events.with_name('report.md').read_text())
+                # A damaged import cannot upgrade or rewrite the campaign verdict.
+                damaged = output.with_name('incomplete.jsonl')
+                damaged.write_bytes(output.read_bytes().rstrip(b'\n'))
+                rejected = cmd('pcs-qualify', 'witness', session, str(damaged), check=False)
+                self.assertEqual(rejected.returncode, 2)
+                self.assertEqual(json.loads(manifest.read_text()), value)
+                cmd('pcs-qualify', 'witness', session, str(output))
             self.assertNotEqual(self.run_in(self.router, 'nft', 'list', 'table', 'inet', 'pcs_qualification',
                                             check=False).returncode, 0)
             self.assertFalse(Path('/run/pcs-qualification/wan.json').exists())

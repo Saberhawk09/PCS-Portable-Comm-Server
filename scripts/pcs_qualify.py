@@ -16,6 +16,7 @@ from pcs_qualify_observe import command
 from pcs_qualify_state import (HarnessError, RUNTIME, SESSIONS, Session, atomic_json,
                               boot_id, identifier, lock, private_dir, read_json, report)
 from pcs_qualify_witness import validate as validate_witness
+from pcs_qualify_lan import validate_file as validate_lan_witness
 
 REGISTRY = {'FQ-001': 'Cached power/uplink observation; no continuity claim',
             'FQ-002': 'Independent expiry of a harmless private marker',
@@ -233,7 +234,10 @@ def main():
                 if value.get('complete') is not True:
                     raise HarnessError('session_not_complete')
                 try:
-                    summary = validate_witness(args.file, args.session)
+                    if value.get('scenario') == 'FQ-301-v4':
+                        summary = validate_lan_witness(args.file, args.session, path / 'events.jsonl')
+                    else:
+                        summary = validate_witness(args.file, args.session)
                 except (OSError, ValueError, KeyError, TypeError):
                     summary = {'result': 'INCONCLUSIVE', 'scope': 'independent_http_sampling_only'}
                 atomic_json(path / 'witness.json', summary)

@@ -195,6 +195,15 @@ post-run production health validation separate from the synthetic VM results.
 
 ### Native Windows witness
 
+After the campaign completes, preserve the original client JSONL and transfer it
+to PCS. `sudo pcs-qualify witness SESSION_ID /path/to/witness.jsonl` recognizes
+FQ-301 sessions and matches every sample to that session's durable PCS receipts.
+Only a complete file covering fault onset through recovery can pass import;
+truncation, mismatches, invalid clocks or missing recovery cannot pass. The import
+summary is separate from, and never changes, the original campaign verdict.
+This works for both native Windows and Linux FQ-301 client files. Keep the original
+file alongside the exported session; import stores a sanitized summary only.
+
 Use 64-bit Python 3.10+ on Windows 10 (1803+) or Windows 11. WSL is not this
 backend. Copy **both** `scripts/pcs_qualify_lan.py` and
 `scripts/pcs_qualify_windows.py` into the same local directory. No pip packages,
