@@ -1,4 +1,4 @@
-"""Phase 1 leases have one effect: a private marker. No network mutation API."""
+"""Qualification leases and independent, strictly owned artifact cleanup."""
 import ipaddress
 import json
 import os
@@ -81,7 +81,7 @@ def arm(session, seconds, runtime=RUNTIME):
         raise HarnessError('invalid_lease_duration')
     private_dir(runtime)
     with lock(runtime / 'mutation.lock', blocking=True):
-        if (runtime / 'active.json').exists() or (runtime / 'marker').exists():
+        if any((runtime / name).exists() for name in ('active.json', 'marker', 'wan.json')):
             raise HarnessError('lease_already_present')
         # PREPARED persisted before registration, and no effect before timer confirmation.
         atomic_json(runtime / 'active.json', {'version': 1, 'session': session,
@@ -116,14 +116,14 @@ def lease_valid(session, runtime=RUNTIME):
         value = read_json(runtime / 'active.json', 4096)
         return (value.get('version') == 1 and value.get('session') == session and
                 value.get('boot_id') == boot_id() and value.get('state') == 'active' and
-                value.get('effect') == 'marker' and finite(value.get('deadline')) and
+                value.get('effect') in ('marker', 'nft-v4') and finite(value.get('deadline')) and
                 time.monotonic() < value['deadline'] <= time.monotonic() + MAX_LEASE)
     except (OSError, AttributeError, HarnessError):
         return False
 
 
 def restore(runtime=RUNTIME, expected_session=None):
-    """Remove only our two fixed ephemeral files, even after corrupt/partial writes.
+    """Remove fixed ephemeral files and the exactly owned WAN table when recorded.
 
     No manifest-provided path, command, PID, interface or service is acted upon.
     Independent from the campaign lock. Unlink never follows a symlink.
@@ -138,6 +138,8 @@ def restore(runtime=RUNTIME, expected_session=None):
                     return
                 if not isinstance(current, dict) or current.get('session') != expected_session:
                     return  # A delayed old expiry must not revoke a newer lease.
+            from pcs_qualify_fault import cleanup_record
+            cleanup_record(runtime)
             for name in ('marker', 'active.json'):
                 (runtime / name).unlink(missing_ok=True)
     try:
@@ -176,6 +178,9 @@ def boot_cleanup(root=SESSIONS, runtime=RUNTIME):
     # Prevent a manually started boot cleanup from aborting a live campaign.
     with lock(runtime / 'campaign.lock'):
         restore(runtime)
+        if runtime == RUNTIME:
+            from pcs_qualify_fault import cleanup_orphan
+            cleanup_orphan(runtime)
         if not root.exists():
             return
         private_dir(root)
@@ -190,7 +195,7 @@ def boot_cleanup(root=SESSIONS, runtime=RUNTIME):
             try:
                 value = read_json(path / 'session.json')
                 if (not isinstance(value, dict) or value.get('session') != path.name or
-                        value.get('scenario') not in ('FQ-001', 'FQ-002', 'unknown')):
+                        value.get('scenario') not in ('FQ-001', 'FQ-002', 'FQ-301-v4', 'unknown')):
                     raise HarnessError('invalid_session_record')
             except (OSError, HarnessError):
                 # Replace only the broken manifest with a fixed recovery record;

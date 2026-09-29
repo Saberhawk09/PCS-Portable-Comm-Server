@@ -167,8 +167,8 @@ class QualificationTests(unittest.TestCase):
         self.assertTrue(result['verified'])
         self.assertFalse(result['network_mutation_allowed'])
 
-    def test_no_injection_registry(self):
-        self.assertEqual(set(cli.REGISTRY), {'FQ-001', 'FQ-002'})
+    def test_fixed_scenario_registry(self):
+        self.assertEqual(set(cli.REGISTRY), {'FQ-001', 'FQ-002', 'FQ-301-v4'})
 
     def test_failed_report_cannot_be_claimed_as_complete_pass(self):
         session = state.Session('FQ-001', self.root / 'sessions')

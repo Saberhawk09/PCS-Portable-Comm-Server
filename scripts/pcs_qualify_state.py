@@ -183,6 +183,23 @@ def report(path, pending=False):
             f"Reason: {manifest['reason']}\n\n"
             'Evidence: `events.jsonl`; timestamps include UTC, monotonic seconds and boot ID.\n\n'
             'Observation results do not qualify WAN injection, RF, cold boot, or physical hardware.\n')
+    if manifest['scenario'] == 'FQ-301-v4':
+        text += ('\nScope: sampled LAN HTTP availability and observed IPv4 Ethernet/Wi-Fi '
+                 'transition/recovery. Witness handshakes use the PCS monotonic clock. '
+                 'No RF, IPv6-failover, physical Starlink, or gap-free continuity claim.\n')
+        rf = manifest.get('rf_safety')
+        if isinstance(rf, dict):
+            # Fixed exported values only, including when rendering a saved record.
+            allowed = {'gate': ('PASS', 'BLOCKED'),
+                       'direwolf': ('active', 'inactive', 'unknown'),
+                       'graywolf': ('active', 'inactive', 'unknown'),
+                       'recovery': ('installed', 'masked', 'absent', 'unknown'),
+                       'ptt_safe': ('PASS', 'unverified'),
+                       'consequence': ('bounded_inactive_engines', 'unverified')}
+            text += '\nLatest RF safety observation (see phase-tagged JSONL history):\n\n'
+            for key, values in allowed.items():
+                value = rf.get(key)
+                text += f'- {key}: {value if value in values else "unknown"}\n'
     if (path / 'witness.json').exists():
         witness = read_json(path / 'witness.json')
         status = witness.get('result')

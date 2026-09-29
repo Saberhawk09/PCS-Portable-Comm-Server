@@ -10,7 +10,7 @@ runtime=/run/pcs-qualification
 state=/var/lib/pcs-qualification
 unit=/etc/systemd/system/pcs-qualify-cleanup.service
 wrapper=/usr/local/sbin/pcs-qualify
-modules=(pcs_qualify.py pcs_qualify_state.py pcs_qualify_observe.py pcs_qualify_safety.py pcs_qualify_witness.py)
+modules=(pcs_qualify.py pcs_qualify_state.py pcs_qualify_observe.py pcs_qualify_safety.py pcs_qualify_witness.py pcs_qualify_wan.py pcs_qualify_fault.py pcs_qualify_lan.py pcs_qualify_scenario.py pcs_qualify_rf.py)
 files=("$wrapper" "$unit")
 for module in "${modules[@]}"; do files+=("/usr/local/lib/pcs/$module"); done
 for dir in "$runtime" "$state"; do
@@ -28,6 +28,16 @@ check_files() {
     [[ -f $state/install.sha256 && ! -L $state/install.sha256 ]] || return 1
     sha256sum --status -c "$state/install.sha256"
 }
+# Upgrading adds modules. An old manifest must never authorize overwriting or
+# removing a pre-existing new target which that manifest did not own.
+if [[ -f $state/install.sha256 ]]; then
+    for file in "${files[@]}"; do
+        if [[ -e $file ]] && ! cut -c 67- "$state/install.sha256" | grep -Fxq -- "$file"; then
+            echo 'Unowned qualification target collision' >&2
+            exit 1
+        fi
+    done
+fi
 if [[ $mode == --check ]]; then
     check_files
     [[ $(stat -c '%u:%a' "$state/sessions") == '0:700' ]]

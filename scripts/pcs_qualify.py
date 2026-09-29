@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PCS qualification Phase 1: observation and harmless lease proof only."""
+"""PCS qualification: fixed observation, lease proof, and guarded IPv4 WAN scenario."""
 import argparse
 import datetime as dt
 import json
@@ -18,7 +18,8 @@ from pcs_qualify_state import (HarnessError, RUNTIME, SESSIONS, Session, atomic_
 from pcs_qualify_witness import validate as validate_witness
 
 REGISTRY = {'FQ-001': 'Cached power/uplink observation; no continuity claim',
-            'FQ-002': 'Independent expiry of a harmless private marker'}
+            'FQ-002': 'Independent expiry of a harmless private marker',
+            'FQ-301-v4': 'IPv4 Ethernet WAN fault; direct LAN witness and RF isolation required'}
 EXIT = {'PASS': 0, 'PASS WITH OBSERVATION': 0, 'FAIL': 1, 'INCONCLUSIVE': 2,
         'ABORTED': 3, 'HARNESS ERROR': 4, 'BLOCKED': 5}
 
@@ -41,6 +42,33 @@ def campaign(scenario, duration):
         session = Session(scenario)
         print(json.dumps({'session': session.id, 'scenario': scenario}), flush=True)
         result, reason = 'HARNESS ERROR', 'execution_error'
+        if scenario == 'FQ-301-v4':
+            from pcs_qualify_scenario import run as run_wan
+            try:
+                preflight()
+                result, reason = run_wan(session, duration)
+                start = session.manifest['start']
+                wall = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(start['utc'])).total_seconds()
+                if result in ('PASS', 'PASS WITH OBSERVATION') and abs(wall - (time.monotonic() - start['monotonic'])) > 2:
+                    result, reason = 'INCONCLUSIVE', 'wall_clock_changed'
+            except KeyboardInterrupt:
+                result, reason = 'ABORTED', 'interrupted'
+            except (OSError, ValueError, TypeError, KeyError):
+                result, reason = 'HARNESS ERROR', 'wan_execution_error'
+            finally:
+                try:
+                    restore(expected_session=session.id)
+                except (OSError, ValueError):
+                    result, reason = 'HARNESS ERROR', 'cleanup_failed'
+            from pcs_qualify_rf import RFBlocked, require_safe
+            try:
+                require_safe(session, 'after_cleanup')
+            except RFBlocked as exc:
+                if result in ('PASS', 'PASS WITH OBSERVATION'):
+                    result, reason = 'ABORTED', str(exc)
+            except (OSError, ValueError):
+                result, reason = 'HARNESS ERROR', 'rf_evidence_write_failed'
+            return finish(session, result, reason)
         try:
             try:
                 control = preflight()
@@ -109,7 +137,7 @@ def main():
     for name in ('run', '_run'):
         run = sub.add_parser(name, help='fixed scenario campaign' if name == 'run' else argparse.SUPPRESS)
         run.add_argument('scenario', choices=REGISTRY)
-        run.add_argument('--duration', type=int, default=60)
+        run.add_argument('--duration', type=int)
     expiry = sub.add_parser('expire')
     expiry.add_argument('session', type=identifier)
     for name in ('cleanup', 'boot-cleanup', 'preflight'):
@@ -120,6 +148,8 @@ def main():
     witness.add_argument('session', type=identifier)
     witness.add_argument('file', type=Path)
     args = parser.parse_args()
+    if args.action in ('run', '_run') and args.duration is None:
+        args.duration = 90 if args.scenario == 'FQ-301-v4' else 60
     if args.action == 'list':
         print(json.dumps(REGISTRY, indent=2))
         return 0
@@ -158,7 +188,12 @@ def main():
                 raise HarnessError('owned_service_required')
             return campaign(args.scenario, args.duration)
         if args.action == 'preflight':
-            print(json.dumps(preflight()))
+            from pcs_qualify_rf import observe
+            evidence = preflight()
+            evidence['fq301_rf_safety'] = observe()
+            # RF admission is advisory for Phase 1 observation. Only the WAN
+            # scenario enforces it; this command does not certify all WAN gates.
+            print(json.dumps(evidence))
         elif args.action == 'expire':
             restore(expected_session=args.session)
             try:
