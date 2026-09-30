@@ -129,13 +129,17 @@ class Campaign(unittest.TestCase):
             if case=='dns_failure':raise cellular.HarnessError('collector_failed')
             return 'resolved'
         with ExitStack() as stack:
-            values={'command':command,'baseline_checks':lambda:'f'*40,'require_safe':lambda *a:None,'snapshot':snapshot,
+            values={'RUNTIME':Path('/nonexistent-fq302-fixture'),'command':command,'baseline_checks':lambda:'f'*40,'require_safe':lambda *a:None,'snapshot':snapshot,
                 'checkpoint':lambda:dict(power=dict(status='ok')),'assess':lambda _: 'PASS',
                 'Receiver':Receiver,'arm_cellular':arm,'restore':restore,'lease_valid':lambda _:True,
-                'table':lambda:{},'owned_handle':lambda *a:1,'boot_id':lambda:'boot'}
+                'table':lambda:None if case!='cleanup_failure' and (clock['removed'] is not None or clock['fault'] is None) else {},'owned_handle':lambda *a:1,'boot_id':lambda:'boot'}
             for name,value in values.items():stack.enter_context(patch.object(cellular,name,value))
             stack.enter_context(patch.object(cellular.time,'monotonic',lambda:clock['now']))
-            result=cellular.run(session,180)
+            if case=='cleanup_failure':
+                with self.assertRaisesRegex(cellular.HarnessError,'cellular_fault_cleanup_unverified'):cellular.run(session,180)
+                result=None
+            else:
+                result=cellular.run(session,180)
         return result,clock,events
     def test_complete_owned_lifecycle(self):
         result,clock,events=self.simulate()
@@ -144,6 +148,11 @@ class Campaign(unittest.TestCase):
                      'wan_fault_removed','preferred_route_restored','cellular_disconnected_and_ownership_cleared'):
             self.assertIn(name,[n for n,_ in events])
         self.assertGreater(clock['restore'],0)
+        self.assertIn(('cellular_fault_cleanup',dict(verified=True,cellular_manipulated=False)),events)
+    def test_cleanup_failure_is_independent_and_cannot_complete_as_pass(self):
+        result,clock,events=self.simulate('cleanup_failure')
+        self.assertIsNone(result);self.assertGreater(clock['restore'],0)
+        self.assertIn(('cellular_fault_cleanup',dict(verified=False,cellular_manipulated=False)),events)
     def test_active_initial_session_blocks_without_fault(self):
         result,clock,_=self.simulate('initial_active');self.assertEqual(result[0],'BLOCKED');self.assertIsNone(clock['fault'])
     def test_manual_or_unproven_ownership_is_inconclusive_and_restored(self):

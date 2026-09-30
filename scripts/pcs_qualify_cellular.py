@@ -301,4 +301,11 @@ def run(session, duration):
                 receiver.close()
                 for row in receiver.receipts.samples[written:]:session.event('lan_witness',row)
         finally:
-            restore(expected_session=session.id)
+            try:
+                restore(expected_session=session.id)
+                if table() is not None or any((RUNTIME/name).exists() for name in ('active.json','wan.json')):
+                    raise HarnessError('cellular_fault_cleanup_unverified')
+            except BaseException:
+                session.event('cellular_fault_cleanup',dict(verified=False,cellular_manipulated=False))
+                raise
+            session.event('cellular_fault_cleanup',dict(verified=True,cellular_manipulated=False))
