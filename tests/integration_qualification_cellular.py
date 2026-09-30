@@ -79,4 +79,33 @@ with lock(RUNTIME/'campaign.lock'):
             cmd('systemctl','stop','pcs-qualify-expiry.timer','pcs-qualify-expiry.service',check=False)
 
 if __name__=='__main__':
-    guard();unittest.main()
+    guard()
+    record=Path('/root/fq302-boot.json')
+    if sys.argv[1:]==['--prepare-boot']:
+        import pcs_qualify_state as state
+        from pcs_qualify_fault import arm_cellular
+        assert not record.exists()
+        indices={r['ifindex'] for r in json.loads(cmd('ip','-j','link').stdout)}
+        assert not indices & {999998,999999}
+        with state.lock(state.RUNTIME/'campaign.lock'):
+            session=state.Session('FQ-302')
+            arm_cellular(session.id,wan.Identity('eth1',999998,'02:00:00:00:00:01'),
+                wan.Identity('wlan0',999999,'02:00:00:00:00:02'),60,
+                '10.42.0.0/24','192.168.50.0/24','192.168.1.0/24')
+            record.write_text(json.dumps(dict(session=session.id,boot=state.boot_id())))
+        print('Prepared unused-ifindex dual fault; reboot the disposable VM')
+    elif sys.argv[1:]==['--verify-boot']:
+        import pcs_qualify_state as state
+        from pcs_qualify_fault import table
+        evidence=json.loads(record.read_text())
+        assert evidence['boot']!=state.boot_id()
+        assert table() is None
+        assert all(not (state.RUNTIME/name).exists() for name in ('active.json','wan.json','marker'))
+        value=state.read_json(state.SESSIONS/evidence['session']/'session.json')
+        assert value['scenario']=='FQ-302' and value['complete'] and value['result']=='ABORTED'
+        cmd('systemctl','is-active','pcs-qualify-cleanup.service')
+        evidence.update(boot_after=state.boot_id(),passed=True)
+        record.write_text(json.dumps(evidence,indent=2))
+        print(record.read_text())
+    else:
+        unittest.main()
