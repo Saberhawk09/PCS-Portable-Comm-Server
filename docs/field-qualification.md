@@ -4,8 +4,29 @@ This is an explicit, local, supervised qualification tool. It is not part of the
 base installer, web panel, power stress runner, uplink controller, or RF services.
 The fixed scenarios are `FQ-001` (cached observation), `FQ-002` (independent
 expiry of a harmless marker), and `FQ-301-v4` (guarded IPv4 Ethernet WAN fault).
-The WAN work is local development; it has not been deployed to the commissioned
-PCS. Observation PASS alone does not qualify or authorize a WAN fault.
+FQ-301-v4 has passed one commissioned, operator-supervised run, described below.
+Observation PASS alone does not qualify or authorize another WAN fault.
+
+## Accepted commissioned FQ-301-v4 result
+
+On 2026-09-30, session `c2c55c4601844503aa94eec5c8d21f94` passed on normal
+PCS v2.1.1 (`236dc2067ee3972cb5f66036dba716d029652909`) using harness
+`6869c70d3af41c9a8d735f4c1c5b0ea624f3c0fb`. The independent Windows witness
+completed 124 matching PCS receipts with zero failed HTTP samples and a maximum
+intersample gap of 1.085 seconds. No interruption was detected at the stated
+sampling interval. The client retained its two-second timeout.
+
+Ethernet IPv4 failure was observed at 14.847 seconds and Wi-Fi fallback at
+48.909 seconds; preferred Ethernet recovered 31.500 seconds after verified fault
+removal. Qualification cleanup and the RF-safe inactive-engine state were verified.
+The original report, JSONL receipts, Windows witness and archive are preserved
+locally. Original session archive SHA256:
+`2dd5a3a7d6951f5d86906fb1dc52db77fec2fab29a80390570bda19356372491`.
+
+This establishes sampled LAN HTTP availability and observed IPv4 Ethernet-to-Wi-Fi
+transition/recovery. It does not establish IPv6 failover, RF recovery, physical
+Starlink loss, or gap-free connectivity. Earlier incomplete witness runs remain
+INCONCLUSIVE; the accepted run does not rewrite those results.
 
 ## FQ-301-v4: current scope and gates
 
