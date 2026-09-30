@@ -239,8 +239,8 @@ def run(session, duration):
                         return 'FAIL', 'recovery_hysteresis_too_short'
                     if recovered is None:
                         recovered = time.monotonic()
-                        receiver.receipts.finish_after = recovered
                         session.event('wan_recovery_observed', {'elapsed_seconds': round(recovered - removed, 3)})
+                        receiver.finish(time.monotonic())
                 next_sample = time.monotonic() + 5
             if removed is None and now - fault_start >= duration:
                 restore(expected_session=session.id)
@@ -248,7 +248,8 @@ def run(session, duration):
                 session.event('wan_fault_removed', {'verified': True})
             if removed is not None and now - removed > 90:
                 return 'FAIL', 'preferred_wan_recovery_deadline'
-            if recovered is not None and receiver.receipts.coverage(fault_start, recovered) != 'INCONCLUSIVE':
+            if (recovered is not None and receiver.finished and
+                    receiver.receipts.coverage(fault_start, recovered) != 'INCONCLUSIVE'):
                 result = receiver.receipts.coverage(fault_start, recovered)
                 if result == 'PASS' and power_warning:
                     result = 'PASS WITH OBSERVATION'
@@ -266,5 +267,12 @@ def run(session, duration):
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return result, reason
     finally:
-        receiver.close()
-        restore(expected_session=session.id)
+        try:
+            receiver.close()
+            # Close freezes the worker and obtains its final receipt history.
+            # Acknowledged samples received during collection must remain durable.
+            for row in receiver.receipts.samples[receipts_written:]:
+                session.event('lan_witness', row)
+                receipts_written += 1
+        finally:
+            restore(expected_session=session.id)

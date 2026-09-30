@@ -81,7 +81,14 @@ with lock(RUNTIME/'campaign.lock'):
         return ready.read_text()
 
     def assert_expired(self, session):
-        until(lambda: not Path('/run/pcs-qualification/wan.json').exists(), 25)
+        # wan.json disappears inside the expiry mutation lock, before that
+        # transaction returns. Wait for successful service completion as well;
+        # racing boot-cleanup against the still-running expiry is invalid.
+        until(lambda: (not Path('/run/pcs-qualification/wan.json').exists() and
+              cmd('systemctl', 'show', '--value', '--property=ActiveState',
+                  'pcs-qualify-expiry.service').stdout.strip() == 'inactive'), 25)
+        self.assertEqual(cmd('systemctl', 'show', '--value', '--property=Result',
+                             'pcs-qualify-expiry.service').stdout.strip(), 'success')
         self.assertFalse(Path('/run/pcs-qualification/active.json').exists())
         self.assertFalse(Path('/run/pcs-qualification/nft.batch').exists())
         self.assertNotEqual(self.run_in(self.router, 'nft', 'list', 'table', 'inet', 'pcs_qualification', check=False).returncode, 0)

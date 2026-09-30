@@ -182,6 +182,20 @@ All coverage decisions use the PCS monotonic clock and boot, not the client cloc
 The final acknowledgement ends the client once recovery is covered. Its durable
 file also records its own UTC/monotonic/boot/process-clock identity.
 
+On PCS, a bounded spawned process owns receipt validation, monotonic timestamping
+and UDP acknowledgements independently of synchronous health/status collection.
+It retains the same eth0/address/source/session checks and packet/sample limits.
+Private atomic IPC snapshots carry append-only receipt history to the campaign,
+which remains the sole durable event writer. Closing the receiver freezes its
+history and persists final receipts; a missing, stalled or inconsistent worker
+cannot produce a PASS. The final done acknowledgement must actually have been
+sent before successful completion. The worker shares the campaign's systemd
+resource limits and control-group cleanup, exits on IPC loss, and has its own
+360-second lifetime bound. It cannot change leases, firewall rules or RF state.
+The Windows client's two-second socket timeout is unchanged. A receipt reply is
+not a durable campaign result: interrupted or incomplete evidence remains
+ineligible for a completed witness/PASS claim.
+
 Server receipt events in `events.jsonl` determine the scenario result. Retain the
 original client file as independent evidence; an interrupted client's partial file
 is not a completed witness. This qualifies sampled HTTP availability, not DNS/NTP/

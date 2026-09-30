@@ -63,7 +63,8 @@ def snapshot():
 scenario.snapshot=snapshot
 scenario.checkpoint=lambda: {'fixture': True}
 scenario.assess=lambda evidence: 'PASS'
-raise SystemExit(cli.campaign('FQ-301-v4',60))
+if __name__ == '__main__':
+    raise SystemExit(cli.campaign('FQ-301-v4',60))
 ''')
         http = subprocess.Popen(['ip', 'netns', 'exec', self.router, 'python3', '-m', 'http.server',
                                  '80', '--bind', '10.42.0.1', '--directory', self.temp.name],

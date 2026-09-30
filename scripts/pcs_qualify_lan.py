@@ -197,9 +197,10 @@ class Receipts:
         return 'PASS' if all(s['ok'] for s in self.samples) else 'FAIL'
 
 
-class Receiver:
+class _SocketReceiver:
     def __init__(self, session, server, client):
         self.receipts = Receipts(session)
+        self.finished = False
         self.client = str(ipaddress.IPv4Address(client))
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
@@ -224,9 +225,151 @@ class Receiver:
         reply = self.receipts.receive(packet, time.monotonic())
         if reply is not None:
             self.socket.sendto(json.dumps(reply, allow_nan=False).encode(), peer)
+            self.finished |= reply['done']
 
     def close(self):
         self.socket.close()
+
+
+def _receiver_worker(channel, session, server, client):
+    """Own the UDP socket/clock/protocol; never collect health or write reports."""
+    import select
+    transport = None
+    try:
+        transport = _SocketReceiver(session, server, client)
+        channel.settimeout(2)
+        channel.send(b'{"ready":true}')
+        deadline = time.monotonic() + 360
+        while time.monotonic() < deadline:
+            readable, _, _ = select.select([channel, transport.socket], [], [], .1)
+            if channel in readable:
+                request = json.loads(channel.recv(256))
+                operation = request.get('operation')
+                if operation == 'finish' and set(request) == {'operation', 'at'}:
+                    at = request['at']
+                    if (type(at) not in (int, float) or not math.isfinite(at) or
+                            not 0 <= at <= time.monotonic() or
+                            transport.receipts.finish_after not in (None, at)):
+                        raise ValueError('invalid_finish')
+                    transport.receipts.finish_after = at
+                elif set(request) != {'operation'} or operation not in ('snapshot', 'close'):
+                    raise ValueError('invalid_receiver_request')
+                receipts = transport.receipts
+                channel.send(json.dumps(dict(session=session, samples=receipts.samples,
+                    invalid=receipts.invalid, finish_after=receipts.finish_after,
+                    finished=transport.finished), allow_nan=False).encode())
+                if operation == 'close':
+                    return
+            if transport.socket in readable:
+                transport.poll()
+    except (OSError, EOFError, ValueError, TypeError):
+        # Closing IPC makes the campaign fail closed; no raw network data escapes.
+        return
+    finally:
+        if transport is not None:
+            transport.close()
+        channel.close()
+
+
+class Receiver:
+    """Bounded process keeps acknowledgements independent of synchronous collectors.
+
+    Only this campaign owns the private IPC. The parent remains the sole durable
+    event writer and obtains a final snapshot before closing. No worker can claim
+    a campaign result, touch a lease/firewall, or extend witness coverage by itself.
+    """
+    def __init__(self, session, server, client):
+        import multiprocessing
+        self.receipts = Receipts(session)
+        self.finished = False
+        server, client = str(ipaddress.IPv4Address(server)), str(ipaddress.IPv4Address(client))
+        context = multiprocessing.get_context('spawn')
+        # Atomic bounded IPC frames avoid partial pipe reads hanging after a
+        # worker failure. This socketpair is private, local and never network-bound.
+        self.channel, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        self.process = context.Process(target=_receiver_worker, args=(child, session, server, client),
+                                       name='pcs-qualify-receipts', daemon=True)
+        self.closed = False
+        try:
+            self.process.start()
+            child.close()
+            self.channel.settimeout(5)
+            if self.channel.recv(64) != b'{"ready":true}':
+                raise ValueError('receiver_unavailable')
+            self.channel.settimeout(2)
+        except BaseException:
+            child.close()
+            self._stop()
+            raise
+
+    def _update(self, value):
+        if (not isinstance(value, dict) or set(value) != {'session', 'samples', 'invalid', 'finish_after', 'finished'} or
+                value['session'] != self.receipts.session or type(value['invalid']) is not bool or
+                type(value['finished']) is not bool or (self.finished and not value['finished']) or
+                not isinstance(value['samples'], list) or len(value['samples']) > MAX_SAMPLES):
+            raise ValueError('invalid_receiver_snapshot')
+        refreshed = Receipts(self.receipts.session)
+        for seq, row in enumerate(value['samples']):
+            if (not isinstance(row, dict) or set(row) != {'seq', 'before', 'after', 'ok'} or
+                    type(row['seq']) is not int or row['seq'] != seq or type(row['ok']) is not bool or
+                    any(type(row[k]) not in (int, float) or not math.isfinite(row[k]) or row[k] < 0
+                        for k in ('before', 'after')) or
+                    (seq and row['before'] < value['samples'][seq-1]['after'])):
+                raise ValueError('invalid_receiver_sample')
+            for phase in ('before', 'after'):
+                packet = dict(version=1, session=refreshed.session, seq=seq, phase=phase)
+                if phase == 'after':
+                    packet['ok'] = row['ok']
+                refreshed.receive(packet, row[phase])
+        if refreshed.samples != value['samples'] or refreshed.samples[:len(self.receipts.samples)] != self.receipts.samples:
+            raise ValueError('receiver_history_changed')
+        finish = value['finish_after']
+        if finish is not None and (type(finish) not in (int, float) or not math.isfinite(finish) or finish < 0):
+            raise ValueError('invalid_receiver_finish')
+        if (self.receipts.finish_after is not None and finish != self.receipts.finish_after) or (
+                value['finished'] and (finish is None or not refreshed.samples or refreshed.samples[-1]['after'] < finish)):
+            raise ValueError('invalid_receiver_finish')
+        refreshed.invalid |= value['invalid'] or self.receipts.invalid
+        refreshed.finish_after = finish
+        self.receipts = refreshed
+        self.finished = value['finished']
+
+    def _request(self, operation, **fields):
+        try:
+            if self.closed or not self.process.is_alive():
+                raise ValueError('receiver_unavailable')
+            self.channel.send(json.dumps(dict(operation=operation, **fields), allow_nan=False).encode())
+            self._update(json.loads(self.channel.recv(65536)))
+        except (OSError, EOFError) as exc:
+            raise ValueError('receiver_unavailable') from exc
+
+    def poll(self):
+        time.sleep(.1)  # Same parent observation cadence; worker never waits here.
+        self._request('snapshot')
+
+    def finish(self, at):
+        self._request('finish', at=at)
+
+    def _stop(self):
+        self.closed = True
+        self.channel.close()
+        if self.process.pid is not None:
+            self.process.join(1)
+            if self.process.is_alive():
+                self.process.terminate()
+                self.process.join(1)
+            if self.process.is_alive():
+                self.process.kill()
+                self.process.join(1)
+            self.process.close()
+
+    def close(self):
+        if self.closed:
+            return
+        try:
+            self._request('close')
+        finally:
+            self._stop()
 
 
 def client_route(target, source, interface):

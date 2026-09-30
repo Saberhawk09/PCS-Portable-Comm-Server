@@ -27,7 +27,21 @@ class WanScenario(unittest.TestCase):
                 base = dict(version=1, session=session.id, seq=seq)
                 self.receipts.receive(dict(base, phase='before'), context['now'] - .1)
                 self.receipts.receive(dict(base, phase='after', ok=not (fault == 'http' and seq > 3)), context['now'])
-            def close(self): pass
+            def close(self):
+                if fault == 'close_error':
+                    context['close_failed'] = True
+                    raise ValueError('receiver_unavailable')
+                if fault == 'close_receipt':
+                    seq = len(self.receipts.samples)
+                    base = dict(version=1, session=session.id, seq=seq)
+                    self.receipts.receive(dict(base, phase='before'), context['now'] + .1)
+                    self.receipts.receive(dict(base, phase='after', ok=True), context['now'] + .2)
+                    context['final_receipt'] = seq
+            def finish(self, at): self.receipts.finish_after = at
+            @property
+            def finished(self):
+                return (self.receipts.finish_after is not None and bool(self.receipts.samples) and
+                        self.receipts.samples[-1]['after'] >= self.receipts.finish_after)
         def snapshot():
             context['snapshots'] += 1
             if fault == 'stale' and context['injected'] is not None:
@@ -46,6 +60,7 @@ class WanScenario(unittest.TestCase):
             if fault == 'rf_changed' and context['injected'] is not None:
                 raise scenario.RFBlocked('rf_engine_active')
         def restore(**kwargs):
+            context['restore_calls'] = context.get('restore_calls', 0) + 1
             if context['injected'] is not None and context['removed'] is None:
                 context['removed'] = context['now']
         with patch.object(scenario, 'snapshot', side_effect=snapshot), \
@@ -60,7 +75,12 @@ class WanScenario(unittest.TestCase):
                 patch.object(scenario, 'table', return_value={}), \
                 patch.object(scenario, 'owned_handle', return_value=1), \
                 patch.object(scenario, 'restore', side_effect=restore):
-            result = scenario.run(session, 60)
+            if fault == 'close_error':
+                with self.assertRaisesRegex(ValueError, 'receiver_unavailable'):
+                    scenario.run(session, 60)
+                result = None
+            else:
+                result = scenario.run(session, 60)
         return result, context, session.events
 
     def test_complete_transition_requires_detection_recovery_and_witness(self):
@@ -76,6 +96,13 @@ class WanScenario(unittest.TestCase):
         self.assertEqual(result[0], 'BLOCKED')
         self.assertIsNone(context['injected'])
 
+    def test_final_worker_snapshot_is_persisted_before_return(self):
+        result, context, events = self.simulate('close_receipt')
+        self.assertEqual(result[0], 'PASS')
+        saved = [row for name, row in events if name == 'lan_witness']
+        self.assertEqual(saved[-1]['seq'], context['final_receipt'])
+        self.assertEqual([row['seq'] for row in saved], list(range(len(saved))))
+
     def test_changed_identity_aborts_and_restores(self):
         result, context, _ = self.simulate('identity')
         self.assertEqual(result[0], 'ABORTED')
@@ -85,6 +112,11 @@ class WanScenario(unittest.TestCase):
         result, context, _ = self.simulate('http')
         self.assertEqual(result[0], 'FAIL')
         self.assertIsNotNone(context['removed'])
+
+    def test_receiver_close_failure_still_restores(self):
+        _, context, _ = self.simulate('close_error')
+        self.assertTrue(context['close_failed'])
+        self.assertGreaterEqual(context['restore_calls'], 2)
 
     def test_rf_state_change_aborts_and_cleans_up(self):
         result, context, _ = self.simulate('rf_changed')
