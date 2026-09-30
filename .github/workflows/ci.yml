@@ -10,6 +10,20 @@ permissions:
   contents: read
 
 jobs:
+  windows-witness:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          architecture: x64
+      - name: Test shared witness receipts
+        run: python -m unittest discover -s tests -p test_pcs_qualify_lan.py -v
+      - name: Test Windows route safety and native TCP/UDP witness transport
+        run: python -m unittest discover -s tests -p test_pcs_qualify_windows.py -v
+      - name: Compile witness sources
+        run: python -m py_compile scripts/pcs_qualify_lan.py scripts/pcs_qualify_windows.py
   test:
     runs-on: ubuntu-latest
     steps:
