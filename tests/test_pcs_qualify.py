@@ -168,7 +168,7 @@ class QualificationTests(unittest.TestCase):
         self.assertFalse(result['network_mutation_allowed'])
 
     def test_fixed_scenario_registry(self):
-        self.assertEqual(set(cli.REGISTRY), {'FQ-001', 'FQ-002', 'FQ-301-v4'})
+        self.assertEqual(set(cli.REGISTRY), {'FQ-001', 'FQ-002', 'FQ-301-v4', 'FQ-302'})
 
     def test_failed_report_cannot_be_claimed_as_complete_pass(self):
         session = state.Session('FQ-001', self.root / 'sessions')

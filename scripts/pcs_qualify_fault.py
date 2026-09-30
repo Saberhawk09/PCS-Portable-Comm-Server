@@ -8,7 +8,17 @@ import time
 from pcs_qualify_observe import command
 from pcs_qualify_state import (HarnessError, RUNTIME, atomic_json, boot_id,
                                identifier, lock, read_json)
-from pcs_qualify_wan import TABLE, OWNER, create_plan, delete_plan, owned_handle
+from pcs_qualify_wan import TABLE, OWNER, CELLULAR_OWNER, create_plan, create_cellular_plan, delete_plan, owned_handle
+
+
+def table_owner(document, session):
+    for owner in (OWNER, CELLULAR_OWNER):
+        try:
+            owned_handle(document, session, owner)
+            return owner
+        except HarnessError:
+            pass
+    raise HarnessError('firewall_ownership_unknown')
 
 
 def table():
@@ -52,7 +62,7 @@ def cleanup(session, runtime=RUNTIME):
     document = table()
     if document is None:
         return
-    apply(delete_plan(document, session), runtime)
+    apply(delete_plan(document, session, table_owner(document, session)), runtime)
     if table() is not None:
         raise HarnessError('firewall_cleanup_unverified')
 
@@ -87,10 +97,11 @@ def cleanup_orphan(runtime=RUNTIME):
     if len(rows) != 1 or not isinstance(rows[0].get('comment'), str):
         raise HarnessError('firewall_ownership_unknown')
     comment = rows[0]['comment']
-    if not comment.startswith(OWNER):
+    owners = [owner for owner in (OWNER, CELLULAR_OWNER) if comment.startswith(owner)]
+    if len(owners) != 1:
         raise HarnessError('firewall_ownership_unknown')
-    session = identifier(comment[len(OWNER):])
-    owned_handle(document, session)
+    session = identifier(comment[len(owners[0]):])
+    owned_handle(document, session, owners[0])
     cleanup(session, runtime)
 
 
@@ -103,6 +114,16 @@ def arm_wan(session, target, seconds, lan_cidr, wan_cidr, runtime=RUNTIME, verif
     """
     from pcs_qualify_safety import arm, lease_valid, restore
     plan = create_plan(session, target, seconds, lan_cidr, wan_cidr)
+    _arm_plan(session, plan, seconds, runtime, verify, OWNER)
+
+
+def arm_cellular(session, ethernet, wifi, seconds, lan, ethernet_net, wifi_net, runtime=RUNTIME, verify=None):
+    plan = create_cellular_plan(session, ethernet, wifi, seconds, lan, ethernet_net, wifi_net)
+    _arm_plan(session, plan, seconds, runtime, verify, CELLULAR_OWNER)
+
+
+def _arm_plan(session, plan, seconds, runtime, verify, owner):
+    from pcs_qualify_safety import arm, lease_valid, restore
     if table() is not None or (runtime / 'wan.json').exists():
         raise HarnessError('firewall_table_collision')
     arm(session, seconds + 10, runtime)
@@ -124,7 +145,7 @@ def arm_wan(session, target, seconds, lan_cidr, wan_cidr, runtime=RUNTIME, verif
             atomic_json(runtime / 'active.json', lease)
             apply(plan, runtime)
             document = table()
-            owned_handle(document, session)
+            owned_handle(document, session, owner)
             lease['state'] = 'active'
             atomic_json(runtime / 'active.json', lease)
     except BaseException:

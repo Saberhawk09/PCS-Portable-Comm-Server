@@ -183,10 +183,14 @@ def report(path, pending=False):
             f"Reason: {manifest['reason']}\n\n"
             'Evidence: `events.jsonl`; timestamps include UTC, monotonic seconds and boot ID.\n\n'
             'Observation results do not qualify WAN injection, RF, cold boot, or physical hardware.\n')
+    if manifest['scenario'] == 'FQ-302':
+        text += ('\nScope: automatic manager-owned cellular IPv4 fallback and owned-session release; '
+                 'sampled LAN HTTP only. No RF, IPv6 failover or gap-free continuity claim.\n')
     if manifest['scenario'] == 'FQ-301-v4':
         text += ('\nScope: sampled LAN HTTP availability and observed IPv4 Ethernet/Wi-Fi '
                  'transition/recovery. Witness handshakes use the PCS monotonic clock. '
                  'No RF, IPv6-failover, physical Starlink, or gap-free continuity claim.\n')
+    if manifest['scenario'] in ('FQ-301-v4', 'FQ-302'):
         rf = manifest.get('rf_safety')
         if isinstance(rf, dict):
             # Fixed exported values only, including when rendering a saved record.

@@ -195,7 +195,7 @@ def boot_cleanup(root=SESSIONS, runtime=RUNTIME):
             try:
                 value = read_json(path / 'session.json')
                 if (not isinstance(value, dict) or value.get('session') != path.name or
-                        value.get('scenario') not in ('FQ-001', 'FQ-002', 'FQ-301-v4', 'unknown')):
+                        value.get('scenario') not in ('FQ-001', 'FQ-002', 'FQ-301-v4', 'FQ-302', 'unknown')):
                     raise HarnessError('invalid_session_record')
             except (OSError, HarnessError):
                 # Replace only the broken manifest with a fixed recovery record;

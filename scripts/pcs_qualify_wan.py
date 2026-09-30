@@ -13,6 +13,7 @@ from pcs_qualify_state import HarnessError, identifier
 
 TABLE = 'pcs_qualification'
 OWNER = 'pcs-qualify:FQ-301-v4:'
+CELLULAR_OWNER = 'pcs-qualify:FQ-302:'
 
 
 @dataclass(frozen=True)
@@ -135,7 +136,27 @@ def create_plan(session, target, seconds, lan_cidr, wan_cidr):
                   ' }\n' for hook in ('output', 'forward')) + '}\n')
 
 
-def owned_handle(document, session):
+def create_cellular_plan(session, ethernet, wifi, seconds, lan_cidr, ethernet_cidr, wifi_cidr):
+    """One atomic table/set transaction; no partial two-interface activation."""
+    if (not isinstance(wifi, Identity) or wifi.name != 'wlan0' or
+            type(wifi.index) is not int or not 1 <= wifi.index < 2**31 or
+            wifi.index == ethernet.index or type(seconds) is not int or not 60 <= seconds <= 180):
+        raise HarnessError('invalid_dual_wan_plan')
+    # Reuse the accepted Ethernet compiler's network/identity validation. Both
+    # on-link WAN networks must survive; overlapping WAN subnets are permitted.
+    first = create_plan(session, ethernet, 120, lan_cidr, ethernet_cidr)
+    create_plan(session, ethernet, 120, lan_cidr, wifi_cidr)
+    networks = [lan_cidr, ethernet_cidr, wifi_cidr, '127.0.0.0/8', '169.254.0.0/16',
+                '224.0.0.0/4', '255.255.255.255/32', '192.168.100.1/32']
+    preserved = ', '.join(map(str, ipaddress.collapse_addresses(map(ipaddress.IPv4Network, networks))))
+    first = first.replace(OWNER, CELLULAR_OWNER).replace('120s', f'{seconds}s')
+    first = first.replace(f'elements = {{ {ethernet.index} timeout {seconds}s }}',
+                          f'elements = {{ {ethernet.index} timeout {seconds}s, {wifi.index} timeout {seconds}s }}')
+    return re.sub(r'set preserved \{[^\n]+',
+                  f'set preserved {{ type ipv4_addr; flags interval; elements = {{ {preserved} }}; }}', first)
+
+
+def owned_handle(document, session, owner=OWNER):
     """Only the exact session marker authorizes cleanup; names alone never do."""
     identifier(session)
     if not isinstance(document, dict) or not isinstance(document.get('nftables'), list):
@@ -146,13 +167,13 @@ def owned_handle(document, session):
         raise HarnessError('firewall_ownership_unknown')
     table = tables[0]
     if (table.get('family') != 'inet' or table.get('name') != TABLE or
-            table.get('comment') != OWNER + session or type(table.get('handle')) is not int or
+            owner not in (OWNER, CELLULAR_OWNER) or table.get('comment') != owner + session or type(table.get('handle')) is not int or
             not 1 <= table['handle'] < 2**64):
         raise HarnessError('firewall_ownership_unknown')
     return table['handle']
 
 
-def delete_plan(document, session):
+def delete_plan(document, session, owner=OWNER):
     # A replacement table with the same name has a different kernel handle.
     # If replaced between inspection and execution, deletion fails closed.
-    return f'delete table inet handle {owned_handle(document, session)}\n'
+    return f'delete table inet handle {owned_handle(document, session, owner)}\n'
