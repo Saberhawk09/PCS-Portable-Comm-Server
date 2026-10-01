@@ -78,7 +78,7 @@ import pcs_qualify_safety as s
 original=Path.unlink
 def unlink(path,*a,**k):
     original(path,*a,**k)
-    if path.name=='marker':time.sleep(.5)
+    if path.name in ('marker','active.json'):time.sleep(.5)
 Path.unlink=unlink
 s.restore(expected_session=sys.argv[1])
 ''')
