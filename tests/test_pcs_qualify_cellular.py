@@ -84,6 +84,57 @@ class Ownership(unittest.TestCase):
         calls=[n.func.attr for n in ast.walk(ast.parse(source)) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)]
         self.assertFalse(set(calls)&{'observe','activate','deactivate','ActivateConnection','DeactivateConnection','Connect','CreateBearer','Enable','Reapply','Update','save'})
 
+@unittest.skipIf(sys.platform=='win32','Linux-only route snapshot')
+class RouteSnapshot(unittest.TestCase):
+    def setUp(self):
+        self.token=dict(session='/active/7',profile='profile')
+        self.pending=dict(boot='boot',daemon='daemon',modem_identity=['modem'],
+            cellular_id='cell',cellular_profile='profile',activation='fallback',
+            owned={'cell':self.token.copy()},suppressed=[],modem_state=10,registration=1,
+            bearer_connected=False,active=[dict(self.token,state=1,interface='')])
+        self.ready=copy.deepcopy(self.pending)
+        self.ready.update(modem_state=11,bearer_connected=True,
+                          active=[dict(self.token,state=2,interface='wwan0')])
+        p=patch.object(cellular,'boot_id',return_value='boot');p.start();self.addCleanup(p.stop)
+    def test_activation_between_reads_refreshes_once_for_same_owned_session(self):
+        with patch.object(cellular,'one',return_value={'dev':'wwan0'}) as route, \
+                patch.object(cellular,'cellular_facts',return_value=self.ready) as facts:
+            self.assertEqual(cellular.effective_route(self.pending,'1.1.1.1'),(self.ready,'cellular',True))
+            self.assertEqual(route.call_count,2);facts.assert_called_once_with()
+    def test_stable_route_needs_no_refresh(self):
+        with patch.object(cellular,'one',return_value={'dev':'eth1'}), \
+                patch.object(cellular,'cellular_facts') as facts:
+            self.assertEqual(cellular.effective_route(self.pending,'1.1.1.1')[1:],('ethernet',False))
+            facts.assert_not_called()
+    def test_refresh_rejects_identity_ownership_and_session_changes(self):
+        edits=[('boot','other'),('daemon','other'),('modem_identity',['other']),
+               ('cellular_profile','other'),('owned',{}),('suppressed',['cell']),
+               ('active',[dict(self.token,session='/replacement',state=2,interface='wwan0')])]
+        for key,value in edits:
+            fresh=copy.deepcopy(self.ready);fresh[key]=value
+            with self.subTest(key=key),patch.object(cellular,'one',return_value={'dev':'wwan0'}), \
+                    patch.object(cellular,'cellular_facts',return_value=fresh),self.assertRaises(cellular.Ambiguous):
+                cellular.effective_route(self.pending,'1.1.1.1')
+    def test_refresh_never_accepts_unknown_or_changing_route_or_pending_bearer(self):
+        for device,second,fresh in [('wg-pcs','wg-pcs',self.ready),('wwan0','eth1',self.ready),
+                                     ('wwan0','wwan0',self.pending)]:
+            with self.subTest(device=device,second=second,fresh=fresh), \
+                    patch.object(cellular,'one',side_effect=[{'dev':device},{'dev':second}]), \
+                    patch.object(cellular,'cellular_facts',return_value=fresh) as facts,self.assertRaises(cellular.Ambiguous):
+                cellular.effective_route(self.pending,'1.1.1.1')
+            facts.assert_called_once_with()
+    def test_unowned_activation_and_policy_route_are_not_refreshed(self):
+        unowned=copy.deepcopy(self.pending);unowned['owned']={}
+        for initial,route in [(unowned,{'dev':'wwan0'}),(self.pending,{'dev':'wwan0','table':100})]:
+            with patch.object(cellular,'one',return_value=route),patch.object(cellular,'cellular_facts') as facts, \
+                    self.assertRaises(cellular.Ambiguous):cellular.effective_route(initial,'1.1.1.1')
+            facts.assert_not_called()
+    def test_collector_failure_is_not_retried(self):
+        with patch.object(cellular,'one',return_value={'dev':'wwan0'}), \
+                patch.object(cellular,'cellular_facts',side_effect=cellular.HarnessError('collector_unavailable')) as facts, \
+                self.assertRaises(cellular.HarnessError):cellular.effective_route(self.pending,'1.1.1.1')
+        facts.assert_called_once_with()
+
 @unittest.skipIf(sys.platform=='win32','Linux-only compiler')
 class DualFault(unittest.TestCase):
     def test_one_atomic_table_with_two_time_limited_indices(self):

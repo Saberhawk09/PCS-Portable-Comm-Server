@@ -48,10 +48,50 @@ def ownership(facts, expected=None, recovering=False):
     return ('owned_active' if row['state'] == 2 and facts['bearer_connected'] else 'owned_pending'), token
 
 
+def cellular_facts():
+    return json.loads(command(['/usr/bin/python3', '-I', '-c',
+        "import sys,json;sys.path.insert(0,'/usr/local/lib/pcs');from pcs_qualify_cellular_read import collect;print(json.dumps(collect()))"], timeout=8))
+
+
+def effective_route(facts, target):
+    def read():
+        route = one(['/usr/sbin/ip','-j','-4','route','get',target])
+        if route.get('nexthops') or route.get('type','unicast') != 'unicast' or route.get('table','main') not in ('main',254):
+            raise Ambiguous('effective_route_ambiguous')
+        return route.get('dev')
+    def classify(value, device):
+        devices = {'eth1':'ethernet','wlan0':'wifi'}
+        if len(value['active']) == 1 and value['active'][0]['interface']:
+            interface = value['active'][0]['interface']
+            if interface in ('eth0','lo','eth1','wlan0'):
+                raise Ambiguous('effective_route_ambiguous')
+            devices[interface] = 'cellular'
+        return devices.get(device)
+    device = read()
+    effective = classify(facts, device)
+    if effective is not None:
+        return facts, effective, False
+    # NM may finish activation after the earlier D-Bus read but before ip route.
+    # Refresh once only, and only for an already proven owned pending activation.
+    state, token = ownership(facts)
+    if state != 'owned_pending' or facts['active'][0]['state'] != 1:
+        raise Ambiguous('effective_route_unverified')
+    fresh = cellular_facts()
+    stable = ('boot','daemon','modem_identity','cellular_id','cellular_profile',
+              'activation','owned','suppressed')
+    if any(fresh[key] != facts[key] for key in stable):
+        raise Ambiguous('route_snapshot_identity_changed')
+    state, _ = ownership(fresh, token)
+    if read() != device:
+        raise Ambiguous('route_snapshot_unstable')
+    if state != 'owned_active' or classify(fresh, device) != 'cellular':
+        raise Ambiguous('effective_route_unverified')
+    return fresh, 'cellular', True
+
+
 def snapshot():
     base = wan_snapshot()
-    facts = json.loads(command(['/usr/bin/python3', '-I', '-c',
-        "import sys,json;sys.path.insert(0,'/usr/local/lib/pcs');from pcs_qualify_cellular_read import collect;print(json.dumps(collect()))"], timeout=8))
+    facts = cellular_facts()
     wifi = one(['/usr/sbin/ip', '-j', 'link', 'show', 'dev', 'wlan0'])
     if (wifi.get('ifname') != 'wlan0' or type(wifi.get('ifindex')) is not int or
             not {'UP', 'LOWER_UP'} <= set(wifi.get('flags', [])) or
@@ -77,22 +117,14 @@ def snapshot():
     if active_wifi != base['fixed'][-1][1]:
         raise HarnessError('wifi_profile_changed')
     targets = config.get('ipv4_targets', ['1.1.1.1','8.8.8.8'])
-    route = one(['/usr/sbin/ip','-j','-4','route','get',targets[0]])
-    if route.get('nexthops') or route.get('type','unicast') != 'unicast' or route.get('table','main') not in ('main',254):
-        raise Ambiguous('effective_route_ambiguous')
-    devices = {'eth1':'ethernet','wlan0':'wifi'}
-    if len(facts['active']) == 1 and facts['active'][0]['interface']:
-        devices[facts['active'][0]['interface']] = 'cellular'
-    effective = devices.get(route.get('dev'), 'other')
-    if effective == 'other':
-        raise Ambiguous('effective_route_unverified')
+    facts, effective, refreshed = effective_route(facts, targets[0])
     if command(['/usr/bin/systemctl','--failed','--no-legend','--plain','--no-pager']).strip():
         raise HarnessError('unexpected_failed_service')
     for slot in base['slots']:
         if not rows[slot]['link'] or not rows[slot]['address']:
             raise HarnessError('preferred_interface_or_address_lost')
     base.update(facts=facts, wifi_target=wifi_target, wifi_net=str(wifi_address.network),
-                cell_slot=cells[0], effective=effective)
+                cell_slot=cells[0], effective=effective, route_snapshot_refreshed=refreshed)
     base['fixed'] += (wifi_target, str(wifi_address), active_wifi, facts['daemon'], facts['modem_identity'])
     return base
 
@@ -240,6 +272,7 @@ def run(session, duration):
                     return health,'required_observation_unhealthy'
                 warning |= evidence['power']['status']=='warn'
                 session.event('cellular_observation',dict(ownership=state,
+                    route_snapshot_refreshed=current.get('route_snapshot_refreshed',False),
                     ethernet_ipv4=ethernet['internet'],wifi_ipv4=wifi['internet'],
                     cellular_ipv4=cell['internet'],cellular_ipv6=cell['internet6'],
                     selected_cellular=cell['selected'],cache_owned=cell['owned'],
@@ -297,7 +330,8 @@ def run(session, duration):
         if reason not in ('cellular_ownership_unavailable', 'unexpected_manager_ownership',
                           'operator_or_replaced_cellular_session', 'cellular_ownership_unproven',
                           'cellular_state_ambiguous', 'effective_route_ambiguous',
-                          'effective_route_unverified'):
+                          'effective_route_unverified', 'route_snapshot_identity_changed',
+                          'route_snapshot_unstable'):
             reason = 'cellular_ownership_or_route_unproven'
         session.event('cellular_admission_lost', dict(reason=reason))
         return 'INCONCLUSIVE',reason
