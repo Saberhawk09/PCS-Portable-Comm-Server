@@ -67,7 +67,8 @@ with lock(RUNTIME/'campaign.lock'):
             until(ready.exists,12)
             self.assertFalse(self.ping(self.router,'198.18.0.2'));self.assertFalse(self.ping(self.router,'198.18.1.2'))
             cmd('systemctl','kill','--signal=SIGKILL','pcs-qualify-campaign.service')
-            until(lambda:not Path('/run/pcs-qualification/wan.json').exists(),85)
+            # Fixed 60s kernel timeout + 30s cellular preparation reserve.
+            until(lambda:not Path('/run/pcs-qualification/wan.json').exists(),95)
             self.assertTrue(self.ping(self.router,'198.18.0.2'));self.assertTrue(self.ping(self.router,'198.18.1.2'))
             until(lambda:cmd('systemctl','show','--value','--property=ActiveState','pcs-qualify-expiry.service').stdout.strip()=='inactive')
             self.run_in(self.router,'pcs-qualify','boot-cleanup')
