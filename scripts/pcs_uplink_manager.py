@@ -331,15 +331,21 @@ class NetworkManager:
             used.add(path)
             dev = BUS + '.Device'
             o.device = path
-            o.interface = str(self.prop(path, dev, 'IpInterface')) or name
+            for uuid, (session, paths) in active.items():
+                if path in paths:
+                    o.profile, o.session = uuid, session
+            ip_interface = str(self.prop(path, dev, 'IpInterface'))
+            # A pending modem has a control-device name (e.g. cdc-wdm0),
+            # not necessarily a kernel data interface. Retain its activation
+            # identity for ownership, but do not probe or route on that name.
+            o.interface = ip_interface if kind == 8 else ip_interface or name
+            if kind == 8 and not o.interface:
+                continue
             if not interface_name(o.interface):
                 o.error = 'protected or invalid data interface'
                 continue
             state = int(self.prop(path, dev, 'State'))
             o.link = bool(self.prop(path, dev + '.Wired', 'Carrier')) if kind == 1 else state == 100
-            for uuid, (session, paths) in active.items():
-                if path in paths:
-                    o.profile, o.session = uuid, session
             # Bound Ethernet and Wi-Fi identities observe the actual active
             # profile, including an operator-selected profile. The configured
             # UUID controls activation, not ownership of pre-existing sessions.
@@ -554,7 +560,7 @@ class Controller:
         fixed = {'ipv4': [], 'ipv6': []}
         for u in self.config.uplinks:
             o = observations[u.id]
-            if u.type == 'cellular' and o.session and not o.error:
+            if u.type == 'cellular' and o.session and o.interface and not o.error:
                 for family, metric in self.nm.fixed_metrics(o).items():
                     if not 1 < metric < 4_000_000_000:
                         raise RuntimeError('cellular default metric leaves no safe WAN preference range')

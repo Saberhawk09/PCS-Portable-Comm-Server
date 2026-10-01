@@ -291,8 +291,16 @@ def run(session, duration):
                 return verdict,'automatic_cellular_ownership_and_release'
     except RFBlocked:
         return 'ABORTED','rf_safety_changed'
-    except Ambiguous:
-        return 'INCONCLUSIVE','cellular_ownership_or_route_unproven'
+    except Ambiguous as exc:
+        # Fixed codes only; never export raw D-Bus identities or exceptions.
+        reason = str(exc)
+        if reason not in ('cellular_ownership_unavailable', 'unexpected_manager_ownership',
+                          'operator_or_replaced_cellular_session', 'cellular_ownership_unproven',
+                          'cellular_state_ambiguous', 'effective_route_ambiguous',
+                          'effective_route_unverified'):
+            reason = 'cellular_ownership_or_route_unproven'
+        session.event('cellular_admission_lost', dict(reason=reason))
+        return 'INCONCLUSIVE',reason
     except KeyboardInterrupt:
         return 'ABORTED','interrupted'
     except HarnessError as exc:

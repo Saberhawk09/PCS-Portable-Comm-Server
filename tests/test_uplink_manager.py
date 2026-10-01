@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('pcs_uplink_manager', ROOT / 'scripts/pcs_uplink_manager.py')
@@ -137,6 +137,47 @@ class FakeNM:
         self.renewed.append(u.id)
         settings, _ = self.applied(o)
         self.reapply(o, {'ipv4': {'route-metric': settings['ipv4']['route-metric'] + 1}})
+
+
+class PendingModemTests(unittest.TestCase):
+    def test_pending_control_device_retains_ownership_without_network_operations(self):
+        nm = m.NetworkManager.__new__(m.NetworkManager)
+        nm.manager = Mock()
+        nm.manager.GetDevices.return_value = ['/modem']
+        ip_interface = ['']
+        def prop(path, interface, key):
+            values = {'ActiveConnections':['/active/cell'], 'Uuid':CELL_UUID,
+                      'Devices':['/modem'], 'Interface':'cdc-wdm0', 'DeviceType':8,
+                      'IpInterface':ip_interface[0], 'State':100,
+                      'Ip4Config':'/', 'Ip6Config':'/'}
+            return values[key]
+        nm.prop = prop
+        nm.prepare_probes = Mock()
+        cfg = m.Config((config().uplinks[-1],))
+        with patch.object(m, 'probe') as probe:
+            pending = nm.observe(cfg)['cellular']
+            self.assertEqual(pending.interface, '')
+            self.assertEqual(pending.session, '/active/cell')
+            self.assertEqual(pending.profile, CELL_UUID)
+            self.assertFalse(pending.error or pending.link or pending.address)
+            nm.prepare_probes.assert_not_called();probe.assert_not_called()
+            ip_interface[0] = 'wwan0'
+            ready = nm.observe(cfg)['cellular']
+            self.assertEqual(ready.interface, 'wwan0')
+            self.assertEqual(ready.session, pending.session)
+            nm.prepare_probes.assert_called_once_with('wwan0', True)
+
+    def test_pending_owned_session_does_not_query_control_device_routes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            obs = observations()
+            obs['cellular'] = m.Observation(session='/active/pending', profile=CELL_UUID)
+            nm = FakeNM(obs)
+            controller = m.Controller(config(), nm, folder, boot='boot')
+            controller.state['owned']['cellular'] = dict(session='/active/pending', profile=CELL_UUID)
+            with patch.object(nm, 'fixed_metrics', side_effect=AssertionError('pending route query')):
+                controller.route(None, obs)
+            self.assertTrue(controller.owns('cellular', obs['cellular']))
+            self.assertEqual(nm.disconnected, [])
 
 
 class ControllerTests(unittest.TestCase):

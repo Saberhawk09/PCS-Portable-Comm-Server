@@ -125,6 +125,8 @@ class Campaign(unittest.TestCase):
             def finish(self,at):self.receipts.finish_after=at
             def close(self):pass
         def snapshot():
+            if case in ('route_ambiguous','private_error') and clock['fault'] is not None:
+                raise cellular.Ambiguous('effective_route_unverified' if case=='route_ambiguous' else 'private identity detail')
             if case=='service_failure' and clock['fault'] is not None:raise cellular.HarnessError('unexpected_failed_service')
             if case=='identity_failure' and clock['fault'] is not None:raise cellular.HarnessError('wifi_profile_changed')
             fault=clock['fault'] is not None and clock['removed'] is None
@@ -194,6 +196,14 @@ class Campaign(unittest.TestCase):
         result,clock,_=self.simulate('manual');self.assertEqual(result[0],'INCONCLUSIVE');self.assertGreater(clock['restore'],0)
     def test_witness_loss_inconclusive(self):
         result,clock,_=self.simulate('witness_loss');self.assertEqual(result[0],'INCONCLUSIVE');self.assertGreater(clock['restore'],0)
+    def test_ambiguity_records_only_allowlisted_reason_and_still_cleans_up(self):
+        for case,reason in [('route_ambiguous','effective_route_unverified'),
+                            ('private_error','cellular_ownership_or_route_unproven')]:
+            result,clock,events=self.simulate(case)
+            self.assertEqual(result,('INCONCLUSIVE',reason))
+            self.assertIn(('cellular_admission_lost',dict(reason=reason)),events)
+            self.assertGreater(clock['restore'],0)
+            self.assertNotIn('private identity detail',str(events))
     def test_no_activation_route_disagreement_and_failed_release_never_pass(self):
         for case in ('no_activation','route_disagrees','stuck_owned'):
             with self.subTest(case=case):
