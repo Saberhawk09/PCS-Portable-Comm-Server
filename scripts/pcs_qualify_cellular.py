@@ -97,16 +97,28 @@ def snapshot():
     return base
 
 
-def baseline_checks():
-    checkout = os.environ.get('PCS_QUALIFY_NORMAL_CHECKOUT', '')
+def checkout_commit(checkout):
     path = Path(checkout)
     if not checkout or not path.is_absolute() or not (path/'.git').exists():
         raise HarnessError('normal_checkout_required')
-    if command(['/usr/bin/git','-C',checkout,'status','--porcelain']).strip():
+    path = path.resolve(strict=True)
+    # The operator explicitly selects this checkout. Trust only its canonical
+    # path for these read-only invocations, never a global safe.directory entry.
+    # The collector deliberately omits SUDO_UID, so root cannot otherwise inspect
+    # the normal pi-owned checkout. Disable optional index writes and fsmonitor.
+    git = ['/usr/bin/git','--no-optional-locks','-c','safe.directory='+str(path),
+           '-c','core.fsmonitor=false','-C',str(path)]
+    if command(git+['status','--porcelain','--untracked-files=all']).strip():
         raise HarnessError('normal_checkout_dirty')
-    sha = command(['/usr/bin/git','-C',checkout,'rev-parse','HEAD']).strip()
+    sha = command(git+['rev-parse','HEAD']).strip()
     if not re.fullmatch('[0-9a-f]{40}', sha):
         raise HarnessError('normal_checkout_unverified')
+    return sha
+
+
+def baseline_checks():
+    path = Path(os.environ.get('PCS_QUALIFY_NORMAL_CHECKOUT', ''))
+    sha = checkout_commit(os.environ.get('PCS_QUALIFY_NORMAL_CHECKOUT', ''))
     if ((path/'scripts/pcs_uplink_manager.py').read_bytes() !=
             Path('/usr/local/lib/pcs/pcs_uplink_manager.py').read_bytes()):
         raise HarnessError('installed_uplink_manager_differs_from_normal_checkout')

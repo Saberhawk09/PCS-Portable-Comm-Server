@@ -1,5 +1,8 @@
 """FQ-302 ownership proof and atomic dual-fault compilation."""
 import copy
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 import sys
 import unittest
@@ -8,6 +11,38 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 if sys.platform != 'win32':
     import pcs_qualify_cellular as cellular
     import pcs_qualify_wan as wan
+
+@unittest.skipIf(sys.platform=='win32','Linux-only checkout collector')
+class Checkout(unittest.TestCase):
+    def test_real_sanitized_collector_preserves_clean_and_dirty_gates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)
+            def git(*args):
+                return subprocess.check_output(['git','-C',directory,*args],stderr=subprocess.DEVNULL).decode().strip()
+            git('init');(path/'tracked').write_text('original')
+            git('add','tracked')
+            git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','-m','fixture')
+            sha=git('rev-parse','HEAD')
+            config=(path/'.git/config').read_bytes()
+            index=(path/'.git/index').read_bytes()
+            self.assertEqual(cellular.checkout_commit(directory),sha)
+            self.assertEqual((path/'.git/config').read_bytes(),config)
+            self.assertEqual((path/'.git/index').read_bytes(),index)
+            for name in ('tracked','untracked'):
+                (path/name).write_text('changed')
+                with self.assertRaisesRegex(cellular.HarnessError,'normal_checkout_dirty'):
+                    cellular.checkout_commit(directory)
+                if name=='tracked':(path/name).write_text('original')
+            (path/'untracked').unlink()
+            # Real cross-owner reproduction when this suite runs in the root VM.
+            if os.geteuid()==0:
+                os.chown(path,65534,65534);os.chown(path/'.git',65534,65534)
+                with self.assertRaises(cellular.HarnessError):
+                    cellular.command(['/usr/bin/git','-C',directory,'status','--porcelain'])
+                self.assertEqual(cellular.checkout_commit(directory),sha)
+                (path/'untracked').write_text('still blocked')
+                with self.assertRaisesRegex(cellular.HarnessError,'normal_checkout_dirty'):
+                    cellular.checkout_commit(directory)
 
 @unittest.skipIf(sys.platform=='win32','Linux-only scenario')
 class Ownership(unittest.TestCase):
