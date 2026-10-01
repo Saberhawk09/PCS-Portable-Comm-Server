@@ -207,6 +207,7 @@ class Campaign(unittest.TestCase):
                 failure_seconds=30,recovery_seconds=30,poll_seconds=10)
         def arm(*args,**kwargs):
             kwargs['verify']()
+            if case=='slow_prepare':raise cellular.HarnessError('lease_setup_too_slow')
             if case=='partial_error':raise OSError('uncertain_commit')
             clock['fault']=clock['now']
         def restore(**kwargs):
@@ -241,6 +242,14 @@ class Campaign(unittest.TestCase):
         result,clock,events=self.simulate('cleanup_failure')
         self.assertIsNone(result);self.assertGreater(clock['restore'],0)
         self.assertIn(('cellular_fault_cleanup',dict(verified=False,cellular_manipulated=False)),events)
+    def test_preparation_failure_is_precise_and_final_checks_are_sanitized(self):
+        result,clock,events=self.simulate('slow_prepare')
+        self.assertEqual(result,('INCONCLUSIVE','lease_setup_too_slow'))
+        self.assertIn(('cellular_observation_error',dict(reason='lease_setup_too_slow')),events)
+        check=next(value for name,value in events if name=='cellular_final_check')
+        self.assertEqual(set(check),{'elapsed_seconds','identity_matches','healthy','witness_ready'})
+        self.assertTrue(check['identity_matches'] and check['healthy'] and check['witness_ready'])
+        self.assertGreater(clock['restore'],0)
     def test_active_initial_session_blocks_without_fault(self):
         result,clock,_=self.simulate('initial_active');self.assertEqual(result[0],'BLOCKED');self.assertIsNone(clock['fault'])
     def test_manual_or_unproven_ownership_is_inconclusive_and_restored(self):

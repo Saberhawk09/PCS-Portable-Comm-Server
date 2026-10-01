@@ -237,8 +237,11 @@ def run(session, duration):
                     require_safe(session,'before_fault')
                     current=snapshot()
                     receiver.poll()
-                    session.event('cellular_final_check',dict(elapsed_seconds=round(time.monotonic()-checking,3)))
-                    if current['fixed'] != baseline['fixed'] or not healthy_start(current) or not receiver.receipts.ready(time.monotonic()):
+                    checked=dict(identity_matches=current['fixed'] == baseline['fixed'],
+                                 healthy=healthy_start(current),
+                                 witness_ready=receiver.receipts.ready(time.monotonic()))
+                    session.event('cellular_final_check',dict(elapsed_seconds=round(time.monotonic()-checking,3),**checked))
+                    if not all(checked.values()):
                         raise HarnessError('cellular_preflight_changed')
                 injected=time.monotonic()
                 arm_cellular(session.id,baseline['target'],baseline['wifi_target'],duration,

@@ -706,6 +706,20 @@ Policies exceeding the existing bounded campaign/witness lifetime are BLOCKED.
 Recovery observation is bounded by installed recovery hysteresis plus three poll
 intervals and eight seconds of observation allowance. No client timeout is extended.
 
+FQ-302 reserves a fixed 30 seconds in its independent lease for final RF/modem/
+identity checks and cleanup margin (210 seconds total at the default fault budget).
+The kernel drop timeout remains 180 seconds; the active lease is never renewed.
+Before committing either drop, the full kernel timeout plus five seconds must
+still remain. Slow preparation beyond that allowance fails closed and cleans up.
+Final-check elapsed time and identity/health/witness booleans are recorded, along
+with fixed preparation/collector error codes; raw private configuration is excluded.
+
+A route snapshot that straddles cellular activation may be refreshed once only
+for an already proven owned pending session. The same session/profile, modem,
+boot, daemon and ownership must persist; the refreshed bearer must be connected
+and both route reads must match that cellular interface. This is not permission
+to adopt an unknown activation or ignore a changed control route.
+
 An active session is proven owned only when the production state ledger's exact
 NetworkManager active-connection object and profile match the independently read
 activation, same boot and NetworkManager daemon identity. Replacement, manual,
