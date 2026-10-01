@@ -63,6 +63,7 @@ class RealSafety(unittest.TestCase):
         result = cmd('pcs-qualify', 'run', 'FQ-002')
         self.assertIn('"result": "PASS"', result.stdout)
         self.assertFalse((RUNTIME / 'marker').exists())
+        self.assertEqual(before, cmd('nft', '-j', 'list', 'ruleset').stdout)
 
     def test_01b_expiry_marker_unlink_overlap_does_not_kill_campaign(self):
         # Stretch the real expiry process's marker-unlink window deterministically.
@@ -100,7 +101,6 @@ raise SystemExit(cli.campaign('FQ-002',60))
             self.assertIn('"result": "PASS"',result.stdout)
             self.assertFalse((RUNTIME/'active.json').exists())
             self.assertFalse((RUNTIME/'marker').exists())
-        self.assertEqual(before, cmd('nft', '-j', 'list', 'ruleset').stdout)
 
     def test_02_kill9_at_each_lease_commit_boundary(self):
         for phase in ('prepared', 'marker', 'active'):
