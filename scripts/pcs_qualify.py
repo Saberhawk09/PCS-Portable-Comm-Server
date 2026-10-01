@@ -85,7 +85,7 @@ def campaign(scenario, duration):
             session.event('lease_armed', {'effect': 'private_marker'})
             if scenario == 'FQ-002':
                 deadline = time.monotonic() + 12
-                while (RUNTIME / 'marker').exists() and time.monotonic() < deadline:
+                while any((RUNTIME / name).exists() for name in ('marker', 'active.json')) and time.monotonic() < deadline:
                     time.sleep(0.1)
                 if (RUNTIME / 'marker').exists() or (RUNTIME / 'active.json').exists():
                     result, reason = 'FAIL', 'independent_expiry_failed'
