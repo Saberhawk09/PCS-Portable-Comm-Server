@@ -233,9 +233,11 @@ def run(session, duration):
                 if not receiver.receipts.ready(now):
                     continue
                 def verify():
+                    checking = time.monotonic()
                     require_safe(session,'before_fault')
                     current=snapshot()
                     receiver.poll()
+                    session.event('cellular_final_check',dict(elapsed_seconds=round(time.monotonic()-checking,3)))
                     if current['fixed'] != baseline['fixed'] or not healthy_start(current) or not receiver.receipts.ready(time.monotonic()):
                         raise HarnessError('cellular_preflight_changed')
                 injected=time.monotonic()
@@ -338,6 +340,13 @@ def run(session, duration):
     except KeyboardInterrupt:
         return 'ABORTED','interrupted'
     except HarnessError as exc:
+        reason = str(exc)
+        if reason in ('lease_setup_too_slow','lease_expired_before_injection',
+                      'cellular_preflight_changed','collector_failed','collector_unavailable',
+                      'collector_truncated','collector_invalid','firewall_table_collision',
+                      'expiry_not_armed'):
+            session.event('cellular_observation_error',dict(reason=reason))
+            return 'INCONCLUSIVE',reason
         if str(exc)=='unexpected_failed_service':
             return 'FAIL','unexpected_failed_service'
         if str(exc) in ('wifi_identity_unverified','wifi_profile_changed','wan_identity_unverified',

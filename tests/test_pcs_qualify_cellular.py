@@ -315,6 +315,25 @@ if sys.platform != 'win32':
 
 @unittest.skipIf(sys.platform=='win32','Linux-only dual lease lifecycle')
 class DualLifecycle(unittest.TestCase if sys.platform=='win32' else lifecycle.FaultLifecycle):
+    def test_bounded_slow_preparation_preserves_full_fault_lifetime(self):
+        for elapsed,allowed in ((7,True),(26,False)):
+            now=[100.0]
+            with self.subTest(elapsed=elapsed),patch.object(lifecycle.fault.time,'monotonic',side_effect=lambda:now[0]):
+                def verify():now[0]+=elapsed
+                def run():
+                    lifecycle.fault.arm_cellular(self.session,self.target,wan.Identity('wlan0',5,'02:00:00:00:00:02'),
+                        60,'10.42.0.0/24','192.168.50.0/24','192.168.1.0/24',self.runtime,verify=verify)
+                if allowed:
+                    run()
+                    lease=lifecycle.state.read_json(self.runtime/'active.json')
+                    self.assertEqual(lease['deadline'],190)
+                    self.assertGreaterEqual(lease['deadline']-now[0],65)
+                    self.assertIn('60s',self.applied[-1])
+                    lifecycle.safety.restore(self.runtime)
+                else:
+                    with self.assertRaisesRegex(cellular.HarnessError,'lease_setup_too_slow'):run()
+                    self.assertIsNone(self.document)
+                    self.assertFalse((self.runtime/'active.json').exists())
     def setUp(self):
         owner=patch.object(lifecycle,'OWNER',wan.CELLULAR_OWNER)
         owner.start();self.addCleanup(owner.stop)

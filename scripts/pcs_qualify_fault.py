@@ -119,14 +119,17 @@ def arm_wan(session, target, seconds, lan_cidr, wan_cidr, runtime=RUNTIME, verif
 
 def arm_cellular(session, ethernet, wifi, seconds, lan, ethernet_net, wifi_net, runtime=RUNTIME, verify=None):
     plan = create_cellular_plan(session, ethernet, wifi, seconds, lan, ethernet_net, wifi_net)
-    _arm_plan(session, plan, seconds, runtime, verify, CELLULAR_OWNER)
+    # Cellular admission includes bounded modem/ownership observations in
+    # addition to RF and both WAN identities. Reserve this time before arming;
+    # never renew an active lease or reduce the full kernel timeout margin.
+    _arm_plan(session, plan, seconds, runtime, verify, CELLULAR_OWNER, preparation=30)
 
 
-def _arm_plan(session, plan, seconds, runtime, verify, owner):
+def _arm_plan(session, plan, seconds, runtime, verify, owner, preparation=10):
     from pcs_qualify_safety import arm, lease_valid, restore
     if table() is not None or (runtime / 'wan.json').exists():
         raise HarnessError('firewall_table_collision')
-    arm(session, seconds + 10, runtime)
+    arm(session, seconds + preparation, runtime)
     try:
         with lock(runtime / 'mutation.lock'):
             if not lease_valid(session, runtime):
