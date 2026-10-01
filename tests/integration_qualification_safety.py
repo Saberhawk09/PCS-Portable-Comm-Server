@@ -63,6 +63,43 @@ class RealSafety(unittest.TestCase):
         result = cmd('pcs-qualify', 'run', 'FQ-002')
         self.assertIn('"result": "PASS"', result.stdout)
         self.assertFalse((RUNTIME / 'marker').exists())
+
+    def test_01b_expiry_marker_unlink_overlap_does_not_kill_campaign(self):
+        # Stretch the real expiry process's marker-unlink window deterministically.
+        # Only this disposable fixture changes the command registered by arm().
+        with tempfile.TemporaryDirectory() as folder:
+            expiry = Path(folder)/'expiry.py'
+            expiry.write_text('''
+import sys,time
+from pathlib import Path
+sys.path.insert(0,'/usr/local/lib/pcs')
+import pcs_qualify_safety as s
+original=Path.unlink
+def unlink(path,*a,**k):
+    original(path,*a,**k)
+    if path.name=='marker':time.sleep(.5)
+Path.unlink=unlink
+s.restore(expected_session=sys.argv[1])
+''')
+            runner = Path(folder)/'runner.py'
+            runner.write_text('''
+import sys
+sys.path.insert(0,'/usr/local/lib/pcs')
+import pcs_qualify as cli
+import pcs_qualify_safety as s
+original=s.command
+def command(args,**kwargs):
+    if args[0]=='/usr/bin/systemd-run':
+        args=args[:-3]+['/usr/bin/python3',sys.argv[1],args[-1]]
+    return original(args,**kwargs)
+s.command=command
+raise SystemExit(cli.campaign('FQ-002',60))
+''')
+            result=cmd('systemd-run','--quiet','--collect','--wait','--pipe',
+                       '--unit=pcs-qualify-campaign.service','/usr/bin/python3',str(runner),str(expiry))
+            self.assertIn('"result": "PASS"',result.stdout)
+            self.assertFalse((RUNTIME/'active.json').exists())
+            self.assertFalse((RUNTIME/'marker').exists())
         self.assertEqual(before, cmd('nft', '-j', 'list', 'ruleset').stdout)
 
     def test_02_kill9_at_each_lease_commit_boundary(self):
