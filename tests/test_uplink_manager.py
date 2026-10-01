@@ -153,7 +153,7 @@ class PendingModemTests(unittest.TestCase):
             return values[key]
         nm.prop = prop
         nm.prepare_probes = Mock()
-        cfg = m.Config((config().uplinks[-1],))
+        cfg = m.Config((config().uplinks[-1],), mode='auto')
         with patch.object(m, 'probe') as probe:
             pending = nm.observe(cfg)['cellular']
             self.assertEqual(pending.interface, '')
