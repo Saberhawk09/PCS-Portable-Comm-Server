@@ -675,3 +675,135 @@ These pre-existing issues are documented here without changing PCS behavior:
 
 No discovered repository inconsistency above has been confirmed as a new live PCS
 failure. Local fixture failures and harness defects must be separated from PCS defects.
+
+## FQ-302: automatic cellular ownership (development; no live acceptance yet)
+
+FQ-302 tests production activation and release of a manager-owned cellular session.
+It does not call cellular-connect, ModemManager Connect, NetworkManager activation,
+route mutation, or ownership-state writes. `pcs_qualify_cellular_read.py` uses only
+read-only D-Bus methods plus the production ledger; it never calls the production
+`NetworkManager.observe()` method because that method can prepare probe sysctls.
+
+Admission requires an explicitly supplied clean normal checkout, matching installed
+uplink-manager source, verified qualification checksums, automatic production policy,
+healthy Ethernet/Wi-Fi, exact pinned interfaces and active Wi-Fi profile (including
+when its configured UUID is omitted), direct field-LAN control, RF-safe inactive
+engines, no failed services, and one registered modem with no active profile/bearer
+or ownership. An existing cellular session is BLOCKED, never disconnected.
+
+The fault compiler creates one exclusive `inet pcs_qualification` table with an
+FQ-302/session ownership marker and both Ethernet/Wi-Fi interface indices in one
+time-limited set. Both output and forwarding IPv4 Internet drops commit in one
+nftables transaction. A rejected second target leaves neither fault active.
+Independent expiry is armed before the ownership ledger/effect; uncertain commits
+use the same exact-owner cleanup. LAN, on-link networks, DHCP and IPv6 remain
+untouched. Profiles, Wi-Fi association and Ethernet carrier remain intact.
+
+The scenario reads installed poll/failure/recovery values and pins them. Its
+explicit qualification fault budget is 90–180 seconds (default 180); this is a
+qualification deadline, not an assertion about a modem's maximum attach time.
+Policies exceeding the existing bounded campaign/witness lifetime are BLOCKED.
+Recovery observation is bounded by installed recovery hysteresis plus three poll
+intervals and eight seconds of observation allowance. No client timeout is extended.
+
+FQ-302 reserves a fixed 30 seconds in its independent lease for final RF/modem/
+identity checks and cleanup margin (210 seconds total at the default fault budget).
+The kernel drop timeout remains 180 seconds; the active lease is never renewed.
+Before committing either drop, the full kernel timeout plus five seconds must
+still remain. Slow preparation beyond that allowance fails closed and cleans up.
+Final-check elapsed time and identity/health/witness booleans are recorded, along
+with fixed preparation/collector error codes; raw private configuration is excluded.
+
+A route snapshot that straddles cellular activation may be refreshed once only
+for an already proven owned pending session. The same session/profile, modem,
+boot, daemon and ownership must persist; the refreshed bearer must be connected
+and both route reads must match that cellular interface. This is not permission
+to adopt an unknown activation or ignore a changed control route.
+
+An active session is proven owned only when the production state ledger's exact
+NetworkManager active-connection object and profile match the independently read
+activation, same boot and NetworkManager daemon identity. Replacement, manual,
+unknown or unproven ownership causes INCONCLUSIVE and fault cleanup. PASS also
+requires both preferred probes unhealthy, a connected bearer, fresh interface-bound
+production IPv4 probe success, cellular selection and independent kernel route
+agreement. Those are separate evidence fields, with IPv6 independently recorded.
+Activation-request time is explicitly unavailable; the first observed ownership,
+bearer and route transitions are timestamped rather than inventing a request time.
+
+Once cellular Internet is proven, both faults are removed together. The manager
+must restore preferred Ethernet, deactivate exactly its owned session and clear
+ownership. Qualification never disconnects cellular itself. DNS is observed
+separately through a bounded system-resolver lookup; a failed lookup with proven
+IPv4 cellular connectivity yields PASS WITH OBSERVATION, not a route-failure claim.
+Power observations use the existing cache and impose no wattage-change criterion.
+
+### Supervised FQ-302 procedure (approval still required)
+
+1. With APRS restored, run normal self-test/status and inspect any failure.
+2. Operator deliberately stops Dire Wolf using the existing documented procedure,
+   verifies the PTT guard/check and measured GPIO6 low. Graywolf must also be inactive.
+3. Install/check the exact reviewed immutable qualification commit. For a changed
+   installation, run FQ-001 and FQ-002 and require PASS before the fault campaign.
+4. Connect the separate Windows/Linux witness on field LAN, validate its physical
+   interface/source, and bind SSH through the same LAN path.
+5. On PCS (replace the checkout path with the verified normal checkout):
+
+```sh
+sudo env SSH_CONNECTION="$SSH_CONNECTION" pcs-qualify preflight --scenario FQ-302 \
+  --normal-checkout /home/pi/Projects/PCS-Portable-Comm-Server
+```
+
+6. **Stop for explicit operator approval.** Only afterward:
+
+```sh
+sudo env SSH_CONNECTION="$SSH_CONNECTION" pcs-qualify run FQ-302 --duration 180 \
+  --normal-checkout /home/pi/Projects/PCS-Portable-Comm-Server
+```
+
+7. After it prints SESSION_ID, start the accepted witness with duration 300,
+   unchanged two-second socket timeout and the verified physical LAN interface:
+
+```powershell
+py -3 pcs_qualify_lan.py --session SESSION_ID --target 10.42.0.1 --source VERIFIED_LAN_SOURCE --interface VERIFIED_NUMERIC_IFINDEX --duration 300 --output FRESH_FILE.jsonl
+```
+
+   Linux uses the same command with its verified interface name and source address.
+8. Verify absent qualification table/lease, preferred recovery, cellular inactive
+   with ownership cleared, unchanged cellular profile, RF-safe state and no failed
+   units. Import the original witness and preserve report/JSONL/archive.
+9. Operator restores APRS normally and runs the full normal self-test/status.
+   Do not proceed automatically to another fault.
+
+The follow-up manual-session-preservation scenario is design only: begin with a
+separately operator-started session, pin its exact activation identity, reproduce
+preferred-path failure/recovery, and assert that the same unowned activation stays
+alive. It requires separate review/authorization and is not a registered scenario.
+
+### Commissioned FQ-302 acceptance — 2026-10-02
+
+Session `eed83a842b044c52a1d1f02b476a314e` passed using immutable harness
+`0638862537fdda2e6d76b84fb2719fb3eb0318f2` and clean normal PCS checkout
+`2d2c2ef6308991efcf4daaa26ceba42a942bbd56`. FQ-001 and FQ-002 passed
+before this attempt. Both RF engines were intentionally inactive and PTT-safe.
+
+The dual IPv4 fault preserved field LAN. Production ownership was observed pending,
+then active with a connected bearer, successful cellular IPv4 probe, selected
+cellular path and matching effective kernel route. System DNS separately passed.
+After qualification removed both faults, Ethernet recovered and PCS released its
+owned cellular session and cleared ownership within 41.903 seconds. Qualification
+did not activate or disconnect cellular. Cleanup, absent fault table/lease,
+inactive/unowned cellular and RF-safe state were independently rechecked.
+
+The original Windows witness imported as PASS: 140 matched durable receipts,
+zero failed HTTP samples and maximum sample gap 1.091790 seconds. No interruption
+was detected at the stated approximately one-second sampling interval. This does
+not establish gap-free connectivity, IPv6 failover, physical WAN loss, RF recovery
+or preservation of an operator-owned cellular session.
+
+Final admission collection took 4.368 seconds. No route snapshot refresh was
+needed in this attempt; this pass does not retrospectively prove the cause of the
+previous pre-fault failure. Dire Wolf was restored normally. The first immediate
+self-test saw APRS agent startup/reconnection status; a subsequent full self-test
+passed without further intervention or configuration changes. No failed units
+remained. Private original and witness-imported archives were retained; the latter
+has SHA256 `81a5ed3a5e3979385a0ce244fda457c8a9819726e5d073c77af93e7f9387ae2c`.

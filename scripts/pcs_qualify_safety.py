@@ -142,35 +142,48 @@ def restore(runtime=RUNTIME, expected_session=None):
             cleanup_record(runtime)
             for name in ('marker', 'active.json'):
                 (runtime / name).unlink(missing_ok=True)
-    try:
-        remove()
-    except HarnessError as exc:
-        if str(exc) != 'campaign_busy':
-            raise
-        # A stopped runner cannot veto independent expiry. Only its exact systemd
-        # invocation may be killed; never trust a manifest PID or executable path.
-        value = read_json(runtime / 'active.json', 4096)
-        if not isinstance(value, dict):
-            raise HarnessError('invalid_lease_record')
-        if expected_session is not None and value.get('session') != expected_session:
+    # Marker disappearance can wake the campaign while independent expiry still
+    # owns this lock. Give ordinary overlapping cleanup a bounded chance to
+    # finish before considering a stopped mutation owner.
+    deadline = time.monotonic() + 1
+    while True:
+        try:
+            remove()
             return
-        invocation = value.get('invocation')
-        if not isinstance(invocation, str) or not re.fullmatch('[0-9a-f]{32}', invocation):
-            raise HarnessError('cleanup_lock_owner_unknown') from None
-        actual = command(['/usr/bin/systemctl', 'show', '--value', '--property=InvocationID', CAMPAIGN]).strip()
-        fragment = command(['/usr/bin/systemctl', 'show', '--value', '--property=FragmentPath', CAMPAIGN]).strip()
-        if actual != invocation or fragment != '/run/systemd/transient/' + CAMPAIGN:
-            raise HarnessError('cleanup_lock_owner_changed') from None
-        command(['/usr/bin/systemctl', 'kill', '--signal=SIGKILL', '--kill-whom=all', CAMPAIGN])
-        deadline = time.monotonic() + 3
-        while True:
-            try:
-                remove()
+        except HarnessError as exc:
+            if str(exc) != 'campaign_busy':
+                raise
+            if time.monotonic() >= deadline:
                 break
-            except HarnessError:
-                if time.monotonic() >= deadline:
-                    raise
-                time.sleep(0.05)
+            time.sleep(.05)
+    # A stopped runner cannot veto independent expiry. Only its exact systemd
+    # invocation may be killed; never trust a manifest PID or executable path.
+    value = read_json(runtime / 'active.json', 4096)
+    if not isinstance(value, dict):
+        raise HarnessError('invalid_lease_record')
+    if expected_session is not None and value.get('session') != expected_session:
+        return
+    invocation = value.get('invocation')
+    if not isinstance(invocation, str) or not re.fullmatch('[0-9a-f]{32}', invocation):
+        raise HarnessError('cleanup_lock_owner_unknown') from None
+    if invocation == os.environ.get('INVOCATION_ID'):
+        # A campaign cannot identify the external lock holder by its own
+        # lease. Leave escalation to the independent expiry process.
+        raise HarnessError('cleanup_lock_contended')
+    actual = command(['/usr/bin/systemctl', 'show', '--value', '--property=InvocationID', CAMPAIGN]).strip()
+    fragment = command(['/usr/bin/systemctl', 'show', '--value', '--property=FragmentPath', CAMPAIGN]).strip()
+    if actual != invocation or fragment != '/run/systemd/transient/' + CAMPAIGN:
+        raise HarnessError('cleanup_lock_owner_changed') from None
+    command(['/usr/bin/systemctl', 'kill', '--signal=SIGKILL', '--kill-whom=all', CAMPAIGN])
+    deadline = time.monotonic() + 3
+    while True:
+        try:
+            remove()
+            break
+        except HarnessError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
 
 
 def boot_cleanup(root=SESSIONS, runtime=RUNTIME):
@@ -195,7 +208,7 @@ def boot_cleanup(root=SESSIONS, runtime=RUNTIME):
             try:
                 value = read_json(path / 'session.json')
                 if (not isinstance(value, dict) or value.get('session') != path.name or
-                        value.get('scenario') not in ('FQ-001', 'FQ-002', 'FQ-301-v4', 'unknown')):
+                        value.get('scenario') not in ('FQ-001', 'FQ-002', 'FQ-301-v4', 'FQ-302', 'unknown')):
                     raise HarnessError('invalid_session_record')
             except (OSError, HarnessError):
                 # Replace only the broken manifest with a fixed recovery record;

@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -124,6 +126,36 @@ class QualificationTests(unittest.TestCase):
             safety.restore(runtime)
         self.assertFalse((runtime / 'marker').exists())
 
+    def test_brief_cleanup_overlap_never_kills_campaign(self):
+        runtime = state.private_dir(self.root / 'run')
+        state.atomic_json(runtime / 'active.json', {'invocation':'a'*32})
+        (runtime / 'marker').write_text('marker')
+        ready = threading.Event()
+        def other_cleanup():
+            with state.lock(runtime / 'mutation.lock'):
+                ready.set()
+                time.sleep(.2)
+        worker = threading.Thread(target=other_cleanup)
+        worker.start();self.assertTrue(ready.wait(2))
+        def systemctl(args):
+            return ('/run/systemd/transient/'+safety.CAMPAIGN if '--property=FragmentPath' in args else 'a'*32)
+        try:
+            with patch.object(safety,'command',side_effect=systemctl) as command:
+                safety.restore(runtime)
+                command.assert_not_called()
+        finally:
+            worker.join(2)
+        self.assertFalse((runtime/'marker').exists())
+
+    def test_campaign_cannot_kill_itself_on_prolonged_cleanup_contention(self):
+        runtime = state.private_dir(self.root / 'run')
+        state.atomic_json(runtime / 'active.json', {'invocation':'a'*32})
+        with state.lock(runtime/'mutation.lock'), patch.dict(os.environ,INVOCATION_ID='a'*32), \
+                patch.object(safety,'command') as command:
+            with self.assertRaisesRegex(state.HarnessError,'cleanup_lock_contended'):
+                safety.restore(runtime)
+            command.assert_not_called()
+
     def test_restore_partial_manifest_and_symlink_target_survives(self):
         runtime = state.private_dir(self.root / 'run')
         outside = self.root / 'unrelated'
@@ -168,7 +200,7 @@ class QualificationTests(unittest.TestCase):
         self.assertFalse(result['network_mutation_allowed'])
 
     def test_fixed_scenario_registry(self):
-        self.assertEqual(set(cli.REGISTRY), {'FQ-001', 'FQ-002', 'FQ-301-v4'})
+        self.assertEqual(set(cli.REGISTRY), {'FQ-001', 'FQ-002', 'FQ-301-v4', 'FQ-302'})
 
     def test_failed_report_cannot_be_claimed_as_complete_pass(self):
         session = state.Session('FQ-001', self.root / 'sessions')
