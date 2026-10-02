@@ -154,4 +154,3 @@ class ManualLifecycle(unittest.TestCase if sys.platform=='win32' else lifecycle.
     def arm(self):
         lifecycle.fault.arm_manual(self.session,self.target,wan.Identity('wlan0',5,'02:00:00:00:00:02'),
             60,'10.42.0.0/24','192.168.50.0/24','192.168.1.0/24',self.runtime)
-

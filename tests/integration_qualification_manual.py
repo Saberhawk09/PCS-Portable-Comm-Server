@@ -81,7 +81,7 @@ with lock(RUNTIME/'campaign.lock'):
 
 if __name__=='__main__':
     guard()
-    record=Path('/root/fq302-boot.json')
+    record=Path('/root/fq303-boot.json')
     if sys.argv[1:]==['--prepare-boot']:
         import pcs_qualify_state as state
         from pcs_qualify_fault import arm_manual
