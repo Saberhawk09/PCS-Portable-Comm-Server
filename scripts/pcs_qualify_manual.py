@@ -90,7 +90,13 @@ def run(session,duration):
     # _campaign has already removed only qualification-owned state. Observe the
     # operator's session again; never reconnect it or reconstruct its ownership.
     try:
-        manual_identity(snapshot()['facts'],expected)
+        final=snapshot()
+        manual_identity(final['facts'],expected)
+        if final['uplink']['uplinks'][final['cell_slot']]['owned']:
+            raise ManualFailure('manager_claimed_operator_session')
+        if result[0] in ('PASS','PASS WITH OBSERVATION') and not (
+                selected(final['uplink'],final['slots']) and final['effective']=='ethernet'):
+            raise ManualFailure('preferred_route_lost_after_cleanup')
         session.event('operator_session_after_cleanup',dict(preserved=True,manager_owned=False))
     except ManualFailure as exc:
         session.event('operator_session_after_cleanup',dict(preserved=False))

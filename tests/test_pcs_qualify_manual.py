@@ -56,6 +56,9 @@ class ManualCampaign(unittest.TestCase):
             chosen=not active
             rows=[row('ethernet',ethernet,chosen),row('wifi',ethernet,False),row('cellular',True,active,False)]
             effective='cellular' if active else 'ethernet'
+            if clock['restore']>=2:
+                if case=='cleanup_claim':rows[2]['owned']=True
+                if case=='cleanup_route':effective='wifi'
             if case=='route_disagrees' and active:effective='wifi'
             return dict(fixed=('fixed',),facts=facts,uplink=dict(uplinks=rows,internet=True),
                 slots=[0,1],cell_slot=2,effective=effective,server='10.42.0.1',client='10.42.0.20',
@@ -99,7 +102,8 @@ class ManualCampaign(unittest.TestCase):
             self.assertEqual(result[0],'BLOCKED');self.assertIsNone(clock['fault'])
     def test_claim_loss_replacement_and_cleanup_loss_fail(self):
         for case,reason in [('claim','manager_claimed_operator_session'),('disappear','operator_session_disappeared'),
-                            ('replacement','operator_session_identity_changed'),('cleanup_disconnect','operator_session_disappeared')]:
+                            ('replacement','operator_session_identity_changed'),('cleanup_disconnect','operator_session_disappeared'),
+                            ('cleanup_claim','manager_claimed_operator_session'),('cleanup_route','preferred_route_lost_after_cleanup')]:
             with self.subTest(case=case):
                 result,clock,_=self.simulate(case)
                 self.assertEqual(result,('FAIL',reason));self.assertGreater(clock['restore'],0)
