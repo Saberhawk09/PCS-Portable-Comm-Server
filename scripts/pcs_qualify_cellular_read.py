@@ -62,6 +62,7 @@ def collect():
                 'org.freedesktop.DBus.Properties').GetAll(mm + '.Bearer', timeout=3)
         bearers.append(bool(props['Connected']))
     return dict(boot=state.get('boot'), daemon=owner, owned=state.get('owned'),
+                operator_sessions=state.get('operator_sessions', {}),
                 suppressed=state.get('suppressed'), active=active, cellular_id=cell.id,
                 cellular_profile=cell.profile, activation=cell.activation,
                 modem_identity=[path, str(modem['Device']), str(modem['PrimaryPort']),
