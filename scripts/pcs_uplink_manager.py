@@ -490,7 +490,7 @@ class Controller:
                 pass
         self.daemon = nm.daemon()
         if self.state.get('daemon') != self.daemon:
-            self.state.update(owned={}, original={}, daemon=self.daemon)
+            self.state.update(owned={}, original={}, operator_sessions={}, daemon=self.daemon)
         else:
             self.policy.selected = self.state.get('selected')
             self.policy6.selected = self.state.get('selected6')
@@ -501,6 +501,32 @@ class Controller:
 
     def owns(self, uid, o):
         return bool(o.session) and self.state['owned'].get(uid) == {'session': o.session, 'profile': o.profile}
+
+    def operator(self, action, u):
+        """Normal operator control; audit only activations this call creates.
+
+        An already active connection is never retroactively labelled operator
+        started. The private boot-local record is evidence, not policy input.
+        """
+        self.state['owned'].pop(u.id, None)
+        records = self.state.setdefault('operator_sessions', {})
+        records.pop(u.id, None)
+        suppressed = set(self.state['suppressed'])
+        if action == 'disconnect':
+            suppressed.add(u.id)
+        else:
+            suppressed.discard(u.id)
+        self.state['suppressed'] = sorted(suppressed)
+        self.save()
+        o = self.nm.observe(Config((u,)))[u.id]
+        if action == 'connect' and not o.session:
+            session = self.nm.activate(u)
+            records[u.id] = dict(boot=self.boot, daemon=self.daemon,
+                session=session, profile=u.profile, origin='operator_connect',
+                monotonic=time.monotonic(), utc=time.time())
+            self.save()
+        elif action == 'disconnect' and o.session:
+            self.nm.deactivate(o.session)
 
     def restore(self, observations):
         for uid, saved in list(self.state['original'].items()):
@@ -635,6 +661,12 @@ class Controller:
         for uid in list(self.state['owned']):
             if uid not in obs or not self.owns(uid, obs[uid]):
                 self.state['owned'].pop(uid, None)
+        for uid, record in list(self.state.setdefault('operator_sessions', {}).items()):
+            o = obs.get(uid)
+            if (not o or not isinstance(record, dict) or
+                    record.get('boot') != self.boot or record.get('daemon') != self.daemon or
+                    record.get('session') != o.session or record.get('profile') != o.profile):
+                self.state['operator_sessions'].pop(uid, None)
         error = ''
         desired, activate = self.policy.choose(obs, now, self.state['suppressed'])
         obs6 = {uid: replace(o, internet=o.internet6) for uid, o in obs.items()}
@@ -756,19 +788,7 @@ def main():
                 u = next(u for u in config.uplinks if u.id == args.uplink)
                 if not u.profile:
                     raise ValueError('operator activation requires a configured profile')
-                controller.state['owned'].pop(u.id, None)
-                suppressed = set(controller.state['suppressed'])
-                if args.operator == 'disconnect':
-                    suppressed.add(u.id)
-                else:
-                    suppressed.discard(u.id)
-                controller.state['suppressed'] = sorted(suppressed)
-                controller.save()
-                o = nm.observe(Config((u,)))[u.id]
-                if args.operator == 'connect' and not o.session:
-                    nm.activate(u)
-                elif args.operator == 'disconnect' and o.session:
-                    nm.deactivate(o.session)
+                controller.operator(args.operator, u)
                 return 0
             status = controller.step()
             if status['error']:

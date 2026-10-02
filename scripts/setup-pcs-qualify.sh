@@ -10,7 +10,7 @@ runtime=/run/pcs-qualification
 state=/var/lib/pcs-qualification
 unit=/etc/systemd/system/pcs-qualify-cleanup.service
 wrapper=/usr/local/sbin/pcs-qualify
-modules=(pcs_qualify.py pcs_qualify_state.py pcs_qualify_observe.py pcs_qualify_safety.py pcs_qualify_witness.py pcs_qualify_wan.py pcs_qualify_fault.py pcs_qualify_lan.py pcs_qualify_scenario.py pcs_qualify_rf.py pcs_qualify_cellular.py pcs_qualify_cellular_read.py)
+modules=(pcs_qualify.py pcs_qualify_state.py pcs_qualify_observe.py pcs_qualify_safety.py pcs_qualify_witness.py pcs_qualify_wan.py pcs_qualify_fault.py pcs_qualify_lan.py pcs_qualify_scenario.py pcs_qualify_rf.py pcs_qualify_cellular.py pcs_qualify_cellular_read.py pcs_qualify_manual.py)
 files=("$wrapper" "$unit")
 for module in "${modules[@]}"; do files+=("/usr/local/lib/pcs/$module"); done
 for dir in "$runtime" "$state"; do
