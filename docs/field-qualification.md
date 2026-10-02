@@ -778,3 +778,32 @@ The follow-up manual-session-preservation scenario is design only: begin with a
 separately operator-started session, pin its exact activation identity, reproduce
 preferred-path failure/recovery, and assert that the same unowned activation stays
 alive. It requires separate review/authorization and is not a registered scenario.
+
+### Commissioned FQ-302 acceptance — 2026-10-02
+
+Session `eed83a842b044c52a1d1f02b476a314e` passed using immutable harness
+`0638862537fdda2e6d76b84fb2719fb3eb0318f2` and clean normal PCS checkout
+`2d2c2ef6308991efcf4daaa26ceba42a942bbd56`. FQ-001 and FQ-002 passed
+before this attempt. Both RF engines were intentionally inactive and PTT-safe.
+
+The dual IPv4 fault preserved field LAN. Production ownership was observed pending,
+then active with a connected bearer, successful cellular IPv4 probe, selected
+cellular path and matching effective kernel route. System DNS separately passed.
+After qualification removed both faults, Ethernet recovered and PCS released its
+owned cellular session and cleared ownership within 41.903 seconds. Qualification
+did not activate or disconnect cellular. Cleanup, absent fault table/lease,
+inactive/unowned cellular and RF-safe state were independently rechecked.
+
+The original Windows witness imported as PASS: 140 matched durable receipts,
+zero failed HTTP samples and maximum sample gap 1.091790 seconds. No interruption
+was detected at the stated approximately one-second sampling interval. This does
+not establish gap-free connectivity, IPv6 failover, physical WAN loss, RF recovery
+or preservation of an operator-owned cellular session.
+
+Final admission collection took 4.368 seconds. No route snapshot refresh was
+needed in this attempt; this pass does not retrospectively prove the cause of the
+previous pre-fault failure. Dire Wolf was restored normally. The first immediate
+self-test saw APRS agent startup/reconnection status; a subsequent full self-test
+passed without further intervention or configuration changes. No failed units
+remained. Private original and witness-imported archives were retained; the latter
+has SHA256 `81a5ed3a5e3979385a0ce244fda457c8a9819726e5d073c77af93e7f9387ae2c`.
