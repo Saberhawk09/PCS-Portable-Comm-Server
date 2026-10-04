@@ -107,6 +107,13 @@ a separate dashboard signal. Existing TCP connections may need to reconnect
 after their public source address changes; this is failover, not seamless
 session migration or load balancing.
 
+Dire Wolf's route-change recovery rejects surviving pre-recovery APRS-IS sockets,
+including stale TCP `ESTABLISHED` sessions. It waits for a fresh socket whose
+source matches the effective route to the numeric peer, then uses the guarded
+stop/PTT-safe/start sequence if natural recovery fails. IPv4 follows the selected
+default uplink; IPv6 uses its own route/source selection. See
+[Dire Wolf recovery](direwolf-aprs.md) for grace, cooldown and verification limits.
+
 ## Ownership and operator control
 
 The existing buzzer service emits one short beep when automatic WAN selection

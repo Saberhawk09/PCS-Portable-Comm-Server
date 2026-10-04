@@ -14,6 +14,7 @@ from pcs_qualify_state import HarnessError, identifier
 TABLE = 'pcs_qualification'
 OWNER = 'pcs-qualify:FQ-301-v4:'
 CELLULAR_OWNER = 'pcs-qualify:FQ-302:'
+MANUAL_OWNER = 'pcs-qualify:FQ-303:'
 
 
 @dataclass(frozen=True)
@@ -136,7 +137,7 @@ def create_plan(session, target, seconds, lan_cidr, wan_cidr):
                   ' }\n' for hook in ('output', 'forward')) + '}\n')
 
 
-def create_cellular_plan(session, ethernet, wifi, seconds, lan_cidr, ethernet_cidr, wifi_cidr):
+def create_cellular_plan(session, ethernet, wifi, seconds, lan_cidr, ethernet_cidr, wifi_cidr, owner=CELLULAR_OWNER):
     """One atomic table/set transaction; no partial two-interface activation."""
     if (not isinstance(wifi, Identity) or wifi.name != 'wlan0' or
             type(wifi.index) is not int or not 1 <= wifi.index < 2**31 or
@@ -149,7 +150,9 @@ def create_cellular_plan(session, ethernet, wifi, seconds, lan_cidr, ethernet_ci
     networks = [lan_cidr, ethernet_cidr, wifi_cidr, '127.0.0.0/8', '169.254.0.0/16',
                 '224.0.0.0/4', '255.255.255.255/32', '192.168.100.1/32']
     preserved = ', '.join(map(str, ipaddress.collapse_addresses(map(ipaddress.IPv4Network, networks))))
-    first = first.replace(OWNER, CELLULAR_OWNER).replace('120s', f'{seconds}s')
+    if owner not in (CELLULAR_OWNER, MANUAL_OWNER):
+        raise HarnessError('invalid_dual_wan_owner')
+    first = first.replace(OWNER, owner).replace('120s', f'{seconds}s')
     first = first.replace(f'elements = {{ {ethernet.index} timeout {seconds}s }}',
                           f'elements = {{ {ethernet.index} timeout {seconds}s, {wifi.index} timeout {seconds}s }}')
     return re.sub(r'set preserved \{[^\n]+',
@@ -167,7 +170,7 @@ def owned_handle(document, session, owner=OWNER):
         raise HarnessError('firewall_ownership_unknown')
     table = tables[0]
     if (table.get('family') != 'inet' or table.get('name') != TABLE or
-            owner not in (OWNER, CELLULAR_OWNER) or table.get('comment') != owner + session or type(table.get('handle')) is not int or
+            owner not in (OWNER, CELLULAR_OWNER, MANUAL_OWNER) or table.get('comment') != owner + session or type(table.get('handle')) is not int or
             not 1 <= table['handle'] < 2**64):
         raise HarnessError('firewall_ownership_unknown')
     return table['handle']

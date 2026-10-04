@@ -8,11 +8,11 @@ import time
 from pcs_qualify_observe import command
 from pcs_qualify_state import (HarnessError, RUNTIME, atomic_json, boot_id,
                                identifier, lock, read_json)
-from pcs_qualify_wan import TABLE, OWNER, CELLULAR_OWNER, create_plan, create_cellular_plan, delete_plan, owned_handle
+from pcs_qualify_wan import TABLE, OWNER, CELLULAR_OWNER, MANUAL_OWNER, create_plan, create_cellular_plan, delete_plan, owned_handle
 
 
 def table_owner(document, session):
-    for owner in (OWNER, CELLULAR_OWNER):
+    for owner in (OWNER, CELLULAR_OWNER, MANUAL_OWNER):
         try:
             owned_handle(document, session, owner)
             return owner
@@ -97,7 +97,7 @@ def cleanup_orphan(runtime=RUNTIME):
     if len(rows) != 1 or not isinstance(rows[0].get('comment'), str):
         raise HarnessError('firewall_ownership_unknown')
     comment = rows[0]['comment']
-    owners = [owner for owner in (OWNER, CELLULAR_OWNER) if comment.startswith(owner)]
+    owners = [owner for owner in (OWNER, CELLULAR_OWNER, MANUAL_OWNER) if comment.startswith(owner)]
     if len(owners) != 1:
         raise HarnessError('firewall_ownership_unknown')
     session = identifier(comment[len(owners[0]):])
@@ -123,6 +123,11 @@ def arm_cellular(session, ethernet, wifi, seconds, lan, ethernet_net, wifi_net, 
     # addition to RF and both WAN identities. Reserve this time before arming;
     # never renew an active lease or reduce the full kernel timeout margin.
     _arm_plan(session, plan, seconds, runtime, verify, CELLULAR_OWNER, preparation=30)
+
+
+def arm_manual(session, ethernet, wifi, seconds, lan, ethernet_net, wifi_net, runtime=RUNTIME, verify=None):
+    plan = create_cellular_plan(session, ethernet, wifi, seconds, lan, ethernet_net, wifi_net, owner=MANUAL_OWNER)
+    _arm_plan(session, plan, seconds, runtime, verify, MANUAL_OWNER, preparation=30)
 
 
 def _arm_plan(session, plan, seconds, runtime, verify, owner, preparation=10):

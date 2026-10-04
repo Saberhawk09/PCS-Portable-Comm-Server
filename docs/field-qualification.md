@@ -807,3 +807,125 @@ self-test saw APRS agent startup/reconnection status; a subsequent full self-tes
 passed without further intervention or configuration changes. No failed units
 remained. Private original and witness-imported archives were retained; the latter
 has SHA256 `81a5ed3a5e3979385a0ce244fda457c8a9819726e5d073c77af93e7f9387ae2c`.
+
+## Release inclusion
+
+The v2.1.2 release bundles the complete developed harness, including FQ-001,
+FQ-002, FQ-301-v4, FQ-302, FQ-303, Linux/Windows witnesses and disposable
+integration tests. Installation remains explicit via `setup-pcs-qualify.sh`;
+release installation never starts a fault campaign. Prior evidence below retains
+its original scope. In particular, FQ-303 software/disposable validation is not
+commissioned-appliance acceptance and does not authorize a live WAN fault.
+
+## FQ-303 — audited operator cellular session preservation
+
+FQ-303 is a separate RF-silent IPv4 scenario. It reuses FQ-302's atomic dual-WAN
+fault compiler, independent expiry, witness transport and qualification-only
+cleanup. It does not change accepted FQ-301/FQ-302 criteria. No live FQ-303 result
+is claimed by development or disposable integration.
+
+### Operator-origin evidence
+
+The normal `pcs-uplink-manager --operator connect --uplink cellular` path now
+records `operator_sessions` in its existing boot-local state, under the existing
+production mutation lock, only when that call creates a new activation. The
+record contains boot ID, NetworkManager daemon identity, exact active-connection
+object, profile UUID, fixed origin, monotonic time and UTC epoch time. This is
+observation/audit metadata only: policy still uses the existing `owned` map.
+The web panel's normal Connect Cellular action already uses this path.
+
+An already-active connection is not retroactively certified, even if Connect is
+pressed again. Disconnect/resume/repeated Connect invalidate the prior audit;
+boot or NetworkManager replacement invalidates it, and production discards it
+when the session/profile no longer matches. An ordinary controller restart with
+the same boot/NetworkManager/session preserves it. An activation failure leaves
+no audit. Existing installations/sessions without the new audit fail FQ-303
+admission; qualification never fabricates provenance or starts a connection.
+
+FQ-303 requires the matching audit, connected bearer, active configured profile,
+empty manager ownership and no operator suppression. It pins session object,
+profile, data interface, modem identity, boot, daemon and audit timestamps in
+memory. Exported evidence contains only fixed provenance labels, equality
+assertions and health/ownership booleans, not raw modem/profile/session identity.
+This establishes use of the supported operator control, not proof of a human's
+physical presence or resistance to a malicious root process.
+
+### Assertions and bounded timing
+
+Ethernet must initially be preferred and healthy, Wi-Fi healthy standby, and the
+audited operator cellular session already connected with a successful IPv4 probe.
+Both preferred IPv4 Internet paths are faulted in one nft transaction with a
+separate `pcs-qualify:FQ-303:` ownership marker. The default kernel fault budget is
+150 seconds, with the same fixed 30-second preparation reserve; it is never
+renewed. Installed failure/recovery/poll timings must fit the existing 300-second
+witness window, including two additional production polling intervals after
+preferred recovery. Unsupported timing combinations block admission.
+
+PASS requires observed failure of both preferred probes, successful cellular
+probe plus selected/effective cellular routing, preferred-route recovery after
+hysteresis, and the same audited session without manager ownership at every
+sample and after cleanup. DNS is recorded separately; IPv6 is observed without a
+failover claim. Power uses existing caches only. The witness retains its exact
+protocol, durable receipts and two-second timeout. Report only: "No interruption
+detected at the stated sampling interval."
+
+Unexpected disappearance, identity replacement, manager ownership, cleanup loss,
+or loss of the recovered preferred route is FAIL. Missing/malformed provenance
+blocks admission; lost provenance or incomplete witness during the campaign is
+INCONCLUSIVE. There is no automatic exemption for a carrier or operator event;
+that explanation requires separately preserved evidence and review. Qualification
+never reconnects cellular or restores a cellular snapshot. Cleanup success and
+operator-session preservation are recorded separately.
+
+### Supervised live procedure (not executed by development)
+
+1. Review immutable source/CI/integration evidence and update the clean normal PCS
+   checkout and installed production uplink-manager module to the reviewed audit
+   revision. Preserve commissioned configuration. This production audit must be
+   installed **before** the operator creates the cellular session; a qualification
+   installation alone does not install it. Verify installed/source module equality.
+2. With normal APRS active, require full self-test/status and zero failed services.
+3. The operator verifies cellular is initially inactive, then deliberately runs
+   `sudo /usr/local/sbin/pcs-web-action cellular-connect` (or Connect Cellular in
+   the normal panel). Do not disconnect an existing session merely to make the
+   test pass; the operator must choose any baseline change. Wait for connected
+   bearer and healthy cellular IPv4. An old/unproven session remains blocked.
+4. Operator runs `sudo systemctl stop direwolf.service`; require inactive Graywolf,
+   active existing PTT guard and measured-low PTT. Leave production recovery intact.
+5. From the immutable qualification source, run
+   `sudo bash scripts/setup-pcs-qualify.sh --install` and `--check`. Require
+   `sudo pcs-qualify run FQ-001 --duration 60` and `sudo pcs-qualify run FQ-002` PASS.
+6. Bind SSH to the freshly verified direct field-LAN address/interface. For the
+   previously commissioned desktop, reverify before using
+   `ssh -b 10.42.0.151 -o HostKeyAlias=192.168.50.236 pcs-pi`.
+7. Run `sudo env SSH_CONNECTION="$SSH_CONNECTION" pcs-qualify preflight --scenario FQ-303 --normal-checkout /home/pi/Projects/PCS-Portable-Comm-Server`.
+8. **Stop for explicit operator approval of one live fault.** Only then run
+   `sudo env SSH_CONNECTION="$SSH_CONNECTION" pcs-qualify run FQ-303 --duration 150 --normal-checkout /home/pi/Projects/PCS-Portable-Comm-Server`.
+9. Start the unchanged separate Windows/Linux witness for the printed session:
+   `python pcs_qualify_lan.py --session SESSION_ID --target 10.42.0.1 --source VERIFIED_LAN_SOURCE --interface VERIFIED_INTERFACE --duration 300 --output FRESH_FILE.jsonl`.
+10. Verify qualification table/lease absent, preferred route restored and the same
+    audited cellular session active/unowned. Import the untouched witness with
+    `sudo pcs-qualify witness SESSION_ID WITNESS_FILE`, preserve archive/report,
+    restore APRS normally and require full self-test/status. Leave cellular under
+    operator control. Do not run another fault automatically.
+
+The accepted FQ-302 result above remains unchanged. Repeated flap/hysteresis
+qualification and other scenarios are out of scope.
+
+For the supervised audit deployment in step 1, after the normal clean checkout
+has been moved to the exact reviewed commit and while cellular is inactive, the
+minimal module update is (inspect the service ExecStart first):
+
+```sh
+systemctl show pcs-uplink-manager.service --property=ExecStart
+sudo install -d -m 0700 /root/pcs-before-fq303-audit
+sudo cp -n /usr/local/lib/pcs/pcs_uplink_manager.py /root/pcs-before-fq303-audit/pcs_uplink_manager.py
+sudo install -o root -g root -m 0644 scripts/pcs_uplink_manager.py /usr/local/lib/pcs/pcs_uplink_manager.py
+sudo systemctl restart pcs-uplink-manager.service
+cmp scripts/pcs_uplink_manager.py /usr/local/lib/pcs/pcs_uplink_manager.py
+```
+
+This avoids rerunning broader uplink setup, which also writes configuration and
+NetworkManager autoconnect settings. Keep the pre-update module recoverable;
+stop on any dirty checkout, unexpected service path, failed restart or unhealthy
+baseline. The operator creates the audited session only after this verification.

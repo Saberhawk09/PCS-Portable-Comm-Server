@@ -4,6 +4,21 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-10-04
+
+- Fix Dire Wolf APRS-IS recovery accepting an old TCP `ESTABLISHED` socket
+  after WAN failover. Recovery now requires a fresh socket identity and matching
+  effective route/source, with IPv4 and IPv6 support, bounded grace/verification,
+  diagnostic socket logging, and the existing stop/PTT-guard/start sequence.
+- Bundle the developed opt-in field-qualification harness: FQ-001 observation,
+  FQ-002 lease expiry, FQ-301-v4 preferred-WAN qualification, FQ-302 automatic
+  cellular fallback, and FQ-303 audited operator-session preservation. Include
+  Linux/Windows LAN witnesses, installers, cleanup, tests and operator runbooks.
+- Add boot-local operator-created cellular session provenance for FQ-303.
+  Shipping the harness does not certify every scenario on the appliance;
+  FQ-303 live acceptance and supervised APRS messaging across both failover
+  directions remain separate field gates.
+
 ## [2.1.1] - 2026-09-26
 
 - Modernize the bounded PCS power-stress utility for all four commissioned

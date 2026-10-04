@@ -185,6 +185,56 @@ class ControllerTests(unittest.TestCase):
         nm = FakeNM(obs)
         return m.Controller(config(), nm, folder, boot='boot'), nm
 
+    def test_operator_audit_only_for_new_activation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c,nm=self.make(folder,observations())
+            u=next(u for u in c.config.uplinks if u.id=='cellular')
+            c.operator('connect',u)
+            audit=c.state['operator_sessions']['cellular']
+            self.assertEqual(audit['session'],'/active/new')
+            self.assertEqual(audit['origin'],'operator_connect')
+            self.assertEqual(audit['boot'],'boot')
+            self.assertEqual(audit['daemon'],nm.daemon())
+            self.assertEqual(c.state['owned'],{})
+            c.operator('connect',u)
+            self.assertEqual(c.state['operator_sessions'],{})
+            self.assertEqual(nm.activated,['cellular'])
+
+    def test_failed_operator_activation_has_no_audit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c,nm=self.make(folder,observations())
+            u=next(u for u in c.config.uplinks if u.id=='cellular')
+            with patch.object(nm,'activate',side_effect=RuntimeError('unavailable')):
+                with self.assertRaises(RuntimeError):c.operator('connect',u)
+            self.assertEqual(c.state['operator_sessions'],{})
+
+    @patch.object(m.subprocess,'run')
+    def test_operator_audit_survives_controller_restart_but_not_replacement(self,run):
+        with tempfile.TemporaryDirectory() as folder:
+            c,nm=self.make(folder,observations(starlink=True))
+            u=next(u for u in c.config.uplinks if u.id=='cellular')
+            c.operator('connect',u)
+            audit=c.state['operator_sessions']['cellular'].copy()
+            c=m.Controller(config(),nm,folder,boot='boot')
+            c.step(0);c.step(30)
+            self.assertEqual(c.state['operator_sessions']['cellular'],audit)
+            self.assertEqual(nm.disconnected,[])
+            nm.obs['cellular'].session='/replacement'
+            c.step(40)
+            self.assertEqual(c.state['operator_sessions'],{})
+
+    def test_operator_audit_cleared_by_disconnect_and_daemon_change(self):
+        with tempfile.TemporaryDirectory() as folder:
+            c,nm=self.make(folder,observations())
+            u=next(u for u in c.config.uplinks if u.id=='cellular')
+            c.operator('connect',u)
+            with patch.object(nm,'daemon',return_value='new-daemon'):
+                restarted=m.Controller(config(),nm,folder,boot='boot')
+            self.assertEqual(restarted.state['operator_sessions'],{})
+            c.operator('disconnect',u)
+            self.assertEqual(c.state['operator_sessions'],{})
+            self.assertEqual(nm.disconnected,['/active/new'])
+
     @patch.object(m.subprocess, 'run')
     def test_manual_cellular_survives_standby_failover_and_recovery(self, run):
         for metric in (20, 900, 25000):

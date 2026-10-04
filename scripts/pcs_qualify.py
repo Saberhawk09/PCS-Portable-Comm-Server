@@ -21,7 +21,8 @@ from pcs_qualify_lan import validate_file as validate_lan_witness
 REGISTRY = {'FQ-001': 'Cached power/uplink observation; no continuity claim',
             'FQ-002': 'Independent expiry of a harmless private marker',
             'FQ-301-v4': 'IPv4 Ethernet WAN fault; direct LAN witness and RF isolation required',
-            'FQ-302': 'Automatic cellular fallback ownership and release; dual IPv4 WAN fault'}
+            'FQ-302': 'Automatic cellular fallback ownership and release; dual IPv4 WAN fault',
+            'FQ-303': 'Audited operator cellular session preservation; dual IPv4 WAN fault'}
 EXIT = {'PASS': 0, 'PASS WITH OBSERVATION': 0, 'FAIL': 1, 'INCONCLUSIVE': 2,
         'ABORTED': 3, 'HARNESS ERROR': 4, 'BLOCKED': 5}
 
@@ -44,8 +45,10 @@ def campaign(scenario, duration):
         session = Session(scenario)
         print(json.dumps({'session': session.id, 'scenario': scenario}), flush=True)
         result, reason = 'HARNESS ERROR', 'execution_error'
-        if scenario in ('FQ-301-v4', 'FQ-302'):
-            if scenario == 'FQ-302':
+        if scenario in ('FQ-301-v4', 'FQ-302', 'FQ-303'):
+            if scenario == 'FQ-303':
+                from pcs_qualify_manual import run as run_wan
+            elif scenario == 'FQ-302':
                 from pcs_qualify_cellular import run as run_wan
             else:
                 from pcs_qualify_scenario import run as run_wan
@@ -149,7 +152,7 @@ def main():
     for name in ('cleanup', 'boot-cleanup'):
         sub.add_parser(name)
     check = sub.add_parser('preflight')
-    check.add_argument('--scenario', choices=('FQ-301-v4','FQ-302'))
+    check.add_argument('--scenario', choices=('FQ-301-v4','FQ-302','FQ-303'))
     check.add_argument('--normal-checkout', type=Path)
     show = sub.add_parser('report')
     show.add_argument('session', type=identifier)
@@ -158,7 +161,7 @@ def main():
     witness.add_argument('file', type=Path)
     args = parser.parse_args()
     if args.action in ('run', '_run') and args.duration is None:
-        args.duration = 180 if args.scenario == 'FQ-302' else 90 if args.scenario == 'FQ-301-v4' else 60
+        args.duration = 150 if args.scenario == 'FQ-303' else 180 if args.scenario == 'FQ-302' else 90 if args.scenario == 'FQ-301-v4' else 60
     if args.action in ('run', '_run', 'preflight') and args.normal_checkout is not None:
         os.environ['PCS_QUALIFY_NORMAL_CHECKOUT'] = str(args.normal_checkout)
     if args.action == 'list':
@@ -202,6 +205,9 @@ def main():
         if args.action == 'preflight':
             from pcs_qualify_rf import observe
             evidence = preflight()
+            if args.scenario == 'FQ-303':
+                from pcs_qualify_manual import admission
+                evidence['fq303'] = admission()
             if args.scenario == 'FQ-302':
                 from pcs_qualify_cellular import admission
                 evidence['fq302'] = admission()
@@ -248,7 +254,7 @@ def main():
                 if value.get('complete') is not True:
                     raise HarnessError('session_not_complete')
                 try:
-                    if value.get('scenario') in ('FQ-301-v4', 'FQ-302'):
+                    if value.get('scenario') in ('FQ-301-v4', 'FQ-302', 'FQ-303'):
                         summary = validate_lan_witness(args.file, args.session, path / 'events.jsonl')
                     else:
                         summary = validate_witness(args.file, args.session)
