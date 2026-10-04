@@ -275,6 +275,53 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(clock[0], 15)
             self.assertEqual(runner.restart_calls, 1)
 
+    def test_stale_socket_with_dns_failure_is_not_reported_as_recovered(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner(resolves=False)
+            runner.snapshots = [socket(local="28.46.229.87")]
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            ok, message = subject.recover()
+            self.assertTrue(ok)
+            self.assertIn("DNS is unavailable", message)
+            self.assertNotIn("reconnected", message)
+            self.assertEqual(runner.lifecycle, [])
+
+    def test_fresh_numeric_peer_verification_does_not_require_dns(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner(resolves=False)
+            runner.snapshots = [socket(local="28.46.229.87"), socket(port=40001)]
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            self.assertIn("reconnected", subject.recover()[1])
+            self.assertEqual(runner.lifecycle, [])
+
+    def test_socket_inspection_failure_prevents_restart(self):
+        class Failed(FakeRunner):
+            def run(self, arguments, timeout=20):
+                if arguments[0] == "ss":
+                    return Result(1)
+                return super().run(arguments, timeout)
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = Failed()
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            self.assertFalse(subject.recover()[0])
+            self.assertEqual(runner.lifecycle, [])
+
+    def test_guard_failure_never_starts_engine(self):
+        class Failed(FakeRunner):
+            def run(self, arguments, timeout=20):
+                if arguments == ["systemctl", "start", "pcs-aprs-ptt-safe.service"]:
+                    return Result(1, stderr="guard failed")
+                return super().run(arguments, timeout)
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = Failed()
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            self.assertFalse(subject.recover()[0])
+            self.assertEqual(runner.lifecycle, [('stop', 'direwolf.service')])
+
 
 class SocketTests(unittest.TestCase):
     def test_ipv4_ipv6_and_state_column(self):

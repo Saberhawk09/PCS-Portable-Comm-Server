@@ -187,6 +187,7 @@ class UplinkRecovery:
 
     def _wait_for_connection(self, port: int, seconds: int, old: set[Connection], interface: str) -> bool:
         deadline = self.monotonic() + seconds
+        reported = set()
         while True:
             connections = direwolf_connections(self.runner, port)
             if connections is not None:
@@ -195,6 +196,9 @@ class UplinkRecovery:
                     if valid and default_interface(self.runner) == interface:
                         print(f"New APRS-IS socket: {connection.describe()}; {route}; recovery verified.", flush=True)
                         return True
+                    if connection not in reported:
+                        print(f"APRS-IS candidate not verified: {connection.describe()}; {route}", flush=True)
+                        reported.add(connection)
             if self.monotonic() >= deadline:
                 return False
             self.sleep(min(5, max(0, deadline - self.monotonic())))
