@@ -26,16 +26,26 @@ class FakeRunner:
         self.active = active
         self.restart_calls = 0
         self.lifecycle = []
+        self.socket_reads = 0
+        self.snapshots = None
+        self.after_restart = None
 
     def run(self, arguments, timeout=20):
-        if arguments[:4] == ["ip", "-4", "route", "get"]:
+        if arguments[0] == "ip":
+            if not self.interface:
+                return Result(2)
             return Result(stdout=f"1.1.1.1 dev {self.interface} src 192.0.2.10\n")
         if arguments[:3] == ["systemctl", "is-active", "--quiet"]:
             return Result(returncode=0 if self.active else 3)
         if arguments[:2] == ["getent", "ahostsv4"]:
             return Result(returncode=0 if self.resolves else 2)
         if arguments and arguments[0] == "ss":
-            output = '0 0 192.0.2.10:40000 198.51.100.8:14580 users:(("direwolf",pid=10,fd=5))\n' if self.connected else ""
+            self.socket_reads += 1
+            if self.restart_calls and self.after_restart is not None:
+                return Result(stdout=self.after_restart)
+            if self.snapshots is not None:
+                return Result(stdout=self.snapshots[min(self.socket_reads - 1, len(self.snapshots) - 1)])
+            output = socket(port=40000 + self.restart_calls) if self.connected else ""
             return Result(stdout=output)
         if arguments == ["systemctl", "stop", "direwolf.service"]:
             self.lifecycle.append(('stop', 'direwolf.service'))
@@ -51,6 +61,10 @@ class FakeRunner:
             self.connected = True
             return Result()
         raise AssertionError(arguments)
+
+
+def socket(local="192.0.2.10", port=40000, peer="198.51.100.8", pid=10, inode=100):
+    return f'0 0 [{local}]:{port} [{peer}]:14580 users:(("direwolf",pid={pid},fd=5)) ino:{inode}\n'
 
 
 def write_config(directory: str) -> Path:
@@ -108,6 +122,7 @@ class RecoveryTests(unittest.TestCase):
     def test_changed_uplink_allows_native_reconnect_before_restart(self):
         with tempfile.TemporaryDirectory() as temporary:
             runner = FakeRunner(interface="wwan0", connected=True)
+            runner.snapshots = [socket(local="192.0.2.20"), socket(port=40001)]
             subject = self.make_recovery(temporary, runner)
             subject.state_path.write_text("wlan0\n", encoding="utf-8")
             ok, message = subject.recover()
@@ -141,7 +156,7 @@ class RecoveryTests(unittest.TestCase):
             runner = FakeRunner(interface="eth1", connected=False)
             subject = self.make_recovery(temporary, runner)
             subject.state_path.write_text("wlan0\n", encoding="utf-8")
-            def stopped_during_wait(port, seconds):
+            def stopped_during_wait(port, seconds, old, interface):
                 runner.active = False
                 return False
             subject._wait_for_connection = stopped_during_wait
@@ -175,6 +190,126 @@ class RecoveryTests(unittest.TestCase):
             self.assertTrue(ok)
             self.assertIn("cooldown", message)
             self.assertEqual(runner.restart_calls, 0)
+
+    def test_stale_established_socket_requires_guarded_restart_and_fresh_session(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner()
+            runner.snapshots = [socket(local="28.46.229.87", peer="44.25.16.4")]
+            runner.after_restart = socket(port=40001, peer="44.25.16.4", pid=11, inode=101)
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            ok, message = subject.recover()
+            self.assertTrue(ok)
+            self.assertIn("fresh APRS-IS recovery verified", message)
+            self.assertEqual(runner.lifecycle, [('stop', 'direwolf.service'), ('start', 'pcs-aprs-ptt-safe.service'), ('start', 'direwolf.service')])
+
+    def test_same_source_old_socket_is_not_fresh_either(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner()
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            self.assertTrue(subject.recover()[0])
+            self.assertEqual(runner.restart_calls, 1)
+
+    def test_absent_initial_socket_can_connect_during_grace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner()
+            runner.snapshots = ["", socket()]
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            self.assertTrue(subject.recover()[0])
+            self.assertEqual(runner.restart_calls, 0)
+
+    def test_restart_without_fresh_usable_socket_fails(self):
+        for output in ("", socket(), socket(local="28.46.229.87", port=41000)):
+            with self.subTest(output=output), tempfile.TemporaryDirectory() as temporary:
+                runner = FakeRunner()
+                runner.after_restart = output
+                subject = self.make_recovery(temporary, runner)
+                subject.state_path.write_text("wwan0\n")
+                ok, message = subject.recover()
+                self.assertFalse(ok)
+                self.assertIn("no fresh route-consistent", message)
+                self.assertEqual(runner.restart_calls, 1)
+
+    def test_inactive_direwolf_is_not_started(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner(active=False)
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            self.assertIn("inactive", subject.recover()[1])
+            self.assertEqual(runner.lifecycle, [])
+
+    def test_no_default_uplink_preserves_baseline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner(interface="")
+            subject = self.make_recovery(temporary, runner)
+            subject.state_path.write_text("wwan0\n")
+            self.assertIn("No default", subject.recover()[1])
+            self.assertEqual(subject.state_path.read_text(), "wwan0\n")
+            self.assertEqual(runner.lifecycle, [])
+
+    def test_grace_polls_until_fresh_connection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner()
+            old = socket(local="28.46.229.87")
+            runner.snapshots = [old, old, "", socket(port=40001)]
+            subject = self.make_recovery(temporary, runner, grace=15)
+            clock = [0]
+            subject.monotonic = lambda: clock[0]
+            subject.sleep = lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+            subject.state_path.write_text("wwan0\n")
+            self.assertTrue(subject.recover()[0])
+            self.assertEqual(clock[0], 10)
+            self.assertEqual(runner.lifecycle, [])
+
+    def test_stale_socket_waits_full_grace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            runner = FakeRunner()
+            subject = self.make_recovery(temporary, runner, grace=15)
+            clock = [0]
+            subject.monotonic = lambda: clock[0]
+            subject.sleep = lambda seconds: clock.__setitem__(0, clock[0] + seconds)
+            subject.state_path.write_text("wwan0\n")
+            self.assertTrue(subject.recover()[0])
+            self.assertEqual(clock[0], 15)
+            self.assertEqual(runner.restart_calls, 1)
+
+
+class SocketTests(unittest.TestCase):
+    def test_ipv4_ipv6_and_state_column(self):
+        runner = FakeRunner()
+        runner.snapshots = [socket() + "ESTAB " + socket(local="2001:db8::1", peer="2001:db8::2", inode=101)]
+        values = recovery.direwolf_connections(runner, 14580)
+        self.assertEqual(len(values), 2)
+        self.assertEqual({value.local for value in values}, {"192.0.2.10", "2001:db8::1"})
+
+    def test_unrelated_owner_and_local_port_do_not_qualify(self):
+        runner = FakeRunner()
+        runner.snapshots = [socket().replace('"direwolf"', '"other"') + socket(port=14580).replace(']:14580 users', ']:12345 users')]
+        self.assertEqual(recovery.direwolf_connections(runner, 14580), set())
+
+    def test_unknown_socket_inspection_fails_closed(self):
+        class Failed(FakeRunner):
+            def run(self, arguments, timeout=20):
+                if arguments[0] == "ss":
+                    return Result(1)
+                return super().run(arguments, timeout)
+        self.assertIsNone(recovery.direwolf_connections(Failed(), 14580))
+
+    def test_ipv6_uses_its_effective_route_without_dns(self):
+        class IPv6(FakeRunner):
+            def run(self, arguments, timeout=20):
+                if arguments == ["ip", "-6", "route", "get", "2001:db8::2"]:
+                    return Result(stdout="2001:db8::2 dev wwan0 src 2001:db8::1")
+                raise AssertionError(arguments)
+        connection = recovery.Connection("2001:db8::1", 40000, "2001:db8::2", 14580, 10, "100")
+        self.assertTrue(recovery.connection_route(IPv6(), connection, "wlan0")[0])
+
+    def test_route_must_match_source_and_selected_ipv4_interface(self):
+        connection = recovery.Connection("192.0.2.10", 40000, "198.51.100.8", 14580, 10, "100")
+        self.assertFalse(recovery.connection_route(FakeRunner(interface="eth1"), connection, "wlan0")[0])
+        self.assertFalse(recovery.connection_route(FakeRunner(interface=""), connection, "wlan0")[0])
 
 
 class IntegrationSourceTests(unittest.TestCase):

@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
 import re
 import shlex
 import subprocess
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 
 DEFAULT_CONFIG = "/etc/direwolf.conf"
@@ -84,18 +86,62 @@ def direwolf_active(runner: CommandRunner) -> bool:
     return runner.run(["systemctl", "is-active", "--quiet", "direwolf.service"], timeout=10).returncode == 0
 
 
-def direwolf_connected(runner: CommandRunner, port: int) -> bool:
-    result = runner.run(["ss", "-H", "-t", "-n", "-p", "state", "established"], timeout=10)
+class Connection(NamedTuple):
+    local: str
+    local_port: int
+    peer: str
+    peer_port: int
+    pid: int
+    inode: str
+
+    def describe(self) -> str:
+        return f"[{self.local}]:{self.local_port} -> [{self.peer}]:{self.peer_port} pid={self.pid} inode={self.inode}"
+
+
+def _endpoint(value: str) -> tuple[str, int]:
+    address, port = value.rsplit(":", 1)
+    return str(ipaddress.ip_address(address.strip("[]"))), int(port)
+
+
+def direwolf_connections(runner: CommandRunner, port: int) -> set[Connection] | None:
+    result = runner.run(["ss", "-H", "-t", "-n", "-p", "-e", "state", "established"], timeout=10)
     if result.returncode != 0:
-        return False
-    port_suffix = f":{port}"
+        return None
+    connections = set()
     for line in result.stdout.splitlines():
         fields = line.split()
-        if '"direwolf"' not in line or len(fields) < 4:
+        owner = re.search(r'\("direwolf",pid=(\d+),', line)
+        if owner is None:
             continue
-        if any(field.rstrip(",").endswith(port_suffix) for field in fields[:5]):
-            return True
-    return False
+        # ss with a state filter omits State; tolerate versions which include it.
+        offset = 1 if fields[0] == "ESTAB" else 0
+        try:
+            local, local_port = _endpoint(fields[offset + 2])
+            peer, peer_port = _endpoint(fields[offset + 3])
+        except (ValueError, IndexError):
+            return None  # Unknown ownership/identity must not certify freshness.
+        if peer_port != port:
+            continue
+        inode = re.search(r"\bino:(\d+)\b", line)
+        connections.add(Connection(local, local_port, peer, peer_port,
+                                   int(owner.group(1)), inode.group(1) if inode else ""))
+    return connections
+
+
+def connection_route(runner: CommandRunner, connection: Connection, interface: str) -> tuple[bool, str]:
+    family = "-4" if ipaddress.ip_address(connection.peer).version == 4 else "-6"
+    result = runner.run(["ip", family, "route", "get", connection.peer], timeout=5)
+    device = re.search(r"(?:^|\s)dev\s+(\S+)", result.stdout)
+    source = re.search(r"(?:^|\s)src\s+(\S+)", result.stdout)
+    if result.returncode or device is None or source is None:
+        return False, "effective route/source unavailable"
+    try:
+        matches = ipaddress.ip_address(source.group(1)) == ipaddress.ip_address(connection.local)
+    except ValueError:
+        matches = False
+    # IPv6 has its own effective default route and source selection.
+    valid = matches and (family == "-6" or device.group(1) == interface)
+    return valid, f"route {device.group(1)} src {source.group(1)}"
 
 
 def _marker_age(path: Path, now: float) -> float | None:
@@ -139,11 +185,16 @@ class UplinkRecovery:
         _atomic_write(self.state_path, interface)
         return f"Recorded Dire Wolf uplink baseline: {interface}."
 
-    def _wait_for_connection(self, port: int, seconds: int) -> bool:
+    def _wait_for_connection(self, port: int, seconds: int, old: set[Connection], interface: str) -> bool:
         deadline = self.monotonic() + seconds
         while True:
-            if direwolf_connected(self.runner, port):
-                return True
+            connections = direwolf_connections(self.runner, port)
+            if connections is not None:
+                for connection in sorted(connections - old):
+                    valid, route = connection_route(self.runner, connection, interface)
+                    if valid and default_interface(self.runner) == interface:
+                        print(f"New APRS-IS socket: {connection.describe()}; {route}; recovery verified.", flush=True)
+                        return True
             if self.monotonic() >= deadline:
                 return False
             self.sleep(min(5, max(0, deadline - self.monotonic())))
@@ -168,8 +219,24 @@ class UplinkRecovery:
             return True, f"Uplink changed from {previous} to {current}; Dire Wolf is inactive."
 
         hostname, port = server
-        if self._wait_for_connection(port, self.grace_seconds):
+        old = direwolf_connections(self.runner, port)
+        print(f"APRS-IS uplink change: {previous} -> {current}", flush=True)
+        if old is None:
+            return False, "Cannot capture APRS-IS socket identity; recovery was not attempted."
+        for connection in sorted(old):
+            _, route = connection_route(self.runner, connection, current)
+            print(f"Old APRS-IS socket: {connection.describe()}; {route}", flush=True)
+        if self._wait_for_connection(port, self.grace_seconds, old, current):
             return True, f"Dire Wolf reconnected to APRS-IS after uplink changed from {previous} to {current}."
+        remaining = direwolf_connections(self.runner, port)
+        if remaining is None:
+            return False, "Cannot inspect APRS-IS sockets after grace period; recovery was not attempted."
+        if old & remaining:
+            print("Old APRS-IS socket still present after grace period.", flush=True)
+        # Also reject any invalid connection first observed during grace after restart.
+        old.update(remaining)
+        if default_interface(self.runner) != current:
+            return False, "Default uplink changed again during recovery; Dire Wolf was not restarted."
         if not server_resolves(self.runner, hostname):
             return True, f"APRS-IS DNS is unavailable after uplink changed to {current}; Dire Wolf remains running and will retry."
 
@@ -180,6 +247,7 @@ class UplinkRecovery:
 
         if not direwolf_active(self.runner):
             return True, "Dire Wolf stopped during the recovery grace period; leaving it stopped."
+        print("No fresh route-consistent APRS-IS connection; restarting Dire Wolf with PTT guard.", flush=True)
         # ExecStopPost starts the conflicting PTT guard. A single restart
         # transaction lets that guard cancel the pending engine start. Finish
         # stopping and settle the guard before requesting a separate start.
@@ -193,9 +261,9 @@ class UplinkRecovery:
                 detail = (result.stderr or result.stdout).strip() or "systemctl returned an error"
                 return False, f"Dire Wolf recovery {operation} {unit} failed: {detail}"
         _atomic_write(self.restart_marker, str(now))
-        if not self._wait_for_connection(port, self.verify_seconds):
-            return False, f"Dire Wolf restarted after the uplink change, but APRS-IS did not reconnect within {self.verify_seconds} seconds."
-        return True, f"Restarted Dire Wolf after uplink changed from {previous} to {current}; APRS-IS is connected."
+        if not self._wait_for_connection(port, self.verify_seconds, old, current):
+            return False, f"Dire Wolf restarted after the uplink change, but no fresh route-consistent APRS-IS connection appeared within {self.verify_seconds} seconds."
+        return True, f"Restarted Dire Wolf after uplink changed from {previous} to {current}; fresh APRS-IS recovery verified."
 
 
 def bounded_seconds(value: str) -> int:

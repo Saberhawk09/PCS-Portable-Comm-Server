@@ -808,6 +808,15 @@ passed without further intervention or configuration changes. No failed units
 remained. Private original and witness-imported archives were retained; the latter
 has SHA256 `81a5ed3a5e3979385a0ce244fda457c8a9819726e5d073c77af93e7f9387ae2c`.
 
+## Release inclusion
+
+The v2.1.2 release bundles the complete developed harness, including FQ-001,
+FQ-002, FQ-301-v4, FQ-302, FQ-303, Linux/Windows witnesses and disposable
+integration tests. Installation remains explicit via `setup-pcs-qualify.sh`;
+release installation never starts a fault campaign. Prior evidence below retains
+its original scope. In particular, FQ-303 software/disposable validation is not
+commissioned-appliance acceptance and does not authorize a live WAN fault.
+
 ## FQ-303 — audited operator cellular session preservation
 
 FQ-303 is a separate RF-silent IPv4 scenario. It reuses FQ-302's atomic dual-WAN

@@ -199,9 +199,26 @@ Activation installs shared support services and a Dire Wolf override:
 6. `91-pcs-direwolf-uplink-recovery` asks a hardened oneshot helper to evaluate
    confirmed NetworkManager changes. It compares the selected IPv4 default
    interface with a runtime baseline, gives Dire Wolf 45 seconds to reconnect
-   by itself, verifies APRS-IS DNS, and restarts Dire Wolf only when its
-   APRS-IS TCP session is still absent. A five-minute cooldown prevents repeated
+   by itself, verifies APRS-IS DNS, and recovers an absent or stale APRS-IS
+   session. A five-minute cooldown prevents repeated
    restarts and their associated 30-second startup beacon schedule.
+
+   Recovery snapshots the initial established sockets (local/remote addresses
+   and ports, Dire Wolf PID and socket inode when available). A surviving old
+   socket cannot prove reconnection, even if the kernel still labels it
+   `ESTABLISHED`. A fresh connection must match the source selected by a numeric
+   `ip route get` for its peer; IPv4 must also use the selected default interface.
+   IPv6 is checked against its own effective route/source. This check needs no
+   DNS lookup for the known peer. The initial snapshot is conservative: even a
+   connection created just before the helper observed the transition must be
+   replaced to establish freshness.
+
+   After grace expires, recovery uses separate stop Dire Wolf, start PTT guard,
+   and start Dire Wolf operations. The 60-second verification window requires
+   a fresh route-consistent socket; failure is reported instead of claiming
+   success. Logs show old/new endpoints and routing without credentials.
+   Socket verification is transport evidence, not proof of APRS-IS login or
+   WXBOT/WLNK message delivery; those remain supervised field checks.
 
 For an already-active installation, install only this recovery integration with:
 
