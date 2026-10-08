@@ -168,6 +168,7 @@ def preflight():
         if not shutil.which(command):
             raise ValueError('missing prerequisite: ' + command)
     load_config()
+    run('systemctl', 'cat', 'pcs-uplink-manager.service')
     if run('nmcli', '-g', 'connection.type', 'connection', 'show', 'pcs-router-wan-share') != '802-3-ethernet':
         raise ValueError('legacy LAN profile identity mismatch')
     # NM 1.52 introduced this property; refuse to silently change DHCP range.
@@ -428,6 +429,8 @@ def rollback(backup_path=None):
              Path('/etc/pcs-stats-api'), Path('/run/pcs-uplink-manager'))
     for row in manifest['files']:
         path = Path(row['path'])
+        if path != path.resolve() or path.is_symlink():
+            raise ValueError('non-canonical or symlink rollback target')
         if path not in allowed and not any(path.is_relative_to(p) for p in roots):
             raise ValueError('rollback target outside the managed write set')
         if Path(row['saved']).name != row['saved'] or (row['exists'] and not (folder / row['saved']).is_file()):
@@ -503,8 +506,11 @@ def main(argv=None):
         check()
         return 0
     import fcntl
-    with open('/run/lock/pcs-vlan-switch.lock', 'a') as lock:
+    with open('/run/lock/pcs-vlan-switch.lock', 'a') as lock, open('/run/lock/pcs-uplink-policy.lock', 'a') as policy_lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        # Freeze observer/operator state while snapshots or restoration occur.
+        # Starting the observer is safe: its first policy pass waits for release.
+        fcntl.flock(policy_lock, fcntl.LOCK_EX)
         if args.apply:
             apply(args.directory, args.timeout, args.authorize_network_change, args.switch_isolation_verified)
         elif args.commit:
