@@ -77,7 +77,7 @@ def profiles(ipv6='auto'):
                 'autoconnect=false\nautoconnect-priority=200\n')
         if tag:
             text += f'\n[vlan]\nparent=eth0\nid={tag}\nflags=1\n'
-        text += f'\n[ipv4]\nmethod={method}\n'
+        text += f'\n[ethernet]\nmtu=1500\n\n[ipv4]\nmethod={method}\n'
         if tag == 10:
             text += ('address1=10.42.0.1/24\nnever-default=true\n'
                      'shared-dhcp-range=10.42.0.100,10.42.0.200\n')
@@ -240,8 +240,8 @@ def arm(folder, timeout):
     recovery = STATE / 'recovery.py'
     write(recovery, Path(__file__).read_text())
     write('/etc/systemd/system/pcs-vlan-rollback.service',
-          '[Unit]\nDescription=Restore unconfirmed PCS network migration\nAfter=NetworkManager.service\n'
-          '[Service]\nType=oneshot\nExecStart=/usr/bin/python3 ' + str(recovery) + ' --rollback\n')
+          '[Unit]\nDescription=Restore unconfirmed PCS network migration\nAfter=NetworkManager.service\nStartLimitIntervalSec=0\n'
+          '[Service]\nType=oneshot\nRestart=on-failure\nRestartSec=15s\nExecStart=/usr/bin/python3 ' + str(recovery) + ' --rollback\n')
     write('/etc/systemd/system/' + TIMER,
           '[Unit]\nDescription=PCS VLAN confirmation deadline\n[Timer]\n'
           f'OnActiveSec={timeout}\nOnBootSec={timeout}\nAccuracySec=1s\n'
@@ -436,6 +436,7 @@ def rollback(backup_path=None):
     for identity in IDS.values():
         subprocess.run(['nmcli', 'connection', 'down', identity], capture_output=True, timeout=30)
         subprocess.run(['nmcli', 'connection', 'delete', identity], capture_output=True, timeout=30)
+    subprocess.run(['systemctl', 'stop', 'pcs-vlan-guard.service'], capture_output=True, timeout=30)
     for row in manifest['files']:
         path = Path(row['path'])
         if row['exists']:
