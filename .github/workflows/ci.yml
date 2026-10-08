@@ -64,7 +64,9 @@ jobs:
           sudo apt-get install -y nginx
 
       - name: Run Python tests
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m pip install PyYAML==6.0.3
+          python -m unittest discover -s tests -v
 
       - name: Test defensive portal JavaScript (no appliance Node dependency)
         run: node --test tests/test_pcs_home.js
@@ -89,3 +91,14 @@ jobs:
           test -x scripts/pcs_cellular_fallback.py
           test -x scripts/pcs_gpio.py
           test -x scripts/pcs_sa818.py
+
+  bandwidth-namespaces:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install disposable networking test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nftables iproute2 iperf3 python3-yaml
+      - name: Verify NAT and client shaping in isolated namespaces
+        run: sudo /usr/bin/python3 tests/integration_bandwidth.py --run

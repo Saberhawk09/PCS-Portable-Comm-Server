@@ -477,6 +477,28 @@ class PublicDataTests(unittest.TestCase):
 
 
 class RouteSecurityTests(unittest.TestCase):
+    def test_bandwidth_requires_login_csrf_and_fixed_helper(self):
+        with mock.patch.object(pcs, 'bandwidth_request', return_value={'config': {}}) as helper:
+            status, _, _ = self.request('GET', '/admin/bandwidth')
+            self.assertEqual(status, 303)
+            helper.assert_not_called()
+            cookie = self.login()
+            status, _, page = self.request('GET', '/admin/', headers={'Cookie': cookie})
+            csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+            form = {'csrf': 'wrong', 'operation': 'client', 'ip': '10.42.0.2', 'revision': 'x'}
+            status, _, _ = self.request('POST', '/admin/bandwidth', urlencode(form), {'Cookie': cookie})
+            self.assertEqual(status, 403)
+            helper.assert_not_called()
+            form['csrf'] = csrf
+            status, _, _ = self.request('POST', '/admin/bandwidth', urlencode(form), {'Cookie': cookie})
+            self.assertEqual(status, 303)
+            helper.assert_called_once_with({'operation': 'client', 'ip': '10.42.0.2', 'revision': 'x', 'unlimited': False})
+
+    def test_bandwidth_values_are_html_escaped(self):
+        body = pcs.render_bandwidth_page({'config': {'profiles': {}, 'clients': [{'ip': '10.42.0.2', 'name': '<script>evil</script>'}]}}, 'token').decode()
+        self.assertNotIn('<script>evil', body)
+        self.assertIn('&lt;script&gt;', body)
+
     def test_power_settings_requires_session_csrf_and_valid_capacity(self):
         form = {"dc_source": "power_supply", "battery_capacity_wh": "500"}
         headers = {"Content-Type": "application/x-www-form-urlencoded"}

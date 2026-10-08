@@ -1,0 +1,23 @@
+version: 1
+# Installation is unrestricted; explicitly select a metered profile to shape.
+profile: unrestricted
+lan_network: 10.42.0.0/24
+lan_interface: null
+wan_interface: null
+profiles:
+  starlink:
+    enabled: true
+    total_down: 100mbit
+    total_up: 15mbit
+    default_down: 10mbit
+    default_up: 5mbit
+  cellular:
+    enabled: true
+    total_down: 30mbit
+    total_up: 10mbit
+    default_down: 5mbit
+    default_up: 2mbit
+  unrestricted:
+    enabled: false
+# Add only actual trusted devices; no example IP receives trust by default.
+clients: []

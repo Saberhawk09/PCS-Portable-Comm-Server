@@ -6,6 +6,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 
 ## Core Docs
 
+- [Bandwidth Manager](bandwidth-manager.md) - Pi-native client limits, WAN ceilings, and authenticated admin controls
 - [Documentation audit and README content map](documentation-audit.md)
 - [Project Overview](project-overview.md)
 - [Network Topology](network-topology.md)

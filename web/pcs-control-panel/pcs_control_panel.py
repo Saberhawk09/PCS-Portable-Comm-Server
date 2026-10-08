@@ -949,12 +949,88 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
     <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
     <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}{graywolf_admin_card}</section>
     <h2 class="section-title">Detailed field access</h2><section class="card">{''.join(access_rows)}</section>
+    <section class="card"><h2>Bandwidth</h2><p>Manage whole-network ceilings, default client speeds, and trusted-device exceptions.</p><a class="button secondary" href="/admin/bandwidth">Bandwidth settings</a></section>
     {power_settings_html}
     {backup_settings_html}
     <h2 class="section-title">Administrator access</h2><section class="card password-card"><div><h2>Admin panel password</h2><p>Change it here while the current password is known. A forgotten password cannot be recovered in the browser; rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from the Pi terminal.</p></div><a class="button" href="/admin/password">Change Admin Password</a></section>
     <h2 class="section-title">Operator commands</h2>{''.join(action_groups)}{result_html}</main>"""
     script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});var backupDialog=document.getElementById('backup-settings-dialog');document.getElementById('open-backup-settings').addEventListener('click',function(){backupDialog.showModal();});document.getElementById('close-backup-settings').addEventListener('click',function(){backupDialog.close();});backupDialog.addEventListener('click',function(event){if(event.target===backupDialog){backupDialog.close();}});if(backupDialog.dataset.open==='true'){backupDialog.showModal();}"""
     return document("PCS Administration", body, script=script, nonce=nonce)
+
+
+def bandwidth_request(payload=None):
+    """Fixed sudo allowlist entries; no user-controlled command arguments."""
+    command = 'web-status' if payload is None else 'web-update'
+    result = subprocess.run(
+        ['sudo', '-n', '/usr/local/sbin/pcs-bandwidth', command],
+        input=None if payload is None else json.dumps(payload),
+        text=True, capture_output=True, timeout=90, check=False,
+    )
+    if result.returncode:
+        raise ValueError(result.stderr.strip()[:500] or 'Bandwidth manager unavailable')
+    return json.loads(result.stdout)
+
+
+def render_bandwidth_page(data: dict, csrf: str, error: str = '', notice: str = '') -> bytes:
+    messages = (f'<p class="notice error">{esc(error)}</p>' if error else '')
+    messages += f'<p class="notice success">{esc(notice)}</p>' if notice else ''
+    config = data.get('config', {})
+    token = f'<input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="revision" value="{esc(data.get("revision", ""))}">'
+
+    def field(name, label, value='', required=False):
+        return f'<label>{esc(label)}<input type="text" name="{name}" value="{esc(value)}" maxlength="100" {"required" if required else ""}></label>'
+
+    def usage_text(value):
+        return f'{value / 1_000_000:.2f} MB' if isinstance(value, (int, float)) else '—'
+
+    network_forms = []
+    for name, profile in config.get('profiles', {}).items():
+        active = ' · selected' if name == config.get('profile') else ''
+        fields = ''
+        if profile.get('enabled'):
+            for key, label in [('total_down', 'Network download ceiling'), ('total_up', 'Network upload ceiling'),
+                               ('default_down', 'Default download per client'), ('default_up', 'Default upload per client')]:
+                fields += field(key, label, profile.get(key, ''), key.startswith('default'))
+        else:
+            fields = '<p>Remove all client and network rate limits.</p>'
+        network_forms.append(f'''<details class="card" {"open" if active else ""}><summary>{esc(name)}{active}</summary>
+        <form class="settings-form" method="POST" action="/admin/bandwidth">{token}
+        <input type="hidden" name="operation" value="network"><input type="hidden" name="profile" value="{esc(name)}">
+        {fields}<button type="submit">Save and activate {esc(name)}</button></form></details>''')
+    usage = {c['ip']: c for c in data.get('clients', [])}
+    rows = []
+    for client in config.get('clients', []):
+        stats = usage.get(client['ip'], {})
+        policy = 'Unlimited within network ceiling' if client.get('unlimited') else f"{client.get('download', 'default')} / {client.get('upload', 'default')}"
+        rows.append(f'''<tr><td>{esc(client.get('name', client['ip']))}<br>{esc(client['ip'])}</td><td>{esc(policy)}</td>
+        <td>{usage_text(stats.get('down_bytes'))} / {usage_text(stats.get('up_bytes'))}</td><td>
+        <details><summary>Edit</summary><form class="settings-form" method="POST" action="/admin/bandwidth">{token}
+        <input type="hidden" name="operation" value="client"><input type="hidden" name="ip" value="{esc(client['ip'])}">
+        {field('name', 'Name', client.get('name', ''))}{field('download', 'Download', client.get('download', ''))}{field('upload', 'Upload', client.get('upload', ''))}
+        <label><input type="checkbox" name="unlimited" value="yes" {"checked" if client.get('unlimited') else ""}> No individual limit</label>
+        <button>Save client</button></form></details>
+        <form method="POST" action="/admin/bandwidth">{token}<input type="hidden" name="operation" value="delete-client">
+        <input type="hidden" name="ip" value="{esc(client['ip'])}"><button class="secondary">Use defaults</button></form></td></tr>''')
+    unknown = ''.join(f"<li>{esc(c['ip'])}: RX {usage_text(c['down_bytes'])} / TX {usage_text(c['up_bytes'])}</li>"
+                      for c in data.get('clients', []) if not c.get('explicit'))
+    controls = ''
+    if config:
+        controls = f'''<h2>Whole network</h2><p>Rates accept values such as 5M or 5mbit. Leave a network ceiling blank for no aggregate cap. Profile selection is manual.</p>
+        <div class="grid">{''.join(network_forms)}</div>
+        <section class="card"><h2>Individual clients</h2><div style="overflow-x:auto"><table><thead><tr><th>Client</th><th>Download / upload</th><th>RX / TX</th><th>Policy</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>
+        <details><summary>Add or replace a client override</summary><form class="settings-form" method="POST" action="/admin/bandwidth">{token}
+        <input type="hidden" name="operation" value="client">
+        {field('ip', 'Client IPv4 address', required=True)}{field('name', 'Device name (optional)')}
+        {field('download', 'Download limit (blank uses profile default)')}{field('upload', 'Upload limit (blank uses profile default)')}
+        <label><input type="checkbox" name="unlimited" value="yes"> Trusted client: no individual limit</label>
+        <button type="submit">Save client policy</button></form></details></section>
+        <section class="card"><h2>Other client usage</h2><ul>{unknown or '<li>No traffic recorded.</li>'}</ul></section>'''
+    issues = '; '.join(data.get('issues', []))
+    body = f'''<header><div class="nav"><div class="brand">PCS Bandwidth</div><nav class="navlinks"><a class="button secondary" href="/admin/">Administration</a><a class="button secondary" href="/admin/bandwidth">Refresh</a></nav></div></header>
+    <style>.bandwidth-page .grid{{align-items:start;margin-bottom:1rem}}.bandwidth-page .card{{margin-bottom:1rem}}.bandwidth-page .settings-form{{display:grid;grid-template-columns:1fr;gap:.8rem;margin-top:1rem}}.bandwidth-page input[type=text]{{display:block;width:100%;padding:.65rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);margin-top:.35rem}}.bandwidth-page summary{{cursor:pointer;font-weight:650}}.bandwidth-page table{{width:100%;border-collapse:collapse;text-align:left}}.bandwidth-page th,.bandwidth-page td{{padding:.7rem;border-bottom:1px solid var(--line);vertical-align:top}}.bandwidth-page td form{{margin-top:.65rem}}</style>
+    <main class="admin-main bandwidth-page">{messages}<section class="overview"><div><h1>Bandwidth settings</h1><p>{esc(data.get('status', 'Unavailable'))} · Profile: {esc(config.get('profile', '—'))}</p>
+    <p>{esc(issues)}</p></div></section>{controls}<p>Local PCS services stay outside these limits. IPv6 is not limited or counted in this version. Usage counters may reset when settings change or PCS restarts.</p></main>'''
+    return document('PCS Bandwidth', body)
 
 
 def render_login_page(csrf: str, error: str = "", notice: str = "") -> bytes:
@@ -1081,10 +1157,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin":
             self.redirect("/admin/")
             return
-        if path in {"/admin/", "/admin/password"} and not self.session()[1]:
+        if path in {"/admin/", "/admin/password", "/admin/bandwidth"} and not self.session()[1]:
             self.redirect("/admin/login")
             return
-        if path in {"/", "/status/", "/health", "/api/public-status", "/admin/", "/admin/login", "/admin/password"}:
+        if path in {"/", "/status/", "/health", "/api/public-status", "/admin/", "/admin/login", "/admin/password", "/admin/bandwidth"}:
             content_type = "application/json; charset=utf-8" if path == "/api/public-status" else "text/html; charset=utf-8"
             self.send_body(200, b"", content_type, head_only=True)
             return
@@ -1128,6 +1204,17 @@ class Handler(BaseHTTPRequestHandler):
                 backup_settings=backup_settings, settings_error=settings_error,
             )
             self.send_body(200, body, "text/html; charset=utf-8", nonce=nonce)
+            return
+        if path == "/admin/bandwidth":
+            _, session = self.require_session()
+            if not session:
+                return
+            try:
+                data, error = bandwidth_request(), ''
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                data, error = {}, str(exc)
+            notice = 'Bandwidth settings applied.' if parse_qs(parsed.query).get('saved') == ['1'] else ''
+            self.send_body(200, render_bandwidth_page(data, session['csrf'], error, notice), 'text/html; charset=utf-8')
             return
         if path == "/admin/password":
             _, session = self.require_session()
@@ -1220,6 +1307,28 @@ class Handler(BaseHTTPRequestHandler):
             SESSIONS.destroy_all()
             expired = cookie_header("pcs_admin_session", "", "/admin", max_age=0)
             self.redirect("/admin/login?changed=1", cookies=[expired])
+            return
+
+        if path == "/admin/bandwidth":
+            _, session = self.require_session()
+            if not session:
+                return
+            if not self.csrf_valid(form, session):
+                self.send_body(403, b'CSRF validation failed\n', 'text/plain; charset=utf-8')
+                return
+            payload = {key: value for key, value in form.items() if key != 'csrf'}
+            if payload.get('operation') == 'client':
+                payload['unlimited'] = payload.get('unlimited') == 'yes'
+            try:
+                bandwidth_request(payload)
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                try:
+                    data = bandwidth_request()
+                except (ValueError, OSError, subprocess.SubprocessError):
+                    data = {}
+                self.send_body(400, render_bandwidth_page(data, session['csrf'], str(exc)), 'text/html; charset=utf-8')
+                return
+            self.redirect('/admin/bandwidth?saved=1')
             return
 
         if path == "/admin/power-settings":
