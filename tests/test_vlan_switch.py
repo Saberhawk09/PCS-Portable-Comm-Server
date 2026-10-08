@@ -94,6 +94,27 @@ class IdentityTests(unittest.TestCase):
                 nm.reapply(o, {'ipv4': {'route-metric': 200}})
             nm.iface.return_value.Reapply.assert_not_called()
 
+    def test_disconnected_vlan_is_observed_as_failed_wan_not_unknown_or_lan(self):
+        nm, props = self.adapter()
+        nm.manager = Mock()
+        nm.manager.GetDevices.return_value = ['/parent', '/lan', '/wan']
+        props.update({(m.ROOT, 'ActiveConnections'): [],
+                      ('/parent', 'PermHwAddress'): BRICK,
+                      ('/lan', 'Interface'): 'eth0.10', ('/lan', 'DeviceType'): 11,
+                      ('/wan', 'IpInterface'): 'eth0.20', ('/wan', 'State'): 30,
+                      ('/wan', 'Carrier'): False, ('/wan', 'Ip4Config'): '/', ('/wan', 'Ip6Config'): '/'})
+        nm.prepare_probes = Mock()
+        config = m.Config((uplink(), m.Uplink('wifi', 'Wi-Fi', 'wifi', 2, interface='wlan0')))
+        observation = nm.observe(m.Config((uplink(),)))['starlink']
+        self.assertEqual(observation.interface, 'eth0.20')
+        self.assertEqual(observation.device, '/wan')
+        self.assertEqual(observation.error, '')
+        self.assertEqual(observation.state, 'link-down')
+        policy = m.Policy(config)
+        observations = {'starlink': observation, 'wifi': m.Observation(internet=True)}
+        policy.choose(observations, 0)
+        self.assertEqual(policy.choose(observations, 30)[0], 'wifi')
+
     def test_vlan_dhcp_renewal_retains_session(self):
         nm, _ = self.adapter()
         o = m.Observation(interface='eth0.20', device='/wan', profile=UUID,
