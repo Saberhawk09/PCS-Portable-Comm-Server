@@ -183,6 +183,7 @@ def preflight():
             if not bound and not binding:
                 raise ValueError('unbound Ethernet profile may capture the trunk; explicitly bind it before migration')
     run('nft', '-j', 'list', 'ruleset')
+    run('nft', 'list', 'chain', 'ip', 'nm-shared-eth0', 'filter_forward')
     if service_active('pcs-cellular-fallback.service'):
         raise ValueError('install the existing uplink manager before migration')
 
@@ -373,6 +374,17 @@ def check():
     for name, identity in IDS.items():
         if run('nmcli', '-g', 'connection.uuid', 'connection', 'show', name) != identity:
             raise ValueError('profile UUID mismatch')
+    for profile, fields in {
+        'pcs-vlan-parent': {'connection.interface-name': 'eth0', 'ipv4.method': 'disabled', 'ipv6.method': 'disabled'},
+        'pcs-lan-vlan': {'connection.type': 'vlan', 'connection.interface-name': 'eth0.10', 'vlan.parent': 'eth0',
+                         'vlan.id': '10', 'ipv4.method': 'shared', 'ipv4.never-default': 'yes',
+                         'ipv4.shared-dhcp-range': '10.42.0.100,10.42.0.200'},
+        'pcs-starlink-vlan': {'connection.type': 'vlan', 'connection.interface-name': 'eth0.20',
+                              'vlan.parent': 'eth0', 'vlan.id': '20', 'ipv4.method': 'auto'},
+    }.items():
+        for key, value in fields.items():
+            if run('nmcli', '-g', key, 'connection', 'show', IDS[profile]) != value:
+                raise ValueError('saved profile mismatch: ' + profile + ' ' + key)
     u = next(u for u in load_config().uplinks if u.id == 'starlink')
     # WAN absence is a valid offline LAN state. An active WAN must validate fully.
     active = run('nmcli', '-g', 'UUID', 'connection', 'show', '--active').splitlines()

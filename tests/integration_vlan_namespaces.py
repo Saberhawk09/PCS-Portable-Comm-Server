@@ -17,7 +17,10 @@ from pcs_vlan_switch import guard
 
 
 def run(*args, **kwargs):
-    return subprocess.run(args, check=True, text=True, capture_output=True, **kwargs).stdout
+    result = subprocess.run(args, text=True, capture_output=True, **kwargs)
+    if result.returncode:
+        raise RuntimeError(f'{args}: {result.stderr.strip()}')
+    return result.stdout
 
 
 def main():
@@ -48,6 +51,7 @@ def main():
         ns(switch, 'ip', 'link', 'set', 'br0', 'up')
         ns(switch, 'ip', 'link', 'set', 'trunk', 'master', 'br0')
         ns(switch, 'ip', 'link', 'set', 'trunk', 'up')
+        run('ip', 'link', 'set', 'eth0', 'up')
         for tag, endpoint, port in ((10, lan, 'lan'), (20, wan, 'wan')):
             ns(switch, 'ip', 'link', 'add', port, 'type', 'veth', 'peer', 'name', 'client')
             ns(switch, 'ip', 'link', 'set', 'client', 'netns', str(endpoint))
