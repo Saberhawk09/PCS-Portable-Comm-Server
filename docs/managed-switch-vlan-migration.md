@@ -14,10 +14,10 @@ acceptance requires the actual DGS-1100-08V2 revision and firmware.
 | 3 | Brick LAN port | untagged 10 only | 10 |
 | 4 | Existing unmanaged client switch | untagged 10 only | 10 |
 | 5 | Pi-Star Ethernet | untagged 10 only | 10 |
-| 6–8 | Unused | disabled, or separate isolated unused VLANs | isolated |
+| 6â€“8 | Unused | disabled, or separate isolated unused VLANs | isolated |
 
 The Pi routes; the D-Link only switches. Physical eth0 has no IPv4 or IPv6
-address. eth0.10 owns 10.42.0.1/24, DHCP 10.42.0.100–10.42.0.200, DNS and NAT.
+address. eth0.10 owns 10.42.0.1/24, DHCP 10.42.0.100â€“10.42.0.200, DNS and NAT.
 eth0.20 is a DHCP WAN. The four external clients share the unmanaged switch's
 single Gigabit uplink; local traffic can remain on that switch. A single Pi
 Gigabit full-duplex link carries both VLANs, so measured aggregate throughput
@@ -196,7 +196,7 @@ Record commands, timestamps and results, not just check marks:
 
 | Gate | Required independent evidence |
 |---|---|
-| LAN with WAN unplugged | New client lease in .100–.200 from .1; DNS and NTP available; dashboard and Samba usable |
+| LAN with WAN unplugged | New client lease in .100â€“.200 from .1; DNS and NTP available; dashboard and Samba usable |
 | VLAN 20 only | No LAN DHCP lease, DNS, API, SSH, KISS, GPSD, SMB or discovery exposed from WAN |
 | Broadcast separation | Controlled DHCP server on WAN cannot lease to LAN; LAN server never leases to WAN; repeat IPv6 RA tests |
 | WAN routing | Non-overlapping DHCP address, DNS and IPv4/IPv6 routes; real Starlink and home-WAN access |
