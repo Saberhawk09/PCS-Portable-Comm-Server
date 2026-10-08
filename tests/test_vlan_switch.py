@@ -203,6 +203,8 @@ class TransactionTests(unittest.TestCase):
             events = []
             def command(*args, **kwargs):
                 events.append(args)
+                if args[:3] == ('nmcli', '-g', 'ipv4.method'):
+                    return 'auto'
                 if args[:3] == ('nmcli', '-g', 'ipv6.method'):
                     return 'auto'
                 if args[:3] == ('nmcli', '-g', 'UUID'):

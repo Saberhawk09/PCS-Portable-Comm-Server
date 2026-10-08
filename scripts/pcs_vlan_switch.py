@@ -173,8 +173,9 @@ def preflight():
         raise ValueError('legacy LAN profile identity mismatch')
     # NM 1.52 introduced this property; refuse to silently change DHCP range.
     run('nmcli', '-g', 'ipv4.shared-dhcp-range', 'connection', 'show', 'pcs-router-wan-share')
-    if run('nmcli', '-g', 'ipv4.method', 'connection', 'show', 'pcs-router-wan-share') != 'shared':
-        raise ValueError('legacy LAN is not shared')
+    for key, value in {'connection.interface-name': 'eth0', 'ipv4.method': 'shared', 'ipv4.addresses': '10.42.0.1/24'}.items():
+        if run('nmcli', '-g', key, 'connection', 'show', 'pcs-router-wan-share') != value:
+            raise ValueError('legacy LAN identity/address mismatch: ' + key)
     run('ip', '-d', '-j', 'link', 'show', 'eth0')
     for identity in run('nmcli', '-g', 'UUID', 'connection', 'show').splitlines():
         kind = run('nmcli', '-g', 'connection.type', 'connection', 'show', identity)
@@ -278,6 +279,11 @@ def apply(destination, timeout, authorized, switch_verified):
     old = next((u for u in cfg.uplinks if u.id == 'starlink'), None)
     if not old or old.type != 'ethernet' or not old.profile:
         raise ValueError('migration requires the commissioned physical Starlink uplink')
+    for key, expected in {'connection.type': '802-3-ethernet', 'ipv4.method': 'auto'}.items():
+        if run('nmcli', '-g', key, 'connection', 'show', old.profile) != expected:
+            raise ValueError('existing wired WAN profile mismatch: ' + key)
+    if run('nmcli', '-g', 'connection.interface-name', 'connection', 'show', old.profile) in {'eth0', 'eth0.10'}:
+        raise ValueError('existing wired WAN profile targets protected LAN')
     current_ipv6 = run('nmcli', '-g', 'ipv6.method', 'connection', 'show', old.profile)
     if m['ipv6'] != current_ipv6:
         raise ValueError('stage IPv6 policy does not match the existing wired WAN')
