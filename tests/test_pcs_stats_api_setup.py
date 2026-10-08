@@ -129,7 +129,7 @@ class StatsApiSetupTests(unittest.TestCase):
         firewall = FIREWALL.read_text(encoding="utf-8")
         policy = POLICY.read_text(encoding="utf-8")
         self.assertIn('port_text != "9443"', firewall)
-        self.assertIn('allowed_interfaces = {"eth0", "wg-pcs", "wlan0"}', firewall)
+        self.assertIn('allowed_interfaces = {lan_interface, "wg-pcs", "wlan0"}', firewall)
         self.assertIn("WireGuard API sources must be explicit IPv4 /32s", firewall)
         self.assertIn("every WireGuard API source must be an approved", firewall)
         self.assertIn('comment "pcs-api-default-deny"', firewall)

@@ -21,13 +21,13 @@ class UplinkSelfTest(unittest.TestCase):
                 p = Path(tmp) / name
                 p.write_text("#!/bin/sh\n" + body + "\n")
                 p.chmod(0o755)
-            prelude = 'PCS_WIFI_IFACE=wlan0; PCS_ETH_IFACE=eth0; PCS_ETH_ADDR=10.42.0.1/24; pass() { echo "PASS $*"; }; warn() { echo "WARN $*"; }; fail() { echo "FAIL $*"; };'
+            prelude = 'PCS_WIFI_IFACE=wlan0; PCS_ETH_IFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share; PCS_ETH_ADDR=10.42.0.1/24; pass() { echo "PASS $*"; }; warn() { echo "WARN $*"; }; fail() { echo "FAIL $*"; };'
             result = subprocess.run(["bash", "-c", prelude + section], text=True, capture_output=True,
                 env={**os.environ, "PATH": tmp + os.pathsep + os.environ["PATH"], "TEST_DEFAULT": default, "TEST_MANAGED": managed}, check=True)
             return result.stdout
 
     def test_configured_ethernet_names_are_accepted(self):
-        for name in ("eth1", "enx001122334455"):
+        for name in ("eth1", "enx001122334455", "eth0.20"):
             output = self.run_network(name, name)
             self.assertIn("PASS Default route uses configured WAN " + name, output)
             self.assertNotIn("WARN", output)

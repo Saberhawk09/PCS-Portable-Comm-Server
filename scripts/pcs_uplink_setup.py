@@ -278,9 +278,13 @@ def main():
             uuid = ''
         if uuid:
             cfg['uplinks'].append({'id': 'cellular', 'name': 'Cellular', 'type': 'cellular', 'priority': max(u['priority'] for u in cfg['uplinks']) + 1, 'profile': uuid, 'activation': 'fallback'})
-    iface = args.interface or env.get('PCS_STARLINK_IFACE', '')
-    mac = args.mac or env.get('PCS_STARLINK_MAC', '')
-    if not iface and not mac and env.get('PCS_STARLINK_AUTODETECT', '').lower() in ('1', 'true', 'yes'):
+    topology = Path('/etc/pcs/network-mode')
+    vlan_mode = topology.exists() and topology.read_text().strip() == 'vlan'
+    if vlan_mode and (args.interface or args.mac):
+        raise ValueError('use the VLAN migration tool to change commissioned WAN topology')
+    iface = '' if vlan_mode else args.interface or env.get('PCS_STARLINK_IFACE', '')
+    mac = '' if vlan_mode else args.mac or env.get('PCS_STARLINK_MAC', '')
+    if not vlan_mode and not iface and not mac and env.get('PCS_STARLINK_AUTODETECT', '').lower() in ('1', 'true', 'yes'):
         detected = candidates()
         if len(detected) > 1:
             raise ValueError('multiple Ethernet WAN candidates found; set PCS_STARLINK_MAC explicitly')

@@ -1125,8 +1125,17 @@ def dns_servers():
 
     return servers
 
+def pcs_lan_interface():
+    from pathlib import Path
+    mode = Path('/etc/pcs/network-mode')
+    value = mode.read_text().strip() if mode.exists() else 'legacy'
+    if value not in ('legacy', 'vlan'):
+        raise ValueError('invalid PCS network mode')
+    return 'eth0.10' if value == 'vlan' else 'eth0'
+
+
 def eth0_address():
-    rc, out, _ = run(["ip", "-brief", "addr", "show", "eth0"], timeout=4)
+    rc, out, _ = run(["ip", "-brief", "addr", "show", pcs_lan_interface()], timeout=4)
     if rc != 0:
         return ""
 
@@ -2008,7 +2017,7 @@ def dhcp_lease_names():
     names = {}
 
     lease_paths = [
-        "/var/lib/NetworkManager/dnsmasq-eth0.leases",
+        f"/var/lib/NetworkManager/dnsmasq-{pcs_lan_interface()}.leases",
         "/var/lib/NetworkManager/dnsmasq-wlan0.leases",
         "/var/lib/NetworkManager/dnsmasq.leases",
     ]
@@ -2089,7 +2098,7 @@ def resolve_client_name(ip, mac, manual_names, lease_names):
     return ip
 
 def router_side_clients(resolve_names=True):
-    rc, out, _ = run(["ip", "neigh", "show", "dev", "eth0"], timeout=4)
+    rc, out, _ = run(["ip", "neigh", "show", "dev", pcs_lan_interface()], timeout=4)
     clients = []
     if rc != 0:
         return clients
@@ -2172,10 +2181,10 @@ root_usage = disk_usage("/")
 backup_usage = disk_usage(BACKUP_SHARE)
 
 wifi_ok, wifi_conn = nm_device_connected("wlan0")
-eth_ok, eth_conn = nm_device_connected("eth0", "pcs-router-wan-share")
+eth_ok, eth_conn = nm_device_connected(pcs_lan_interface(), "pcs-lan-vlan" if pcs_lan_interface() == "eth0.10" else "pcs-router-wan-share")
 internet_ok = ping_ok("8.8.8.8")
 dns_ok = ping_ok("google.com")
-eth_ip_ok = ip_has_address("eth0", "10.42.0.1/24")
+eth_ip_ok = ip_has_address(pcs_lan_interface(), "10.42.0.1/24")
 default_iface = default_route_iface()
 wan_ip = "" if PUBLIC_VIEW else public_wan_ip()
 uplink_info = uplink_route_info()
@@ -2198,7 +2207,7 @@ system_status = "warn" if system_warn else "ok"
 route_details = default_route_details()
 dns_list = dns_servers()
 eth0_ip = eth0_address()
-eth0_method = nm_connection_method("pcs-router-wan-share")
+eth0_method = nm_connection_method("pcs-lan-vlan" if pcs_lan_interface() == "eth0.10" else "pcs-router-wan-share")
 backup_info = backup_health()
 web_admin = web_admin_status()
 pi_star = pi_star_health() if PI_STAR_CONFIGURED else {}
@@ -2911,7 +2920,7 @@ cards = [
         "status": client_lan_status,
         "summary": "PCS client LAN active" if client_lan_status == "ok" else "PCS client LAN warning",
         "items": [
-            {"label": "eth0 address", "value": eth0_ip or "missing"},
+            {"label": "LAN address", "value": eth0_ip or "missing"},
             {"label": "DHCP mode", "value": eth0_method},
             {"label": "Visible clients", "value": str(len(router_clients))},
             {"label": "Client gateway", "value": "10.42.0.1"},

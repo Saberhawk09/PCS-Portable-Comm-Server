@@ -10,6 +10,19 @@ permissions:
   contents: read
 
 jobs:
+  vlan-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install disposable packet-test tools
+        run: sudo apt-get update && sudo apt-get install -y nftables iproute2 iputils-ping
+      - name: Test VLAN switch and dual-stack isolation in private namespaces
+        run: sudo python3 tests/integration_vlan_namespaces.py
+      - name: Validate staged keyfiles using NetworkManager 1.52 or newer
+        run: |
+          docker run --rm -v "$PWD:/src:ro" debian:trixie-slim sh -c '
+            apt-get update -qq && apt-get install -y -qq python3 python3-gi gir1.2-nm-1.0 &&
+            cd /src && python3 tests/integration_vlan_keyfiles.py'
   windows-witness:
     runs-on: windows-latest
     steps:

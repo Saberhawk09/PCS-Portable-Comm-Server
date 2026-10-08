@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "mode": "manual",
+  "uplinks": [
+    {"id": "starlink", "name": "Starlink", "type": "vlan", "priority": 1,
+     "interface": "eth0.20", "parent": "eth0", "vlan_id": 20,
+     "profile": "83f29615-8730-5c4e-befa-bdc60adb184a"},
+    {"id": "wifi", "name": "Wi-Fi", "type": "wifi", "interface": "wlan0", "priority": 2}
+  ]
+}

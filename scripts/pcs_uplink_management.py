@@ -10,11 +10,11 @@ import json
 from pathlib import Path
 import subprocess
 
-from pcs_uplink_manager import CONFIG, load_config
+from pcs_uplink_manager import CONFIG, load_config, resolve_vlan_interface
 
 POLICY = Path('/etc/pcs/uplink-management.json')
 PREFIX = 'pcs-uplink-management:'
-TABLE_PORTS = {'pcs_wireguard': '22, 80, 139, 443, 445, 8080, 9090', 'pcs_stats_api': '9443'}
+TABLE_PORTS = {'pcs_vlan_guard': '22, 80, 139, 443, 445, 8080, 9090, 9443', 'pcs_wireguard': '22, 80, 139, 443, 445, 8080, 9090', 'pcs_stats_api': '9443'}
 
 
 def validate_policy(raw, config):
@@ -33,7 +33,7 @@ def validate_policy(raw, config):
         if uid not in uplinks or uid in seen:
             raise ValueError('unknown or duplicate management uplink')
         u = uplinks[uid]
-        if u.type != 'ethernet' or not u.mac:
+        if not (u.type == 'vlan' or u.type == 'ethernet' and u.mac):
             raise ValueError('management requires an explicitly MAC-bound Ethernet uplink')
         if not isinstance(row['sources'], list) or not 1 <= len(row['sources']) <= 8:
             raise ValueError('configure 1..8 explicit trusted source networks')
@@ -56,13 +56,14 @@ def run(*args):
     return subprocess.run(args, text=True, capture_output=True, timeout=15, check=True).stdout
 
 
-def resolve(entries, devices, permanent_mac):
+def resolve(entries, devices, permanent_mac, vlan_resolver=resolve_vlan_interface):
     rows = []
     for u, networks in entries:
-        matches = [d for d in devices if d.get('ifname') not in {'lo', 'eth0'}
+        vlan_name = vlan_resolver(u) if u.type == 'vlan' else ''
+        matches = [d for d in devices if d.get('ifname') not in {'lo', 'eth0', 'eth0.10'}
                    and d.get('link_type') == 'ether'
                    and (not u.interface or d['ifname'] == u.interface)
-                   and permanent_mac(d['ifname']).lower() == u.mac.lower()]
+                   and (d['ifname'] == vlan_name if u.type == 'vlan' else permanent_mac(d['ifname']).lower() == u.mac.lower())]
         if len(matches) > 1:
             raise ValueError('ambiguous Ethernet management identity')
         if not matches:

@@ -44,7 +44,7 @@ def read_json(path, default=None):
 
 
 def interface_name(value):
-    return isinstance(value, str) and bool(re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}', value)) and value not in {'lo', 'eth0'}
+    return isinstance(value, str) and bool(re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}', value)) and value not in {'lo', 'eth0', 'eth0.10'}
 
 
 @dataclass(frozen=True)
@@ -57,6 +57,30 @@ class Uplink:
     mac: str = ''
     profile: str = ''
     activation: str = 'observe'
+    parent: str = ''
+    vlan_id: int = 0
+
+
+def validate_vlan_settings(u, settings):
+    connection = settings.get('connection', {})
+    vlan = settings.get('vlan', {})
+    if (u.type != 'vlan' or (u.interface, u.parent, u.vlan_id) != ('eth0.20', 'eth0', 20) or
+            connection.get('type') != 'vlan' or connection.get('uuid') != u.profile or
+            connection.get('interface-name') != u.interface or
+            vlan.get('parent') != u.parent or int(vlan.get('id', -1)) != u.vlan_id or
+            settings.get('ipv4', {}).get('method') != 'auto'):
+        raise ValueError('incompatible VLAN WAN profile')
+
+
+def resolve_vlan_interface(u):
+    """Read-only exact identity check for telemetry and management grants."""
+    nm = NetworkManager()
+    device = nm.manager.GetDeviceByIpIface(u.interface, timeout=5)
+    session = str(nm.prop(device, BUS + '.Device', 'ActiveConnection'))
+    profile = str(nm.prop(session, BUS + '.Connection.Active', 'Uuid'))
+    o = Observation(interface=u.interface, device=device, profile=profile, session=session)
+    nm.validate_vlan(u, o)
+    return u.interface
 
 
 @dataclass(frozen=True)
@@ -86,8 +110,13 @@ def load_config(path=CONFIG):
         u = Uplink(**entry)
         if not re.fullmatch(r'[a-z][a-z0-9_-]{0,31}', u.id) or not isinstance(u.name, str) or not u.name.strip() or len(u.name) > 80:
             raise ValueError('invalid uplink identity')
-        if u.type not in {'ethernet', 'wifi', 'cellular'} or u.activation not in {'observe', 'fallback'}:
+        if u.type not in {'ethernet', 'vlan', 'wifi', 'cellular'} or u.activation not in {'observe', 'fallback'}:
             raise ValueError('invalid uplink type or activation policy')
+        if u.type == 'vlan':
+            if (u.interface, u.parent, u.vlan_id) != ('eth0.20', 'eth0', 20) or type(u.vlan_id) is not int or not u.profile or u.mac:
+                raise ValueError('VLAN WAN requires eth0.20, parent eth0, VLAN 20 and an explicit UUID; no MAC binding')
+        elif u.parent or u.vlan_id or u.interface == 'eth0.20':
+            raise ValueError('VLAN identity requires type vlan')
         if type(u.priority) is not int or not 1 <= u.priority <= 1000:
             raise ValueError('priority must be 1..1000')
         if u.interface and not interface_name(u.interface):
@@ -140,6 +169,7 @@ class Observation:
     addresses: list = field(default_factory=list)
     counters: dict | None = None
     counter_identity: str = ''
+    vlan_identity: Uplink | None = None
 
     @property
     def state(self):
@@ -315,7 +345,7 @@ class NetworkManager:
         result = {}
         used = set()
         for u in config.uplinks:
-            expected_type = {'ethernet': 1, 'wifi': 2, 'cellular': 8}[u.type]
+            expected_type = {'ethernet': 1, 'vlan': 11, 'wifi': 2, 'cellular': 8}[u.type]
             matches = [d for d in devices if d[2] == expected_type and (not u.interface or d[1] == u.interface) and (not u.mac or d[3] == u.mac.lower()) and (u.type != 'cellular' or (u.profile in active and d[0] in active[u.profile][1]))]
             o = Observation()
             result[u.id] = o
@@ -325,7 +355,7 @@ class NetworkManager:
                 o.error = 'ambiguous device identity'
                 continue
             path, name, kind, mac = matches[0]
-            if name == 'eth0' or path in used:
+            if not interface_name(name) or path in used:
                 o.error = 'protected or duplicate device'
                 continue
             used.add(path)
@@ -344,8 +374,18 @@ class NetworkManager:
             if not interface_name(o.interface):
                 o.error = 'protected or invalid data interface'
                 continue
+            if u.type == 'vlan':
+                try:
+                    o.vlan_identity = u
+                    if o.session:
+                        self.validate_vlan(u, o)
+                    else:
+                        self.validate_vlan_device(u, o.device)
+                except (ValueError, RuntimeError) as exc:
+                    o.error = str(exc)
+                    continue
             state = int(self.prop(path, dev, 'State'))
-            o.link = bool(self.prop(path, dev + '.Wired', 'Carrier')) if kind == 1 else state == 100
+            o.link = bool(self.prop(path, dev + ('.Vlan' if kind == 11 else '.Wired'), 'Carrier')) if kind in (1, 11) else state == 100
             # Bound Ethernet and Wi-Fi identities observe the actual active
             # profile, including an operator-selected profile. The configured
             # UUID controls activation, not ownership of pre-existing sessions.
@@ -359,7 +399,7 @@ class NetworkManager:
                 usable = any(not ipaddress.ip_address(ip).is_link_local and not ipaddress.ip_address(ip).is_unspecified for ip in ips)
                 if family == 4:
                     o.address = usable
-                    if any(ipaddress.ip_address(ip) in ipaddress.ip_network('10.42.0.0/24') for ip in ips):
+                    if any(ipaddress.ip_network(str(a['address']) + '/' + str(a.get('prefix', 32)), strict=False).overlaps(ipaddress.ip_network('10.42.0.0/24')) for a in addresses):
                         o.error = 'WAN address overlaps PCS LAN'
                 else:
                     o.address6 = usable
@@ -384,15 +424,39 @@ class NetworkManager:
                 setattr(o, key, future.result())
         return result
 
+    def validate_vlan_device(self, u, device):
+        if (u.interface, u.parent, u.vlan_id) != ('eth0.20', 'eth0', 20):
+            raise ValueError('protected VLAN identity')
+        dev = BUS + '.Device'
+        if int(self.prop(device, dev, 'DeviceType')) != 11 or str(self.prop(device, dev, 'Interface')) != u.interface:
+            raise ValueError('VLAN device identity mismatch')
+        parent = self.prop(device, dev + '.Vlan', 'Parent')
+        if (int(self.prop(device, dev + '.Vlan', 'VlanId')) != u.vlan_id or
+                str(self.prop(parent, dev, 'Interface')) != u.parent or
+                int(self.prop(parent, dev, 'DeviceType')) != 1):
+            raise ValueError('VLAN parent or tag mismatch')
+
+    def validate_vlan(self, u, o, settings=None):
+        self.validate_vlan_device(u, o.device)
+        if o.interface != u.interface or o.profile != u.profile or not o.session:
+            raise ValueError('VLAN active profile identity mismatch')
+        if str(self.prop(o.device, BUS + '.Device', 'ActiveConnection')) != o.session:
+            raise RuntimeError('VLAN session changed')
+        if settings is None:
+            settings, _ = self.applied(o)
+        validate_vlan_settings(u, settings)
+
     def activate(self, u):
         # D-Bus activation returns the precise object created by this request.
         settings = self.iface(ROOT + '/Settings', BUS + '.Settings')
         path = settings.GetConnectionByUuid(u.profile, timeout=5)
         saved = self.iface(path, BUS + '.Settings.Connection').GetSettings(timeout=5)
         connection = saved.get('connection', {})
-        expected = {'cellular': 'gsm', 'ethernet': '802-3-ethernet', 'wifi': '802-11-wireless'}[u.type]
-        if str(connection.get('type')) != expected or connection.get('interface-name') == 'eth0' or saved.get('ipv4', {}).get('method') == 'shared':
+        expected = {'cellular': 'gsm', 'ethernet': '802-3-ethernet', 'vlan': 'vlan', 'wifi': '802-11-wireless'}[u.type]
+        if str(connection.get('type')) != expected or connection.get('interface-name') in {'eth0', 'eth0.10'} or saved.get('ipv4', {}).get('method') == 'shared':
             raise ValueError('refusing activation of an incompatible or LAN profile')
+        if u.type == 'vlan':
+            validate_vlan_settings(u, saved)
         device = '/'
         if u.type != 'cellular':
             if not u.interface:
@@ -400,6 +464,8 @@ class NetworkManager:
             device = self.manager.GetDeviceByIpIface(u.interface, timeout=5)
             if not interface_name(str(self.prop(device, BUS + '.Device', 'Interface'))):
                 raise ValueError('refusing protected activation device')
+        if u.type == 'vlan':
+            self.validate_vlan_device(u, device)
         return str(self.manager.ActivateConnection(path, device, '/', timeout=10))
 
     def deactivate(self, session):
@@ -407,7 +473,7 @@ class NetworkManager:
 
     def renew_ipv4(self, u, o):
         """Retrigger DHCP on one exact Ethernet profile without disconnecting it."""
-        if u.type != 'ethernet' or not u.profile or o.profile != u.profile or not o.session:
+        if u.type not in {'ethernet', 'vlan'} or not u.profile or o.profile != u.profile or not o.session:
             raise ValueError('refusing to renew an unverified Ethernet profile')
         if not interface_name(o.interface) or o.interface == 'eth0':
             raise ValueError('refusing to renew a protected interface')
@@ -415,7 +481,9 @@ class NetworkManager:
         if current != o.session:
             raise RuntimeError('activation changed during Ethernet DHCP renewal')
         settings, _ = self.applied(o)
-        if settings.get('connection', {}).get('type') != '802-3-ethernet':
+        if u.type == 'vlan':
+            self.validate_vlan(u, o, settings)
+        if settings.get('connection', {}).get('type') != ('vlan' if u.type == 'vlan' else '802-3-ethernet'):
             raise ValueError('refusing DHCP renewal on a non-Ethernet profile')
         if settings.get('ipv4', {}).get('method') != 'auto':
             raise ValueError('refusing DHCP renewal on a non-DHCP profile')
@@ -438,9 +506,13 @@ class NetworkManager:
         if current != o.session:
             raise RuntimeError('activation changed during route update')
         settings, version = self.applied(o)
+        if settings.get('connection', {}).get('type') == 'vlan' or o.interface == 'eth0.20':
+            if o.vlan_identity is None:
+                raise ValueError('unverified VLAN reapply')
+            self.validate_vlan(o.vlan_identity, o, settings)
         if settings.get('connection', {}).get('type') == 'gsm':
             raise ValueError('refusing modem reapply: preserve bearer IP configuration')
-        if settings.get('ipv4', {}).get('method') == 'shared' or settings.get('connection', {}).get('interface-name') == 'eth0':
+        if settings.get('ipv4', {}).get('method') == 'shared' or settings.get('connection', {}).get('interface-name') in {'eth0', 'eth0.10'}:
             raise ValueError('refusing to reapply a LAN sharing profile')
         for family, fields in values.items():
             for key, value in fields.items():
@@ -559,7 +631,7 @@ class Controller:
                 for uid, candidate in observations.items()
             )
             waiting = (
-                u.type == 'ethernet' and o.link and o.session
+                u.type in {'ethernet', 'vlan'} and o.link and o.session
                 and o.profile == u.profile and not o.address and not o.error
             )
             if not waiting:

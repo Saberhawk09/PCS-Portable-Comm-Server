@@ -187,7 +187,7 @@ def write_import_files(
         "PCS_WG_ADMIN_SOURCES": profile["admin_sources"],
         "PCS_WG_PERSISTENT_KEEPALIVE": profile["persistent_keepalive"],
         "PCS_WG_INTERFACE": "wg-pcs",
-        "PCS_WG_LAN_INTERFACE": "eth0",
+        "PCS_WG_LAN_INTERFACE": "eth0.10" if Path("/etc/pcs/network-mode").exists() and Path("/etc/pcs/network-mode").read_text().strip() == "vlan" else "eth0",
         "PCS_WG_LAN_NETWORK": "10.42.0.0/24",
         "PCS_WG_MTU": "1280",
         # Home-Wi-Fi trust is deployment-local and cannot be inferred safely

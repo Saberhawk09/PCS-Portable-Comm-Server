@@ -1,5 +1,18 @@
 #!/usr/bin/env bash
 
+
+# The topology marker is written only by the supervised VLAN migration.
+PCS_NETWORK_MODE=legacy
+if [[ -e /etc/pcs/network-mode ]]; then
+    IFS= read -r PCS_NETWORK_MODE </etc/pcs/network-mode || exit 2
+fi
+case "${PCS_NETWORK_MODE}" in
+    legacy) PCS_LAN_INTERFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share ;;
+    vlan) PCS_LAN_INTERFACE=eth0.10; PCS_LAN_PROFILE=pcs-lan-vlan ;;
+    *) echo "ERROR: invalid PCS network mode; refusing network operation" >&2; exit 2 ;;
+esac
+
+
 set -Eeuo pipefail
 
 echo
@@ -32,11 +45,11 @@ done
 
 echo "--- PCS client LAN / AP handoff ---"
 if command -v nmcli >/dev/null 2>&1; then
-    if nmcli connection show pcs-router-wan-share >/dev/null 2>&1; then
-        echo "Reactivating pcs-router-wan-share..."
-        nmcli connection up pcs-router-wan-share || true
+    if nmcli connection show "${PCS_LAN_PROFILE}" >/dev/null 2>&1; then
+        echo "Reactivating ${PCS_LAN_PROFILE}..."
+        nmcli connection up "${PCS_LAN_PROFILE}" || true
     else
-        echo "pcs-router-wan-share profile not found."
+        echo "${PCS_LAN_PROFILE} profile not found."
     fi
 else
     echo "nmcli not found."
@@ -63,7 +76,7 @@ timedatectl | grep -E "System clock synchronized|NTP service|RTC in local TZ" ||
 
 echo
 echo "--- PCS LAN IP check ---"
-ip -brief addr show eth0 || true
+ip -brief addr show "${PCS_LAN_INTERFACE}" || true
 
 echo
 echo "Finished: $(date)"

@@ -383,3 +383,8 @@ It was an hour before start time, while everyone was setting up antennas I was c
 Once we had everything hooked up via Ethernet, all the file sharing worked and we never had a single issue with networking or the rest of the event. Needless to say I was annoyed. Not just at Windows, but at myself for assuming it would work properly and not planning ahead. Well the lessons from that mistake have evolved into this project.
 
 The goal of this project isn't to replace commercial networking equipment or build a portable homelab grade server, it's to build a communications appliance specifically tailored to emergency communications exercises and other portable operations.
+
+## Optional managed-switch migration
+
+PCS supports an opt-in managed-switch development path. Deployment and physical field acceptance remain separate from software installation.
+See the [commissioning and recovery procedure](docs/managed-switch-vlan-migration.md).
