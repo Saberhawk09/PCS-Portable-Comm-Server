@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# The topology marker is written only by the supervised VLAN migration.
+PCS_NETWORK_MODE=legacy
+if [[ -e /etc/pcs/network-mode ]]; then
+    IFS= read -r PCS_NETWORK_MODE </etc/pcs/network-mode || exit 2
+fi
+case "${PCS_NETWORK_MODE}" in
+    legacy) PCS_LAN_INTERFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share ;;
+    vlan) PCS_LAN_INTERFACE=eth0.10; PCS_LAN_PROFILE=pcs-lan-vlan ;;
+    *) echo "ERROR: invalid PCS network mode; refusing network operation" >&2; exit 2 ;;
+esac
+
 set -Eeuo pipefail
 
 # Non-interactive SSH and systemd-adjacent shells can omit sbin directories.
@@ -90,7 +101,7 @@ PCS_APRS_PTT_GPIO_LINE="${PCS_APRS_PTT_GPIO_LINE:-6}"
 PCS_APRS_PTT_ACTIVE_LEVEL="${PCS_APRS_PTT_ACTIVE_LEVEL:-high}"
 PCS_APRS_AGW_PORT="${PCS_APRS_AGW_PORT:-8000}"
 PCS_APRS_KISS_PORT="${PCS_APRS_KISS_PORT:-8001}"
-PCS_APRS_KISS_LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"
+PCS_APRS_KISS_LAN_INTERFACE="${PCS_LAN_INTERFACE}"
 PCS_APRS_KISS_LAN_NETWORK="${PCS_APRS_KISS_LAN_NETWORK:-10.42.0.0/24}"
 PCS_APRS_AGENT_ENABLED="${PCS_APRS_AGENT_ENABLED:-no}"
 PCS_APRS_AGENT_ICHANNEL="${PCS_APRS_AGENT_ICHANNEL:-8}"

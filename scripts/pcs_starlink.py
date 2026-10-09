@@ -63,6 +63,9 @@ def load_config(path=CONFIG):
 def resolve_interface(cfg):
     from pcs_uplink_manager import load_config as load_uplinks
     uplink = next((u for u in load_uplinks().uplinks if u.id == cfg['uplink_id']), None)
+    if uplink is not None and uplink.type == 'vlan':
+        from pcs_uplink_manager import resolve_vlan_interface
+        return resolve_vlan_interface(uplink)
     if uplink is None or uplink.type != 'ethernet' or not uplink.mac:
         raise ValueError('Starlink requires a configured MAC-bound Ethernet uplink')
     matches = []

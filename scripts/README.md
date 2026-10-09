@@ -1167,3 +1167,8 @@ physical installation and calibration. See
 [power monitoring](../docs/power-system.md#ina226-power-monitoring).
 
 `setup-starlink-telemetry.sh --install|--check` stages the optional collector; `pcs_starlink.py` and `pcs_starlink_lifecycle.py` provide bounded diagnostics and paired power-action coordination. See [Starlink telemetry](../docs/starlink-telemetry.md).
+
+## Optional managed-switch migration
+
+`setup-pcs-vlan-switch.sh` provides read-only preflight, offline stage/dry-run and explicitly supervised apply/check/commit/rollback. Base installation preserves an already commissioned VLAN mode; fresh installs stay legacy.
+See the [commissioning and recovery procedure](../docs/managed-switch-vlan-migration.md).

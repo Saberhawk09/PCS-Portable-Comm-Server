@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# The topology marker is written only by the supervised VLAN migration.
+PCS_NETWORK_MODE=legacy
+if [[ -e /etc/pcs/network-mode ]]; then
+    IFS= read -r PCS_NETWORK_MODE </etc/pcs/network-mode || exit 2
+fi
+case "${PCS_NETWORK_MODE}" in
+    legacy) PCS_LAN_INTERFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share ;;
+    vlan) PCS_LAN_INTERFACE=eth0.10; PCS_LAN_PROFILE=pcs-lan-vlan ;;
+    *) echo "ERROR: invalid PCS network mode; refusing network operation" >&2; exit 2 ;;
+esac
+
 set -Eeuo pipefail
 
 NFT="/usr/sbin/nft"
@@ -23,14 +34,14 @@ remove_table() {
 
 apply_rules() {
     remove_table
-    "${NFT}" -f - <<'EOF'
+    "${NFT}" -f - <<EOF
 table inet pcs_wsdd {
     chain input {
         type filter hook input priority -14; policy accept;
-        iifname { "lo", "eth0", "wlan0" } udp dport 3702 accept comment "pcs-wsdd-lan-udp"
-        iifname { "lo", "eth0", "wlan0" } tcp dport 3702 accept comment "pcs-wsdd-lan-tcp"
-        iifname { "lo", "eth0", "wlan0" } udp dport 5355 accept comment "pcs-wsdd-lan-llmnr-udp"
-        iifname { "lo", "eth0", "wlan0" } tcp dport 5355 accept comment "pcs-wsdd-lan-llmnr-tcp"
+        iifname { "lo", "${PCS_LAN_INTERFACE}", "wlan0" } udp dport 3702 accept comment "pcs-wsdd-lan-udp"
+        iifname { "lo", "${PCS_LAN_INTERFACE}", "wlan0" } tcp dport 3702 accept comment "pcs-wsdd-lan-tcp"
+        iifname { "lo", "${PCS_LAN_INTERFACE}", "wlan0" } udp dport 5355 accept comment "pcs-wsdd-lan-llmnr-udp"
+        iifname { "lo", "${PCS_LAN_INTERFACE}", "wlan0" } tcp dport 5355 accept comment "pcs-wsdd-lan-llmnr-tcp"
         udp dport 3702 drop comment "pcs-wsdd-default-deny-udp"
         tcp dport 3702 drop comment "pcs-wsdd-default-deny-tcp"
         udp dport 5355 drop comment "pcs-wsdd-default-deny-llmnr-udp"
@@ -39,8 +50,8 @@ table inet pcs_wsdd {
 
     chain output {
         type filter hook output priority -14; policy accept;
-        oifname { "lo", "eth0", "wlan0" } udp sport 3702 accept comment "pcs-wsdd-lan-replies"
-        oifname { "lo", "eth0", "wlan0" } udp sport 5355 accept comment "pcs-wsdd-lan-llmnr-replies"
+        oifname { "lo", "${PCS_LAN_INTERFACE}", "wlan0" } udp sport 3702 accept comment "pcs-wsdd-lan-replies"
+        oifname { "lo", "${PCS_LAN_INTERFACE}", "wlan0" } udp sport 5355 accept comment "pcs-wsdd-lan-llmnr-replies"
         udp sport 3702 drop comment "pcs-wsdd-nonlan-output-deny"
         udp sport 5355 drop comment "pcs-wsdd-nonlan-llmnr-output-deny"
     }

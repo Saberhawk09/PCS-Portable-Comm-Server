@@ -341,3 +341,8 @@ deliberate credential-management action.
 - [`wg-quick(8)` routing behavior](https://man7.org/linux/man-pages/man8/wg-quick.8.html)
 - [NetworkManager shared-mode firewall backend](https://www.networkmanager.dev/docs/api/latest/NetworkManager.conf.html)
 - [nftables connection tracking](https://wiki.nftables.org/wiki-nftables/index.php/Matching_connection_tracking_stateful_metainformation)
+
+## Optional managed-switch migration
+
+Commissioned VLAN mode selects eth0.10 for LAN rules and nm-shared-eth0.10 compatibility rules. The same source-restricted management and LAN-to-tunnel isolation policies apply.
+See the [commissioning and recovery procedure](managed-switch-vlan-migration.md).

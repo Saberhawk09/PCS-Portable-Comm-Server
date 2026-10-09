@@ -44,7 +44,7 @@ def read_json(path, default=None):
 
 
 def interface_name(value):
-    return isinstance(value, str) and bool(re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}', value)) and value not in {'lo', 'eth0'}
+    return isinstance(value, str) and bool(re.fullmatch(r'[a-zA-Z0-9_.-]{1,15}', value)) and value not in {'lo', 'eth0', 'eth0.10'}
 
 
 @dataclass(frozen=True)
@@ -57,6 +57,30 @@ class Uplink:
     mac: str = ''
     profile: str = ''
     activation: str = 'observe'
+    parent: str = ''
+    vlan_id: int = 0
+
+
+def validate_vlan_settings(u, settings):
+    connection = settings.get('connection', {})
+    vlan = settings.get('vlan', {})
+    if (u.type != 'vlan' or (u.interface, u.parent, u.vlan_id) != ('eth0.20', 'eth0', 20) or
+            connection.get('type') != 'vlan' or connection.get('uuid') != u.profile or
+            connection.get('interface-name') != u.interface or
+            vlan.get('parent') != u.parent or int(vlan.get('id', -1)) != u.vlan_id or
+            settings.get('ipv4', {}).get('method') != 'auto'):
+        raise ValueError('incompatible VLAN WAN profile')
+
+
+def resolve_vlan_interface(u):
+    """Read-only exact identity check for telemetry and management grants."""
+    nm = NetworkManager()
+    device = nm.manager.GetDeviceByIpIface(u.interface, timeout=5)
+    session = str(nm.prop(device, BUS + '.Device', 'ActiveConnection'))
+    profile = str(nm.prop(session, BUS + '.Connection.Active', 'Uuid'))
+    o = Observation(interface=u.interface, device=device, profile=profile, session=session)
+    nm.validate_vlan(u, o)
+    return u.interface
 
 
 @dataclass(frozen=True)
@@ -67,6 +91,11 @@ class Config:
     failure_seconds: int = 30
     recovery_seconds: int = 30
     probe_timeout: int = 2
+    startup_grace_enabled: bool = False
+    startup_grace_seconds: int = 240
+    startup_grace_uplink: str = 'starlink'
+    switch_assist: bool = False
+    physical_debounce_seconds: int = 10
     ipv4_targets: tuple[str, ...] = ('1.1.1.1', '8.8.8.8')
     ipv6_targets: tuple[str, ...] = ('2606:4700:4700::1111', '2001:4860:4860::8888')
 
@@ -86,8 +115,13 @@ def load_config(path=CONFIG):
         u = Uplink(**entry)
         if not re.fullmatch(r'[a-z][a-z0-9_-]{0,31}', u.id) or not isinstance(u.name, str) or not u.name.strip() or len(u.name) > 80:
             raise ValueError('invalid uplink identity')
-        if u.type not in {'ethernet', 'wifi', 'cellular'} or u.activation not in {'observe', 'fallback'}:
+        if u.type not in {'ethernet', 'vlan', 'wifi', 'cellular'} or u.activation not in {'observe', 'fallback'}:
             raise ValueError('invalid uplink type or activation policy')
+        if u.type == 'vlan':
+            if (u.interface, u.parent, u.vlan_id) != ('eth0.20', 'eth0', 20) or type(u.vlan_id) is not int or not u.profile or u.mac:
+                raise ValueError('VLAN WAN requires eth0.20, parent eth0, VLAN 20 and an explicit UUID; no MAC binding')
+        elif u.parent or u.vlan_id or u.interface == 'eth0.20':
+            raise ValueError('VLAN identity requires type vlan')
         if type(u.priority) is not int or not 1 <= u.priority <= 1000:
             raise ValueError('priority must be 1..1000')
         if u.interface and not interface_name(u.interface):
@@ -115,6 +149,20 @@ def load_config(path=CONFIG):
         if type(value) is not int or not low <= value <= high:
             raise ValueError(f'invalid {key}')
         settings[key] = value
+    for key, default, high in [('startup_grace_seconds', 240, 900), ('physical_debounce_seconds', 10, 60)]:
+        value = raw.get(key, default)
+        if type(value) is not int or not (5 if key == 'physical_debounce_seconds' else 0) <= value <= high:
+            raise ValueError('invalid ' + key)
+        settings[key] = value
+    settings['startup_grace_uplink'] = raw.get('startup_grace_uplink', 'starlink')
+    if not isinstance(settings['startup_grace_uplink'], str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,31}', settings['startup_grace_uplink']):
+        raise ValueError('invalid startup grace uplink')
+    settings['startup_grace_enabled'] = raw.get('startup_grace_enabled', False)
+    if type(settings['startup_grace_enabled']) is not bool:
+        raise ValueError('startup_grace_enabled must be boolean')
+    settings['switch_assist'] = raw.get('switch_assist', False)
+    if type(settings['switch_assist']) is not bool:
+        raise ValueError('switch_assist must be boolean')
     for key, family, default in [('ipv4_targets', 4, Config.ipv4_targets), ('ipv6_targets', 6, Config.ipv6_targets)]:
         values = raw.get(key, default)
         if not isinstance(values, (list, tuple)) or not 1 <= len(values) <= 4:
@@ -140,6 +188,7 @@ class Observation:
     addresses: list = field(default_factory=list)
     counters: dict | None = None
     counter_identity: str = ''
+    vlan_identity: Uplink | None = None
 
     @property
     def state(self):
@@ -163,7 +212,10 @@ class Policy:
         self.bad = {}
         self.retry_at = {}
 
-    def choose(self, observations, now, suppressed=()):
+    def choose(self, observations, now, suppressed=(), failure_overrides=None):
+        failures = failure_overrides or {}
+        def failure(uid):
+            return min(self.config.failure_seconds, max(0, failures.get(uid, self.config.failure_seconds)))
         for u in self.config.uplinks:
             o = observations[u.id]
             if o.internet is True and not o.error:
@@ -179,7 +231,7 @@ class Policy:
         current = observations.get(self.selected)
         if current and (current.error or current.internet is None):
             return self.selected, None
-        if current and self.selected not in self.good and now - self.bad.get(self.selected, now) < self.config.failure_seconds:
+        if current and self.selected not in self.good and now - self.bad.get(self.selected, now) < failure(self.selected):
             return self.selected, None
         desired = self.selected if current and current.internet else None
         if stable:
@@ -196,9 +248,78 @@ class Policy:
                 continue
             if now < self.retry_at.get(u.id, 0):
                 continue
-            if all(p.id in self.bad and now - self.bad[p.id] >= self.config.failure_seconds for p in preferred) and u.id in self.bad and now - self.bad[u.id] >= self.config.failure_seconds:
+            if all(p.id in self.bad and now - self.bad[p.id] >= failure(p.id) for p in preferred) and u.id in self.bad and now - self.bad[u.id] >= self.config.failure_seconds:
                 return desired, u.id
         return desired, None
+
+
+def switch_status():
+    # Missing/broken optional monitor code must not prevent the routing daemon.
+    try:
+        from pcs_switch_monitor import cached_status as read_switch
+        return read_switch()
+    except (ImportError, OSError, ValueError, TypeError, KeyError):
+        return {'enabled': False, 'state': 'monitor_unavailable', 'error': 'monitor_unavailable'}
+
+
+def boot_elapsed():
+    try:
+        return float(Path('/proc/uptime').read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+class StartupGrace:
+    """Absolute boot deadline, persisted closed state; never a process-start timer."""
+    def __init__(self, config, state):
+        self.config = config
+        saved = state.setdefault('startup_grace', {})
+        self.saved = saved
+        # A configuration edit during a boot cannot lengthen an existing window.
+        saved['deadline'] = min(saved.get('deadline', config.startup_grace_seconds), config.startup_grace_seconds)
+
+    def update(self, observations, confirmed_usable, elapsed, suppressed=()):
+        cfg = self.config
+        preferred = next((u for u in cfg.uplinks if u.id == cfg.startup_grace_uplink and u.type in ('ethernet', 'vlan')), None)
+        cells = [u for u in cfg.uplinks if u.type == 'cellular' and u.activation == 'fallback']
+        eligible = bool(preferred and any(u.priority > preferred.priority for u in cells))
+        if confirmed_usable:
+            self.saved['closed'] = True
+        if elapsed is None or elapsed >= self.saved['deadline']:
+            self.saved['closed'] = True
+        remaining = max(0, self.saved['deadline'] - elapsed) if elapsed is not None else 0
+        held = bool(cfg.mode == 'auto' and eligible and cfg.startup_grace_enabled and cfg.startup_grace_seconds and
+                    not self.saved.get('closed') and preferred.id not in suppressed and remaining)
+        return dict(held=held, remaining_seconds=round(remaining, 1) if held else 0,
+                    state='WAN Starting' if held else 'fallback_allowed',
+                    uplink=cfg.startup_grace_uplink)
+
+
+class PhysicalAssist:
+    """Consume distinct successful polls only; never performs SNMP or modifies health."""
+    def __init__(self):
+        self.down = None
+
+    def overrides(self, cfg, cache, observations, now):
+        u = next((u for u in cfg.uplinks if u.id == cfg.startup_grace_uplink and u.type == 'vlan'), None)
+        o = observations.get(u.id) if u else None
+        valid = (cfg.switch_assist and u and o and o.link and not o.error and
+                 cache.get('state') == 'down' and cache.get('reachable') is True and not cache.get('error') and
+                 cache.get('physical_port') == 2 and type(cache.get('sequence')) is int and
+                 isinstance(cache.get('generation'), str) and type(cache.get('sampled_mono')) in (int, float))
+        if not valid:
+            self.down = None
+            return {}
+        generation, sequence, stamp = cache['generation'], cache['sequence'], cache['sampled_mono']
+        if self.down is None or self.down['generation'] != generation or sequence < self.down['sequence']:
+            self.down = dict(generation=generation, sequence=sequence, stamp=stamp, since=now, count=1)
+        elif sequence > self.down['sequence'] and stamp > self.down['stamp']:
+            self.down.update(sequence=sequence, stamp=stamp, count=self.down['count'] + 1)
+        if self.down['count'] >= 2 and now - self.down['since'] >= cfg.physical_debounce_seconds:
+            # Contradictory successful Internet probes always win. Each IP family
+            # uses this shorter timer only when its own health probe has failed.
+            return {u.id: 0}
+        return {}
 
 
 class Accounting:
@@ -315,7 +436,7 @@ class NetworkManager:
         result = {}
         used = set()
         for u in config.uplinks:
-            expected_type = {'ethernet': 1, 'wifi': 2, 'cellular': 8}[u.type]
+            expected_type = {'ethernet': 1, 'vlan': 11, 'wifi': 2, 'cellular': 8}[u.type]
             matches = [d for d in devices if d[2] == expected_type and (not u.interface or d[1] == u.interface) and (not u.mac or d[3] == u.mac.lower()) and (u.type != 'cellular' or (u.profile in active and d[0] in active[u.profile][1]))]
             o = Observation()
             result[u.id] = o
@@ -325,7 +446,7 @@ class NetworkManager:
                 o.error = 'ambiguous device identity'
                 continue
             path, name, kind, mac = matches[0]
-            if name == 'eth0' or path in used:
+            if not interface_name(name) or path in used:
                 o.error = 'protected or duplicate device'
                 continue
             used.add(path)
@@ -344,8 +465,18 @@ class NetworkManager:
             if not interface_name(o.interface):
                 o.error = 'protected or invalid data interface'
                 continue
+            if u.type == 'vlan':
+                try:
+                    o.vlan_identity = u
+                    if o.session:
+                        self.validate_vlan(u, o)
+                    else:
+                        self.validate_vlan_device(u, o.device)
+                except (ValueError, RuntimeError) as exc:
+                    o.error = str(exc)
+                    continue
             state = int(self.prop(path, dev, 'State'))
-            o.link = bool(self.prop(path, dev + '.Wired', 'Carrier')) if kind == 1 else state == 100
+            o.link = bool(self.prop(path, dev + ('.Vlan' if kind == 11 else '.Wired'), 'Carrier')) if kind in (1, 11) else state == 100
             # Bound Ethernet and Wi-Fi identities observe the actual active
             # profile, including an operator-selected profile. The configured
             # UUID controls activation, not ownership of pre-existing sessions.
@@ -359,7 +490,7 @@ class NetworkManager:
                 usable = any(not ipaddress.ip_address(ip).is_link_local and not ipaddress.ip_address(ip).is_unspecified for ip in ips)
                 if family == 4:
                     o.address = usable
-                    if any(ipaddress.ip_address(ip) in ipaddress.ip_network('10.42.0.0/24') for ip in ips):
+                    if any(ipaddress.ip_network(str(a['address']) + '/' + str(a.get('prefix', 32)), strict=False).overlaps(ipaddress.ip_network('10.42.0.0/24')) for a in addresses):
                         o.error = 'WAN address overlaps PCS LAN'
                 else:
                     o.address6 = usable
@@ -384,15 +515,39 @@ class NetworkManager:
                 setattr(o, key, future.result())
         return result
 
+    def validate_vlan_device(self, u, device):
+        if (u.interface, u.parent, u.vlan_id) != ('eth0.20', 'eth0', 20):
+            raise ValueError('protected VLAN identity')
+        dev = BUS + '.Device'
+        if int(self.prop(device, dev, 'DeviceType')) != 11 or str(self.prop(device, dev, 'Interface')) != u.interface:
+            raise ValueError('VLAN device identity mismatch')
+        parent = self.prop(device, dev + '.Vlan', 'Parent')
+        if (int(self.prop(device, dev + '.Vlan', 'VlanId')) != u.vlan_id or
+                str(self.prop(parent, dev, 'Interface')) != u.parent or
+                int(self.prop(parent, dev, 'DeviceType')) != 1):
+            raise ValueError('VLAN parent or tag mismatch')
+
+    def validate_vlan(self, u, o, settings=None):
+        self.validate_vlan_device(u, o.device)
+        if o.interface != u.interface or o.profile != u.profile or not o.session:
+            raise ValueError('VLAN active profile identity mismatch')
+        if str(self.prop(o.device, BUS + '.Device', 'ActiveConnection')) != o.session:
+            raise RuntimeError('VLAN session changed')
+        if settings is None:
+            settings, _ = self.applied(o)
+        validate_vlan_settings(u, settings)
+
     def activate(self, u):
         # D-Bus activation returns the precise object created by this request.
         settings = self.iface(ROOT + '/Settings', BUS + '.Settings')
         path = settings.GetConnectionByUuid(u.profile, timeout=5)
         saved = self.iface(path, BUS + '.Settings.Connection').GetSettings(timeout=5)
         connection = saved.get('connection', {})
-        expected = {'cellular': 'gsm', 'ethernet': '802-3-ethernet', 'wifi': '802-11-wireless'}[u.type]
-        if str(connection.get('type')) != expected or connection.get('interface-name') == 'eth0' or saved.get('ipv4', {}).get('method') == 'shared':
+        expected = {'cellular': 'gsm', 'ethernet': '802-3-ethernet', 'vlan': 'vlan', 'wifi': '802-11-wireless'}[u.type]
+        if str(connection.get('type')) != expected or connection.get('interface-name') in {'eth0', 'eth0.10'} or saved.get('ipv4', {}).get('method') == 'shared':
             raise ValueError('refusing activation of an incompatible or LAN profile')
+        if u.type == 'vlan':
+            validate_vlan_settings(u, saved)
         device = '/'
         if u.type != 'cellular':
             if not u.interface:
@@ -400,6 +555,8 @@ class NetworkManager:
             device = self.manager.GetDeviceByIpIface(u.interface, timeout=5)
             if not interface_name(str(self.prop(device, BUS + '.Device', 'Interface'))):
                 raise ValueError('refusing protected activation device')
+        if u.type == 'vlan':
+            self.validate_vlan_device(u, device)
         return str(self.manager.ActivateConnection(path, device, '/', timeout=10))
 
     def deactivate(self, session):
@@ -407,7 +564,7 @@ class NetworkManager:
 
     def renew_ipv4(self, u, o):
         """Retrigger DHCP on one exact Ethernet profile without disconnecting it."""
-        if u.type != 'ethernet' or not u.profile or o.profile != u.profile or not o.session:
+        if u.type not in {'ethernet', 'vlan'} or not u.profile or o.profile != u.profile or not o.session:
             raise ValueError('refusing to renew an unverified Ethernet profile')
         if not interface_name(o.interface) or o.interface == 'eth0':
             raise ValueError('refusing to renew a protected interface')
@@ -415,7 +572,9 @@ class NetworkManager:
         if current != o.session:
             raise RuntimeError('activation changed during Ethernet DHCP renewal')
         settings, _ = self.applied(o)
-        if settings.get('connection', {}).get('type') != '802-3-ethernet':
+        if u.type == 'vlan':
+            self.validate_vlan(u, o, settings)
+        if settings.get('connection', {}).get('type') != ('vlan' if u.type == 'vlan' else '802-3-ethernet'):
             raise ValueError('refusing DHCP renewal on a non-Ethernet profile')
         if settings.get('ipv4', {}).get('method') != 'auto':
             raise ValueError('refusing DHCP renewal on a non-DHCP profile')
@@ -438,9 +597,13 @@ class NetworkManager:
         if current != o.session:
             raise RuntimeError('activation changed during route update')
         settings, version = self.applied(o)
+        if settings.get('connection', {}).get('type') == 'vlan' or o.interface == 'eth0.20':
+            if o.vlan_identity is None:
+                raise ValueError('unverified VLAN reapply')
+            self.validate_vlan(o.vlan_identity, o, settings)
         if settings.get('connection', {}).get('type') == 'gsm':
             raise ValueError('refusing modem reapply: preserve bearer IP configuration')
-        if settings.get('ipv4', {}).get('method') == 'shared' or settings.get('connection', {}).get('interface-name') == 'eth0':
+        if settings.get('ipv4', {}).get('method') == 'shared' or settings.get('connection', {}).get('interface-name') in {'eth0', 'eth0.10'}:
             raise ValueError('refusing to reapply a LAN sharing profile')
         for family, fields in values.items():
             for key, value in fields.items():
@@ -480,6 +643,8 @@ class Controller:
         self.state = read_json(self.runtime / 'state.json', {})
         if self.state.get('boot') != self.boot:
             self.state = {'boot': self.boot, 'owned': {}, 'original': {}, 'suppressed': []}
+        self.startup_grace = StartupGrace(config, self.state)
+        self.physical_assist = PhysicalAssist()
         self.accounting = Accounting(read_json(self.runtime / 'usage.json'), self.boot)
         if not (self.runtime / 'usage.json').exists():
             # Initial counters cannot recover an interface removed before the
@@ -559,7 +724,7 @@ class Controller:
                 for uid, candidate in observations.items()
             )
             waiting = (
-                u.type == 'ethernet' and o.link and o.session
+                u.type in {'ethernet', 'vlan'} and o.link and o.session
                 and o.profile == u.profile and not o.address and not o.error
             )
             if not waiting:
@@ -668,9 +833,17 @@ class Controller:
                     record.get('session') != o.session or record.get('profile') != o.profile):
                 self.state['operator_sessions'].pop(uid, None)
         error = ''
-        desired, activate = self.policy.choose(obs, now, self.state['suppressed'])
+        physical = switch_status()
+        trunk = next((obs[u.id].link for u in self.config.uplinks if u.id == self.config.startup_grace_uplink and u.type == 'vlan'), None)
+        physical = physical | {'trunk_available': trunk}
+        failures = self.physical_assist.overrides(self.config, physical, obs, now)
+        desired, activate = self.policy.choose(obs, now, self.state['suppressed'], failures)
         obs6 = {uid: replace(o, internet=o.internet6) for uid, o in obs.items()}
-        desired6, _ = self.policy6.choose(obs6, now, self.state['suppressed'])
+        desired6, _ = self.policy6.choose(obs6, now, self.state['suppressed'], failures)
+        confirmed_usable = any(self.config.startup_grace_uplink in p.good and now - p.good[self.config.startup_grace_uplink] >= self.config.recovery_seconds for p in (self.policy, self.policy6))
+        startup = self.startup_grace.update(obs, confirmed_usable, boot_elapsed(), self.state['suppressed'])
+        if startup['held'] and any(u.id == activate and u.type == 'cellular' for u in self.config.uplinks):
+            activate = None
         if desired and desired6:
             ranks = {u.id: u.priority for u in self.config.uplinks}
             if ranks[desired6] > ranks[desired] and self.owns(desired6, obs[desired6]):
@@ -715,7 +888,7 @@ class Controller:
         for u in self.config.uplinks:
             o = obs[u.id]
             rows.append(dict(id=u.id, name=u.name, type=u.type, priority=u.priority, interface=o.interface, profile=o.profile or u.profile, addresses=o.addresses, link=o.link, address=o.address, address6=o.address6, internet=o.internet, internet6=o.internet6, state=o.state, active=u.id == active_id, selected=u.id == self.policy.selected, selected6=u.id == self.policy6.selected, owned=self.owns(u.id, o), suppressed=u.id in self.state['suppressed'], error=o.error, usage=usage['per_uplink'].get(u.id)))
-        status = dict(version=1, boot=self.boot, generated_at=time.time(), mode=self.config.mode, active_id=active_id, selected_id=self.policy.selected, selected6_id=self.policy6.selected, internet=bool(active_id and obs[active_id].internet), uplinks=rows, usage=usage, error=error)
+        status = dict(startup_grace=startup, switch_monitor=physical, physical_acceleration=bool(failures), version=1, boot=self.boot, generated_at=time.time(), mode=self.config.mode, active_id=active_id, selected_id=self.policy.selected, selected6_id=self.policy6.selected, internet=bool(active_id and obs[active_id].internet), uplinks=rows, usage=usage, error=error)
         self.save()
         atomic_json(self.runtime / 'status.json', status)
         return status
@@ -757,6 +930,12 @@ def main():
             print('WARN: uplink observer data unavailable or stale (LAN is independent)')
         for u in status.get('uplinks', []):
             print(f"  {u['name']}: {u['state']} / {'active' if u['active'] else 'standby'} / {u['interface'] or 'absent'} / {'owned' if u['owned'] else 'unowned'}")
+        startup = status.get('startup_grace', {})
+        print('Startup grace: ' + str(startup.get('state', 'disabled')) + '; remaining=' + str(startup.get('remaining_seconds', 0)))
+        physical = status.get('switch_monitor', {})
+        print('Supplementary switch monitor: ' + str(physical.get('state', 'monitor_unavailable')))
+        if physical.get('enabled') and physical.get('state') in ('unknown', 'stale', 'monitor_unavailable'):
+            print('WARN: optional switch observation unavailable; ordinary health failover remains active')
         print('WAN bytes since boot: ' + json.dumps(status.get('usage')))
         if status.get('error'):
             print('WARN: ' + status['error'])

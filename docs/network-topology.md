@@ -279,3 +279,8 @@ Starlink Mini Ethernet -> selected USB Gigabit NIC -> Pi NAT -> `eth0` PCS LAN.
 The EA4500 remains a bridge/AP/switch. Normal Starlink router mode (double NAT)
 is supported; bypass mode is optional. Wi-Fi remains independent on `wlan0`.
 See [Uplink manager](uplink-manager.md) for configuration and recovery.
+
+## Optional managed-switch migration
+
+The D-Link trunk and five active ports are documented in the migration guide. The existing unmanaged switch and four external client ports retain one shared Gigabit uplink.
+See the [commissioning and recovery procedure](managed-switch-vlan-migration.md).

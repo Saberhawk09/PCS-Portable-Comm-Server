@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# The topology marker is written only by the supervised VLAN migration.
+PCS_NETWORK_MODE=legacy
+if [[ -e /etc/pcs/network-mode ]]; then
+    IFS= read -r PCS_NETWORK_MODE </etc/pcs/network-mode || exit 2
+fi
+case "${PCS_NETWORK_MODE}" in
+    legacy) PCS_LAN_INTERFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share ;;
+    vlan) PCS_LAN_INTERFACE=eth0.10; PCS_LAN_PROFILE=pcs-lan-vlan ;;
+    *) echo "ERROR: invalid PCS network mode; refusing network operation" >&2; exit 2 ;;
+esac
+
 set -u
 
 PASS_COUNT=0
@@ -7,7 +18,7 @@ FAIL_COUNT=0
 WARN_COUNT=0
 SKIP_COUNT=0
 
-PCS_ETH_IFACE="eth0"
+PCS_ETH_IFACE="${PCS_LAN_INTERFACE}"
 PCS_WIFI_IFACE="wlan0"
 PCS_ETH_ADDR="10.42.0.1/24"
 PCS_NTP_NET="10.42.0.0/24"
@@ -404,10 +415,10 @@ else
     echo "[INFO] No internet uplink is connected; PCS is operating as offline LAN only"
 fi
 
-if nmcli -t -f DEVICE,STATE,CONNECTION device status 2>/dev/null | awk -F: -v dev="${PCS_ETH_IFACE}" '$1 == dev && $2 == "connected" && $3 == "pcs-router-wan-share" { found=1 } END { exit !found }'; then
-    pass "${PCS_ETH_IFACE} is connected using pcs-router-wan-share"
+if nmcli -t -f DEVICE,STATE,CONNECTION device status 2>/dev/null | awk -F: -v dev="${PCS_ETH_IFACE}" -v profile="${PCS_LAN_PROFILE}" '$1 == dev && $2 == "connected" && $3 == profile { found=1 } END { exit !found }'; then
+    pass "${PCS_ETH_IFACE} is connected using ${PCS_LAN_PROFILE}"
 else
-    fail "${PCS_ETH_IFACE} is not connected using pcs-router-wan-share"
+    fail "${PCS_ETH_IFACE} is not connected using ${PCS_LAN_PROFILE}"
 fi
 
 if ip -4 addr show "${PCS_ETH_IFACE}" 2>/dev/null | grep -q "${PCS_ETH_ADDR}"; then

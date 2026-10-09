@@ -206,3 +206,8 @@ coexistence, and physical modem/outage acceptance remain separate field gates.
 The clean v1.9.1 release tree passed all 574 Python tests on Debian 13, all
 10 portal JavaScript tests, Python compilation and shell syntax checks. Both
 tracked nftables and systemd integration harnesses passed against that tree.
+
+## Optional managed-switch migration
+
+Run the new portable VLAN tests and disposable Linux namespace tests before supervised commissioning. Legacy FQ fault-injection and Windows witness scenarios are not yet qualified for VLAN topology.
+See the [commissioning and recovery procedure](managed-switch-vlan-migration.md).

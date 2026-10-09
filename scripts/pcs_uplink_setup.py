@@ -228,6 +228,10 @@ def main():
     parser.add_argument('--interface', help='Explicit Ethernet NIC selection; use --list first')
     parser.add_argument('--mac', help='Permanent NIC MAC; permits staging absent hardware')
     parser.add_argument('--profile', default=os.environ.get('PCS_STARLINK_PROFILE', 'pcs-starlink-uplink'))
+    parser.add_argument('--startup-grace-seconds', type=int, help='Explicit opt-in boot grace, 0 disables (maximum 900)')
+    parser.add_argument('--startup-grace-uplink', help='Preferred Ethernet/VLAN uplink ID')
+    parser.add_argument('--switch-assist', choices=['yes', 'no'], help='Opt in verified physical-port failure acceleration')
+    parser.add_argument('--physical-debounce-seconds', type=int)
     parser.add_argument('--priority', help='Ordered comma-separated configured uplink IDs')
     parser.add_argument('--allow-management-from', action='append', help='Opt in Starlink Ethernet to a trusted private IPv4 subnet; repeat for more sources')
     parser.add_argument('--config', type=Path, default=CONFIG)
@@ -263,6 +267,15 @@ def main():
     env = os.environ
     existing = read_json(args.config)
     cfg = existing or legacy_defaults(env)
+    if args.startup_grace_seconds is not None:
+        cfg['startup_grace_seconds'] = args.startup_grace_seconds
+        cfg['startup_grace_enabled'] = args.startup_grace_seconds != 0
+    if args.startup_grace_uplink is not None:
+        cfg['startup_grace_uplink'] = args.startup_grace_uplink
+    if args.switch_assist is not None:
+        cfg['switch_assist'] = args.switch_assist == 'yes'
+    if args.physical_debounce_seconds is not None:
+        cfg['physical_debounce_seconds'] = args.physical_debounce_seconds
     cfg['mode'] = args.mode or env.get('PCS_UPLINK_MODE') or cfg['mode']
     if inherit_legacy_mode(existing, env, args.mode):
         old_enabled = subprocess.run(['systemctl', 'is-enabled', '--quiet', 'pcs-cellular-fallback.service'], check=False).returncode == 0
@@ -278,9 +291,13 @@ def main():
             uuid = ''
         if uuid:
             cfg['uplinks'].append({'id': 'cellular', 'name': 'Cellular', 'type': 'cellular', 'priority': max(u['priority'] for u in cfg['uplinks']) + 1, 'profile': uuid, 'activation': 'fallback'})
-    iface = args.interface or env.get('PCS_STARLINK_IFACE', '')
-    mac = args.mac or env.get('PCS_STARLINK_MAC', '')
-    if not iface and not mac and env.get('PCS_STARLINK_AUTODETECT', '').lower() in ('1', 'true', 'yes'):
+    topology = Path('/etc/pcs/network-mode')
+    vlan_mode = topology.exists() and topology.read_text().strip() == 'vlan'
+    if vlan_mode and (args.interface or args.mac):
+        raise ValueError('use the VLAN migration tool to change commissioned WAN topology')
+    iface = '' if vlan_mode else args.interface or env.get('PCS_STARLINK_IFACE', '')
+    mac = '' if vlan_mode else args.mac or env.get('PCS_STARLINK_MAC', '')
+    if not vlan_mode and not iface and not mac and env.get('PCS_STARLINK_AUTODETECT', '').lower() in ('1', 'true', 'yes'):
         detected = candidates()
         if len(detected) > 1:
             raise ValueError('multiple Ethernet WAN candidates found; set PCS_STARLINK_MAC explicitly')
