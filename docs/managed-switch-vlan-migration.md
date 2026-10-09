@@ -279,3 +279,7 @@ commissioning tool. Do not run legacy fault-injection scenarios against this
 new topology; use the supervised tests above until those scenarios have their
 own topology qualification. Pi-Star's setup script still targets Pi-Star's own
 physical eth0, intentionally. Physical parent identity protections remain eth0.
+
+## Optional physical WAN observation
+
+See [switch monitoring and boot-aware WAN policy](managed-switch-monitoring.md) for the separately disabled SNMP observer, verified port mapping, startup grace, guarded acceleration, commissioning and rollback. This does not authorize or activate any live migration.

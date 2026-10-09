@@ -164,7 +164,7 @@ API_FIELDS = {
     "network": {
         "status", "offline", "lan_gateway", "openwrt_online",
         "internet_available", "uplink_type", "connected_client_count",
-        "uplinks", "usage", "usage_summary",
+        "uplinks", "usage", "usage_summary", "wan_startup", "switch_monitor",
         "ip_internet_available", "dns_available",
     },
     "remote_management": {
@@ -307,6 +307,16 @@ def sanitize_sections(dashboard: dict) -> dict:
         network["uplinks"] = [{**{k: v for k, v in row.items() if k in fields and isinstance(v, (str, int, bool, type(None)))}, "usage": sanitize_wan_usage(row.get("usage"))} for row in rows[:32] if isinstance(row, dict)]
     if "usage" in network:
         network["usage"] = sanitize_wan_usage(network["usage"])
+    for key, fields in {
+        "wan_startup": {"held", "remaining_seconds", "state"},
+        "switch_monitor": {"enabled", "state", "reachable", "trunk_available", "age_seconds", "state_seconds", "last_successful_poll", "last_transition", "speed"},
+    }.items():
+        if key in network:
+            value = network[key]
+            network[key] = {k: v for k, v in value.items() if k in fields and type(v) in (bool, int, float, type(None))} if isinstance(value, dict) else {}
+            states = {"up", "down", "administratively_down", "unknown", "stale", "monitor_unavailable", "WAN Starting", "fallback_allowed"}
+            if isinstance(value, dict) and isinstance(value.get("state"), str) and value["state"] in states:
+                network[key]["state"] = value["state"]
     return sections
 
 

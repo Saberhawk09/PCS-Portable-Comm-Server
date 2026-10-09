@@ -3300,6 +3300,15 @@ cards.append({"id": "starlink", "title": "Starlink Telemetry", "status": starlin
     "items": starlink_items})
 
 network_card = next(card for card in cards if card.get("id") == "network")
+if not PUBLIC_VIEW:
+    startup = uplink_snapshot.get("startup_grace", {})
+    switch = uplink_snapshot.get("switch_monitor", {})
+    network_card["items"].append({"label": "WAN startup", "value": f"{startup.get('state', 'disabled')} / {startup.get('remaining_seconds', 0)} seconds remaining"})
+    network_card["items"].append({"label": "Switch physical WAN", "value": str(switch.get('state', 'monitor_unavailable'))})
+    for key, label in [("trunk_available", "VLAN trunk carrier (loss may affect wired LAN)"), ("reachable", "Switch reachable"), ("age_seconds", "Switch sample age (seconds)"), ("state_seconds", "Physical state age (seconds)"), ("last_successful_poll", "Switch last successful poll (Unix time)"), ("last_transition", "Physical last transition (Unix time)"), ("physical_port", "Verified physical port"), ("ifindex", "Verified SNMP index"), ("speed", "Physical speed (bits/s)")]:
+        if switch.get(key) is not None:
+            network_card["items"].append({"label": label, "value": str(switch[key])})
+    network_card["items"].append({"label": "Physical failure acceleration", "value": "confirmed" if uplink_snapshot.get("physical_acceleration") else "inactive"})
 network_card["items"].append({"label": "WAN traffic since boot", "value": usage_label(uplink_snapshot.get("usage"))})
 for uplink in uplink_snapshot.get("uplinks", []):
     network_card["items"].append({"label": uplink["name"], "value": str(uplink.get("state", "unknown")) + (" / active" if uplink.get("active") else " / standby")})
@@ -3428,6 +3437,7 @@ if PUBLIC_VIEW:
             "uplinks": uplink_snapshot.get("uplinks", []),
             "usage": uplink_snapshot.get("usage"),
             "usage_summary": usage_label(uplink_snapshot.get("usage")),
+            **({"wan_startup": uplink_snapshot.get("startup_grace", {}), "switch_monitor": uplink_snapshot.get("switch_monitor", {})} if not PUBLIC_VIEW else {}),
             "connected_client_count": len(router_clients),
             "ap_client_count": read_ap_client_count(),
         },

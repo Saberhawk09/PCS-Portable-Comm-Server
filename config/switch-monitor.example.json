@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "enabled": false,
+  "address": "10.42.0.4",
+  "snmp_version": "2c",
+  "community_file": "/etc/pcs/switch-monitor.community",
+  "poll_seconds": 5,
+  "timeout_seconds": 1,
+  "retries": 0,
+  "stale_seconds": 20,
+  "mapping": null,
+  "traps_enabled": false
+}

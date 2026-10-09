@@ -228,6 +228,10 @@ def main():
     parser.add_argument('--interface', help='Explicit Ethernet NIC selection; use --list first')
     parser.add_argument('--mac', help='Permanent NIC MAC; permits staging absent hardware')
     parser.add_argument('--profile', default=os.environ.get('PCS_STARLINK_PROFILE', 'pcs-starlink-uplink'))
+    parser.add_argument('--startup-grace-seconds', type=int, help='Explicit opt-in boot grace, 0 disables (maximum 900)')
+    parser.add_argument('--startup-grace-uplink', help='Preferred Ethernet/VLAN uplink ID')
+    parser.add_argument('--switch-assist', choices=['yes', 'no'], help='Opt in verified physical-port failure acceleration')
+    parser.add_argument('--physical-debounce-seconds', type=int)
     parser.add_argument('--priority', help='Ordered comma-separated configured uplink IDs')
     parser.add_argument('--allow-management-from', action='append', help='Opt in Starlink Ethernet to a trusted private IPv4 subnet; repeat for more sources')
     parser.add_argument('--config', type=Path, default=CONFIG)
@@ -263,6 +267,15 @@ def main():
     env = os.environ
     existing = read_json(args.config)
     cfg = existing or legacy_defaults(env)
+    if args.startup_grace_seconds is not None:
+        cfg['startup_grace_seconds'] = args.startup_grace_seconds
+        cfg['startup_grace_enabled'] = args.startup_grace_seconds != 0
+    if args.startup_grace_uplink is not None:
+        cfg['startup_grace_uplink'] = args.startup_grace_uplink
+    if args.switch_assist is not None:
+        cfg['switch_assist'] = args.switch_assist == 'yes'
+    if args.physical_debounce_seconds is not None:
+        cfg['physical_debounce_seconds'] = args.physical_debounce_seconds
     cfg['mode'] = args.mode or env.get('PCS_UPLINK_MODE') or cfg['mode']
     if inherit_legacy_mode(existing, env, args.mode):
         old_enabled = subprocess.run(['systemctl', 'is-enabled', '--quiet', 'pcs-cellular-fallback.service'], check=False).returncode == 0
