@@ -164,7 +164,7 @@ API_FIELDS = {
     "network": {
         "status", "offline", "lan_gateway", "openwrt_online",
         "internet_available", "uplink_type", "connected_client_count",
-        "uplinks", "usage", "usage_summary", "wan_startup", "switch_monitor",
+        "uplinks", "usage", "usage_summary",
         "ip_internet_available", "dns_available",
     },
     "remote_management": {
@@ -307,6 +307,13 @@ def sanitize_sections(dashboard: dict) -> dict:
         network["uplinks"] = [{**{k: v for k, v in row.items() if k in fields and isinstance(v, (str, int, bool, type(None)))}, "usage": sanitize_wan_usage(row.get("usage"))} for row in rows[:32] if isinstance(row, dict)]
     if "usage" in network:
         network["usage"] = sanitize_wan_usage(network["usage"])
+    return sections
+
+
+def sanitize_switch_diagnostics(network):
+    if not isinstance(network, dict):
+        return {}
+    network = {k: network[k] for k in ('wan_startup', 'switch_monitor') if k in network}
     for key, fields in {
         "wan_startup": {"held", "remaining_seconds", "state"},
         "switch_monitor": {"enabled", "state", "reachable", "trunk_available", "age_seconds", "state_seconds", "last_successful_poll", "last_transition", "speed"},
@@ -317,7 +324,7 @@ def sanitize_sections(dashboard: dict) -> dict:
             states = {"up", "down", "administratively_down", "unknown", "stale", "monitor_unavailable", "WAN Starting", "fallback_allowed"}
             if isinstance(value, dict) and isinstance(value.get("state"), str) and value["state"] in states:
                 network[key]["state"] = value["state"]
-    return sections
+    return network
 
 
 def sanitize_wan_usage(value):
@@ -574,6 +581,8 @@ def add_authenticated_details(document: dict, resource: str, dashboard: dict) ->
         if (sanitized := sanitized_admin_card(card)) is not None
     ]
     details = {"cards": cards}
+    if resource in {"status", "network"}:
+        details["network_diagnostics"] = sanitize_switch_diagnostics(dashboard.get("network", {}))
     if resource in {"status", "network", "pistar"}:
         client_info = dashboard.get("client_info", {})
         if not isinstance(client_info, dict):

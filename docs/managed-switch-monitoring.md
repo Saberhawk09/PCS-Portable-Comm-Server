@@ -111,7 +111,8 @@ configuring its synthetic loopback address. Never use hardware for general CI.
 
 These commands assume the reviewed parent PCS version is installed, the existing
 uplink manager and statistics API are active, and this optional monitor has never
-been installed. Run from the staged source directory. Keep a local console and
+been installed. Run from the staged source directory in a Bash session with `set -e` so a failed
+check or backup stops the recipe. Keep a local console and
 the parent migration recovery plan. Stop if these prerequisites differ; do not
 use this first-install recipe to overwrite another commissioned monitor.
 
@@ -205,7 +206,7 @@ Authenticated network diagnostics show physical state, cache age, last poll and
 transition, optional speed, trunk carrier, grace remaining and acceleration.
 Existing rows provide DHCP/address state, internet health and selected uplink.
 Public dashboard output omits the new private diagnostics; the authenticated API
-uses a nested allowlist that also excludes management address, index, fingerprint,
+provides `details.network_diagnostics` using a nested allowlist that also excludes management address, index, fingerprint,
 credential and raw error text. No extra Starlink polling is introduced.
 
 For the policy trial, edit `/etc/pcs/uplinks.json` with `sudoedit`, preserving every

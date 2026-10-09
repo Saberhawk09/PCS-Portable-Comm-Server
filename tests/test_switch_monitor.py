@@ -186,14 +186,16 @@ class IntegrationPolicyTests(unittest.TestCase):
     def test_api_nested_allowlists_discard_topology_credentials_and_arbitrary_text(self):
         spec = importlib.util.spec_from_file_location('switch_test_api', ROOT / 'web/pcs-control-panel/pcs_stats_api.py')
         api = importlib.util.module_from_spec(spec); spec.loader.exec_module(api)
-        result = api.sanitize_sections({'network': {
+        dashboard = {'network': {
             'switch_monitor': {'state': 'down', 'ifindex': 17, 'address': '10.42.0.4', 'community': 'secret', 'error': 'secret', 'reachable': True},
             'wan_startup': {'state': 'WAN Starting', 'held': True, 'remaining_seconds': 120, 'uplink': 'private'},
-        }})['network']
+        }}
+        self.assertEqual(api.sanitize_sections(dashboard)['network'], {})
+        result = api.add_authenticated_details({}, 'network', dashboard)['details']['network_diagnostics']
         self.assertEqual(result['switch_monitor'], {'state': 'down', 'reachable': True})
         self.assertNotIn('uplink', result['wan_startup'])
-        result = api.sanitize_sections({'network': {'switch_monitor': {'state': 'secret'}}})
-        self.assertEqual(result['network']['switch_monitor'], {})
+        result = api.sanitize_switch_diagnostics({'switch_monitor': {'state': 'secret'}})
+        self.assertEqual(result['switch_monitor'], {})
 
     def test_physical_assist_distinct_polls_and_fallback_guards(self):
         c = self.config(); obs = observations(); assist = m.PhysicalAssist()
