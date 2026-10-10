@@ -2635,7 +2635,7 @@ except (ImportError, OSError, ValueError, TypeError):
     starlink_snapshot = {"configured": False, "available": False, "state": "UNAVAILABLE", "status": "ok"}
     telemetry_uplink_id = None
 for uplink in uplink_snapshot.get('uplinks', []):
-    if uplink.get('type') == 'ethernet':
+    if uplink.get('type') in ('ethernet', 'vlan'):
         uplink['name'] = 'Starlink' if (
             uplink.get('id') == telemetry_uplink_id
             and starlink_snapshot.get('configured') is True

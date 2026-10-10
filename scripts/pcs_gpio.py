@@ -869,7 +869,7 @@ def read_network_uplink() -> str:
             if status.get('internet') is not True:
                 return 'Offline'
             active = next((u for u in status.get('uplinks', []) if u.get('active')), {})
-            if active.get('type') == 'ethernet':
+            if active.get('type') in ('ethernet', 'vlan'):
                 try:
                     from pcs_starlink import cached_status as starlink_status
                     telemetry = starlink_status(include_uplink=True)
