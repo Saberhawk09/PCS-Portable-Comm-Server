@@ -246,7 +246,7 @@ def arm(folder, timeout):
           '[Service]\nType=oneshot\nRestart=on-failure\nRestartSec=15s\nExecStart=/usr/bin/python3 ' + str(recovery) + ' --rollback\n')
     write('/etc/systemd/system/' + TIMER,
           '[Unit]\nDescription=PCS VLAN confirmation deadline\n[Timer]\n'
-          f'OnActiveSec={timeout}\nOnBootSec={timeout}\nAccuracySec=1s\n'
+          f'OnActiveSec={timeout}\nAccuracySec=1s\n'
           '[Install]\nWantedBy=timers.target\n')
     json_write(STATE / 'pending.json', dict(backup=str(folder), created=time.time(), timeout=timeout))
     run('systemd-analyze', 'verify', '/etc/systemd/system/' + TIMER,

@@ -194,6 +194,17 @@ class TransactionTests(unittest.TestCase):
             run.assert_not_called()
             backup.assert_not_called()
 
+    def test_watchdog_deadline_starts_at_activation_even_on_long_running_host(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder)
+            written = {}
+            with patch.object(v, 'STATE', state), patch.object(v, 'write', side_effect=lambda path, text, *a: written.update({str(path): text})), patch.object(v, 'run'):
+                v.arm(state / 'backup-test', 1800)
+            unit = configparser.ConfigParser(interpolation=None)
+            unit.read_string(written['/etc/systemd/system/' + v.TIMER])
+            self.assertEqual(dict(unit['Timer']), {'onactivesec': '1800', 'accuracysec': '1s'})
+            self.assertEqual(unit['Install']['WantedBy'], 'timers.target')
+
     def test_apply_arms_before_changes_and_rolls_back_failed_activation(self):
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)
