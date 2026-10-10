@@ -36,6 +36,13 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
 
+Version 2.2.0 adds optional [managed-switch VLAN networking](docs/managed-switch-vlan-migration.md),
+[read-only switch monitoring](docs/managed-switch-monitoring.md), and
+[authenticated bandwidth controls](docs/bandwidth-manager.md). Existing
+installations retain their legacy defaults unless migrated explicitly.
+See the [release validation record](docs/v2.2.0-validation.md) for software
+coverage and the remaining operator-supervised field checks.
+
 PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, 
 storage, time, monitoring, WWAN/GNSS, and optional APRS, Pi-Star, and Meshtastic support. Modem firmware or USB-composition changes, credentials, 
 unavailable external appliances, radio identity, and RF activation remain deliberate operator-supervised steps.

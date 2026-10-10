@@ -22,6 +22,29 @@ class FakeOutput:
 
 
 class BuzzerTests(unittest.TestCase):
+    def test_planned_aprs_restart_suppresses_only_aprs_and_expires(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker, health = root / "grace", root / "health"
+            alerts = [{"name": "aprs_agent", "severity": "critical"}]
+            def publish(extra=()):
+                health.write_text(json.dumps({"updated_at_epoch": 100, "alerts": alerts + list(extra)}))
+            publish()
+            with mock.patch.object(buzzer, "APRS_RECOVERY_PATH", marker), mock.patch.object(buzzer, "HEALTH_PATH", health), mock.patch.object(buzzer.time, "monotonic", return_value=150):
+                self.assertEqual(buzzer.read_health_pattern(100), "bad")
+                marker.write_text("100")
+                self.assertEqual(buzzer.read_health_pattern(100), "silent")
+                publish([{"name": "router", "severity": "critical"}])
+                self.assertEqual(buzzer.read_health_pattern(100), "bad")
+                publish([{"name": "gps_fix", "severity": "warning"}])
+                self.assertEqual(buzzer.read_health_pattern(100), "warn")
+                publish()
+                for invalid in ("90", "151", "nan", "inf", "broken"):
+                    marker.write_text(invalid)
+                    self.assertEqual(buzzer.read_health_pattern(100), "bad", invalid)
+                marker.unlink()
+                self.assertEqual(buzzer.read_health_pattern(100), "bad")
+
     def test_uplink_chime_tracks_selection_not_probe_flaps(self):
         guard = buzzer.UplinkChimeGuard()
         sample = dict(boot='boot', mode='auto', generated_at=100, selected_id='wifi', internet=True)

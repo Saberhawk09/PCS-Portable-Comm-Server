@@ -14,6 +14,23 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pcs_gpio  # noqa: E402
 
 
+class FailedServiceHealthTests(unittest.TestCase):
+    def test_networkmanager_wait_online_failure_is_ignored(self):
+        output = (
+            "NetworkManager-wait-online.service loaded failed failed "
+            "Network Manager Wait Online\n"
+        )
+        self.assertEqual(pcs_gpio.parse_failed_service_count(output), 0)
+
+    def test_real_failed_service_still_counts(self):
+        output = (
+            "NetworkManager-wait-online.service loaded failed failed "
+            "Network Manager Wait Online\n"
+            "example-critical.service loaded failed failed Example Critical Service\n"
+        )
+        self.assertEqual(pcs_gpio.parse_failed_service_count(output), 1)
+
+
 class IndicatorGraceTests(unittest.TestCase):
     def test_fault_must_persist_and_recovery_resets_timer(self):
         clock = Mock(return_value=0.0)

@@ -1,6 +1,7 @@
 import importlib.util
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -135,7 +136,16 @@ class RecoveryTests(unittest.TestCase):
             runner = FakeRunner(interface="wwan0", connected=False, resolves=True)
             subject = self.make_recovery(temporary, runner)
             subject.state_path.write_text("wlan0\n", encoding="utf-8")
-            ok, message = subject.recover()
+            marker = subject.restart_marker.with_suffix(".audible-grace")
+            original_run = runner.run
+            def check_marker(arguments, timeout=20):
+                if arguments[:2] in (["systemctl", "stop"], ["systemctl", "start"]):
+                    self.assertTrue(marker.exists())
+                    self.assertEqual(float(marker.read_text()), subject.monotonic())
+                return original_run(arguments, timeout)
+            with mock.patch.object(runner, "run", side_effect=check_marker):
+                ok, message = subject.recover()
+            self.assertFalse(marker.exists())
             self.assertTrue(ok)
             self.assertIn("Restarted", message)
             self.assertEqual(runner.restart_calls, 1)
@@ -179,6 +189,24 @@ class RecoveryTests(unittest.TestCase):
             self.assertFalse(ok)
             self.assertIn("stop direwolf.service failed", message)
             self.assertEqual(runner.lifecycle, [])
+            self.assertFalse(subject.restart_marker.with_suffix(".audible-grace").exists())
+
+    def test_audible_grace_cleans_up_on_exception(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            subject = self.make_recovery(temporary, FakeRunner())
+            marker = subject.restart_marker.with_suffix(".audible-grace")
+            with self.assertRaises(RuntimeError):
+                with subject.audible_recovery_grace():
+                    self.assertTrue(marker.exists())
+                    raise RuntimeError("interrupted")
+            self.assertFalse(marker.exists())
+
+    def test_audible_marker_failure_does_not_block_recovery(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            subject = self.make_recovery(temporary, FakeRunner())
+            with mock.patch.object(recovery, "_atomic_write", side_effect=OSError("read only")):
+                with subject.audible_recovery_grace():
+                    pass
 
     def test_restart_cooldown_prevents_repeated_startup_beacons(self):
         with tempfile.TemporaryDirectory() as temporary:

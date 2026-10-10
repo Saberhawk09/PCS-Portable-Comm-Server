@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import ipaddress
 import os
 import re
@@ -178,6 +179,23 @@ class UplinkRecovery:
         self.monotonic = monotonic
         self.wall_time = wall_time
 
+    @contextmanager
+    def audible_recovery_grace(self):
+        # Match the buzzer's bounded /run marker; no persistent/global mute.
+        marker = self.restart_marker.with_suffix(".audible-grace")
+        try:
+            _atomic_write(marker, str(self.monotonic()))
+        except OSError:
+            # Optional audio suppression must never prevent network recovery.
+            pass
+        try:
+            yield
+        finally:
+            try:
+                marker.unlink(missing_ok=True)
+            except OSError:
+                pass  # The buzzer independently expires abandoned markers.
+
     def record_current(self) -> str:
         interface = default_interface(self.runner)
         if not interface:
@@ -252,6 +270,10 @@ class UplinkRecovery:
         if not direwolf_active(self.runner):
             return True, "Dire Wolf stopped during the recovery grace period; leaving it stopped."
         print("No fresh route-consistent APRS-IS connection; restarting Dire Wolf with PTT guard.", flush=True)
+        with self.audible_recovery_grace():
+            return self._restart_and_verify(port, old, current, previous, now)
+
+    def _restart_and_verify(self, port, old, current, previous, now) -> tuple[bool, str]:
         # ExecStopPost starts the conflicting PTT guard. A single restart
         # transaction lets that guard cancel the pending engine start. Finish
         # stopping and settle the guard before requesting a separate start.
