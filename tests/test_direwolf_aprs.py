@@ -282,7 +282,7 @@ class DireWolfAprsTests(unittest.TestCase):
 
         self.assertLess(uart_index, prepare_index)
         self.assertIn('aprs_setup_script="./scripts/setup-${PCS_APRS_ENGINE}-aprs.sh"', base_setup)
-        self.assertIn('PCS_APRS_KISS_LAN_INTERFACE="${PCS_APRS_KISS_LAN_INTERFACE:-eth0}"', base_setup)
+        self.assertIn('PCS_APRS_KISS_LAN_INTERFACE="${PCS_LAN_INTERFACE}"', base_setup)
         self.assertIn('printf "PCS_APRS_ACTIVE_MODE=%q\\n"', base_setup)
 
     def test_uart_preparation_is_guarded_idempotent_and_leaves_bluetooth_alone(self):

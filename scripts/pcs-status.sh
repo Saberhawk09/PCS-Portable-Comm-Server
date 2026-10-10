@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
 
+# The topology marker is written only by the supervised VLAN migration.
+PCS_NETWORK_MODE=legacy
+if [[ -e /etc/pcs/network-mode ]]; then
+    IFS= read -r PCS_NETWORK_MODE </etc/pcs/network-mode || exit 2
+fi
+case "${PCS_NETWORK_MODE}" in
+    legacy) PCS_LAN_INTERFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share ;;
+    vlan) PCS_LAN_INTERFACE=eth0.10; PCS_LAN_PROFILE=pcs-lan-vlan ;;
+    *) echo "ERROR: invalid PCS network mode; refusing network operation" >&2; exit 2 ;;
+esac
+
 set -u
 
-PCS_ETH_IFACE="eth0"
+PCS_ETH_IFACE="${PCS_LAN_INTERFACE}"
 PCS_WIFI_IFACE="wlan0"
-PCS_ROUTER_PROFILE="pcs-router-wan-share"
+PCS_ROUTER_PROFILE="${PCS_LAN_PROFILE}"
 PCS_ROUTER_IP="10.42.0.1"
 PCS_ROUTER_CIDR="10.42.0.1/24"
 

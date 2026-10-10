@@ -210,6 +210,14 @@ persistent errors still fail open so normal status services can take over.
 
 ## Passive Buzzer
 
+During an automatic Dire Wolf restart after an uplink change, the recovery
+helper publishes `/run/pcs-direwolf-uplink-recovery.audible-grace` immediately
+before stopping the engine. The buzzer defers only the `aprs_agent` alert for
+at most 60 seconds, measured with the monotonic clock. Recovery completion or
+failure removes the marker; an abandoned marker expires without intervention.
+Unrelated alerts, low-voltage protection, and visual indicators remain active.
+Persistent APRS faults resume the normal five-second audible debounce.
+
 `scripts/pcs_buzzer.py` owns active-low GPIO13 and centralizes the named
 `post`, `ok`, `warn`, `bad`, and `low_voltage` patterns. One daemon arbitrates
 their priority, so patterns never overlap. WARN and BAD may be muted without

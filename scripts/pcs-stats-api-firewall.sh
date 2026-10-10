@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# The topology marker is written only by the supervised VLAN migration.
+PCS_NETWORK_MODE=legacy
+if [[ -e /etc/pcs/network-mode ]]; then
+    IFS= read -r PCS_NETWORK_MODE </etc/pcs/network-mode || exit 2
+fi
+case "${PCS_NETWORK_MODE}" in
+    legacy) PCS_LAN_INTERFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share ;;
+    vlan) PCS_LAN_INTERFACE=eth0.10; PCS_LAN_PROFILE=pcs-lan-vlan ;;
+    *) echo "ERROR: invalid PCS network mode; refusing network operation" >&2; exit 2 ;;
+esac
+
 set -Eeuo pipefail
 
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
@@ -23,6 +34,9 @@ fi
 
 API_PORT="${PCS_API_PORT:-}"
 ALLOWED_SOURCES="${PCS_API_ALLOWED_INTERFACE_SOURCES:-}"
+if [[ "${PCS_NETWORK_MODE}" == vlan ]]; then
+    ALLOWED_SOURCES="${ALLOWED_SOURCES//eth0=/eth0.10=}"
+fi
 
 require_command() {
     command -v "$1" >/dev/null 2>&1 || {
@@ -32,13 +46,13 @@ require_command() {
 }
 
 validate_config() {
-    python3 - "${API_PORT}" "${ALLOWED_SOURCES}" "${WIREGUARD_CONFIG}" <<'PY'
+    python3 - "${API_PORT}" "${ALLOWED_SOURCES}" "${WIREGUARD_CONFIG}" "${PCS_LAN_INTERFACE}" <<'PY'
 import ipaddress
 import re
 import sys
 from pathlib import Path
 
-port_text, mappings_text, wg_config_path = sys.argv[1:]
+port_text, mappings_text, wg_config_path, lan_interface = sys.argv[1:]
 wg_admin_text = ""
 try:
     for raw_line in Path(wg_config_path).read_text(encoding="utf-8").splitlines():
@@ -52,7 +66,7 @@ except (OSError, UnicodeError):
 if port_text != "9443":
     raise SystemExit("ERROR: PCS Stats API currently requires fixed TCP port 9443")
 
-allowed_interfaces = {"eth0", "wg-pcs", "wlan0"}
+allowed_interfaces = {lan_interface, "wg-pcs", "wlan0"}
 pcs_lan = ipaddress.ip_network("10.42.0.0/24")
 seen = set()
 mappings = []
@@ -72,7 +86,7 @@ for raw in mappings_text.split(","):
     if (interface, network) in seen:
         raise SystemExit("ERROR: duplicate API interface/source mapping")
     seen.add((interface, network))
-    if interface == "eth0" and network != pcs_lan:
+    if interface == lan_interface and network != pcs_lan:
         raise SystemExit("ERROR: eth0 API access must be exactly 10.42.0.0/24")
     if interface == "wg-pcs" and network.prefixlen != 32:
         raise SystemExit("ERROR: WireGuard API sources must be explicit IPv4 /32s")
@@ -80,7 +94,7 @@ for raw in mappings_text.split(","):
         raise SystemExit("ERROR: trusted wlan0 sources must be /16 or narrower and not overlap the PCS LAN")
     mappings.append((interface, network))
 
-if not any(interface == "eth0" and network == pcs_lan for interface, network in mappings):
+if not any(interface == lan_interface and network == pcs_lan for interface, network in mappings):
     raise SystemExit("ERROR: API policy must retain PCS LAN access on eth0=10.42.0.0/24")
 
 wg_mappings = {str(network) for interface, network in mappings if interface == "wg-pcs"}

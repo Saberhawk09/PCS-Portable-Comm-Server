@@ -10,6 +10,29 @@ permissions:
   contents: read
 
 jobs:
+  switch-snmp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install synthetic SNMP integration tools
+        run: sudo apt-get update && sudo apt-get install -y snmp snmpd iproute2
+      - name: Real read-only polling in an isolated network namespace
+        run: sudo python3 tests/integration_switch_snmp.py
+      - name: Validate optional unit
+        run: systemd-analyze verify systemd/pcs-switch-monitor.service
+  vlan-isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install disposable packet-test tools
+        run: sudo apt-get update && sudo apt-get install -y nftables iproute2 iputils-ping
+      - name: Test VLAN switch and dual-stack isolation in private namespaces
+        run: sudo python3 tests/integration_vlan_namespaces.py
+      - name: Validate staged keyfiles using NetworkManager 1.52 or newer
+        run: |
+          docker run --rm -v "$PWD:/src:ro" debian:trixie-slim sh -c '
+            apt-get update -qq && apt-get install -y -qq python3 python3-gi gir1.2-nm-1.0 &&
+            cd /src && python3 tests/integration_vlan_keyfiles.py'
   windows-witness:
     runs-on: windows-latest
     steps:
@@ -41,7 +64,9 @@ jobs:
           sudo apt-get install -y nginx
 
       - name: Run Python tests
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m pip install PyYAML==6.0.3
+          python -m unittest discover -s tests -v
 
       - name: Test defensive portal JavaScript (no appliance Node dependency)
         run: node --test tests/test_pcs_home.js
@@ -66,3 +91,16 @@ jobs:
           test -x scripts/pcs_cellular_fallback.py
           test -x scripts/pcs_gpio.py
           test -x scripts/pcs_sa818.py
+
+  bandwidth-namespaces:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify legacy and VLAN shaping with the appliance userspace
+        run: |
+          docker run --rm --privileged -v "$PWD:/src:ro" debian:trixie-slim sh -c '
+            apt-get update -qq &&
+            apt-get install -y -qq nftables iproute2 iperf3 python3-yaml iputils-ping procps &&
+            cd /src &&
+            python3 tests/integration_bandwidth.py --run &&
+            python3 tests/integration_bandwidth.py --run --vlan'

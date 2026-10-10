@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# The topology marker is written only by the supervised VLAN migration.
+PCS_NETWORK_MODE=legacy
+if [[ -e /etc/pcs/network-mode ]]; then
+    IFS= read -r PCS_NETWORK_MODE </etc/pcs/network-mode || exit 2
+fi
+case "${PCS_NETWORK_MODE}" in
+    legacy) PCS_LAN_INTERFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share ;;
+    vlan) PCS_LAN_INTERFACE=eth0.10; PCS_LAN_PROFILE=pcs-lan-vlan ;;
+    *) echo "ERROR: invalid PCS network mode; refusing network operation" >&2; exit 2 ;;
+esac
+
 set -Eeuo pipefail
 
 # Keep direct validation and NetworkManager/systemd invocations independent of
@@ -21,7 +32,7 @@ else
 fi
 
 WG_INTERFACE="${PCS_WG_INTERFACE:-wg-pcs}"
-LAN_INTERFACE="${PCS_WG_LAN_INTERFACE:-eth0}"
+LAN_INTERFACE="${PCS_LAN_INTERFACE}"
 LAN_NETWORK="${PCS_WG_LAN_NETWORK:-10.42.0.0/24}"
 WG_ADDRESS="${PCS_WG_ADDRESS:-}"
 WG_ALLOWED_IPS="${PCS_WG_ALLOWED_IPS:-}"
@@ -52,7 +63,7 @@ validate_interface_name() {
 validate_config() {
     validate_interface_name "WireGuard" "${WG_INTERFACE}"
     validate_interface_name "LAN" "${LAN_INTERFACE}"
-    if [[ "${WG_INTERFACE}" != "wg-pcs" || "${LAN_INTERFACE}" != "eth0" ]]; then
+    if [[ "${WG_INTERFACE}" != "wg-pcs" || "${LAN_INTERFACE}" != "${PCS_LAN_INTERFACE}" ]]; then
         echo "ERROR: PCS WireGuard requires the fixed wg-pcs and eth0 interfaces." >&2
         exit 2
     fi

@@ -869,7 +869,7 @@ def read_network_uplink() -> str:
             if status.get('internet') is not True:
                 return 'Offline'
             active = next((u for u in status.get('uplinks', []) if u.get('active')), {})
-            if active.get('type') == 'ethernet':
+            if active.get('type') in ('ethernet', 'vlan'):
                 try:
                     from pcs_starlink import cached_status as starlink_status
                     telemetry = starlink_status(include_uplink=True)
@@ -1451,8 +1451,24 @@ def read_primary_usb_mounted(path: Path = Path("/mnt/pcs-usb")) -> bool | None:
         return None
 
 
+# Boot-sequencing helpers can legitimately fail on PCS while the actual
+# runtime network and services remain healthy. Do not promote those expected
+# boot-time failures to a front-panel HARD FAULT.
+IGNORED_FAILED_SYSTEMD_UNITS = frozenset({
+    "NetworkManager-wait-online.service",
+})
+
+
 def parse_failed_service_count(output: str) -> int:
-    return sum(1 for line in output.splitlines() if line.strip())
+    count = 0
+    for line in output.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if fields[0] in IGNORED_FAILED_SYSTEMD_UNITS:
+            continue
+        count += 1
+    return count
 
 
 def read_failed_service_count() -> int | None:

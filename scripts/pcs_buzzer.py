@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import signal
 import tempfile
@@ -19,6 +20,8 @@ POWER_PATH = Path(os.environ.get("PCS_POWER_STATUS", "/run/pcs-power-monitor/sta
 MUTE_PATH = Path(os.environ.get("PCS_BUZZER_MUTE", "/run/pcs-buzzer/muted"))
 HEALTH_PATH = Path(os.environ.get("PCS_BUZZER_HEALTH", "/run/pcs-buzzer/health.json"))
 UPLINK_PATH = Path('/run/pcs-uplink-manager/status.json')
+APRS_RECOVERY_PATH = Path('/run/pcs-direwolf-uplink-recovery.audible-grace')
+APRS_RECOVERY_GRACE_SECONDS = 60
 HEALTH_MAX_AGE_SECONDS = 30
 HEALTH_DEBOUNCE_SECONDS = 5.0
 SHUTDOWN_CHIME_WAIT_SECONDS = 0.75
@@ -135,6 +138,15 @@ def read_json(path: Path) -> dict:
         return {}
 
 
+def aprs_recovery_grace_active() -> bool:
+    """Only a recent, explicitly planned recovery restart may defer APRS audio."""
+    try:
+        started = float(APRS_RECOVERY_PATH.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+    return math.isfinite(started) and 0 <= time.monotonic() - started < APRS_RECOVERY_GRACE_SECONDS
+
+
 def read_health_pattern(now: float | None = None) -> str | None:
     now = time.time() if now is None else now
     health = read_json(HEALTH_PATH)
@@ -144,10 +156,12 @@ def read_health_pattern(now: float | None = None) -> str | None:
     alerts = health.get("alerts")
     if not isinstance(alerts, list):
         return None
+    recovering = aprs_recovery_grace_active()
     severities = {
         alert.get("severity")
         for alert in alerts
         if isinstance(alert, dict)
+        and not (recovering and alert.get("name") == "aprs_agent")
     }
     if "critical" in severities:
         return "bad"

@@ -19,7 +19,7 @@ case "${action}" in
 esac
 
 if systemctl is-active --quiet pcs-wireguard-firewall.service; then
-    if [[ "${interface}" == "eth0" || "${interface}" == "wg-pcs" || "${interface}" == "none" ]]; then
+    if [[ "${interface}" == "eth0" || "${interface}" == "eth0.10" || "${interface}" == "wg-pcs" || "${interface}" == "none" ]]; then
         /usr/local/sbin/pcs-wireguard-firewall --refresh-networkmanager
     fi
 

@@ -1,0 +1,34 @@
+[Unit]
+Description=PCS optional read-only managed-switch observer
+After=NetworkManager.service
+# No Wants/Requires edges from routing, LAN or application services.
+
+[Service]
+Type=simple
+DynamicUser=yes
+LoadCredential=community:/etc/pcs/switch-monitor.community
+ExecStart=/usr/bin/python3 /usr/local/lib/pcs/pcs_switch_monitor.py --run
+Restart=on-failure
+RestartSec=10
+RuntimeDirectory=pcs-switch-monitor
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET
+CapabilityBoundingSet=
+LockPersonality=yes
+MemoryMax=64M
+TasksMax=16
+LimitFSIZE=65536
+CPUQuota=10%
+
+[Install]
+WantedBy=multi-user.target

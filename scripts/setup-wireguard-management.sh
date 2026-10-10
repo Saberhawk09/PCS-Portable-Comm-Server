@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
 
+# The topology marker is written only by the supervised VLAN migration.
+PCS_NETWORK_MODE=legacy
+if [[ -e /etc/pcs/network-mode ]]; then
+    IFS= read -r PCS_NETWORK_MODE </etc/pcs/network-mode || exit 2
+fi
+case "${PCS_NETWORK_MODE}" in
+    legacy) PCS_LAN_INTERFACE=eth0; PCS_LAN_PROFILE=pcs-router-wan-share ;;
+    vlan) PCS_LAN_INTERFACE=eth0.10; PCS_LAN_PROFILE=pcs-lan-vlan ;;
+    *) echo "ERROR: invalid PCS network mode; refusing network operation" >&2; exit 2 ;;
+esac
+
 set -Eeuo pipefail
 
 # Non-login SSH sessions on Raspberry Pi OS may omit /usr/sbin even though
@@ -98,7 +109,7 @@ load_config() {
     source "${CONFIG_FILE}"
 
     PCS_WG_INTERFACE="${PCS_WG_INTERFACE:-wg-pcs}"
-    PCS_WG_LAN_INTERFACE="${PCS_WG_LAN_INTERFACE:-eth0}"
+    PCS_WG_LAN_INTERFACE="${PCS_LAN_INTERFACE}"
     PCS_WG_LAN_NETWORK="${PCS_WG_LAN_NETWORK:-10.42.0.0/24}"
     PCS_WG_MTU="${PCS_WG_MTU:-1280}"
     PCS_WG_PERSISTENT_KEEPALIVE="${PCS_WG_PERSISTENT_KEEPALIVE:-25}"
@@ -169,7 +180,7 @@ if not keepalive.isdigit() or not 1 <= int(keepalive) <= 65535:
     raise SystemExit("ERROR: persistent keepalive must be 1-65535 seconds")
 if wg_interface != "wg-pcs":
     raise SystemExit("ERROR: PCS management uses the fixed wg-pcs interface")
-if lan_interface != "eth0" or lan_network != "10.42.0.0/24":
+if lan_interface not in {"eth0", "eth0.10"} or lan_network != "10.42.0.0/24":
     raise SystemExit("ERROR: WireGuard config does not match the commissioned PCS LAN topology")
 if mtu != "1280":
     raise SystemExit("ERROR: PCS WireGuard MTU must remain fixed at 1280 for cellular-path reliability")
@@ -578,7 +589,9 @@ import sys
 peer = ipaddress.ip_address(sys.argv[1])
 route = json.loads(subprocess.check_output(["ip", "-j", "route", "get", str(peer)]))[0]
 interface = route.get("dev")
-networks = {"eth0": "10.42.0.0/24", "wlan0": sys.argv[2], "wg-pcs": sys.argv[3]}
+from pathlib import Path
+lan = "eth0.10" if Path("/etc/pcs/network-mode").exists() and Path("/etc/pcs/network-mode").read_text().strip() == "vlan" else "eth0"
+networks = {lan: "10.42.0.0/24", "wlan0": sys.argv[2], "wg-pcs": sys.argv[3]}
 allowed = networks.get(interface, "")
 if not any(peer in ipaddress.ip_network(n.strip()) for n in allowed.split(",") if n.strip()):
     raise SystemExit("ERROR: WireGuard policy would block this SSH source. Configure the trusted home Wi-Fi subnet or activate from the PCS LAN/local console. No firewall changes made.")

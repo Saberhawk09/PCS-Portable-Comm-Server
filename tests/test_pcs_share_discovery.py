@@ -34,13 +34,13 @@ class PcsShareDiscoveryTests(unittest.TestCase):
         self.assertNotIn(' -w ', self.runner)
 
     def test_firewall_exposes_wsdd_only_on_lan_interfaces(self):
-        self.assertIn('{ "lo", "eth0", "wlan0" } udp dport 3702 accept', self.firewall)
-        self.assertIn('{ "lo", "eth0", "wlan0" } tcp dport 3702 accept', self.firewall)
+        self.assertIn('{ "lo", "${PCS_LAN_INTERFACE}", "wlan0" } udp dport 3702 accept', self.firewall)
+        self.assertIn('{ "lo", "${PCS_LAN_INTERFACE}", "wlan0" } tcp dport 3702 accept', self.firewall)
         self.assertIn('udp dport 3702 drop', self.firewall)
         self.assertIn('tcp dport 3702 drop', self.firewall)
         self.assertIn('udp sport 3702 drop', self.firewall)
-        self.assertIn('{ "lo", "eth0", "wlan0" } udp dport 5355 accept', self.firewall)
-        self.assertIn('{ "lo", "eth0", "wlan0" } tcp dport 5355 accept', self.firewall)
+        self.assertIn('{ "lo", "${PCS_LAN_INTERFACE}", "wlan0" } udp dport 5355 accept', self.firewall)
+        self.assertIn('{ "lo", "${PCS_LAN_INTERFACE}", "wlan0" } tcp dport 5355 accept', self.firewall)
         self.assertIn('udp dport 5355 drop', self.firewall)
         self.assertIn('tcp dport 5355 drop', self.firewall)
         self.assertIn('udp sport 5355 drop', self.firewall)

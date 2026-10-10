@@ -9,14 +9,16 @@ const source = path.join(__dirname, '../web/pcs-home/js/pcs.js');
 const {viewModel, safeURL} = require(source);
 
 test('Ethernet is named Starlink only with available dish telemetry', () => {
-  const network = {uplink_type: 'Starlink', uplinks: [{id: 'starlink', name: 'Starlink', type: 'ethernet', active: true}]};
-  for (const starlink of [undefined, {configured: false}, {configured: true, available: false}, {configured: true, available: true}]) {
-    const expected = starlink?.configured && starlink?.available ? 'Starlink' : 'Ethernet WAN';
-    const model = viewModel({network, starlink});
-    assert.equal(model.uplink, expected);
-    assert.ok(model.wanRows[0].startsWith(expected + ':'));
+  for (const kind of ['ethernet', 'vlan']) {
+    const network = {uplink_type: 'Starlink', uplinks: [{id: 'starlink', name: 'Starlink', type: kind, active: true}]};
+    for (const starlink of [undefined, {configured: false}, {configured: true, available: false}, {configured: true, available: true}]) {
+      const expected = starlink?.configured && starlink?.available ? 'Starlink' : 'Ethernet WAN';
+      const model = viewModel({network, starlink});
+      assert.equal(model.uplink, expected);
+      assert.ok(model.wanRows[0].startsWith(expected + ':'));
+    }
+    assert.equal(viewModel({network: {...network, offline: true}}).uplink, 'Offline');
   }
-  assert.equal(viewModel({network: {...network, offline: true}}).uplink, 'Offline');
   assert.equal(viewModel({network: {uplink_type: 'Cellular'}, starlink: {configured: true, available: true}}).uplink, 'Cellular');
 });
 

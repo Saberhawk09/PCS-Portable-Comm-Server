@@ -4,6 +4,33 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-10
+
+- Add opt-in managed-switch networking: native Ethernet carries the PCS LAN
+  on VLAN 10 and Ethernet/Starlink WAN on VLAN 20. Include guarded migration,
+  backups, automatic rollback, topology-aware LAN services and dual-stack
+  firewall isolation while preserving legacy installation defaults.
+- Add optional read-only SNMP switch monitoring, verified port mapping,
+  boot-aware preferred-WAN grace and debounced link-assisted failover.
+  Monitoring defaults disabled and is not required for normal networking.
+- Add Pi-native IPv4 bandwidth management with network ceilings, per-client
+  defaults and overrides, usage counters, and authenticated admin controls.
+  Include an opt-in installer, revision/CSRF protection and namespace tests.
+- Preserve the deployed APRS recovery alert fix: suppress only the APRS-agent
+  audible alert during planned recovery, for at most 60 seconds. Persistent
+  faults and other alerts remain active. Exclude NetworkManager's wait-online
+  helper from the front-panel hard-fault count; actual service failures count.
+- Correct LCD and web labels for VLAN WANs: Ethernet WAN unless matching
+  Starlink telemetry is available; Wi-Fi and cellular remain distinct.
+- Harden migration timing, kernel VLAN identity checks, firewall refresh,
+  NetworkManager rollback ordering and uplink grace-state persistence.
+- Software release validation is separate from appliance field acceptance.
+  Cold boot, physical isolation/cable cycles, successful cellular internet
+  fallback, Starlink throughput, fresh GNSS acquisition after cold boot and
+  end-to-end radio checks remain operator-deferred. Optional SNMP hardware
+  commissioning and the legacy fault harness in VLAN mode are not certified.
+  See [v2.2.0 validation](docs/v2.2.0-validation.md).
+
 ## [2.1.2] - 2026-10-04
 
 - Fix Dire Wolf APRS-IS recovery accepting an old TCP `ESTABLISHED` socket

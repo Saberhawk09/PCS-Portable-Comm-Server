@@ -216,3 +216,8 @@ saved files/profiles and at most one previous controller. It clears ambiguous
 legacy ownership and leaves operator sessions alive.
 
 Optional [Starlink diagnostics](starlink-telemetry.md) use a separate bound connection and never drive uplink selection.
+
+## Optional managed-switch migration
+
+An explicit type `vlan` WAN requires interface `eth0.20`, parent `eth0`, vlan_id `20`, and its NetworkManager UUID. MAC binding is intentionally absent for this type; physical Ethernet bindings remain unchanged.
+See the [commissioning and recovery procedure](managed-switch-vlan-migration.md).

@@ -14,6 +14,23 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pcs_gpio  # noqa: E402
 
 
+class FailedServiceHealthTests(unittest.TestCase):
+    def test_networkmanager_wait_online_failure_is_ignored(self):
+        output = (
+            "NetworkManager-wait-online.service loaded failed failed "
+            "Network Manager Wait Online\n"
+        )
+        self.assertEqual(pcs_gpio.parse_failed_service_count(output), 0)
+
+    def test_real_failed_service_still_counts(self):
+        output = (
+            "NetworkManager-wait-online.service loaded failed failed "
+            "Network Manager Wait Online\n"
+            "example-critical.service loaded failed failed Example Critical Service\n"
+        )
+        self.assertEqual(pcs_gpio.parse_failed_service_count(output), 1)
+
+
 class IndicatorGraceTests(unittest.TestCase):
     def test_fault_must_persist_and_recovery_resets_timer(self):
         clock = Mock(return_value=0.0)
@@ -387,11 +404,13 @@ class PcsGpioTests(unittest.TestCase):
     def test_lcd_starlink_label_requires_matching_fresh_telemetry(self):
         with patch.object(pcs_gpio.Path, 'exists', return_value=True), patch('pcs_uplink_manager.cached_status') as cached, patch('pcs_starlink.cached_status') as telemetry:
             cached.return_value = {'available': True, 'internet': True, 'uplinks': [{'id': 'satellite', 'type': 'ethernet', 'active': True}]}
-            for sample, label in [({}, 'Ethernet'), ({'configured': True, 'available': False}, 'Ethernet'),
-                                  ({'configured': True, 'available': True, 'uplink_id': 'other'}, 'Ethernet'),
-                                  ({'configured': True, 'available': True, 'uplink_id': 'satellite'}, 'Starlink')]:
-                telemetry.return_value = sample
-                self.assertEqual(pcs_gpio.read_network_uplink(), label)
+            for kind in ('ethernet', 'vlan'):
+                cached.return_value['uplinks'][0]['type'] = kind
+                for sample, label in [({}, 'Ethernet'), ({'configured': True, 'available': False}, 'Ethernet'),
+                                      ({'configured': True, 'available': True, 'uplink_id': 'other'}, 'Ethernet'),
+                                      ({'configured': True, 'available': True, 'uplink_id': 'satellite'}, 'Starlink')]:
+                    telemetry.return_value = sample
+                    self.assertEqual(pcs_gpio.read_network_uplink(), label)
             snapshot = pcs_gpio.StatsSnapshot(None, None, None, None, network_uplink='Starlink')
             self.assertIn(('Network Uplink', 'Starlink'), pcs_gpio.lcd_status_pages(snapshot, 60))
             health = pcs_gpio.MatrixHealthSnapshot(snapshot, 20, True, 0, True, True)
