@@ -96,9 +96,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Install disposable networking test dependencies
+      - name: Verify legacy and VLAN shaping with the appliance userspace
         run: |
-          sudo apt-get update
-          sudo apt-get install -y nftables iproute2 iperf3 python3-yaml
-      - name: Verify NAT and client shaping in isolated namespaces
-        run: sudo /usr/bin/python3 tests/integration_bandwidth.py --run
+          docker run --rm --privileged -v "$PWD:/src:ro" debian:trixie-slim sh -c '
+            apt-get update -qq &&
+            apt-get install -y -qq nftables iproute2 iperf3 python3-yaml iputils-ping &&
+            cd /src &&
+            python3 tests/integration_bandwidth.py --run &&
+            python3 tests/integration_bandwidth.py --run --vlan'

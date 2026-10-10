@@ -7,6 +7,15 @@ turn rate limits into a monthly data allowance.
 
 ## Install and administration
 
+The supported baseline is Debian 13 (Trixie), as used by PCS. Its iproute2
+provides the HTB class JSON required for health and ownership checks; older
+versions that emit plain text for `tc -j class show` are unsupported.
+
+LAN and WAN are detected from addresses and default routes. With the managed
+switch topology these are `eth0.10` and `eth0.20`; existing per-client addresses
+and policies remain valid. Keep interface overrides unset for automatic WAN
+selection, or update an intentional override when migrating interfaces.
+
 Install dependencies and run from the reviewed PCS checkout:
 
 ```bash
