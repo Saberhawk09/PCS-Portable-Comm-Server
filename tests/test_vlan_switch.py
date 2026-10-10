@@ -32,6 +32,15 @@ def settings():
 
 
 class IdentityTests(unittest.TestCase):
+    def test_kernel_parent_identity_accepts_iproute2_resolved_name(self):
+        parent = {'ifname': 'eth0', 'ifindex': 2}
+        observed = {'ifname': 'eth0.20', 'link': 'eth0', 'linkinfo': {'info_kind': 'vlan', 'info_data': {'id': 20}}}
+        self.assertTrue(v.kernel_vlan_matches(observed, parent, 20))
+        self.assertTrue(v.kernel_vlan_matches(observed | {'link_index': 2}, parent, 20))
+        for changed in [observed | {'link': 'eth1'}, observed | {'link_index': 3}, observed | {'link_netnsid': 0}, observed | {'link': None}]:
+            self.assertFalse(v.kernel_vlan_matches(changed, parent, 20))
+        self.assertFalse(v.kernel_vlan_matches(observed, parent, 10))
+
     def test_exact_profile_and_no_lan_aliases(self):
         m.validate_vlan_settings(uplink(), settings())
         for group, key, value in [('connection', 'type', '802-3-ethernet'),
@@ -193,6 +202,14 @@ class TransactionTests(unittest.TestCase):
                 v.apply(Path('unused'), 900, False, False)
             run.assert_not_called()
             backup.assert_not_called()
+
+    def test_firewall_refresh_does_not_stop_dependency_consumers(self):
+        with patch.object(v, 'run') as run:
+            v.refresh({'services': {name: True for name in v.SERVICES}})
+        commands = [call.args for call in run.call_args_list]
+        self.assertIn(('/usr/local/sbin/pcs-aprs-kiss-firewall', '--apply'), commands)
+        self.assertIn(('/usr/local/sbin/pcs-wireguard-firewall', '--apply'), commands)
+        self.assertFalse(any(command[0] == 'systemctl' for command in commands))
 
     def test_watchdog_deadline_starts_at_activation_even_on_long_running_host(self):
         with tempfile.TemporaryDirectory() as folder:

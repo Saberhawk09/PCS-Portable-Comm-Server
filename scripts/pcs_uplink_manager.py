@@ -812,6 +812,8 @@ class Controller:
                 time.sleep(0.1)
 
     def step(self, now=None):
+        # Main reloads operator state between passes; keep grace persistence attached.
+        self.startup_grace = StartupGrace(self.config, self.state)
         now = time.monotonic() if now is None else now
         if self.nm.daemon() != self.daemon:
             raise RuntimeError('NetworkManager restarted; restart controller to reconcile')

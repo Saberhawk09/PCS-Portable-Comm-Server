@@ -183,6 +183,16 @@ class IntegrationPolicyTests(unittest.TestCase):
             restarted = m.Controller(self.config(), nm, d, boot='newboot')
             self.assertTrue(restarted.startup_grace.update({}, False, 5)['held'])
 
+    def test_early_grace_completion_survives_runtime_state_reload(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(m, 'switch_status', return_value={}), patch.object(m, 'boot_elapsed', return_value=60):
+            nm = FakeNM(observations(starlink=True)); c = m.Controller(self.config(), nm, d, boot='boot')
+            c.step(0)
+            c.state = m.read_json(Path(d) / 'state.json')
+            self.assertFalse(c.step(30)['startup_grace']['held'])
+            nm.obs['starlink'].internet = False
+            restarted = m.Controller(self.config(), nm, d, boot='boot')
+            self.assertFalse(restarted.step(40)['startup_grace']['held'])
+
     def test_api_nested_allowlists_discard_topology_credentials_and_arbitrary_text(self):
         spec = importlib.util.spec_from_file_location('switch_test_api', ROOT / 'web/pcs-control-panel/pcs_stats_api.py')
         api = importlib.util.module_from_spec(spec); spec.loader.exec_module(api)

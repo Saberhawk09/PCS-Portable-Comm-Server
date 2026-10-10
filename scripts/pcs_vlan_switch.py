@@ -257,9 +257,18 @@ def arm(folder, timeout):
 
 
 def refresh(manifest):
-    for service in SERVICES[1:]:
+    # Restarting a required firewall unit stops its dependent radio/tunnel unit.
+    # Apply rules in place; helpers load their existing protected configuration.
+    commands = {
+        'pcs-uplink-management.service': ('pcs-uplink-management', '--apply'),
+        'pcs-wireguard-firewall.service': ('pcs-wireguard-firewall', '--apply'),
+        'pcs-stats-api-firewall.service': ('pcs-stats-api-firewall', '--apply'),
+        'pcs-aprs-kiss-firewall.service': ('pcs-aprs-kiss-firewall', '--apply'),
+        'pcs-wsdd.service': ('pcs-wsdd-firewall', 'apply'),
+    }
+    for service, (helper, argument) in commands.items():
         if manifest['services'][service]:
-            run('systemctl', 'restart', service)
+            run('/usr/local/sbin/' + helper, argument)
 
 
 def apply(destination, timeout, authorized, switch_verified):
@@ -349,6 +358,16 @@ def apply(destination, timeout, authorized, switch_verified):
         raise
 
 
+def kernel_vlan_matches(device, parent, tag):
+    info = device.get('linkinfo', {})
+    if info.get('info_kind') != 'vlan' or info.get('info_data', {}).get('id') != tag:
+        return False
+    # iproute2 may resolve the lower ifindex to its interface name in JSON.
+    if 'link_index' in device:
+        return device['link_index'] == parent['ifindex'] and device.get('link', parent['ifname']) == parent['ifname']
+    return device.get('link') == parent['ifname'] and 'link_netnsid' not in device
+
+
 def check():
     from pcs_uplink_manager import load_config, resolve_vlan_interface
     if not MODE.exists() or MODE.read_text().strip() != 'vlan':
@@ -357,8 +376,7 @@ def check():
     parent = next(x for x in links if x['ifname'] == 'eth0')
     for name, tag in (('eth0.10', 10), ('eth0.20', 20)):
         d = next(x for x in links if x['ifname'] == name)
-        info = d.get('linkinfo', {})
-        if info.get('info_kind') != 'vlan' or info.get('info_data', {}).get('id') != tag or d.get('link_index') != parent['ifindex']:
+        if not kernel_vlan_matches(d, parent, tag):
             raise ValueError('kernel VLAN identity mismatch')
     addresses = json.loads(run('ip', '-j', 'address', 'show'))
     by_name = {r['ifname']: r.get('addr_info', []) for r in addresses}
@@ -445,7 +463,6 @@ def rollback(backup_path=None):
     for identity in IDS.values():
         subprocess.run(['nmcli', 'connection', 'down', identity], capture_output=True, timeout=30)
         subprocess.run(['nmcli', 'connection', 'delete', identity], capture_output=True, timeout=30)
-    subprocess.run(['systemctl', 'stop', 'pcs-vlan-guard.service'], capture_output=True, timeout=30)
     for row in manifest['files']:
         path = Path(row['path'])
         if row['exists']:
@@ -454,13 +471,17 @@ def rollback(backup_path=None):
         else:
             path.unlink(missing_ok=True)
     run('systemctl', 'daemon-reload')
+    # Remove the NM Requires edge before stopping its former prerequisite.
+    subprocess.run(['systemctl', 'stop', 'pcs-vlan-guard.service'], capture_output=True, timeout=30)
     run('nmcli', 'connection', 'reload')
     # Restore only PCS and NetworkManager sharing tables. Leave unrelated rules intact.
     deletions = []
     for item in json.loads(run('nft', '-j', 'list', 'tables'))['nftables']:
         table = item.get('table', {})
         if table.get('name', '').startswith(('pcs_', 'nm-shared-')):
-            deletions.append('delete table ' + table['family'] + ' ' + json.dumps(table['name']))
+            if table['family'] not in ('ip', 'ip6', 'inet', 'bridge', 'arp', 'netdev') or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.-]*', table['name']):
+                raise ValueError('unsupported recovery table identifier')
+            deletions.append('delete table ' + table['family'] + ' ' + table['name'])
     run('nft', '-f', '-', input='\n'.join(deletions) + '\n' + (folder / 'pcs-firewall.nft').read_text())
     active = run('nmcli', '-g', 'UUID', 'connection', 'show', '--active').splitlines()
     legacy = run('nmcli', '-g', 'connection.uuid', 'connection', 'show', 'pcs-router-wan-share')
