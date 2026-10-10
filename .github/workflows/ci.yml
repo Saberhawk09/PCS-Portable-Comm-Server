@@ -100,7 +100,7 @@ jobs:
         run: |
           docker run --rm --privileged -v "$PWD:/src:ro" debian:trixie-slim sh -c '
             apt-get update -qq &&
-            apt-get install -y -qq nftables iproute2 iperf3 python3-yaml iputils-ping &&
+            apt-get install -y -qq nftables iproute2 iperf3 python3-yaml iputils-ping procps &&
             cd /src &&
             python3 tests/integration_bandwidth.py --run &&
             python3 tests/integration_bandwidth.py --run --vlan'
