@@ -178,6 +178,11 @@ if sudo test -s "${ADMIN_FILE}"; then
     sudo chmod 0640 "${ADMIN_FILE}"
 fi
 
+sudo install -o root -g root -m 0644 "${REPO_DIR}/scripts/pcs_dashboard_snapshot.py" /usr/local/lib/pcs/pcs_dashboard_snapshot.py
+sudo install -o root -g root -m 0644 "${REPO_DIR}/systemd/pcs-dashboard-snapshot.service" /etc/systemd/system/pcs-dashboard-snapshot.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now pcs-dashboard-snapshot.service
+
 echo "Installing and validating nginx with transactional backend migration..."
 sudo python3 "${FRONTEND_INSTALLER}"
 

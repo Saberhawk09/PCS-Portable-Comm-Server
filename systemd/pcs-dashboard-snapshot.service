@@ -1,0 +1,16 @@
+[Unit]
+Description=PCS background dashboard snapshots
+After=network.target
+
+[Service]
+Type=simple
+User=root
+RuntimeDirectory=pcs-dashboard
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/python3 /usr/local/lib/pcs/pcs_dashboard_snapshot.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

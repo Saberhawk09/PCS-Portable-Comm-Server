@@ -7,6 +7,8 @@ After=NetworkManager.service
 Type=simple
 DynamicUser=yes
 LoadCredential=community:/etc/pcs/switch-monitor.community
+# Give the restricted root uplink reader access without making diagnostics public.
+ExecStartPre=+/usr/bin/setfacl -m u:root:rx,d:u:root:rx /run/pcs-switch-monitor
 ExecStart=/usr/bin/python3 /usr/local/lib/pcs/pcs_switch_monitor.py --run
 Restart=on-failure
 RestartSec=10

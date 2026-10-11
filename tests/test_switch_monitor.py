@@ -2,6 +2,8 @@ import copy
 import importlib.util
 import json
 import os
+import stat
+from types import SimpleNamespace
 from pathlib import Path
 import sys
 import tempfile
@@ -60,6 +62,24 @@ class SwitchTests(unittest.TestCase):
             with patch.object(s.subprocess, 'run', side_effect=OSError('SyntheticTest123')):
                 with self.assertRaisesRegex(TimeoutError, '^SNMP request unavailable$'):
                     transport.request(['1.3'], s.time.monotonic() + 1)
+
+    @unittest.skipUnless(os.name == 'posix', 'systemd credential mount permissions')
+    def test_systemd_private_readonly_mount_and_ordinary_file_permissions(self):
+        path = Path('/run/credentials/pcs-switch-monitor.service/community')
+        info = SimpleNamespace(st_mode=stat.S_IFREG | 0o440, st_uid=0, st_size=16)
+        parent = SimpleNamespace(st_mode=stat.S_IFDIR | 0o550, st_uid=0)
+        with patch.object(Path, 'lstat', return_value=parent), patch.object(s.os, 'statvfs', return_value=SimpleNamespace(f_flag=os.ST_RDONLY)):
+            self.assertTrue(s.systemd_readonly_credential(path, info, str(path.parent)))
+            self.assertFalse(s.systemd_readonly_credential(Path('/tmp/community'), info, '/tmp'))
+            self.assertFalse(s.systemd_readonly_credential(path, info, None))
+            for mode in (0o444, 0o460, 0o660):
+                self.assertFalse(s.systemd_readonly_credential(path, SimpleNamespace(st_mode=stat.S_IFREG | mode, st_uid=0), str(path.parent)))
+            with patch.object(s.os, 'statvfs', return_value=SimpleNamespace(f_flag=0)):
+                self.assertFalse(s.systemd_readonly_credential(path, info, str(path.parent)))
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / 'community'; file.write_text('SyntheticTest123'); file.chmod(0o440)
+            with patch.dict(os.environ, {'CREDENTIALS_DIRECTORY': directory}), self.assertRaises(ValueError):
+                s.credential(cfg())
 
     def test_credential_generation_exclusive_and_bounded(self):
         with tempfile.TemporaryDirectory() as d:
@@ -192,6 +212,65 @@ class IntegrationPolicyTests(unittest.TestCase):
             nm.obs['starlink'].internet = False
             restarted = m.Controller(self.config(), nm, d, boot='boot')
             self.assertFalse(restarted.step(40)['startup_grace']['held'])
+
+    def test_verified_down_releases_grace_after_existing_failure_timers(self):
+        cache = dict(state='down', reachable=True, error='', physical_port=2, generation='g', sequence=1, sampled_mono=0)
+        with tempfile.TemporaryDirectory() as directory, patch.object(m, 'switch_status', side_effect=lambda: cache.copy()), patch.object(m, 'boot_elapsed', return_value=40):
+            nm = FakeNM(observations()); controller = m.Controller(self.config(), nm, directory, boot='boot')
+            self.assertTrue(controller.step(0)['startup_grace']['held'])
+            cache.update(sequence=2, sampled_mono=10)
+            self.assertFalse(controller.step(10)['startup_grace']['held'])
+            self.assertEqual(nm.activated, [])
+            cache.update(sequence=3, sampled_mono=30)
+            result = controller.step(30)
+            self.assertEqual(nm.activated, ['cellular'])
+            self.assertEqual(result['startup_grace']['reason'], 'physical_wan_disconnected')
+            self.assertTrue(result['startup_grace']['cellular_ready'])
+
+    def test_link_reconnection_restores_remaining_startup_grace(self):
+        grace = m.StartupGrace(self.config(), {})
+        self.assertFalse(grace.update(observations(), False, 40, physical_down_confirmed=True)['held'])
+        result = grace.update(observations(), False, 50, physical_down_confirmed=False)
+        self.assertTrue(result['held']); self.assertEqual(result['remaining_seconds'], 190)
+
+    def test_healthy_or_unknown_preferred_health_cannot_release_grace(self):
+        for source, field, value in [('wifi', 'internet', True), ('wifi', 'internet6', True), ('wifi', 'internet', None), ('wifi', 'internet6', None), ('starlink', 'internet', True)]:
+            obs = observations(); setattr(obs[source], field, value)
+            self.assertTrue(m.StartupGrace(self.config(), {}).update(obs, False, 40, physical_down_confirmed=True)['held'])
+        c = replace(self.config(), switch_assist=False)
+        self.assertTrue(m.StartupGrace(c, {}).update(observations(), False, 40, physical_down_confirmed=True)['held'])
+
+    def test_unknown_physical_states_retain_finite_deadline(self):
+        for state in ['up', 'unknown', 'stale', 'monitor_unavailable', 'administratively_down']:
+            cache = dict(state=state, reachable=True, error='', physical_port=2, generation='g', sequence=1, sampled_mono=0)
+            with tempfile.TemporaryDirectory() as directory, patch.object(m, 'switch_status', side_effect=lambda: cache.copy()), patch.object(m, 'boot_elapsed', return_value=40):
+                nm = FakeNM(observations()); controller = m.Controller(self.config(), nm, directory, boot='boot')
+                controller.step(0); cache.update(sequence=2, sampled_mono=40)
+                self.assertTrue(controller.step(40)['startup_grace']['held'])
+                self.assertEqual(nm.activated, [])
+                with patch.object(m, 'boot_elapsed', return_value=241):
+                    controller.step(50)
+                    self.assertEqual(nm.activated, ['cellular'])
+
+    def test_unready_modem_waits_without_consuming_retry_backoff(self):
+        cache = dict(state='down', reachable=True, error='', physical_port=2, generation='g', sequence=1, sampled_mono=0)
+        with tempfile.TemporaryDirectory() as directory, patch.object(m, 'switch_status', side_effect=lambda: cache.copy()), patch.object(m, 'boot_elapsed', return_value=40):
+            nm = FakeNM(observations()); controller = m.Controller(self.config(), nm, directory, boot='boot')
+            controller.step(0); cache.update(sequence=2, sampled_mono=30)
+            with patch.object(nm, 'cellular_ready', return_value=False):
+                result = controller.step(30)
+                self.assertEqual(result['startup_grace']['reason'], 'waiting_for_modem')
+                self.assertEqual(nm.activated, []); self.assertNotIn('cellular', controller.policy.retry_at)
+            cache.update(sequence=3, sampled_mono=40); controller.step(40)
+            self.assertEqual(nm.activated, ['cellular'])
+
+    def test_ipv6_wifi_prevents_paid_activation_after_grace_expires(self):
+        obs = observations(); obs['wifi'].internet6 = True
+        with tempfile.TemporaryDirectory() as directory, patch.object(m, 'switch_status', return_value={}), patch.object(m, 'boot_elapsed', return_value=250):
+            nm = FakeNM(obs); controller = m.Controller(self.config(), nm, directory, boot='boot')
+            controller.step(0); result = controller.step(40)
+            self.assertEqual(nm.activated, [])
+            self.assertEqual(result['startup_grace']['reason'], 'preferred_wan_healthy')
 
     def test_api_nested_allowlists_discard_topology_credentials_and_arbitrary_text(self):
         spec = importlib.util.spec_from_file_location('switch_test_api', ROOT / 'web/pcs-control-panel/pcs_stats_api.py')
