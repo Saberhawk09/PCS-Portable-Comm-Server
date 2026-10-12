@@ -11,6 +11,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Proposed v2.2.1 release readiness](v2.2.1-release-readiness.md) - candidate ancestry and open gates; unpublished
 - [Qualification evidence index](qualification-evidence-index.md) - dated results and topology limits
 - [Recovery coverage matrix](recovery-coverage.md) - captured versus restored state and follow-up design
+- [Inactive recovery staging](recovery-staging.md) - manifest, explicit topology plan, private staging and activation boundary
 - [Project Overview](project-overview.md)
 - [Network Topology](network-topology.md)
 - [Network Design](network-design.md)

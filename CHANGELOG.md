@@ -6,6 +6,12 @@ All notable user-facing PCS changes are recorded here.
 
 ### Proposed v2.2.1 — draft, not published
 
+- Recovery development candidate: add a versioned, verified manifest inside new
+  private backups and an explicit offline inspect/plan/stage/validate workflow for
+  legacy/VLAN profiles and newer PCS policies. Preserve old archive reading and
+  existing live restore selection. No automatic activation or physical recovery
+  acceptance is included; see [inactive recovery preparation](docs/recovery-staging.md).
+
 - Serve public/admin dashboard and Stats API requests from separate atomic
   background snapshots. Keep a single collector writer, terminate timed-out
   collector process groups, return a loading state before the first snapshot,

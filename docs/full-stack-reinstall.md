@@ -6,6 +6,11 @@ allowlist applies them. Read the [recovery coverage matrix](recovery-coverage.md
 before planning a current-topology rebuild. This runbook does not certify a fresh
 VLAN appliance recovery or authorize a wipe.
 
+The recovery development candidate adds a versioned export manifest and a separate
+[inspect/plan/stage procedure](recovery-staging.md). It does not change this
+installer's network activation order or automatically restore VLAN state. Follow
+the inactive procedure before designing a current-topology reinstall transaction.
+
 ## September 2026 recovery evidence
 
 The September 21-22 v1.9.7 acceptance rebuilt a freshly imaged Raspberry Pi OS

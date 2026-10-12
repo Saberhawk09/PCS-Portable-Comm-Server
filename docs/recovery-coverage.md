@@ -1,5 +1,12 @@
 # Backup versus restore coverage — October 12, 2026
 
+Recovery development follow-up: the separate [inactive staging tool](recovery-staging.md)
+now manifests new exports and validates/stages explicit legacy/VLAN profiles,
+uplink/management policy, bandwidth, local SNMP, power configuration and existing
+Wi-Fi/WireGuard selections. The table below still describes the **automatic/live
+restore helper**, whose allowlist is unchanged. Staged support does not mean those
+gaps are closed for an appliance reinstall or that activation is implemented.
+
 This is a source audit of the v2.2.0 baseline plus candidate `86b072b`, not a
 restore trial. No private archive or running appliance was changed. The accepted
 September v1.9.7 fresh rebuild remains valid for its recorded baseline, not for
@@ -37,7 +44,9 @@ units/firewalls and boot-local state follow separate installation paths.
 
 ## Minimum follow-up design
 
-No restore implementation change is included in this maintenance pass. Blindly
+The first maintenance pass made no restore implementation change. Its follow-up
+implements manifest/plan/inactive-stage validation, with tests described in the
+new staging guide. Activation remains deferred. Blindly
 adding the mode marker or VLAN profiles to the current copy list could change
 the control network mid-install. Restoring source policy without matching profile
 identity could select the wrong WAN. Those are operational decisions, not a safe
