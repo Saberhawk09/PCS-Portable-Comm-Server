@@ -15,7 +15,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install synthetic SNMP integration tools
-        run: sudo apt-get update && sudo apt-get install -y snmp snmpd iproute2
+        run: sudo apt-get update && sudo apt-get install -y snmp snmpd iproute2 acl
+      - name: Check private switch cache ACL dependency
+        run: |
+          test -x /usr/bin/setfacl
+          cache=$(mktemp -d)
+          trap 'rm -rf "$cache"' EXIT
+          chmod 0700 "$cache"
+          /usr/bin/setfacl -m u:root:rx,d:u:root:rx "$cache"
+          touch "$cache/status.json"
+          getfacl -Ecp "$cache/status.json" | grep -Fx 'user:root:r-x'
       - name: Real read-only polling in an isolated network namespace
         run: sudo python3 tests/integration_switch_snmp.py
       - name: Validate optional unit

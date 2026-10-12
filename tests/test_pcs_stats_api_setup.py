@@ -51,13 +51,18 @@ class StatsApiSetupTests(unittest.TestCase):
         self.assertIn("Before=pcs-stats-api.service", firewall_service)
         self.assertIn("RemainAfterExit=yes", firewall_service)
 
-    def test_dashboard_collectors_and_mount_actions_use_fixed_host_services(self):
+    def test_snapshot_reads_stay_local_and_mount_actions_use_fixed_host_services(self):
         dispatcher = DISPATCHER.read_text(encoding="utf-8")
         function_start = dispatcher.index("dispatch_host_namespace_action()")
         function_end = dispatcher.index("\n}\n", function_start) + 3
         function = dispatcher[function_start:function_end]
 
-        self.assertIn("dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup", function)
+        self.assertNotIn("dashboard-public-json", function)
+        self.assertNotIn("dashboard-json", function)
+        self.assertIn("status|self-test|storage-status|sync-backup", function)
+        for action, projection in (("dashboard-public-json", "public"), ("dashboard-json", "admin")):
+            branch = dispatcher[dispatcher.rindex(f"    {action})"):].split(";;", 1)[0]
+            self.assertIn(f"pcs_dashboard_snapshot.py --read {projection}", branch)
         self.assertIn("mount-usb|mount-new-usb|safe-unmount-usb", function)
         self.assertIn('"${PCS_HOST_NAMESPACE_ACTION:-0}" == "1"', function)
         self.assertIn("/usr/bin/systemd-run", function)
@@ -197,7 +202,8 @@ class StatsApiSetupTests(unittest.TestCase):
         self.assertIn("pcs-stats-api-firewall.service", self_test)
         self.assertIn("pcs-stats-api.service", self_test)
         self.assertIn('PCS_STATS_API_PORT="9443"', self_test)
-        self.assertIn("PCS Stats API public response passes the local redaction check", self_test)
+        self.assertIn("PCS Stats API snapshot responds within 2 seconds and passes the local redaction check", self_test)
+        self.assertIn("--max-time 2", self_test)
         self.assertIn('data["details"] is None', self_test)
 
     def test_every_setup_command_is_documented(self):
