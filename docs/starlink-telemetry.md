@@ -1,8 +1,12 @@
 # Optional Starlink telemetry and staged lifecycle controls
 
-Read-only telemetry and dashboard support were deployed on September 14, 2026.
-The operator's Mini is not connected, so real Mini commissioning remains pending.
-Starlink routing and PCS offline LAN operation remain independent.
+Read-only telemetry and dashboard support were deployed on September 14, 2026;
+actual Mini telemetry and the separate power branch were commissioned in v1.9.5,
+as recorded below. Those earlier results used the legacy Ethernet path. Mini
+cold boot, paired reboot, Internet and throughput acceptance on the current VLAN
+WAN remain open in the [qualification index](qualification-evidence-index.md).
+This document does not assert that a Mini is connected now. Starlink routing
+and PCS offline LAN operation remain independent.
 The PCS-wide event logger is a separate task.
 
 ## Read-only diagnostics
@@ -27,8 +31,9 @@ An absent Mini, disabled collector, failed reachability attempt or expired sampl
 has `available: false` and an informational `status: ok`; it does not raise a
 Starlink-card warning, PCS alarm or fault. The state still reads disabled or
 unavailable, never connected. A responding dish can report its own warnings,
-which remain separate from overall PCS health. The uninstalled third and fourth
-INA226 monitors remain disabled; the fourth is staged at `0x4e`.
+which remain separate from overall PCS health. The commissioned profile enables
+the main 12V monitor at `0x44` and Starlink at `0x48`; generic configurations leave
+optional hardware disabled until its wiring and calibration are verified.
 
 Physical WAN presence is checked separately using the uplink manager's Ethernet
 carrier and Internet probes. Connected Starlink Ethernet with failed Internet

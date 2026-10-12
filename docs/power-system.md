@@ -273,13 +273,15 @@ registers matched the input monitor and its initial bus-voltage sample was
 5.22 V. Both monitors still require comparison with a trusted meter before
 their current and power readings are treated as calibrated physical evidence.
 
-The intended roles are:
+The four commissioned roles are:
 
 - `input` (`0x40`, commissioned): upstream of PCS conversion and authoritative
   for source voltage, total current, and total PCS input power.
 - `rail_5v` (`0x4c`, commissioned): 5V voltage, current, and power.
 - `rail_12v` (`0x44`, commissioned): main 12V distribution voltage, current,
   power, and charge/energy using the installed 0.002-ohm / 20A module.
+- `starlink` (`0x48`, commissioned): separate Starlink branch measurements;
+  included in aggregate consumption in Battery mode, separate in Power Supply mode.
 
 The input monitor may also be commissioned by itself if the 5V monitor is
 temporarily removed. In that state input measurements and low-voltage status
@@ -318,15 +320,15 @@ coordinated shutdown dispatcher so a paired Pi-Star receives its clean
 poweroff request before PCS powers off. A direct PCS poweroff is retained only
 as a fail-safe fallback if that dispatcher itself cannot run.
 
-The normal 16x2 LCD rotation includes one compact power page. In Battery mode
-its first row retains the `IN` label while showing source voltage and source-aware
-total watts, including the separate Starlink branch; in Power Supply mode it
-shows PCS input-only watts. Its second row shows 5V rail voltage and watts. A second
-`Total PWR Usage` page shows the source-aware total
-charge in Ah and energy in Wh since boot: PCS input plus the separate Starlink
-branch in Battery mode, or PCS input alone in Power Supply mode. The standard
-concise self-test reports separate Input Power,
-5V Rail, and Power Protection rows with live measurements. The public and
+The normal 16x2 LCD rotation uses two compact power pages, implemented by
+`lcd_power_page` and `lcd_rails_page` in `scripts/pcs_gpio.py`. The first page's
+top row retains `IN` with source voltage and source-aware watts; its second row
+combines since-boot Ah and Wh. Battery mode includes PCS input plus the separate
+Starlink branch; Power Supply mode uses PCS input only. The second page shows
+12V rail voltage with 12V-only watts, followed by 5V voltage and watts. Missing
+measurements use placeholders. There is no separate `Total PWR Usage` page.
+The self-test includes the configured monitor roles and power protection.
+The public and
 authenticated web status views expose the full voltage, current, power,
 since-boot mAh/Wh totals, per-monitor health, low-voltage state, and explicitly
 labeled non-5V estimate.
@@ -364,7 +366,7 @@ configuration exists, and does not overwrite an operator-calibrated file. Its
 shunt/current values are deliberate non-runnable placeholders; the service is
 not enabled until they are replaced and configuration validation passes.
 
-## Planned fourth INA226: Starlink branch
+## Commissioned fourth INA226: Starlink branch
 
 Monitor roles are `input`, `rail_5v`, `rail_12v` (third), and `starlink`
 (fourth). The commissioned PCS profile enables the installed branches at
@@ -374,29 +376,32 @@ until its address and calibration are verified.
 When installed and enabled, the Starlink branch exposes voltage, current, power,
 charge (mAh) and energy (Wh) since boot. Existing same-boot totals survive a
 collector restart; a newly observed branch begins accounting when first observed.
-Input power remains the system total: neither branch measurement is added to it
-or subtracted again from the existing input-minus-5V estimate. Branch placement
-and whether it includes conversion losses depend on the eventual physical wiring.
+Raw PCS input remains its own measurement. Aggregate accounting adds the separate
+Starlink branch only in Battery mode; neither downstream 12V nor 5V is added
+again. Power Supply mode uses PCS input alone. See the source-accounting section
+below. Physical wiring and trusted-meter comparisons still need a complete
+[as-built record](../hardware/as-built-checklist.md).
 
 An enabled missing sensor reports a monitor warning. Disabled sensors are never
 accessed and do not cause missing-hardware warnings. Low-voltage shutdown still
 uses only the input monitor. This support does not switch Starlink power, control
-its WAN, or add LCD/APRS power fields.
+its WAN. LCD/APRS consumers use the existing collector's source-aware fields.
 
-Before enabling either planned monitor, install and verify it during a hardware
+For a new installation, before enabling an optional monitor, verify it during a hardware
 maintenance window, choose a unique 7-bit address in `0x40`–`0x4f`, confirm the
 actual shunt/range, fill in the placeholders, and run `pcs-power-monitor
 check-config --config /etc/pcs/power-monitor.json`. Compare measurements against
 a meter before relying on them. Do not copy the illustrative test addresses as
 hardware assignments. No live power-monitor restart is needed for local staging.
 
-Staging validation (2026-09-14): the clean v1.9.1-based staging tree passed
+Historical staging validation (2026-09-14, before later commissioning): the clean v1.9.1-based staging tree passed
 583 Python tests on Debian 13/Python 3.13, 11 portal JavaScript tests, Python
 compilation and shell syntax checks. Coverage includes four simultaneous
 monitors, duplicate-address rejection, disabled sensors not being read, separate
 branch energy without double-counting, missing-branch shutdown isolation and
-public API field filtering. This is software validation; both planned modules
-remain uninstalled and disabled. No live deployment or service restart occurred.
+public API field filtering. At that staging checkpoint both optional modules
+were uninstalled and disabled; no live deployment or service restart occurred.
+The later v1.9.5 and v2.0.0 commissioning records supersede that hardware status.
 
 
 ## DC source and Starlink accounting (v1.9.5)

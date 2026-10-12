@@ -1,5 +1,11 @@
 # Full-Stack Reinstall Runbook
 
+Current recovery scope: the accepted September v1.9.7 rebuild predates the VLAN,
+bandwidth and SNMP configuration. Exporting those files does not mean the restore
+allowlist applies them. Read the [recovery coverage matrix](recovery-coverage.md)
+before planning a current-topology rebuild. This runbook does not certify a fresh
+VLAN appliance recovery or authorize a wipe.
+
 ## September 2026 recovery evidence
 
 The September 21-22 v1.9.7 acceptance rebuilt a freshly imaged Raspberry Pi OS

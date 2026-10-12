@@ -8,6 +8,9 @@ The root `README.md` is the public front page. These documents hold the deeper b
 
 - [Bandwidth Manager](bandwidth-manager.md) - Pi-native client limits, WAN ceilings, and authenticated admin controls
 - [Documentation audit and README content map](documentation-audit.md)
+- [Proposed v2.2.1 release readiness](v2.2.1-release-readiness.md) - candidate ancestry and open gates; unpublished
+- [Qualification evidence index](qualification-evidence-index.md) - dated results and topology limits
+- [Recovery coverage matrix](recovery-coverage.md) - captured versus restored state and follow-up design
 - [Project Overview](project-overview.md)
 - [Network Topology](network-topology.md)
 - [Network Design](network-design.md)
@@ -40,6 +43,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 - [Bill of Materials](bill-of-materials.md)
 - [Power System](power-system.md)
 - [Wiring Notes](../hardware/wiring-notes.md)
+- [As-built completion checklist](../hardware/as-built-checklist.md)
 - [Enclosure Notes](../hardware/enclosure-notes.md)
 
 ## Historical Comparison Notes

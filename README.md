@@ -10,7 +10,12 @@ What started as an annoyance caused by Windows networking has evolved into my fi
 
 ### I'm a high school dropout working at a convenience store; of course I'm using AI to help me code.
 
-Codex was heavily utilized in the creation of this project. I have thoroughly tested every aspect of the code and found it to be reliable and repeatable over several wipe/reinstall cycles. If for whatever reason you decide to recreate this project, you *should* be able to utilize this code with minimal changes/additional LLM use depending on your hardware.
+Codex was heavily utilized in the creation of this project. Automated tests and
+dated appliance checks cover the implemented features, but do not establish full
+field qualification. The September 2026 PCS reinstall passed on its recorded
+baseline; newer network configurations and hardware changes have separate
+acceptance gates. Recreating the project requires checking your hardware and the
+[current qualification evidence](docs/qualification-evidence-index.md).
 
 This GitHub will also use a mix of my own writing and AI-generated text. I am learning how to use GitHub, and I'd rather have a nice AI-generated page than a gross-looking human-generated one because I don't know what I'm doing.
 
@@ -43,6 +48,14 @@ installations retain their legacy defaults unless migrated explicitly.
 See the [release validation record](docs/v2.2.0-validation.md) for software
 coverage and the remaining operator-supervised field checks.
 
+The current appliance configuration uses native Pi Ethernet as a tagged trunk:
+`eth0.10` is the VLAN 10 LAN and `eth0.20` is the VLAN 20 Ethernet WAN. The parent
+`eth0` has no IP address. Legacy installations still use untagged `eth0` for LAN
+and a separately identified USB Ethernet WAN. Neither configuration is selected
+merely by updating source. The proposed v2.2.1 dashboard/SNMP/startup changes and
+separate Android v0.3.0 candidate are unpublished; see
+[release preparation](docs/v2.2.1-release-readiness.md).
+
 PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, 
 storage, time, monitoring, WWAN/GNSS, and optional APRS, Pi-Star, and Meshtastic support. Modem firmware or USB-composition changes, credentials, 
 unavailable external appliances, radio identity, and RF activation remain deliberate operator-supervised steps.
@@ -51,15 +64,20 @@ The PCS hardware is an operational v2 prototype.
 The main AC/DC power system with source selector, cooling fans, Pi-Star hotspot, 
 cellular/GNSS path, external SMA antennas, HD44780 LCD, MAX7219 matrix,
 WS2812 indicators, four INA226 power monitors, passive buzzer, WAN Ethernet
-and APRS subsystem are installed and vaildated.
+and APRS subsystem are installed. Their dated commissioning checks do not replace
+the outstanding electrical as-built, RF/I2C, and current-topology field checks.
 
-The entire APRS subsystem, including fill-in operation, 2-way APRS-IS messaging, and the APRS message agent have all been validated. 
+Recorded APRS commissioning includes fill-in operation and two-way APRS-IS
+messaging. Agent-specific RF request/ACK/PONG and messaging across both current
+failover directions remain separate supervised checks.
 The RAK4631 persistent USB/MQTT gateway and GPSD position delivery
 are validated as well, including successful encrypted proxy publishes to the
 configured MQTT broker. Local RF nodes opted into MQTT will be forwarded to their respective MQTT server.
 
-The most recent development has been intergration with a Starlink Mini user terminal. The respective telemetry and power monitoring has been successfully
-testing and implemented. Both the Ethernet WAN and the Starlink DC Passthrough ports have worked as designed.
+Starlink Mini telemetry and branch power were commissioned before the VLAN
+migration. Actual Mini cold boot, Internet/throughput and paired reboot on the
+new topology remain acceptance items; home-router Ethernet results do not certify
+satellite operation.
 
 ### Hardware
 
@@ -353,9 +371,11 @@ Remaining documentation and validation:
 
 ## Optional multi-WAN Internet
 
-PCS can prefer a MAC-bound USB Ethernet WAN (including Starlink Mini), then
-external Wi-Fi, then optional cellular, with Internet probes and stability
-windows. The Pi remains the gateway; `eth0` is always the PCS LAN. Public/admin
+PCS can prefer Ethernet WAN (including Starlink Mini), then external Wi-Fi,
+then optional cellular, with Internet probes and stability windows. Legacy mode
+uses untagged `eth0` LAN and a MAC-bound USB Ethernet WAN. Managed-switch mode
+uses VLAN 10 LAN (`eth0.10`) and VLAN 20 WAN (`eth0.20`) on native Ethernet;
+the parent `eth0` carries no IP. The Pi remains the gateway. Public/admin
 dashboards include WAN traffic totals since boot. See the
 [uplink manager guide](docs/uplink-manager.md) and
 [acceptance tests](docs/testing-uplinks.md) before installation.
