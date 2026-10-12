@@ -72,6 +72,12 @@ class RecoveryStageTests(unittest.TestCase):
             self.assertEqual((staged / name).read_bytes(), content)
         self.assertFalse((staged / 'etc/pcs/operator-unrelated.json').exists())
         self.assertTrue(any(row['path'] == 'etc/pcs/operator-unrelated.json' for row in plan['exclusions']))
+        modes = {row['path']: row['install_mode'] for row in plan['files']}
+        self.assertEqual(modes[manifest.MODE], '0644')
+        self.assertEqual(modes['etc/pcs/switch-monitor.json'], '0644')
+        self.assertEqual(modes['etc/pcs/power-monitor.json'], '0644')
+        self.assertEqual(modes['etc/pcs/switch-monitor.community'], '0600')
+        self.assertEqual(modes['etc/pcs/bandwidth.yaml'], '0600')
 
     def test_unrelated_workspace_and_target_files_preserved(self):
         path, original, _ = self.prepare()

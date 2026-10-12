@@ -16,6 +16,10 @@ import pcs_recovery_manifest as manifest
 from pcs_reinstall_restore import plan_restore, recovered_settings, INSTALL_CONFIG
 
 MARKER = '.pcs-recovery-workspace.json'
+# Intended activation modes from the owning installer/manual setup contracts.
+# Staging itself always remains 0600, including these non-secret configurations.
+READABLE_CONFIGS = {manifest.MODE, 'etc/pcs/wireguard-management.conf',
+                    'etc/pcs/switch-monitor.json', 'etc/pcs/power-monitor.json'}
 SERVICES = {
     'uplinks': ['pcs-uplink-manager.service'],
     'management': ['pcs-uplink-management.service'],
@@ -262,8 +266,8 @@ def build_plan(archive, request, target=None, expected_sha256=None):
                 else:
                     existing = 'identical'
         files.append(dict(path=path, sha256=manifest.digest(payload[path]), size=len(payload[path]),
-                          stage_mode='0600', intended_owner='root:root',
-                          install_mode='0644' if path == 'etc/pcs/wireguard-management.conf' else '0600',
+                          stage_mode='0600', intended_owner='pi:pi' if path == INSTALL_CONFIG else 'root:root',
+                          install_mode='0644' if path in READABLE_CONFIGS else '0600',
                           origin='explicit-request' if path == manifest.MODE and inventory['topology']['mode'] == 'unknown' else 'archive',
                           target_status=existing))
     if target is not None:
