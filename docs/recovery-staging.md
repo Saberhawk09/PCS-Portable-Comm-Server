@@ -120,7 +120,11 @@ The plan lists every staged file/hash, original/request origin, intended ownersh
 and permission, profiles, component packages/services, excluded files and conflicts.
 Dependencies are installation requirements, not a claim they are installed in the
 target. No generated firewall, service unit, runtime counter or activation state is
-restored. Saved installer settings are parsed without shell execution and staged
+restored. For VLANs the plan explicitly requires the generated guard rules, guard
+service and NetworkManager ordering drop-in. Those need reviewed physical management
+identities and must not be silently replayed from an old backup. Cellular profiles
+also identify ModemManager as a dependency; no modem/session is started. Saved
+installer settings are parsed without shell execution and staged
 for review; never source them automatically from the staging directory.
 
 Stage writes only `<workspace>/staged/rootfs` and its receipt. The workspace must

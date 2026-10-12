@@ -44,6 +44,13 @@ class RecoveryStageTests(unittest.TestCase):
                 self.assertFalse(plan['activation'])
                 self.assertIn('acl', plan['dependencies'])
                 self.assertIn('pcs-uplink-manager.service', plan['required_services'])
+                self.assertIn('NetworkManager.service', plan['required_services'])
+                if mode == 'vlan':
+                    self.assertIn('pcs-vlan-guard.service', plan['required_services'])
+                    self.assertIn('etc/pcs/vlan-guard.nft', plan['required_generated_files'])
+                if cellular:
+                    self.assertIn('modemmanager', plan['dependencies'])
+                    self.assertIn('ModemManager.service', plan['required_services'])
                 self.assertNotIn(SECRET, json.dumps(plan))
                 self.assertEqual(recovery.stage(path, plan, workspace), 'staged-inactive')
                 recovery.validate_generation(workspace / 'staged', plan, payload)

@@ -118,6 +118,10 @@ def inventory(records, payload):
     if mode not in ('legacy', 'vlan'):
         mode = 'unknown' if MODE not in payload else 'invalid'
     dependencies = {'python3', 'network-manager'}
+    if mode == 'vlan':
+        dependencies.update(('nftables', 'iproute2'))
+    if any(p['type'] == 'gsm' for p in profiles):
+        dependencies.add('modemmanager')
     configurations = []
     for path, (component, packages) in CONFIGS.items():
         if path in payload:

@@ -221,6 +221,16 @@ def build_plan(archive, request, target=None, expected_sha256=None):
         raise ValueError('captured component configuration failed offline validation; check required packages and private configuration') from exc
     paths.update(p['path'] for p in selected.values())
     paths.add(manifest.MODE)
+    services.add('NetworkManager.service')
+    generated = []
+    if request['mode'] == 'vlan':
+        packages.update(('nftables', 'iproute2'))
+        services.add('pcs-vlan-guard.service')
+        generated = ['etc/pcs/vlan-guard.nft', 'etc/systemd/system/pcs-vlan-guard.service',
+                     'etc/systemd/system/NetworkManager.service.d/pcs-vlan-guard.conf']
+    if any(p['type'] == 'gsm' and p['path'] in paths for p in inventory['profiles']):
+        packages.add('modemmanager')
+        services.add('ModemManager.service')
     if manifest.MODE not in payload:
         # Explicit operator input, never inferred from the machine or adapters.
         payload[manifest.MODE] = (request['mode'] + '\n').encode()
@@ -277,6 +287,7 @@ def build_plan(archive, request, target=None, expected_sha256=None):
                 profiles=[p for p in inventory['profiles'] if p['path'] in paths],
                 dependencies=sorted(packages | {'python3', 'network-manager'}),
                 required_services=sorted(services), exclusions=excluded,
+                required_generated_files=generated,
                 conflicts=sorted(set(conflicts)), activation=False,
                 gates=manifest.EXCLUSIONS)
     return plan, {path: payload[path] for path in paths}
