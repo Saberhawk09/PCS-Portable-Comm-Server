@@ -4,9 +4,9 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
-### Proposed v2.2.1 — draft, not published
+## [2.2.1] - 2026-10-14
 
-- Recovery development candidate: add a versioned, verified manifest inside new
+- Add a versioned, verified manifest inside new
   private backups and an explicit offline inspect/plan/stage/validate workflow for
   legacy/VLAN profiles and newer PCS policies. Preserve old archive reading and
   existing live restore selection. No automatic activation or physical recovery
@@ -37,9 +37,11 @@ verified, and the final appliance self-test had no failures. These are dated
 results, not new tests of every release component. Admin collection still takes
 roughly 7–9 seconds in the background.
 
-Outstanding: complete candidate validation and review, current recovery coverage,
-cold boot without preferred WANs, actual Mini startup, cellular Internet/recovery,
-broader physical isolation, and current-topology qualification. Android v0.3.0 is
+Release validation and deployment evidence are recorded in
+[v2.2.1 validation](docs/v2.2.1-validation.md), separately from the dated evidence above.
+Outstanding: complete recovery activation, cold boot without preferred WANs,
+actual Mini startup, cellular Internet/recovery, broader physical isolation,
+and current-topology qualification. Android v0.3.0 is
 a separate local candidate with recorded build checks and pending phone acceptance;
 it is not included in this branch or claimed as a published asset. See
 [release readiness](docs/v2.2.1-release-readiness.md).

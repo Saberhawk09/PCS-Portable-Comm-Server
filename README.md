@@ -41,20 +41,22 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
 
-Version 2.2.0 adds optional [managed-switch VLAN networking](docs/managed-switch-vlan-migration.md),
+Version 2.2.1 adds fast background dashboard snapshots, SNMP credential/cache
+access fixes, conservative startup/readiness refinements, and
+[inactive recovery preparation](docs/recovery-staging.md). It builds on the
+v2.2.0 optional [managed-switch VLAN networking](docs/managed-switch-vlan-migration.md),
 [read-only switch monitoring](docs/managed-switch-monitoring.md), and
 [authenticated bandwidth controls](docs/bandwidth-manager.md). Existing
 installations retain their legacy defaults unless migrated explicitly.
-See the [release validation record](docs/v2.2.0-validation.md) for software
+See the [release validation record](docs/v2.2.1-validation.md) for software
 coverage and the remaining operator-supervised field checks.
 
 The current appliance configuration uses native Pi Ethernet as a tagged trunk:
 `eth0.10` is the VLAN 10 LAN and `eth0.20` is the VLAN 20 Ethernet WAN. The parent
 `eth0` has no IP address. Legacy installations still use untagged `eth0` for LAN
 and a separately identified USB Ethernet WAN. Neither configuration is selected
-merely by updating source. The proposed v2.2.1 dashboard/SNMP/startup changes and
-separate Android v0.3.0 candidate are unpublished; see
-[release preparation](docs/v2.2.1-release-readiness.md).
+merely by updating source. Android v0.3.0 remains a separate local candidate;
+this Linux release does not publish an APK or claim real-phone acceptance.
 
 PCS software is currently beta-quality but working. Pi-side installs are repeatable, and the base installer configures the core network, 
 storage, time, monitoring, WWAN/GNSS, and optional APRS, Pi-Star, and Meshtastic support. Modem firmware or USB-composition changes, credentials, 
