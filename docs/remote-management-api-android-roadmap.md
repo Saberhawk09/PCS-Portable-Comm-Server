@@ -114,6 +114,16 @@ bundles the production-signed Companion v0.2.0 APK with warning/fault summaries
 and authenticated automatic-backup settings. Credential persistence/revocation
 testing and broader device-version coverage remain open.
 
+As of October 12, Companion v0.3.0 is a separate unpublished local candidate at
+`c3046fd`, based on dashboard/SNMP/startup candidate `86b072b`. It accepts the
+optional `health.freshness` field and improves stale/offline and nested diagnostic
+presentation. The October 11 build record reports 15 JVM tests, lint, debug and
+minified release builds, and existing-key signature verification passing. Phone
+layout, upgrade/pairing retention, token lifecycle and LAN/WireGuard acceptance
+remain open. This maintenance branch retains the older Android implementation;
+the Android candidate has not been merged here. See
+[release readiness](v2.2.1-release-readiness.md) before choosing release contents.
+
 The first overview should answer whether PCS is healthy without pretending
 that planned sensors exist. It can show only currently measured data:
 

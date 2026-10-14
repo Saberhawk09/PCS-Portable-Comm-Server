@@ -125,6 +125,9 @@ class FakeNM:
             return ''
         return min(active, key=lambda o: self.applied(o)[0][family]['route-metric']).interface
 
+    def cellular_ready(self, u):
+        return True
+
     def activate(self, u):
         self.activated.append(u.id)
         self.obs[u.id] = m.Observation(interface='wwan0', device='/device/cellular', profile=u.profile, session='/active/new', link=True, address=True, internet=True)
@@ -137,6 +140,29 @@ class FakeNM:
         self.renewed.append(u.id)
         settings, _ = self.applied(o)
         self.reapply(o, {'ipv4': {'route-metric': settings['ipv4']['route-metric'] + 1}})
+
+
+class ModemReadinessTests(unittest.TestCase):
+    def test_only_idle_registered_matching_modem_is_ready(self):
+        nm = m.NetworkManager.__new__(m.NetworkManager)
+        nm.manager = Mock(); nm.manager.GetDevices.return_value = ['/device/modem']
+        nm.iface = Mock(); nm.iface.return_value.GetConnectionByUuid.return_value = '/settings/cellular'
+        nm.bus = Mock(); nm.dbus = Mock()
+        modem_props = nm.dbus.Interface.return_value
+        values = {'DeviceType': 8, 'Managed': True, 'State': 30,
+                  'AvailableConnections': ['/settings/cellular'], 'Udi': '/org/freedesktop/ModemManager1/Modem/0'}
+        nm.prop = lambda path, iface, name: values[name]
+        for state in range(12):
+            modem_props.Get.return_value = state
+            self.assertEqual(nm.cellular_ready(config().uplinks[-1]), state == 8)
+        modem_props.Get.return_value = 8
+        for field, value in [('State', 100), ('Managed', False), ('AvailableConnections', []), ('Udi', '/unknown')]:
+            old = values[field]; values[field] = value
+            self.assertFalse(nm.cellular_ready(config().uplinks[-1])); values[field] = old
+        nm.manager.GetDevices.return_value = ['/device/a', '/device/b']
+        self.assertFalse(nm.cellular_ready(config().uplinks[-1]))
+        nm.manager.GetDevices.side_effect = RuntimeError('D-Bus restarting')
+        self.assertFalse(nm.cellular_ready(config().uplinks[-1]))
 
 
 class PendingModemTests(unittest.TestCase):

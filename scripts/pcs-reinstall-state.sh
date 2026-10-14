@@ -45,6 +45,7 @@ extract_state() {
         exit 1
     fi
     unset passphrase
+    sudo python3 "${REPO_DIR}/scripts/pcs_recovery_manifest.py" inspect "${encrypted_temp}" >/dev/null
     sudo python3 "${REPO_DIR}/scripts/pcs_reinstall_archive.py" "${encrypted_temp}" "${destination}" --check
     sudo python3 "${REPO_DIR}/scripts/pcs_reinstall_archive.py" "${encrypted_temp}" "${destination}"
     sudo rm -f -- "${encrypted_temp}"
@@ -116,6 +117,8 @@ export_state() {
     local passphrase_confirm
     local path
     local count=0
+    local source_commit source_release
+    local -a manifest_flags=()
 
     [[ "${archive}" == /* ]] || { echo "ERROR: Export path must be absolute." >&2; exit 2; }
     [[ "${archive}" == *.tar.gz.enc ]] || { echo "ERROR: Export filename must end in .tar.gz.enc." >&2; exit 2; }
@@ -163,8 +166,17 @@ export_state() {
     [[ "${passphrase}" == "${passphrase_confirm}" ]] \
         || { echo "ERROR: Passphrases did not match." >&2; exit 2; }
 
+    source_commit="$(git -C "${REPO_DIR}" rev-parse HEAD)"
+    source_release="$(git -C "${REPO_DIR}" describe --tags --always)"
+    if [[ -n "$(git -C "${REPO_DIR}" status --porcelain)" ]]; then
+        manifest_flags+=(--dirty)
+    fi
+
     if ! sudo tar --create --gzip --acls --xattrs --numeric-owner --no-recursion \
             --directory=/ --null --files-from="${list_file}" --file=- \
+            | sudo env TMPDIR=/run python3 "${REPO_DIR}/scripts/pcs_recovery_manifest.py" seal-stream \
+                --commit "${source_commit}" --release "${source_release}" \
+                --machine-id-file /etc/machine-id "${manifest_flags[@]}" \
             | PCS_REINSTALL_PASSPHRASE="${passphrase}" openssl enc -aes-256-cbc -pbkdf2 -salt \
                 -pass env:PCS_REINSTALL_PASSPHRASE \
             | sudo tee "${archive}" >/dev/null; then
@@ -190,7 +202,7 @@ export_state() {
 
     echo "Created credential-bearing reinstall archive: ${archive}"
     echo "Created checksum: ${archive}.sha256"
-    echo "Encrypted archive decrypt/tar verification passed."
+    echo "Versioned manifest and encrypted archive decrypt/tar verification passed."
     echo "Archived ${count} present state paths. Keep the archive, checksum, and passphrase separate from the SD card being wiped."
 }
 

@@ -327,7 +327,7 @@ class TimedCache:
 AUTH = AuthManager(CREDENTIAL_FILE)
 SESSIONS = SessionStore(load_session_key(SESSION_KEY_FILE))
 LOGIN_LIMITER = LoginLimiter()
-PUBLIC_CACHE = TimedCache()
+PUBLIC_CACHE = TimedCache(ttl=1)
 
 PUBLIC_FIELDS = {
     "starlink": {'available', 'downlink_bps', 'uplink_bps', 'latency_ms', 'obstructed', 'sample_age_seconds', 'state', 'status', 'alerts_summary', 'configured', 'obstruction_percent', 'packet_loss_percent', 'uptime_seconds'},
@@ -866,7 +866,7 @@ def render_public_page(data: dict) -> bytes:
     <main><section class="hero"><div class="hero-main"><p class="eyebrow">Portable Communication Server</p><h1>Field Network Status</h1><p>Local services, communications, position, time, and storage information for devices connected on site.</p></div></section>
     {error_html}<section class="overview"><div><h2>Overall system health</h2><p>Last refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
     <section class="grid public-grid">{''.join(cards)}</section>{service_directory}</main>"""
-    return document("PCS Field Network Status", body, public_theme=True, footer='PCS local field network interface · <a href="/admin/">Admin Login</a>')
+    return document("PCS Field Network Status", body, public_theme=True, footer='PCS local field network interface · <a href="/admin/">Admin Login</a>').replace(b"</head>", b'<meta http-equiv="refresh" content="10"></head>')
 
 
 def render_metric(metric: dict) -> str:

@@ -385,13 +385,14 @@ echo
 WIFI_CONNECTED=0
 CELLULAR_CONNECTED=0
 MANAGED_CONNECTED_IFACES="$(PYTHONPATH=/usr/local/lib/pcs python3 - <<'PYUPLINK' 2>/dev/null || true
-from pcs_uplink_manager import CONFIG, cached_status, load_config
+from pcs_uplink_manager import CONFIG, cached_status
 if CONFIG.exists():
-    configured = {u.id for u in load_config().uplinks}
+    # The fresh root-owned runtime cache already contains only configured WANs.
+    # The unprivileged self-test must not reopen root-only uplinks.json.
     status = cached_status()
     if status.get('available'):
         print(' '.join(u['interface'] for u in status['uplinks']
-                       if u['id'] in configured and u.get('link') and u.get('address')))
+                       if u.get('interface') and u.get('link') and u.get('address')))
 PYUPLINK
 )"
 
@@ -950,11 +951,11 @@ else
     fi
 
     if command_exists curl && command_exists python3 \
-        && curl --insecure --fail --silent --show-error --max-time 10 \
+        && curl --insecure --fail --silent --show-error --max-time 2 \
             "${PCS_STATS_API_URL}" \
         | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data["access"] == "public"; assert data["details"] is None; serialized=json.dumps(data).lower(); assert all(term not in serialized for term in ("password", "private key", "preshared key", "access token", "coordinates"))' \
             >/dev/null 2>&1; then
-        pass "PCS Stats API public response passes the local redaction check"
+        pass "PCS Stats API snapshot responds within 2 seconds and passes the local redaction check"
     else
         fail "PCS Stats API public response failed the local redaction check"
     fi
@@ -1784,8 +1785,8 @@ else
 fi
 
 PCS_CELLULAR_PROFILE_ACTIVE="$(pcs_cellular_profile_name)"
-if [[ -r /etc/pcs/uplinks.json ]]; then
-    if /usr/local/sbin/pcs-uplink-manager --check; then
+if [[ -e /etc/pcs/uplinks.json ]]; then
+    if sudo -n /usr/local/sbin/pcs-uplink-manager --check; then
         pass "Generalized uplink configuration is valid (optional WAN absence is informational)"
     else
         warn "Uplink configuration or observer needs attention; LAN checks remain independent"
@@ -1793,8 +1794,20 @@ if [[ -r /etc/pcs/uplinks.json ]]; then
     if service_active pcs-cellular-fallback.service; then
         fail "Legacy fallback must not run alongside the uplink manager"
     fi
+    if service_enabled pcs-cellular-fallback.service; then
+        fail "Legacy fallback must remain disabled with the uplink manager"
+    else
+        pass "Legacy fallback service is disabled"
+    fi
     if ! service_active pcs-uplink-manager.service; then
-        warn "Uplink health and usage observer is not active"
+        fail "Generalized uplink manager is not active"
+    else
+        pass "Generalized uplink manager is active"
+    fi
+    if ! service_enabled pcs-uplink-manager.service; then
+        fail "Generalized uplink manager is not enabled"
+    else
+        pass "Generalized uplink manager is enabled"
     fi
 fi
 if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_PROFILE_ACTIVE}"; then
@@ -1807,7 +1820,7 @@ if nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq -- "${PCS_CELLULAR_P
         warn "Cellular profile autoconnect is not disabled"
     fi
 
-    if [[ ! -r /etc/pcs/uplinks.json ]]; then
+    if [[ ! -e /etc/pcs/uplinks.json ]]; then
     if [[ -x "${PCS_CELLULAR_FALLBACK_HELPER}" ]]; then
         pass "Cellular fallback helper is installed"
     else

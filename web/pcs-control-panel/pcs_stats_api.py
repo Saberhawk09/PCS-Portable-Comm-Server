@@ -315,7 +315,7 @@ def sanitize_switch_diagnostics(network):
         return {}
     network = {k: network[k] for k in ('wan_startup', 'switch_monitor') if k in network}
     for key, fields in {
-        "wan_startup": {"held", "remaining_seconds", "state"},
+        "wan_startup": {"held", "remaining_seconds", "state", "cellular_ready"},
         "switch_monitor": {"enabled", "state", "reachable", "trunk_available", "age_seconds", "state_seconds", "last_successful_poll", "last_transition", "speed"},
     }.items():
         if key in network:
@@ -324,6 +324,10 @@ def sanitize_switch_diagnostics(network):
             states = {"up", "down", "administratively_down", "unknown", "stale", "monitor_unavailable", "WAN Starting", "fallback_allowed"}
             if isinstance(value, dict) and isinstance(value.get("state"), str) and value["state"] in states:
                 network[key]["state"] = value["state"]
+            reasons = {"preferred_wan_recovered", "startup_deadline_elapsed", "startup_not_held",
+                       "physical_wan_disconnected", "waiting_for_preferred_wan", "preferred_wan_healthy", "waiting_for_modem"}
+            if key == "wan_startup" and isinstance(value, dict) and isinstance(value.get("reason"), str) and value["reason"] in reasons:
+                network[key]["reason"] = value["reason"]
     return network
 
 
@@ -339,6 +343,9 @@ def sanitize_wan_usage(value):
 def api_document(resource: str, dashboard: dict) -> dict:
     sections = sanitize_sections(dashboard)
     generated_at = utc_timestamp(dashboard.get("generated_at"))
+    snapshot = dashboard.get("snapshot", {})
+    state = snapshot.get("state") if isinstance(snapshot, dict) else None
+    freshness = {"freshness": state} if state in {"fresh", "stale", "unavailable"} else {}
     if resource == "status":
         return {
             "api_version": "v1",
@@ -347,6 +354,7 @@ def api_document(resource: str, dashboard: dict) -> dict:
             "generated_at": generated_at,
             "health": {
                 "severity": severity(dashboard.get("overall")),
+                **freshness,
                 "offline": bool(dashboard.get("offline", False)),
             },
             "data": {**sections, "alerts": sanitize_alerts(dashboard.get("alerts", []))},
@@ -361,7 +369,7 @@ def api_document(resource: str, dashboard: dict) -> dict:
         "schema_version": "1.0",
         "resource": resource,
         "generated_at": generated_at,
-        "health": {"severity": severity(section.get("status"))},
+        "health": {"severity": "warn" if state in {"stale", "unavailable"} else severity(section.get("status")), **freshness},
         "data": {key: value for key, value in section.items() if key != "status"},
         "details": None,
         "access": "public",
@@ -609,11 +617,16 @@ def add_authenticated_details(document: dict, resource: str, dashboard: dict) ->
     if resource == "status":
         document["health"]["severity"] = severity(dashboard.get("overall"))
         document["health"]["offline"] = bool(dashboard.get("offline", False))
+    snapshot = dashboard.get("snapshot", {})
+    if isinstance(snapshot, dict) and snapshot.get("state") in {"stale", "unavailable"}:
+        document["health"]["freshness"] = snapshot["state"]
+        if document["health"].get("severity") == "ok":
+            document["health"]["severity"] = "warn"
     return document
 
 
 class StatusCollector:
-    def __init__(self, dispatcher: str = DISPATCHER, timeout: int = COLLECT_TIMEOUT, ttl: int = 10):
+    def __init__(self, dispatcher: str = DISPATCHER, timeout: int = COLLECT_TIMEOUT, ttl: int = 1):
         self.dispatcher = dispatcher
         self.timeout = timeout
         self.ttl = ttl

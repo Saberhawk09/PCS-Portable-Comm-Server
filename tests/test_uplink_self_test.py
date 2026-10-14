@@ -39,3 +39,37 @@ class UplinkSelfTest(unittest.TestCase):
         output = self.run_network("", "")
         self.assertNotIn("WARN", output)
         self.assertIn("offline LAN only", output)
+
+    @unittest.skipIf(os.name == 'nt', 'requires POSIX file permissions')
+    def test_private_config_uses_manager_and_detects_controller_failures(self):
+        source = (ROOT / 'scripts/pcs-self-test.sh').read_text()
+        section = source.split('PCS_CELLULAR_PROFILE_ACTIVE="$(pcs_cellular_profile_name)"', 1)[1].split('if nmcli -t -f NAME', 1)[0]
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / 'uplinks.json'
+            config.write_text('{}')
+            config.chmod(0)
+            section = section.replace('/etc/pcs/uplinks.json', str(config))
+            section = section.replace('sudo -n /usr/local/sbin/pcs-uplink-manager --check', 'true')
+            prelude = 'pass() { echo "PASS $*"; }; warn() { echo "WARN $*"; }; fail() { echo "FAIL $*"; }; '
+            for active, enabled, legacy in [(True, True, False), (False, True, False), (True, False, False), (True, True, True)]:
+                functions = 'service_active() { [ "$1" = pcs-uplink-manager.service ] && ' + ('true' if active else 'false') + '; }; '
+                functions += 'service_enabled() { if [ "$1" = pcs-uplink-manager.service ]; then ' + ('true' if enabled else 'false') + '; else ' + ('true' if legacy else 'false') + '; fi; }; '
+                result = subprocess.run(['bash', '-c', prelude + functions + section], capture_output=True, text=True, check=True)
+                self.assertIn('Generalized uplink configuration is valid', result.stdout)
+                self.assertEqual('FAIL' in result.stdout, not active or not enabled or legacy)
+            config.chmod(0o600)
+
+    def test_managed_interface_detection_uses_cache_without_reading_private_config(self):
+        import contextlib
+        import io
+        import sys
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        source = (ROOT / 'scripts/pcs-self-test.sh').read_text().split("<<'PYUPLINK'", 1)[1].split('\n', 1)[1].split('\nPYUPLINK', 1)[0]
+        for available in (True, False):
+            module = SimpleNamespace(CONFIG=SimpleNamespace(exists=lambda: True),
+                cached_status=lambda: {'available': available, 'uplinks': [{'interface': 'eth0.20', 'link': True, 'address': True}]})
+            output = io.StringIO()
+            with patch.dict(sys.modules, {'pcs_uplink_manager': module}), contextlib.redirect_stdout(output):
+                exec(source, {})
+            self.assertEqual(output.getvalue().strip(), 'eth0.20' if available else '')

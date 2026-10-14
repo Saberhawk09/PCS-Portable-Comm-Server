@@ -30,9 +30,14 @@ ALLOWED_ROOTS = (
 
 
 def normalized(name: str) -> str:
+    if "\\" in name or ":" in name or any(ord(c) < 32 or ord(c) == 127 for c in name):
+        raise ValueError("unsafe archive path encoding")
     path = PurePosixPath(name)
     if path.is_absolute() or not path.parts or any(part in ("", ".", "..") for part in path.parts):
         raise ValueError(f"unsafe archive path: {name}")
+    reserved = {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}
+    if any(part.endswith((' ', '.')) or part.split('.')[0].upper() in reserved for part in path.parts):
+        raise ValueError("unsafe cross-platform archive path")
     value = path.as_posix().rstrip("/")
     if not any(value == root or value.startswith(root + "/") or root.startswith(value + "/") for root in ALLOWED_ROOTS):
         raise ValueError(f"archive path is outside PCS recovery scope: {name}")
@@ -44,7 +49,9 @@ def members(archive: Path) -> list[tuple[tarfile.TarInfo, str]]:
     seen = set()
     total_size = 0
     with tarfile.open(archive, "r:gz") as stream:
-        for member in stream.getmembers():
+        for member in stream:
+            if len(result) >= 20000:
+                raise ValueError("too many archive entries")
             name = normalized(member.name)
             if not (member.isdir() or member.isfile()):
                 raise ValueError(f"archive links/devices are forbidden: {member.name}")
@@ -62,14 +69,22 @@ def members(archive: Path) -> list[tuple[tarfile.TarInfo, str]]:
             result.append((member, name))
     if not result:
         raise ValueError("archive contains no PCS recovery state")
+    files = {name for member, name in result if member.isfile()}
+    for _, name in result:
+        if any(parent.as_posix() in files for parent in PurePosixPath(name).parents):
+            raise ValueError("archive file conflicts with a parent directory")
     return result
 
 
 def extract(archive: Path, destination: Path) -> int:
     selected = members(archive)
+    if any(path.is_symlink() for path in (destination, *destination.parents)):
+        raise ValueError("extraction path must not contain symlinks")
     info = destination.stat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
         raise ValueError("destination must be a root-owned mode 0700 directory")
+    if any(destination.iterdir()):
+        raise ValueError("extraction destination must be empty")
     with tarfile.open(archive, "r:gz") as stream:
         for member, name in selected:
             target = destination / name

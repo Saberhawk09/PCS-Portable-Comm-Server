@@ -112,9 +112,15 @@ Record these values from the physical PCS before treating this file as final:
 | Idle 12 V / 5 V rail measurements | Not yet recorded |
 | Peak-load 12 V / 5 V rail measurements | Not yet recorded |
 | Protective-earth bonding points | Not yet recorded |
-| Input INA226 address/shunt/polarity | Not installed / not yet recorded |
-| 5V INA226 address/shunt/polarity | Not installed / not yet recorded |
-| GPIO13 buzzer pull-up and polarity | Not installed / not yet recorded |
+| Input INA226 address/shunt/polarity | Commissioned at `0x40`, configured 0.002-ohm / 20A; physical comparison and wiring record incomplete |
+| 5V INA226 address/shunt/polarity | Commissioned at `0x4c`, configured 0.002-ohm / 20A; physical comparison and wiring record incomplete |
+| Main 12V INA226 address/shunt/polarity | Commissioned at `0x44`, configured 0.002-ohm / 20A; physical comparison and wiring record incomplete |
+| Starlink INA226 address/shunt/polarity | Commissioned at `0x48`, configured 0.002-ohm / 20A; physical comparison and wiring record incomplete |
+| GPIO13 buzzer pull-up and polarity | Installed active-low buzzer; final pull-up, routing and photographs still to record |
+
+Commissioned/configured values above come from the existing power profile and
+dated operating records; they are not new meter measurements. Complete the
+[as-built checklist](as-built-checklist.md) before treating this record as final.
 
 ## Converter Notes
 

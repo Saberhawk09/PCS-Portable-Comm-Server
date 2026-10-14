@@ -278,20 +278,31 @@ class StartupGrace:
         # A configuration edit during a boot cannot lengthen an existing window.
         saved['deadline'] = min(saved.get('deadline', config.startup_grace_seconds), config.startup_grace_seconds)
 
-    def update(self, observations, confirmed_usable, elapsed, suppressed=()):
+    def update(self, observations, confirmed_usable, elapsed, suppressed=(), physical_down_confirmed=False):
         cfg = self.config
         preferred = next((u for u in cfg.uplinks if u.id == cfg.startup_grace_uplink and u.type in ('ethernet', 'vlan')), None)
         cells = [u for u in cfg.uplinks if u.type == 'cellular' and u.activation == 'fallback']
         eligible = bool(preferred and any(u.priority > preferred.priority for u in cells))
         if confirmed_usable:
-            self.saved['closed'] = True
+            self.saved.update(closed=True, reason='preferred_wan_recovered')
         if elapsed is None or elapsed >= self.saved['deadline']:
-            self.saved['closed'] = True
+            self.saved.update(closed=True, reason='startup_deadline_elapsed')
         remaining = max(0, self.saved['deadline'] - elapsed) if elapsed is not None else 0
         held = bool(cfg.mode == 'auto' and eligible and cfg.startup_grace_enabled and cfg.startup_grace_seconds and
                     not self.saved.get('closed') and preferred.id not in suppressed and remaining)
+        # This bypass is reversible: reconnecting a booting WAN restores the
+        # remaining grace. Never persist a port-down event as a closed window.
+        preferred_sources = [u for u in cfg.uplinks if any(u.priority < c.priority for c in cells)]
+        known_failed = bool(preferred_sources) and all(
+            (o := observations.get(u.id)) is not None and not o.error
+            and o.internet is False and o.internet6 is False for u in preferred_sources)
+        bypass = bool(held and cfg.switch_assist and physical_down_confirmed and known_failed)
+        reason = self.saved.get('reason', 'startup_not_held')
+        if held:
+            reason = 'physical_wan_disconnected' if bypass else 'waiting_for_preferred_wan'
+        held = held and not bypass
         return dict(held=held, remaining_seconds=round(remaining, 1) if held else 0,
-                    state='WAN Starting' if held else 'fallback_allowed',
+                    state='WAN Starting' if held else 'fallback_allowed', reason=reason,
                     uplink=cfg.startup_grace_uplink)
 
 
@@ -536,6 +547,29 @@ class NetworkManager:
         if settings is None:
             settings, _ = self.applied(o)
         validate_vlan_settings(u, settings)
+
+    def cellular_ready(self, u):
+        """Read only: one idle NM modem matching the profile, registered with MM."""
+        try:
+            profile = str(self.iface(ROOT + '/Settings', BUS + '.Settings').GetConnectionByUuid(u.profile, timeout=5))
+            candidates = []
+            for device in self.manager.GetDevices(timeout=5):
+                dev = BUS + '.Device'
+                if int(self.prop(device, dev, 'DeviceType')) != 8:
+                    continue
+                if not self.prop(device, dev, 'Managed') or int(self.prop(device, dev, 'State')) != 30:
+                    continue
+                if profile not in [str(p) for p in self.prop(device, dev, 'AvailableConnections')]:
+                    continue
+                candidates.append(str(self.prop(device, dev, 'Udi')))
+            if len(candidates) != 1 or not candidates[0].startswith('/org/freedesktop/ModemManager1/Modem/'):
+                return False
+            service = 'org.freedesktop.ModemManager1'
+            properties = self.dbus.Interface(self.bus.get_object(service, candidates[0]), PROPS)
+            # MM_MODEM_STATE_REGISTERED = 8; searching, locked, busy and unknown wait.
+            return int(properties.Get(service + '.Modem', 'State', timeout=5)) == 8
+        except Exception:
+            return False
 
     def activate(self, u):
         # D-Bus activation returns the precise object created by this request.
@@ -843,7 +877,8 @@ class Controller:
         obs6 = {uid: replace(o, internet=o.internet6) for uid, o in obs.items()}
         desired6, _ = self.policy6.choose(obs6, now, self.state['suppressed'], failures)
         confirmed_usable = any(self.config.startup_grace_uplink in p.good and now - p.good[self.config.startup_grace_uplink] >= self.config.recovery_seconds for p in (self.policy, self.policy6))
-        startup = self.startup_grace.update(obs, confirmed_usable, boot_elapsed(), self.state['suppressed'])
+        startup = self.startup_grace.update(obs, confirmed_usable, boot_elapsed(), self.state['suppressed'],
+                                           self.config.startup_grace_uplink in failures)
         if startup['held'] and any(u.id == activate and u.type == 'cellular' for u in self.config.uplinks):
             activate = None
         if desired and desired6:
@@ -856,10 +891,19 @@ class Controller:
             if self.config.mode == 'auto':
                 if activate:
                     u = next(u for u in self.config.uplinks if u.id == activate)
-                    self.policy.retry_at[u.id] = now + 60
                     # Recheck immediately; never adopt an existing activation.
-                    fresh = self.nm.observe(replace(self.config, uplinks=(u,)))[u.id]
-                    if not fresh.session and not fresh.error:
+                    ready = True
+                    if self.config.switch_assist and u.type == 'cellular':
+                        usable_preferred = any(p.priority < u.priority and not obs[p.id].error
+                                               and (obs[p.id].internet is True or obs[p.id].internet6 is True)
+                                               for p in self.config.uplinks)
+                        ready = not usable_preferred and self.nm.cellular_ready(u)
+                        startup['cellular_ready'] = ready
+                        if not ready:
+                            startup['reason'] = 'preferred_wan_healthy' if usable_preferred else 'waiting_for_modem'
+                    fresh = self.nm.observe(replace(self.config, uplinks=(u,)))[u.id] if ready else None
+                    if fresh is not None and not fresh.session and not fresh.error:
+                        self.policy.retry_at[u.id] = now + 60
                         session = self.nm.activate(u)
                         self.state['owned'][u.id] = {'session': session, 'profile': u.profile}
                         self.save()

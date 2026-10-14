@@ -269,7 +269,8 @@
         "required": ["severity"],
         "properties": {
           "severity": {"type": "string", "enum": ["ok", "warn", "bad"]},
-          "offline": {"type": "boolean"}
+          "offline": {"type": "boolean"},
+          "freshness": {"type": "string", "enum": ["fresh", "stale", "unavailable"], "description": "Snapshot freshness; unavailable means initial collection has not completed."}
         },
         "additionalProperties": false
       },

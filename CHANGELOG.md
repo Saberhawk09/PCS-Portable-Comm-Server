@@ -4,6 +4,48 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-10-14
+
+- Add a versioned, verified manifest inside new
+  private backups and an explicit offline inspect/plan/stage/validate workflow for
+  legacy/VLAN profiles and newer PCS policies. Preserve old archive reading and
+  existing live restore selection. No automatic activation or physical recovery
+  acceptance is included; see [inactive recovery preparation](docs/recovery-staging.md).
+
+- Serve public/admin dashboard and Stats API requests from separate atomic
+  background snapshots. Keep a single collector writer, terminate timed-out
+  collector process groups, return a loading state before the first snapshot,
+  and mark old data stale without replacing its original collection time.
+- Add optional API `health.freshness`; memoize and batch collection work, and
+  use fresh uplink health rather than an unrelated hostname ping for Internet
+  availability. Background collection no longer blocks HTTP requests.
+- Complete the existing D-Link SNMP monitor's restricted credential/cache access:
+  support systemd's read-only credential mount and grant explicit root ACL access
+  to the private dynamic-user runtime directory. Polling itself shipped in v2.2.0.
+- Refine startup policy so a verified, debounced physical WAN disconnect can
+  release remaining grace only when all preferred IPv4/IPv6 observations are
+  known failures. Reconnection or unknown state restores remaining absolute grace.
+  Wait for one compatible registered idle modem without consuming activation
+  backoff; retain ownership protection and healthy-IPv6 suppression of cellular.
+- Correct uplink self-test configuration/route detection for protected root-owned
+  state while retaining public API redaction checks.
+
+Recorded candidate evidence: 185 combined Linux tests and later focused self-test
+checks passed in the October 10–11 commissioning task; HTTP responses were about
+0.24 seconds, port mapping and limited IPv4 HTTP/SNMP management isolation were
+verified, and the final appliance self-test had no failures. These are dated
+results, not new tests of every release component. Admin collection still takes
+roughly 7–9 seconds in the background.
+
+Release validation and deployment evidence are recorded in
+[v2.2.1 validation](docs/v2.2.1-validation.md), separately from the dated evidence above.
+Outstanding: complete recovery activation, cold boot without preferred WANs,
+actual Mini startup, cellular Internet/recovery, broader physical isolation,
+and current-topology qualification. Android v0.3.0 is
+a separate local candidate with recorded build checks and pending phone acceptance;
+it is not included in this branch or claimed as a published asset. See
+[release readiness](docs/v2.2.1-release-readiness.md).
+
 ## [2.2.0] - 2026-10-10
 
 - Add opt-in managed-switch networking: native Ethernet carries the PCS LAN

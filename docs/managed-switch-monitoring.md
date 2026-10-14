@@ -19,7 +19,11 @@ optional MIB objects may be omitted when that budget runs out. Responses are
 bounded to 64 KiB and interface inventories to 128 entries. Credentials are
 passed through a temporary private Net-SNMP configuration, never command-line
 arguments, environment values, or subprocess error output. The service uses a
-dynamic unprivileged user and a systemd credential. Its cache is readable by root.
+dynamic unprivileged user and a systemd credential. Its cache is readable by root through an explicit access ACL and inherited file ACL.
+This allows the capability-restricted root uplink service to read the dynamic-user
+cache without granting it a broad DAC override or exposing diagnostics to other users.
+The systemd read-only credential mount may use root-owned 0440; the original
+credential remains root-owned 0600.
 
 Physical state is independent of internet health: `up`, `down`,
 `administratively_down`, `unknown`, `stale`, or `monitor_unavailable`.
@@ -38,7 +42,17 @@ only **automatic cellular activation** when the configured preferred Ethernet/VL
 WAN has a lower priority number than a fallback cellular WAN. It does not suppress
 probes, ordinary selection/recovery, LAN services, manual activation, or a connected
 cellular session. Sustained healthy probes for the preferred WAN close the window.
-Link-down observations never extend or cancel it. Missing SNMP cannot extend it.
+When physical assistance is enabled, verified debounced port-down observations
+can temporarily release the hold if all preferred WANs have known failed IPv4
+and IPv6 health. Reconnecting the WAN or losing trustworthy physical evidence
+restores the remaining grace; link-down never extends the absolute deadline.
+Missing SNMP retains the bounded 240-second grace and cannot extend it.
+Existing 30-second health-failure qualification still applies. Automatic cellular
+activation then waits for exactly one idle, profile-compatible NetworkManager
+modem whose ModemManager state is registered. Waiting for readiness does not
+consume the activation retry backoff. Healthy preferred IPv6 also prevents an
+unnecessary paid cellular activation. Manual activations remain explicit and
+existing sessions are never adopted by this readiness check.
 Grace is independent of SNMP and can be enabled with monitoring disabled.
 
 Acceleration is separately opt-in, applies only to the configured preferred VLAN
@@ -135,7 +149,7 @@ printed backup directory for rollback. The credentials are not part of this arch
 backup=$(sudo mktemp -d /var/backups/pcs-switch-before.XXXXXX)
 sudo tar -C / -cpf "$backup/files.tar"   usr/local/lib/pcs/pcs_uplink_manager.py   usr/local/sbin/pcs-web-action   usr/local/lib/pcs-stats-api/pcs_stats_api.py etc/pcs/uplinks.json
 printf 'Rollback directory: %s\n' "$backup"
-sudo apt-get install snmp
+sudo apt-get install snmp acl
 sudo install -m 0755 scripts/pcs_switch_monitor.py /usr/local/lib/pcs/pcs_switch_monitor.py
 sudo install -m 0755 scripts/pcs_uplink_manager.py /usr/local/lib/pcs/pcs_uplink_manager.py
 sudo install -m 0755 scripts/pcs-web-action.sh /usr/local/sbin/pcs-web-action

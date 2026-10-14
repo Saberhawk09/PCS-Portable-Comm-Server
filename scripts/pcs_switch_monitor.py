@@ -84,14 +84,28 @@ def boot_id():
     return Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 
 
+def systemd_readonly_credential(path, info, directory):
+    # Newer systemd exposes service credentials as root-owned 0440 on a private,
+    # read-only credential mount. Keep ordinary source files strictly private.
+    if not directory or path.parent.parent != Path('/run/credentials'):
+        return False
+    parent = path.parent.lstat()
+    return (info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o440
+            and stat.S_ISDIR(parent.st_mode) and parent.st_uid == 0
+            and not parent.st_mode & 0o007
+            and bool(os.statvfs(path).f_flag & os.ST_RDONLY))
+
+
 def credential(cfg):
     directory = os.environ.get('CREDENTIALS_DIRECTORY')
     path = Path(directory) / 'community' if directory else Path(cfg['community_file'])
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_size > 32:
         raise ValueError('invalid credential file')
-    if os.name == 'posix' and (info.st_mode & 0o077 or info.st_uid not in (0, os.geteuid())):
-        raise ValueError('credential must be private and owned by root or the credential service')
+    if os.name == 'posix':
+        private = not info.st_mode & 0o077 and info.st_uid in (0, os.geteuid())
+        if not private and not systemd_readonly_credential(path, info, directory):
+            raise ValueError('credential must be private and owned by root or the credential service')
     value = path.read_text(encoding='ascii').strip()
     if not re.fullmatch('[A-Za-z0-9]{1,16}', value):
         raise ValueError('credential must be 1..16 alphanumeric characters')

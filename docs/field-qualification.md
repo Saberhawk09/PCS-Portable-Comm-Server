@@ -2,10 +2,22 @@
 
 This is an explicit, local, supervised qualification tool. It is not part of the
 base installer, web panel, power stress runner, uplink controller, or RF services.
-The fixed scenarios are `FQ-001` (cached observation), `FQ-002` (independent
-expiry of a harmless marker), and `FQ-301-v4` (guarded IPv4 Ethernet WAN fault).
-FQ-301-v4 has passed one commissioned, operator-supervised run, described below.
-Observation PASS alone does not qualify or authorize another WAN fault.
+The released harness contains `FQ-001` (cached observation), `FQ-002` (independent
+marker expiry), `FQ-301-v4` (preferred Ethernet IPv4 failure), `FQ-302` (automatic
+cellular ownership/release), and `FQ-303` (audited operator-session preservation).
+
+As of October 12, 2026, FQ-001/FQ-002 prerequisites and supervised FQ-301/FQ-302
+have recorded appliance passes on the legacy `eth0` LAN / `eth1` WAN topology.
+FQ-303 has software and disposable-guest validation, but no accepted commissioned
+live result. All were included in v2.1.2; older development status below is dated
+history. Observation PASS does not qualify or authorize another WAN fault.
+
+**Current VLAN topology is not qualified by this harness.** WAN admission still
+requires physical `eth1` and rejects VLAN metadata; direct LAN control requires
+`eth0`. The current appliance uses `eth0.10` LAN and `eth0.20` WAN. Preserve these
+fail-closed checks until a separately reviewed topology adaptation has disposable
+and supervised acceptance. Do not substitute interface names in the live commands
+below to bypass admission. See the [durable evidence index](qualification-evidence-index.md).
 
 ## Accepted commissioned FQ-301-v4 result
 
@@ -588,8 +600,10 @@ python3 tests/integration_qualification_wan_lifecycle.py --verify-boot
 
 Logs and private session evidence are retained in the workstation's qualification
 VM evidence directory. Review these local results before any appliance deployment.
-Commissioned WAN acceptance remains blocked by the independently verified field-LAN
-control/witness requirement and the downstream RF-recovery gate described above.
+At this historical development checkpoint, commissioned WAN acceptance was
+blocked by the independently verified field-LAN control/witness requirement.
+Later FQ-301/FQ-302 legacy-topology passes are recorded separately; RF recovery
+and current VLAN acceptance are still separate gates.
 
 ## Phase 1 acceptance history and reproducible tests
 
@@ -633,7 +647,10 @@ python3 tests/integration_qualification_safety.py -- --prepare-boot
 python3 tests/integration_qualification_safety.py -- --verify-boot
 ```
 
-| Gate | Required evidence before advancing |
+The following table preserves the Phase 1 checkpoint. Later legacy-topology
+acceptance supersedes its pending WAN entries; it does not qualify VLAN operation.
+
+| Gate | Required evidence before advancing at the Phase 1 checkpoint |
 | --- | --- |
 | Observation isolation | Real CLI cache fixtures: PASS/stale INCONCLUSIVE/known FAIL; services stay active; nft ruleset unchanged |
 | Evidence integrity | Typed canaries excluded, stale/wrong boot/nonfinite/malformed/timeout/truncation rejected; incomplete report cannot be claimed complete |
@@ -662,8 +679,8 @@ These pre-existing issues are documented here without changing PCS behavior:
 
 * `scripts/README.md` still describes older cellular-fallback behavior while current
   setup delegates to the uplink manager; qualify current ownership/suppression rules.
-* Power documentation contains historical planned-fourth-monitor and input-total
-  descriptions. Current power caches use commissioned four-role, source-aware accounting.
+* The October 12 documentation pass reconciled the older planned-fourth-monitor
+  and input-total descriptions with commissioned four-role, source-aware accounting.
 * Historical pending items in `docs/testing-uplinks.md` are not a current inventory
   of automated versus appliance acceptance.
 * `test-time-source-failover.sh` uses EXIT restoration; SIGKILL is outside that promise.
@@ -774,10 +791,12 @@ py -3 pcs_qualify_lan.py --session SESSION_ID --target 10.42.0.1 --source VERIFI
 9. Operator restores APRS normally and runs the full normal self-test/status.
    Do not proceed automatically to another fault.
 
-The follow-up manual-session-preservation scenario is design only: begin with a
+Historical FQ-302 design note, superseded by the implemented FQ-303 section below:
+the follow-up manual-session-preservation scenario was design only. Begin with a
 separately operator-started session, pin its exact activation identity, reproduce
 preferred-path failure/recovery, and assert that the same unowned activation stays
-alive. It requires separate review/authorization and is not a registered scenario.
+alive. FQ-303 is now registered, but its commissioned live acceptance still
+requires separate review, admission and authorization.
 
 ### Commissioned FQ-302 acceptance — 2026-10-02
 

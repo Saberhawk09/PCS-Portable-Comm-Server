@@ -1132,7 +1132,11 @@ w32tm /stripchart /computer:10.42.0.1 /samples:5 /dataonly
 ## Recovery installer
 
 `pcs-reinstall-state.sh --export ARCHIVE.tar.gz.enc` creates the single private
-reinstall bundle. `--extract ARCHIVE DIRECTORY` decrypts it into a temporary
+reinstall bundle, now including a versioned verified manifest. The separate
+`pcs_recovery_manifest.py inspect` and `pcs_recovery_stage.py` tools support
+explicit offline planning and inactive staging; they never activate networking.
+See [inactive recovery preparation](../docs/recovery-staging.md) for commands and
+the legacy archive/activation boundaries. `--extract ARCHIVE DIRECTORY` decrypts it into a temporary
 root-only staging directory after validating every member against the bounded
 PCS allowlist. `setup-pcs-reinstall-restore.sh --network TRUSTED_DIRECTORY` restores saved
 Wi-Fi profiles and the complete VPN policy/key material from an explicitly

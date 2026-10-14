@@ -47,6 +47,42 @@ class ReinstallArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ancestor"):
             archive.members(self.make_archive("etc"))
 
+    def test_rejects_file_directory_collision_before_extraction(self):
+        import io
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'collision.tar.gz'
+            with tarfile.open(path, 'w:gz') as stream:
+                for name in ('etc/pcs/parent', 'etc/pcs/parent/child'):
+                    info = tarfile.TarInfo(name)
+                    info.size = 1
+                    stream.addfile(info, io.BytesIO(b'x'))
+            with self.assertRaisesRegex(ValueError, 'parent directory'):
+                archive.members(path)
+
+    def test_rejects_cross_platform_separator_and_control_characters(self):
+        for name in ('etc/pcs/a\\b', 'etc/pcs/a\nb', 'etc/pcs/a:stream', 'etc/pcs/.. /escape', 'etc/pcs/CON'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                archive.members(self.make_archive(name))
+
+    def test_extract_refuses_existing_content_before_writes(self):
+        from unittest.mock import patch
+        import types
+        import stat
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp)
+            (destination / 'keep').write_bytes(b'keep')
+            # Ownership is synthetic here; actual POSIX modes are tested in the
+            # disposable recovery campaign. The content preflight is portable.
+            real_stat = Path.stat
+            def info(path, *args, **kwargs):
+                if path == destination:
+                    return types.SimpleNamespace(st_mode=stat.S_IFDIR | 0o700, st_uid=0)
+                return real_stat(path, *args, **kwargs)
+            source = self.make_archive('etc/pcs/test')
+            with patch.object(Path, 'stat', info), self.assertRaisesRegex(ValueError, 'empty'):
+                archive.extract(source, destination)
+            self.assertEqual((destination / 'keep').read_bytes(), b'keep')
+
 
 if __name__ == "__main__":
     unittest.main()

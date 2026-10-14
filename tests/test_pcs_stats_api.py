@@ -236,6 +236,16 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(public["password"], "/api/v1/admin/password")
         self.assertTrue(api.discovery_document(authenticated=True, action_authorized=True)["write_actions"])
 
+    def test_snapshot_freshness_survives_public_projection(self):
+        for state in ('fresh', 'stale', 'unavailable'):
+            dashboard = dict(PUBLIC_DASHBOARD, snapshot={'state': state, 'private': 'must-not-render'})
+            for resource in ('status', 'network'):
+                document = api.api_document(resource, dashboard)
+                self.assertEqual(document['health']['freshness'], state)
+                self.assertNotIn('must-not-render', json.dumps(document))
+                if resource == 'network' and state != 'fresh':
+                    self.assertEqual(document['health']['severity'], 'warn')
+
     def test_public_contract_is_versioned_utc_nullable_and_redacted(self):
         document = api.api_document("status", PUBLIC_DASHBOARD)
         self.assertEqual(document["api_version"], "v1")

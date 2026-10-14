@@ -46,7 +46,7 @@ dispatch_host_namespace_action() {
     local dispatcher
 
     case "${ACTION}" in
-        dashboard-public-json|dashboard-json|status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute|shutdown-system|reboot-system|starlink-status|starlink-reboot|starlink-shutdown) ;;
+        status|self-test|storage-status|sync-backup|mount-usb|mount-new-usb|safe-unmount-usb|aprs-mailbox-read|buzzer-mute|buzzer-unmute|shutdown-system|reboot-system|starlink-status|starlink-reboot|starlink-shutdown) ;;
         *) return 0 ;;
     esac
 
@@ -580,6 +580,8 @@ import time
 import shutil
 import subprocess
 from datetime import datetime
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
 import sys
 sys.path.insert(0, "/usr/local/lib/pcs")
 from pcs_network_clients import read_ap_client_count
@@ -739,6 +741,10 @@ def metric_label(value, suffix="", digits=1):
     return f"{numeric:.{digits}f}{suffix}" if numeric is not None else "unavailable"
 
 def run(cmd, timeout=8):
+    return run_cached(tuple(cmd) if isinstance(cmd, list) else cmd, timeout)
+
+@lru_cache(maxsize=256)
+def run_cached(cmd, timeout=8):
     try:
         result = subprocess.run(
             cmd,
@@ -751,11 +757,33 @@ def run(cmd, timeout=8):
     except Exception as exc:
         return 1, "", str(exc)
 
-def active(service):
-    return subprocess.run(["systemctl", "is-active", "--quiet", service]).returncode == 0
+SERVICE_NAMES = ['direwolf.service', 'graywolf.service', 'pcs-aprs-agent.service', 'pcs-aprs-audio.service', 'pcs-aprs-kiss-firewall.service', 'pcs-backup.timer', 'pcs-cellular-fallback.service', 'pcs-control-panel.service', 'pcs-dashboard-redirect.service', 'pcs-meshtastic.service', 'pcs-rtc-seed.service', 'pcs-sa818.service', 'pcs-uplink-manager.service', 'pcs-wireguard-endpoint-refresh.timer', 'pcs-wireguard-firewall.service', 'pcs-wsdd.service', 'wg-quick@wg-pcs.service']
 
+@lru_cache(maxsize=1)
+def service_states():
+    states = {}
+    rc, output, _ = run(["systemctl", "show", "--property=Id,Names,ActiveState,UnitFileState", *SERVICE_NAMES])
+    if rc == 0:
+        for block in output.split("\n\n"):
+            fields = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
+            for name in [fields.get("Id", ""), *fields.get("Names", "").split()]:
+                if name:
+                    states[name] = fields
+    return states
+
+@lru_cache(maxsize=128)
+def active(service):
+    state = service_states().get(service)
+    if state is not None:
+        return state.get("ActiveState") == "active"
+    return run(["systemctl", "is-active", "--quiet", service])[0] == 0
+
+@lru_cache(maxsize=128)
 def enabled(service):
-    return subprocess.run(["systemctl", "is-enabled", "--quiet", service], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    state = service_states().get(service)
+    if state is not None:
+        return state.get("UnitFileState") in {"enabled", "enabled-runtime", "static", "alias", "indirect", "generated"}
+    return run(["systemctl", "is-enabled", "--quiet", service])[0] == 0
 
 def wireguard_runtime():
     service_active = active("wg-quick@wg-pcs.service")
@@ -914,6 +942,17 @@ def default_route_iface():
     rc, out, _ = run("ip route | awk '/^default/ {print $5; exit}'", timeout=4)
     return out if rc == 0 else ""
 
+def dns_resolves():
+    return run(["getent", "ahostsv4", "google.com"], timeout=2)[0] == 0
+
+
+def dashboard_internet_available(uplink, default_iface, fallback_probe):
+    # DNS resolution and ICMP replies from a particular hostname are separate
+    # diagnostics, not evidence that a healthy selected uplink is offline.
+    healthy = uplink.get("internet") is True if uplink.get("available") else fallback_probe
+    return bool(default_iface) and default_iface != "lo" and healthy
+
+
 def ping_ok(target):
     rc, _, _ = run(["ping", "-c", "1", "-W", "2", target], timeout=4)
     return rc == 0
@@ -983,9 +1022,11 @@ def tcp_connect_ok(host, port, timeout=1.5):
         return False
 
 def pi_star_health():
-    ping = ping_ok(PI_STAR_IP)
-    dashboard = tcp_connect_ok(PI_STAR_IP, 80)
-    ssh = tcp_connect_ok(PI_STAR_IP, 22)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        ping_task = pool.submit(ping_ok, PI_STAR_IP)
+        dashboard_task = pool.submit(tcp_connect_ok, PI_STAR_IP, 80)
+        ssh_task = pool.submit(tcp_connect_ok, PI_STAR_IP, 22)
+        ping, dashboard, ssh = ping_task.result(), dashboard_task.result(), ssh_task.result()
 
     return {
         "ping": ping,
@@ -2142,7 +2183,7 @@ def timedate_value(label):
     return ""
 
 def chrony_tracking():
-    rc, out, _ = run(["chronyc", "tracking"], timeout=5)
+    rc, out, _ = run(["chronyc", "-n", "tracking"], timeout=1)
     data = {}
     if rc != 0:
         return data
@@ -2175,6 +2216,14 @@ def card_items_by_id(cards, card_id):
             }
     return {}
 
+# Overlap independent bounded LAN/DNS probes with local telemetry collection.
+probe_pool = ThreadPoolExecutor(max_workers=5)
+dns_probe = probe_pool.submit(dns_resolves)
+openwrt_probe_host = os.environ.get("PCS_OPENWRT_HOST", "10.42.0.2")
+openwrt_probe = probe_pool.submit(ping_ok, openwrt_probe_host)
+pistar_probe = probe_pool.submit(pi_star_health) if PI_STAR_CONFIGURED else None
+wan_ip_probe = probe_pool.submit(public_wan_ip) if not PUBLIC_VIEW else None
+client_probe = probe_pool.submit(router_side_clients, resolve_names=not PUBLIC_VIEW)
 usb_mount = findmnt(USB_MOUNT)
 usb_usage = disk_usage(USB_MOUNT) if usb_mount else None
 root_usage = disk_usage("/")
@@ -2182,13 +2231,14 @@ backup_usage = disk_usage(BACKUP_SHARE)
 
 wifi_ok, wifi_conn = nm_device_connected("wlan0")
 eth_ok, eth_conn = nm_device_connected(pcs_lan_interface(), "pcs-lan-vlan" if pcs_lan_interface() == "eth0.10" else "pcs-router-wan-share")
-internet_ok = ping_ok("8.8.8.8")
-dns_ok = ping_ok("google.com")
+uplink_health = cached_status(public=PUBLIC_VIEW)
+internet_ok = uplink_health.get("internet") is True if uplink_health.get("available") else ping_ok("8.8.8.8")
+
 eth_ip_ok = ip_has_address(pcs_lan_interface(), "10.42.0.1/24")
 default_iface = default_route_iface()
-wan_ip = "" if PUBLIC_VIEW else public_wan_ip()
+
 uplink_info = uplink_route_info()
-router_clients = router_side_clients(resolve_names=not PUBLIC_VIEW)
+
 
 load1, load5, load15 = system_load()
 cpu_cores = os.cpu_count() or 1
@@ -2210,9 +2260,9 @@ eth0_ip = eth0_address()
 eth0_method = nm_connection_method("pcs-lan-vlan" if pcs_lan_interface() == "eth0.10" else "pcs-router-wan-share")
 backup_info = backup_health()
 web_admin = web_admin_status()
-pi_star = pi_star_health() if PI_STAR_CONFIGURED else {}
+pi_star = pistar_probe.result() if pistar_probe else {}
 openwrt_probe_host = os.environ.get("PCS_OPENWRT_HOST", "10.42.0.2")
-openwrt_online = ping_ok(openwrt_probe_host)
+openwrt_online = openwrt_probe.result()
 router_offline = not openwrt_online
 
 uplink_status = "ok" if route_details.get("interface") else "warn"
@@ -2532,7 +2582,7 @@ gps_device_candidates = [
 gps_devices = [dev for dev in gps_device_candidates if path_exists(dev)]
 pps_present = path_exists("/dev/pps0")
 
-chrony_sources_rc, chrony_sources_out, _ = run(["chronyc", "sources"], timeout=5)
+chrony_sources_rc, chrony_sources_out, _ = run(["chronyc", "-n", "sources"], timeout=1)
 chrony_gps_source_present = any(term in chrony_sources_out.upper() for term in [
     "GPS",
     "PPS",
@@ -2584,7 +2634,11 @@ uplink_snapshot = cached_status(public=PUBLIC_VIEW)
 if uplink_snapshot.get("available"):
     internet_ok = uplink_snapshot.get("internet") is True
 active_uplink_ok = bool(default_iface) and default_iface not in {"lo"}
-internet_uplink_ok = active_uplink_ok and internet_ok and dns_ok
+dns_ok = dns_probe.result()
+wan_ip = wan_ip_probe.result() if wan_ip_probe else ""
+router_clients = client_probe.result()
+probe_pool.shutdown()
+internet_uplink_ok = dashboard_internet_available(uplink_snapshot, default_iface, internet_ok)
 offline_mode = not internet_uplink_ok and eth_ok and eth_ip_ok
 try:
     from pcs_starlink import connected_without_internet, load_config as starlink_config
@@ -2987,7 +3041,7 @@ cards = [
             {"label": "OpenWrt AP / switch", "value": "online at 10.42.0.2" if openwrt_online else "OFFLINE at 10.42.0.2"},
             {"label": "Default route", "value": default_iface or "unknown"},
             {"label": "Internet ping", "value": "ok" if internet_ok else "failed"},
-            {"label": "DNS ping", "value": "ok" if dns_ok else "failed"},
+            {"label": "DNS resolution", "value": "ok" if dns_ok else "unavailable"},
             {"label": "WAN/public IP", "value": wan_ip or "unavailable"},
             {"label": "Router-side clients", "value": str(len(router_clients))},
         ],
@@ -3304,6 +3358,7 @@ if not PUBLIC_VIEW:
     startup = uplink_snapshot.get("startup_grace", {})
     switch = uplink_snapshot.get("switch_monitor", {})
     network_card["items"].append({"label": "WAN startup", "value": f"{startup.get('state', 'disabled')} / {startup.get('remaining_seconds', 0)} seconds remaining"})
+    network_card["items"].append({"label": "WAN startup decision", "value": str(startup.get("reason", "unavailable"))})
     network_card["items"].append({"label": "Switch physical WAN", "value": str(switch.get('state', 'monitor_unavailable'))})
     for key, label in [("trunk_available", "VLAN trunk carrier (loss may affect wired LAN)"), ("reachable", "Switch reachable"), ("age_seconds", "Switch sample age (seconds)"), ("state_seconds", "Physical state age (seconds)"), ("last_successful_poll", "Switch last successful poll (Unix time)"), ("last_transition", "Physical last transition (Unix time)"), ("physical_port", "Verified physical port"), ("ifindex", "Verified SNMP index"), ("speed", "Physical speed (bits/s)")]:
         if switch.get(key) is not None:
@@ -3430,7 +3485,7 @@ if PUBLIC_VIEW:
             "lan_gateway": "10.42.0.1",
             "openwrt_online": openwrt_online,
             "openwrt_url": "http://10.42.0.2/",
-            "internet_available": internet_ok and dns_ok,
+            "internet_available": internet_uplink_ok,
             "ip_internet_available": internet_ok,
             "dns_available": dns_ok,
             "uplink_type": active_uplink_label,
@@ -4518,12 +4573,20 @@ case "${ACTION}" in
         aprs_mailbox_read_action
         ;;
 
-    dashboard-json)
+    dashboard-admin-collect)
         dashboard_json
         ;;
 
-    dashboard-public-json)
+    dashboard-public-collect)
         dashboard_public_json
+        ;;
+
+    dashboard-json)
+        python3 /usr/local/lib/pcs/pcs_dashboard_snapshot.py --read admin
+        ;;
+
+    dashboard-public-json)
+        python3 /usr/local/lib/pcs/pcs_dashboard_snapshot.py --read public
         ;;
 
     status)
