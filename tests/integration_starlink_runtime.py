@@ -35,7 +35,29 @@ def main():
                 'import dbus, grpc, yagrc.reflector; '
                 'from google.protobuf import json_format; '
                 'assert callable(dbus.SystemBus)'], check=True)
-        subprocess.run([python, '-m', 'pip', 'check'], check=True)
+        # Check the RPC dependency closure. Debian's unrelated system packages
+        # may expose pip metadata for dependencies satisfied by apt rather than
+        # pip (for example apt-listchanges/debconf).
+        subprocess.run([python, '-c', '''
+from importlib.metadata import requires, version
+from pip._vendor.packaging.requirements import Requirement
+from pathlib import Path
+import sys
+pending = Path(sys.argv[1]).read_text().splitlines()
+checked = set()
+while pending:
+    text = pending.pop().strip()
+    if not text or text.startswith('#'):
+        continue
+    requirement = Requirement(text)
+    if requirement.marker and not requirement.marker.evaluate({'extra': ''}):
+        continue
+    assert requirement.specifier.contains(version(requirement.name)), text
+    if requirement.name not in checked:
+        checked.add(requirement.name)
+        pending.extend(requires(requirement.name) or [])
+print('Pinned RPC dependency closure consistent:', ', '.join(sorted(checked)))
+''', str(ROOT / 'config/starlink-requirements.txt')], check=True)
     print('Starlink runtime: missing-dbus regression, repair and repeat provisioning passed')
 
 
