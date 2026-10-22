@@ -41,6 +41,10 @@ For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
 
+Version 2.2.2 restores Starlink telemetry on the VLAN WAN by repairing the
+collector environment's missing D-Bus dependency. See the
+[v2.2.2 validation record](docs/v2.2.2-validation.md).
+
 Version 2.2.1 adds fast background dashboard snapshots, SNMP credential/cache
 access fixes, conservative startup/readiness refinements, and
 [inactive recovery preparation](docs/recovery-staging.md). It builds on the

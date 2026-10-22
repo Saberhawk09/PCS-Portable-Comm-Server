@@ -61,15 +61,22 @@ sudo ./scripts/setup-starlink-telemetry.sh --check
 ```
 
 The installer needs Python venv/pip support and installs pinned optional packages
-in `/opt/pcs-starlink`. Repeat installation preserves `/etc/pcs/starlink.json`.
+in `/opt/pcs-starlink`. Version 2.2.2 also installs Debian `python3-dbus` and
+creates or repairs that venv with `--system-site-packages`: exact VLAN identity
+validation needs NetworkManager's system D-Bus bindings. RPC packages remain
+pinned in the venv, and imports are checked before helpers are replaced.
+Repeat installation preserves `/etc/pcs/starlink.json`.
 Fresh configuration disables telemetry and every control. The matching normal
 control-panel/frontend installation supplies cards, the tab and API routes;
 installing the telemetry helper alone does not replace the frontend or dispatcher.
 
 To commission, configure the existing Ethernet uplink ID, set `enabled: true`,
 and restart only `pcs-starlink.service` during an authorized test window. The
-uplink must be explicitly MAC-bound; a renamed USB NIC is resolved by its permanent
-MAC and `eth0` is always excluded. Confirm the actual Mini exposes the expected
+legacy Ethernet uplink must be explicitly MAC-bound; a renamed USB NIC is resolved
+by its permanent MAC and `eth0` is always excluded. In managed-switch mode, the
+configured VLAN WAN instead requires exact interface, parent, VLAN ID, profile
+UUID and active-session validation. A dependency failure must never bypass that
+validation or fall through to another WAN. Confirm the actual Mini exposes the expected
 status schema, its measurements agree with its app, and telemetry remains reachable
 when it is no longer the selected Internet uplink. The home-router USB NIC tests
 do not establish this Mini-specific behavior.

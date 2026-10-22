@@ -27,6 +27,18 @@ def config(**values):
 
 
 class TelemetryTests(unittest.TestCase):
+    def test_vlan_resolution_requires_exact_shared_identity_validation(self):
+        uplink = SimpleNamespace(id='starlink', type='vlan')
+        resolver = Mock(return_value='eth0.20')
+        loader = SimpleNamespace(load_config=lambda: SimpleNamespace(uplinks=[uplink]),
+                                 resolve_vlan_interface=resolver)
+        with patch.dict(sys.modules, pcs_uplink_manager=loader):
+            self.assertEqual(s.resolve_interface(config()), 'eth0.20')
+            resolver.assert_called_once_with(uplink)
+            resolver.side_effect = ValueError('incompatible VLAN WAN profile')
+            with self.assertRaisesRegex(ValueError, 'incompatible VLAN'):
+                s.resolve_interface(config())
+
     def test_present_failed_wan_warns_but_absence_and_stale_observer_do_not(self):
         row = dict(id='starlink', type='ethernet', link=True, internet=False)
         self.assertTrue(s.connected_without_internet(dict(available=True, uplinks=[row])))

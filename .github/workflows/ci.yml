@@ -40,8 +40,9 @@ jobs:
       - name: Validate keyfiles and inactive recovery using NetworkManager 1.52 or newer
         run: |
           docker run --rm -v "$PWD:/src:ro" debian:trixie-slim sh -c '
-            apt-get update -qq && apt-get install -y -qq python3 python3-gi gir1.2-nm-1.0 python3-yaml openssl &&
-            cd /src && python3 tests/integration_vlan_keyfiles.py &&
+            apt-get update -qq && apt-get install -y -qq python3 python3-venv python3-dbus python3-gi gir1.2-nm-1.0 python3-yaml openssl &&
+            cd /src && python3 tests/integration_starlink_runtime.py &&
+            python3 tests/integration_vlan_keyfiles.py &&
             python3 tests/integration_recovery.py --run'
   windows-witness:
     runs-on: windows-latest

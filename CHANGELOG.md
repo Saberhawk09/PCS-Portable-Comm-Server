@@ -4,6 +4,17 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-10-22
+
+- Restore Starlink telemetry on the managed-switch VLAN WAN. The collector's
+  isolated Python environment could reach the dish but lacked Debian's D-Bus
+  bindings needed to validate the exact NetworkManager VLAN identity. Install
+  `python3-dbus`, expose Debian packages to the pinned RPC environment, and check
+  imports before replacing helpers. Repeat installation repairs existing venvs
+  while preserving private configuration and pairing.
+- Add Debian runtime regression coverage for the missing dependency, environment
+  repair and repeat provisioning, plus fail-closed VLAN resolver coverage.
+
 ## [2.2.1] - 2026-10-14
 
 - Add a versioned, verified manifest inside new

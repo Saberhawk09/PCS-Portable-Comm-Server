@@ -13,12 +13,22 @@ fi
 python3 "${ROOT}/scripts/pcs_starlink.py" check-config
 # Dependencies finish before any running PCS helper is replaced. They are
 # isolated from system Python; repeat installation preserves operator config.
-if ! dpkg-query -W -f='${Status}' python3-venv 2>/dev/null | grep -q 'install ok installed'; then
+missing=()
+for package in python3-venv python3-dbus; do
+    if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed'; then
+        missing+=("$package")
+    fi
+done
+if (( ${#missing[@]} )); then
     apt-get update
-    apt-get install -y python3-venv
+    apt-get install -y "${missing[@]}"
 fi
-python3 -m venv /opt/pcs-starlink
+# Exact VLAN identity validation uses NetworkManager's Debian D-Bus bindings.
+# Re-running venv also repairs existing isolated environments without clearing
+# their pinned RPC dependencies or changing private Starlink configuration.
+python3 -m venv --system-site-packages /opt/pcs-starlink
 /opt/pcs-starlink/bin/python -m pip install -r "${ROOT}/config/starlink-requirements.txt"
+/opt/pcs-starlink/bin/python -c 'import dbus, grpc, yagrc.reflector'
 install -d -m 0755 /usr/local/lib/pcs /etc/pcs
 install -o root -g root -m 0644 "${ROOT}/scripts/pcs_starlink.py" /usr/local/lib/pcs/pcs_starlink.py
 install -o root -g root -m 0644 "${ROOT}/scripts/pcs_uplink_manager.py" /usr/local/lib/pcs/pcs_uplink_manager.py
