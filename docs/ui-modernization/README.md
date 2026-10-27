@@ -160,3 +160,21 @@ API remains unchanged, and no extra collectors or hardware polls are introduced.
 The installer smoke check now uses the stable homepage title element instead
 of the removed decorative copy. Browser checks assert equal panel widths, row
 positions and bottom edges on both public and admin dashboards.
+
+## Unified power, Starlink and location navigation
+
+Power and Starlink now share the main public/admin tab group. Power combines the
+overview, battery estimates/protection and all four INA226 monitors, including
+voltage, current, charge and energy since boot, plus both 12V accounting views.
+Starlink includes cached dish telemetry and measured branch readings; its protected
+operator controls stay on the authenticated Starlink tab. The old `/power/` and
+`/starlink/` bookmarks open the same full workspace with the matching tab selected.
+
+Location settings has a direct navigation entry on both dashboards and a compact
+authenticated header button. The public link opens the existing login gate; it
+does not publish private coordinates. Existing Diagnostics access also remains.
+
+Browser validation covers navigation, Location settings access, legacy bookmarks,
+all 31 actions, confirmation cancellation, no-JavaScript access and responsive
+layouts at 2560, 1440, 768 and 360 px. Updated fixture screenshots include
+`screenshots/admin-power-1440.png` and `screenshots/admin-starlink-360.png`.

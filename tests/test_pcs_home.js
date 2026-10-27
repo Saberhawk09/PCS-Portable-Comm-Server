@@ -186,20 +186,21 @@ test('power tab formats every commissioned rail and both 12V accounting views', 
 
 test('public power tab is read-only and keeps the requested rail order', () => {
   const html = fs.readFileSync(path.join(__dirname, '../web/pcs-home/power/index.html'), 'utf8');
-  const headings = ['PCS Input', 'Rail 12V', 'Rail 5V', 'Starlink Passthrough'];
-  const positions = headings.map(value => html.indexOf('>' + value + '<'));
+  const power = html.slice(html.indexOf('id="power"'), html.indexOf('id="storage"'));
+  const headings = ['PCS input', '12V distribution', '5V output', 'Starlink passthrough'];
+  const positions = headings.map(value => power.indexOf('>' + value + '<'));
   assert.ok(positions.every(value => value >= 0));
   assert.deepEqual([...positions].sort((a, b) => a - b), positions);
   assert.doesNotMatch(html, /power-settings|Change DC source|Set Battery/);
-  assert.match(html, /This page is read-only/);
-  const rail12 = html.slice(html.indexOf('<h2>Rail 12V</h2>'), html.indexOf('<h2>Rail 5V</h2>'));
-  const labels = ['POWER', 'VOLTAGE', 'CURRENT', 'CONSUMED THIS BOOT'];
+  assert.doesNotMatch(html, /<form/);
+  const rail12 = power.slice(power.indexOf('<h3>12V distribution</h3>'), power.indexOf('<h3>5V output</h3>'));
+  const labels = ['Power, including 5V', 'Voltage', 'Current', 'Charge this boot', 'Energy this boot, including 5V'];
   const labelPositions = labels.map(value => rail12.indexOf('>' + value + '<'));
   assert.ok(labelPositions.every(value => value >= 0));
   assert.deepEqual([...labelPositions].sort((a, b) => a - b), labelPositions);
-  assert.equal((rail12.match(/metric-label/g) || []).length, 4);
-  assert.match(rail12, /5V included/);
-  assert.match(rail12, /excluding 5V/);
+  assert.match(rail12, /12V-only power/);
+  assert.match(rail12, /12V-only energy/);
+  assert.match(rail12, /prevent double-counting/);
 });
 
 test('overview service grid and public admin links follow the field layout', () => {
@@ -209,7 +210,8 @@ test('overview service grid and public admin links follow the field layout', () 
   const positions = headings.map(value => html.indexOf('<h3>' + value));
   assert.ok(positions.every(value => value >= 0));
   assert.deepEqual([...positions].sort((a, b) => a - b), positions);
-  for (const removed of ['<h3>Starlink', '<h3>Files', '<h3>Cockpit', '<h3>Admin']) assert.doesNotMatch(html, new RegExp(removed));
+  const services = html.slice(html.indexOf('<section id="services"'), html.indexOf('<section class="workspace-view" id="network"'));
+  for (const removed of ['<h3>Starlink', '<h3>Files', '<h3>Cockpit', '<h3>Admin']) assert.doesNotMatch(services, new RegExp(removed));
   assert.match(html, /Documentation[^]*file shares/i);
   for (const relative of ['index.html', 'docs/index.html', 'files/index.html', 'pistar/index.html', 'power/index.html', 'radio/index.html', 'starlink/index.html']) {
     const page = fs.readFileSync(path.join(root, relative), 'utf8');

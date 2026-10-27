@@ -20,6 +20,19 @@ public['generated_at'] = 'LOCAL FIXTURE — no appliance connected'
 public['network']['ap_client_count'] = 0
 public['power'] = {'configured': True, 'input_online': True, 'input_power': 0,
                    'input_voltage': 12.6, 'dc_source': 'battery', 'shutdown_armed': True}
+public['power'].update(total_power=0, total_charge_since_boot_mah=250, total_energy_since_boot_wh=3.15,
+                       battery_capacity_wh=500, battery_remaining_wh=496.85, battery_remaining_percent=99.37,
+                       low_voltage_active=False, energy_tracking_elapsed_seconds=3600, estimated_non_5v_power=0)
+for prefix, voltage in [('input', 12.6), ('rail_12v', 12.2), ('rail_5v', 5.1), ('starlink', 12.6)]:
+    public['power'].update({prefix + '_online': True, prefix + '_voltage': voltage,
+                            prefix + '_current': 0, prefix + '_power': 0,
+                            prefix + '_charge_since_boot_mah': 250, prefix + '_energy_since_boot_wh': 3.15})
+public['power'].update(starlink_configured=True, rail_12v_distribution_power=0,
+                       rail_12v_distribution_energy_since_boot_wh=6.3)
+public['starlink'] = {'configured': True, 'available': True, 'state': 'CONNECTED', 'status': 'ok',
+                       'latency_ms': 22.5, 'packet_loss_percent': 0, 'obstruction_percent': 0,
+                       'downlink_bps': 2400000, 'uplink_bps': 750000, 'uptime_seconds': 3600,
+                       'sample_age_seconds': 1, 'alerts_summary': 'None — local fixture only'}
 admin = deepcopy(ADMIN_DATA)
 admin.update(generated_at=public['generated_at'], snapshot={'state': 'fresh', 'age_seconds': 0})
 admin['cards'] = [
