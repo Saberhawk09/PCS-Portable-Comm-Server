@@ -965,13 +965,14 @@ def dashboard_values(data: dict) -> dict:
         'backupAge': text(storage.get('last_backup_age')), 'timeSource': text(clock.get('source')),
         'timeSync': 'Synchronized' if clock.get('synchronized') is True else 'Not synchronized' if clock.get('synchronized') is False else 'Unknown',
     }
-    for field, key, online, unit in [('inputPower','input_power','input_online','W'), ('rail12DistributionPower','rail_12v_distribution_power','rail_12v_online','W'), ('rail5Power','rail_5v_power','rail_5v_online','W'), ('starlinkPower','starlink_power','starlink_online','W')]:
+    for field, key, online, unit in [('inputPower','input_power','input_online','W'), ('rail12DistributionPower','rail_12v_distribution_power','rail_12v_online','W'), ('rail12OnlyPower','rail_12v_power','rail_12v_online','W'), ('rail5Power','rail_5v_power','rail_5v_online','W'), ('starlinkPower','starlink_power','starlink_online','W')]:
         values[field] = reading(power.get(key), unit) if power.get('configured') and power.get(online) else 'Not commissioned' if field == 'starlinkPower' and not (power.get('configured') and power.get('starlink_configured')) else 'Unavailable'
 
     values.update({
         'coordinates': text(gps.get('coordinates')), 'grid': text(gps.get('grid_square')),
         'inputVoltage': values['voltage'],
         'shutdownProtection': 'Enabled' if power.get('shutdown_armed') is True else 'Disabled' if power.get('shutdown_armed') is False else 'Unknown',
+        'wanUsage': text(network.get('usage_summary')),
     })
     for field, key in [('powerEnergy', 'total_energy_since_boot_wh'), ('batteryRemaining', 'battery_remaining_wh')]:
         value = power.get(key)
@@ -1042,6 +1043,20 @@ def render_dashboard_section(data: dict, key: str) -> str:
             value = values.get(field, 'Unavailable')
         return f'<{tag} {attr}="{field}">{esc(value)}</{tag}>'
     markup = re.sub(r'<(strong|span) (data-value|data-field)="([^"]+)">[^<]*</\1>', substitute, DASHBOARD_SECTION_TEMPLATES[key])
+    if key == 'network':
+        rows = []
+        for uplink in public.get('network', {}).get('uplinks', []):
+            usage = uplink.get('usage') or {}
+            def amount(name):
+                value = usage.get(name)
+                return f'{value / 1_000_000:.3f} MB' if type(value) in {int, float} and math.isfinite(value) and value >= 0 else 'Unavailable'
+            name = uplink.get('name', 'WAN')
+            if uplink.get('type') in {'ethernet', 'vlan'}:
+                name = 'Starlink' if uplink.get('id') == 'starlink' and public.get('starlink', {}).get('available') is True else 'Ethernet WAN'
+            label = f"{name}: {uplink.get('state', 'unknown')}{' / active' if uplink.get('active') is True else ''} · Down {amount('rx_bytes')} / Up {amount('tx_bytes')} / Total {amount('total_bytes')}"
+            rows.append(f'<li>{esc(label)}</li>')
+        if rows:
+            markup = markup.replace('<li>Uplink details unavailable</li>', ''.join(rows))
     return re.sub(r'data-optional="([^"]+)"', lambda m: m.group(0) + (' hidden' if public.get(m.group(1), {}).get('configured') is False else ''), markup)
 
 

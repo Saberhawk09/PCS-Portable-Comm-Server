@@ -3,6 +3,7 @@ from copy import deepcopy
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 import unittest
+import re
 
 from test_pcs_control_panel import pcs, ROOT, ADMIN_DATA, PUBLIC_DATA
 
@@ -28,6 +29,15 @@ class Forms(HTMLParser):
 
 
 class ModernizationTests(unittest.TestCase):
+    def test_all_clean_section_bindings_have_server_values(self):
+        fields = set(re.findall(r'data-field="([^"]+)"', ''.join(pcs.DASHBOARD_SECTION_TEMPLATES.values())))
+        self.assertFalse(fields - pcs.dashboard_values({}).keys())
+        data = deepcopy(PUBLIC_DATA)
+        data['network'].update(usage_summary='Measured WAN summary', uplinks=[{'type': 'wifi', 'name': 'Wi-Fi', 'active': True, 'state': 'healthy', 'usage': {'rx_bytes': 0, 'tx_bytes': 1_000_000, 'total_bytes': 1_000_000}}])
+        page = pcs.render_dashboard_section(data, 'network')
+        self.assertIn('Measured WAN summary', page)
+        self.assertIn('Down 0.000 MB / Up 1.000 MB', page)
+
     def test_public_and_admin_overviews_share_structure_and_readings(self):
         public = deepcopy(PUBLIC_DATA)
         public['network']['ap_client_count'] = 0
