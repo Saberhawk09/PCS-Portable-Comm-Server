@@ -110,6 +110,15 @@ test('first request failure keeps service navigation intact',async()=>{
   assert.match(ui.nodes['status-note'].textContent,/Service links remain available/);
   assert.equal(ui.nodes['pistar-tile'].attributes.href,undefined);
 });
+
+test('stale snapshot response keeps its last-sample timestamp prominent', async()=>{
+  const ui=harness([{overall:'warn',generated_at:'last-collection',error:'Telemetry is stale',power:{configured:true,input_online:true,input_power:0}}]);
+  await settled();
+  assert.equal(ui.readings[0].textContent,'0.0 W');
+  assert.equal(ui.nodes['status-note'].dataset.stale,'true');
+  assert.match(ui.nodes['status-note'].textContent,/stale.*last-collection/);
+  assert.match(ui.nodes['health-caption'].textContent,/Last known/);
+});
 test('alert strings are rendered as text without HTML insertion',async()=>{
   const ui=harness([{overall:'warn',alerts:[{severity:'warn',component:'<img src=x>',message:'<script>bad()</script>'}]}]);await settled();
   assert.match(ui.nodes.alerts.children[0].textContent,/<script>/);

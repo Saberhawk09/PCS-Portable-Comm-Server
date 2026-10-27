@@ -589,7 +589,7 @@ class RouteSecurityTests(unittest.TestCase):
     def test_public_home_keeps_admin_footer_and_public_api_allows_coordinates(self):
         status, _, page = self.request("GET", "/")
         self.assertEqual(status, 200)
-        self.assertEqual(page.count("Admin Login"), 1)
+        self.assertEqual(page[page.index("<footer"):].count("Admin Login"), 1)
         self.assertNotIn("Open Cockpit", page)
         self.assertNotIn("must-not-render", page)
 
@@ -659,10 +659,10 @@ class RouteSecurityTests(unittest.TestCase):
         session_cookie = self.login()
         status, _, admin_page = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 200)
-        self.assertIn('<main class="admin-main">', admin_page)
-        self.assertIn("repeat(6,minmax(0,1fr))", admin_page)
+        self.assertIn('<main class="admin-main" id="workspace-main">', admin_page)
+        self.assertIn('aria-label="Administration sections"', admin_page)
         self.assertIn("Change Admin Password", admin_page)
-        self.assertIn("forgotten password cannot be recovered", admin_page)
+        self.assertIn("Forgotten passwords require the PCS terminal", admin_page)
         csrf = re.search(r'name="csrf" value="([^"]+)"', admin_page).group(1)
 
         self.action_mock.reset_mock()

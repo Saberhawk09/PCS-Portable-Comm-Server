@@ -104,8 +104,9 @@
     doc.querySelectorAll('[data-value]').forEach(el => {
       const [section, field] = el.dataset.value.split('.');
       const values = object(model.data[section]);
-      el.textContent = values.configured === false ? 'Not configured' : text(values[field]);
+      el.textContent = values.configured === false ? 'Not configured' : typeof values[field] === 'boolean' ? (values[field] ? 'Yes' : 'No') : text(values[field]);
     });
+    doc.querySelectorAll('[data-optional]').forEach(el => { el.hidden = object(model.data[el.dataset.optional]).configured === false; });
     const badge = doc.getElementById('health');
     const wanList = doc.getElementById('wan-breakdown');
     if (wanList) {
@@ -116,7 +117,7 @@
     }
     if (badge) { badge.textContent = model.health; badge.dataset.state = model.state || ''; }
     const caption = doc.getElementById('health-caption');
-    if (caption) caption.textContent = model.error ? 'Collector reported a fault' : model.state ? 'Current PCS health' : 'No health reading';
+    if (caption) caption.textContent = model.error ? 'Last known / unavailable telemetry' : model.state ? 'Current PCS health' : 'No health reading';
     const list = doc.getElementById('alerts');
     if (list) {
       list.replaceChildren();
@@ -154,10 +155,23 @@
       const model = viewModel(data);
       setFields(model); hasSample = true;
       const note = doc.getElementById('status-note');
-      if (note) { note.textContent = model.error ? 'PCS status collection reported a fault. See Status for details.' : 'Status updated · PCS sample ' + model.generated; note.dataset.stale = 'false'; }
+      if (note) { note.textContent = model.error ? 'Telemetry unavailable or stale · last sample ' + model.generated + '. See Status for details.' : 'Status updated · PCS sample ' + model.generated; note.dataset.stale = model.error ? 'true' : 'false'; }
     } catch (_) { unavailable(); }
     finally { clearTimeout(deadline); running = false; timer = setTimeout(refresh, 8000); }
   }
   doc.addEventListener('visibilitychange', () => { if (!doc.hidden) refresh(); });
+  // Progressive navigation: ordinary anchor links and all sections work without JS.
+  function showSection() {
+    const views = Array.from(doc.querySelectorAll('.workspace-view'));
+    if (!views.length) return;
+    const requested = root.location.hash.slice(1) || 'overview';
+    const selected = views.some(view => view.id === requested) ? requested : 'overview';
+    views.forEach(view => { view.hidden = view.id !== selected; });
+    doc.querySelectorAll('[data-view]').forEach(link => {
+      if (link.dataset.view === selected) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+  }
+  if (root.addEventListener) { root.addEventListener('hashchange', showSection); showSection(); }
   refresh();
 })(typeof window === 'object' ? window : globalThis);

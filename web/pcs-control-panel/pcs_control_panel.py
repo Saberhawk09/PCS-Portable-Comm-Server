@@ -604,6 +604,28 @@ main{max-width:1450px;margin:auto;padding:1.2rem}.admin-main{max-width:1600px}.h
 @media(min-width:1300px){.public-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(min-width:1500px){.admin-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
 @media(max-width:760px){.hero{grid-template-columns:1fr}.nav{align-items:flex-start}.brand-group{align-items:flex-start;flex-direction:column;gap:.35rem}.header-health{align-items:flex-start}.header-alerts{display:block;max-width:52vw}.header-alert{display:block}.navlinks{flex-wrap:wrap;justify-content:flex-end}main{padding:.85rem}.item{display:grid;gap:.2rem}.item span:last-child{text-align:left}.password-card{align-items:stretch;flex-direction:column}.settings-form{grid-template-columns:1fr}}
+
+/* PCS modernization: local, responsive presentation only. */
+:root{--bg:#090f17;--panel:#131d29;--panel2:#172331;--line:#293749;--accent:#70d8d1;--muted:#a5b6c7}
+:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.skip{position:absolute;left:12px;top:-100px;z-index:100}.skip:focus{top:12px}
+.workspace{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+.workspace-sidebar{padding:26px 18px;background:#0d1520;border-right:1px solid var(--line)}
+.workspace-brand{display:block;font-size:25px;font-weight:850;text-decoration:none;margin-bottom:38px}.workspace-brand span{display:block;color:var(--muted);font-size:10px;letter-spacing:.18em}
+.workspace-nav{display:flex;flex-direction:column;gap:6px}.workspace-nav a{padding:12px;border:1px solid transparent;border-radius:9px;text-decoration:none;color:var(--muted);min-height:44px}
+.workspace-nav a:hover,.workspace-nav a[aria-current=page]{background:#1a333e;border-color:#2c5d63;color:#9af3e8}
+[hidden]{display:none!important}.workspace-content{min-width:0}.workspace header{position:static}.workspace .nav{flex-wrap:wrap}.workspace .header-alerts{display:none}
+.workspace main{padding:24px 32px}.workspace h1{font-size:28px;margin:0}.workspace .overview{align-items:flex-start}.workspace .overview ul{padding-left:20px;color:var(--warn)}
+.workspace .admin-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.workspace .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:20px}.kpi p{overflow-wrap:anywhere}
+.workspace-view>.card,.workspace-view>details{margin-bottom:18px}.quicklinks{display:flex;flex-wrap:wrap;gap:16px;margin:15px 0}.quicklinks a{min-height:44px;display:inline-flex;align-items:center}
+.workspace .output{margin:0 0 20px}.workspace .output h2{font-size:16px}.workspace .output pre{max-height:250px}.workspace .action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.action-card .eyebrow{display:block;font-size:10px;margin-bottom:9px}
+details{border:1px solid var(--line);padding:14px;border-radius:12px}summary{cursor:pointer;font-weight:650;min-height:30px}.workspace details .grid{margin-top:15px}
+input,select{max-width:100%;min-height:44px}select{background:var(--bg);color:var(--text);padding:10px;border:1px solid var(--line);border-radius:8px}
+.card,.action-card,.grid>*{min-width:0}p,code,.summary{overflow-wrap:anywhere}.nav,.navlinks{flex-wrap:wrap}.navlinks>a{min-height:44px;display:inline-flex;align-items:center}
+@media(max-width:1100px){.workspace{grid-template-columns:185px minmax(0,1fr)}.workspace .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.workspace main{padding:20px}}
+@media(max-width:760px){.workspace{display:block}.workspace-sidebar{padding:10px 12px;position:static;border-bottom:1px solid var(--line)}.workspace-brand,.workspace-sidebar>.eyebrow,.workspace-sidebar>.small{display:none}.workspace-nav{flex-direction:row;overflow-x:auto;white-space:nowrap}.workspace-nav a{padding:10px}.workspace main{padding:14px}.workspace .admin-grid,.workspace .action-grid{grid-template-columns:1fr}.workspace .overview{display:block}.workspace .badge{margin-top:10px}.workspace .nav{gap:8px}.workspace .navlinks{justify-content:flex-start}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
 """
 
 
@@ -886,23 +908,37 @@ def render_admin_card(card: dict) -> str:
 
 
 def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str = "", return_code: int | None = None, nonce: str = "", backup_settings: dict | None = None, settings_notice: str = "", settings_error: str = "") -> bytes:
-    action_groups = []
-    for title, action_names in ACTION_GROUPS:
-        forms = []
-        for name in action_names:
-            label, description = ACTION_MAP[name]
-            danger = "danger" if name in DANGEROUS_ACTIONS else ""
-            confirmation = ACTION_CONFIRMS.get(name, "")
-            forms.append(f"""<form method="POST" action="/admin/run" class="action-card" data-confirm="{esc(confirmation)}">
-            <input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="{esc(name)}">
-            <button class="{danger}" type="submit">{esc(label)}</button><p>{esc(description)}</p></form>""")
-        action_groups.append(f'<section class="action-group"><h3>{esc(title)}</h3><div class="action-grid">{"".join(forms)}</div></section>')
+    # Presentation grouping only: the dispatcher and security boundary stay authoritative.
+    section_actions = {
+        "actions": [("Frequently used", ["status", "self-test", "wifi-connect", "cellular-connect", "sync-backup"])],
+        "network": [("Wi-Fi and cellular", ["wifi-status", "wifi-disconnect", "cellular-status", "cellular-disconnect", "cellular-test"]),
+                    ("Starlink", ["starlink-status", "starlink-reboot", "starlink-shutdown"])],
+        "radio": [("Radio operations", ["meshtastic-status", "restart-meshtastic", "aprs-mailbox-read"])],
+        "storage": [("Storage operations", ["storage-status", "mount-usb", "mount-new-usb", "safe-unmount-usb", "restart-samba"])],
+        "system": [("Services and time", ["restart-services", "restart-modemmanager", "sync-time", "restart-chrony", "restart-gpsd", "restart-logs", "buzzer-mute", "buzzer-unmute"]),
+                   ("Dangerous operations", ["reboot-system", "shutdown-system"])],
+    }
+    action_groups = {key: [] for key in section_actions}
+    for section, groups in section_actions.items():
+        for title, action_names in groups:
+            forms = []
+            for name in action_names:
+                label, description = ACTION_MAP[name]
+                danger = "danger" if name in DANGEROUS_ACTIONS else "secondary"
+                confirmation = ACTION_CONFIRMS.get(name, "")
+                kind = "Read-only" if name.endswith("-status") or name in {"status", "restart-logs"} else "Operator action"
+                if name == "starlink-shutdown":
+                    kind = "Staged / unsupported · status check only"
+                forms.append(f"""<form method="POST" action="/admin/run#{section}" class="action-card" data-confirm="{esc(confirmation)}">
+                <input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="{esc(name)}">
+                <span class="eyebrow">{kind}</span><button class="{danger}" type="submit">{esc(label)}</button><p>{esc(description)}</p></form>""")
+            action_groups[section].append(f'<section class="action-group"><h3>{esc(title)}</h3><div class="action-grid">{"".join(forms)}</div></section>')
 
     power = data.get("power", {})
     supply = power.get("dc_source") == "power_supply"
     capacity = power.get("battery_capacity_wh")
     power_settings_html = f'''<section class="card" id="power-settings"><h2>DC source</h2>
-    <form method="POST" action="/admin/power-settings" class="settings-form">
+    <form method="POST" action="/admin/power-settings#system" class="settings-form">
     <input type="hidden" name="csrf" value="{esc(csrf)}">
     <label for="dc-source">Source for this boot</label><select id="dc-source" name="dc_source">
     <option value="battery" {"" if supply else "selected"}>Battery</option>
@@ -913,8 +949,8 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
     <p>Capacity estimates deduct consumption already recorded this boot. Saving never resets energy counters.</p>
     <button type="submit">Apply DC source</button></form></section>'''
     result_html = ""
-    if result:
-        result_html = f'<section class="output"><h2>Result: {esc(action_name)} <span class="small">exit {esc(return_code)}</span></h2><pre>{esc(result)}</pre></section>'
+    if return_code is not None or result:
+        result_html = f'<section class="output" id="action-result" tabindex="-1"><h2>Result: {esc(action_name)} <span class="small">exit {esc(return_code)}</span></h2><pre>{esc(result)}</pre></section>'
 
     info = data.get("client_info", {})
     access_rows = [
@@ -930,31 +966,64 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
     history_checked = " checked" if backup_settings.get("keep_history") else ""
     settings_notice_html = f'<div class="notice success">{esc(settings_notice)}</div>' if settings_notice else ""
     settings_error_html = f'<div class="notice error">{esc(settings_error)}</div>' if settings_error else ""
-    open_dialog = "true" if settings_notice or settings_error else "false"
     backup_settings_html = f"""{settings_notice_html}{settings_error_html}
-    <dialog id="backup-settings-dialog" data-open="{open_dialog}"><div class="dialog-head"><h2>Backup settings</h2><button class="secondary" type="button" id="close-backup-settings" aria-label="Close backup settings">Close</button></div>
-    <form class="settings-form" method="POST" action="/admin/backup-settings">
+    <section class="card" id="backup-settings-dialog"><h2>Backup settings</h2>
+    <form class="settings-form" method="POST" action="/admin/backup-settings#storage">
       <input type="hidden" name="csrf" value="{esc(csrf)}">
       <label class="check-line"><input type="checkbox" name="enabled" value="yes"{checked}> Enable automatic backups</label>
       <label>Interval in minutes (1–43,200)<input type="number" name="interval_minutes" min="1" max="43200" step="1" required value="{esc(backup_settings.get('interval_minutes', 10))}"></label>
       <label class="check-line"><input type="checkbox" name="keep_history" value="yes"{history_checked}> Keep every prior backup snapshot</label>
       <button type="submit">Save backup settings</button>
-    </form><p class="small">The rolling backup is additive: files removed from PCS-Share remain on PCS-Backup. Snapshot history preserves each dated version and is never pruned automatically, so storage use will grow.</p></dialog>"""
+    </form><p class="small">The rolling backup is additive: files removed from PCS-Share remain on PCS-Backup. Snapshot history preserves each dated version and is never pruned automatically, so storage use will grow.</p></section>"""
 
     aprs_section = data.get("aprs", {}) if isinstance(data.get("aprs"), dict) else {}
     graywolf_admin_card = graywolf_access_card(aprs_section, admin=True)
 
-    body = f"""
-    <header><div class="nav"><div class="brand-group"><div class="brand">PCS Administration</div>{header_health(data)}</div><nav class="navlinks"><button class="secondary" type="button" id="open-backup-settings">Backup Settings</button><a class="button secondary" href="/">Public Homepage</a><a class="button secondary" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
-    <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
-    <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}{graywolf_admin_card}</section>
-    <h2 class="section-title">Detailed field access</h2><section class="card">{''.join(access_rows)}</section>
-    <section class="card"><h2>Bandwidth</h2><p>Manage whole-network ceilings, default client speeds, and trusted-device exceptions.</p><a class="button secondary" href="/admin/bandwidth">Bandwidth settings</a></section>
-    {power_settings_html}
-    {backup_settings_html}
-    <h2 class="section-title">Administrator access</h2><section class="card password-card"><div><h2>Admin panel password</h2><p>Change it here while the current password is known. A forgotten password cannot be recovered in the browser; rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from the Pi terminal.</p></div><a class="button" href="/admin/password">Change Admin Password</a></section>
-    <h2 class="section-title">Operator commands</h2>{''.join(action_groups)}{result_html}</main>"""
-    script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});var backupDialog=document.getElementById('backup-settings-dialog');document.getElementById('open-backup-settings').addEventListener('click',function(){backupDialog.showModal();});document.getElementById('close-backup-settings').addEventListener('click',function(){backupDialog.close();});backupDialog.addEventListener('click',function(event){if(event.target===backupDialog){backupDialog.close();}});if(backupDialog.dataset.open==='true'){backupDialog.showModal();}"""
+    card_sections = {
+        "network": {"network", "uplink-details", "client-lan", "cellular", "remote-management", "starlink"},
+        "radio": {"aprs", "aprs-mailbox", "meshtastic"},
+        "storage": {"storage", "backup-health", "samba"},
+        "system": {"system-stats", "system", "time", "gps", "services", "power", "web-admin"},
+    }
+    grouped = {key: [] for key in card_sections}
+    other = []
+    for card in data.get("cards", []):
+        destination = next((key for key, ids in card_sections.items() if card.get("id") in ids), None)
+        (grouped[destination] if destination else other).append(render_admin_card(card))
+    sections = [("overview", "Overview"), ("actions", "Actions"), ("network", "Network"),
+                ("radio", "Radio"), ("storage", "Storage"), ("system", "System")]
+    nav = ''.join(f'<a href="#{key}" data-view="{key}">{label}</a>' for key, label in sections)
+    cards_by_id = {card.get("id"): card for card in data.get("cards", [])}
+    summaries = ''.join(
+        f'<article class="card kpi"><p class="eyebrow">{label}</p><p>{esc(cards_by_id.get(key, {}).get("summary") or "Unavailable")}</p></article>'
+        for key, label in [("network", "Active uplink"), ("power", "DC power"), ("gps", "GNSS"), ("client-lan", "Client LAN")])
+    snapshot = data.get("snapshot", {})
+    freshness = f'{snapshot.get("state", "unknown")} · age {snapshot.get("age_seconds", "unknown")} s'
+    alerts = ''.join(f'<li>{esc(a["component"])}: {esc(a["message"])}</li>' for a in sanitize_alerts(data.get("alerts", [])))
+    error_html = f'<p class="notice error">{esc(data["error"])}</p>' if data.get("error") else ""
+    health = f'<section class="overview"><div><h1>PCS command center</h1><p>Snapshot {esc(freshness)} · collected {esc(data.get("generated_at", "unknown"))}</p>{error_html}<ul>{alerts}</ul></div>{overall_badge(data)}</section>'
+    overview = f'<div class="kpis">{summaries}</div><section class="card"><h2>Field operations</h2><p>Inspect status before changing services. Radio and network actions can interrupt field communications.</p><div class="quicklinks">{nav}</div></section><details><summary>Advanced / Other diagnostics</summary><div class="grid admin-grid">{"".join(other) or "No additional cards."}</div></details>'
+    action_directory = ''.join(
+        f'<details><summary>{esc(title)}</summary><ul>' + ''.join(
+            f'<li><a href="#{section}">{esc(ACTION_MAP[name][0])}</a> — {esc(ACTION_MAP[name][1])}</li>' for name in names
+        ) + '</ul></details>'
+        for section, groups in section_actions.items() if section != "actions" for title, names in groups)
+    content = {"overview": overview,
+        "actions": '<p>Frequently used operations are below. Browse all other commands by category and open their contextual controls.</p>',
+        "network": '<section class="card"><h2>Bandwidth</h2><p>Whole-network ceilings, default client speeds and trusted-device exceptions.</p><a class="button secondary" href="/admin/bandwidth">Bandwidth settings</a></section><details><summary>Detailed field access and clients</summary>' + ''.join(access_rows) + '</details>',
+        "radio": graywolf_admin_card + '<p><a href="/pistar/">Optional Pi-Star access</a> · <a href="#system">Time / GPS controls</a></p>',
+        "storage": backup_settings_html,
+        "system": power_settings_html + '<section class="card"><h2>Administrator access</h2><p>Password changes invalidate active sessions. Forgotten passwords require the PCS terminal.</p><a class="button secondary" href="/admin/password">Change Admin Password</a></section>'}
+    views = ''.join(f'<section class="workspace-view" id="{key}"><h2 class="section-title">{label}</h2><div class="grid admin-grid">{"".join(grouped.get(key, []))}</div>{content[key]}{"".join(action_groups.get(key, []))}{action_directory if key == "actions" else ""}</section>' for key, label in sections)
+    console = result_html or '<section class="output"><h2>Recent action output</h2><p>No action output in this request.</p></section>'
+    body = f"""<a class="skip" href="#workspace-main">Skip to content</a><div class="workspace">
+    <aside class="workspace-sidebar"><a class="workspace-brand" href="/">PCS<span>CONTROL CENTER</span></a><p class="eyebrow">Administration</p><nav class="workspace-nav" aria-label="Administration sections">{nav}</nav><p class="small">Authenticated operator<br>Local field network</p></aside>
+    <div class="workspace-content"><header><div class="nav"><div class="brand-group">{header_health(data)}</div><nav class="navlinks"><a href="#storage">Backup Settings</a><a href="/">Public Homepage</a><a href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
+    <main class="admin-main" id="workspace-main">{health}{console}{views}</main></div></div>"""
+    script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});
+    function showSection(){var id=location.hash.slice(1)||'overview';if(id==='power-settings')id='system';if(!document.querySelector('.workspace-view#'+CSS.escape(id)))id='overview';document.querySelectorAll('.workspace-view').forEach(function(view){view.hidden=view.id!==id;});document.querySelectorAll('[data-view]').forEach(function(link){if(link.dataset.view===id)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');});}
+    window.addEventListener('hashchange',showSection);showSection();var result=document.getElementById('action-result');if(result){window.addEventListener('load',function(){result.focus();result.scrollIntoView({block:'nearest'});});}
+    """
     return document("PCS Administration", body, script=script, nonce=nonce)
 
 

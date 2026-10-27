@@ -1,0 +1,41 @@
+{
+  "baseline": "ba80c8dc067cb1c038e425cbc283a0167efc4fb9",
+  "environment": "Disposable copy-on-write Debian 13 VM, ordinary test user, Python 3.13.5, real nginx",
+  "python_full": {
+    "discovered": 947,
+    "passed": 943,
+    "skipped": 4,
+    "failed": 0
+  },
+  "final_focused": {
+    "control_panel": 34,
+    "frontend_real_nginx": 28,
+    "parity": 5,
+    "javascript": 18,
+    "nginx_t": "passed"
+  },
+  "windows_python_full": {
+    "discovered": 931,
+    "passed": 785,
+    "skipped": 143,
+    "errors": 3,
+    "note": "Existing POSIX shell fixtures; all three passed in Debian"
+  },
+  "browser": {
+    "engine": "Chrome via Playwright",
+    "widths": [
+      1440,
+      768,
+      360
+    ],
+    "all_sections_no_horizontal_overflow": true,
+    "actions": 31,
+    "no_javascript_forms": true,
+    "post_context_and_focus": true,
+    "cancelled_dangerous_post_blocked": true,
+    "keyboard_skip_link": true,
+    "issues": []
+  },
+  "github_ci": "Not triggered: local branch",
+  "live_deployment": "Not authorized or performed"
+}
