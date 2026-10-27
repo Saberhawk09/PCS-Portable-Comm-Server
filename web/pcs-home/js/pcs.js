@@ -38,6 +38,10 @@
     const uplinks = Array.isArray(network.uplinks) ? network.uplinks.filter(u => u && typeof u === 'object' && !Array.isArray(u)).slice(0, 32) : [];
     const wanName = u => ['ethernet', 'vlan'].includes(u.type) ? (u.id === 'starlink' && slReady ? 'Starlink' : 'Ethernet WAN') : text(u.name, 'WAN');
     const activeWAN = uplinks.find(u => u.active === true);
+    const pathState = kinds => {
+      const path = uplinks.find(u => kinds.includes(u.type));
+      return path ? (path.active === true ? 'Selected · ' : '') + text(path.state, 'Unknown') : 'Not reported';
+    };
     const wanRows = uplinks.map(u => {
       const usage = object(u.usage);
       const bytes = key => typeof usage[key] === 'number' && Number.isFinite(usage[key]) && usage[key] >= 0 ? (usage[key] / 1_000_000).toFixed(3) + ' MB' : 'Unavailable';
@@ -45,6 +49,17 @@
       return `${wanName(u)}: ${text(u.state, 'unknown')}${u.active === true ? ' / active' : ''} · ${traffic}`;
     });
     return {
+      satellites: text(gps.satellites),
+      internet: network.internet_available === true ? 'Available' : network.internet_available === false ? 'Offline' : 'Unknown',
+      apStatus: network.openwrt_online === true ? 'Connected' : network.openwrt_online === false ? 'Offline' : 'Unknown',
+      overviewEthernet: pathState(['ethernet', 'vlan']), overviewWifi: pathState(['wifi']), overviewCellular: pathState(['cellular']),
+      carrier: text(object(data.cellular).carrier),
+      aprsDetail: aprs.configured === false ? 'Not configured' : [aprs.callsign, aprs.engine, aprs.frequency].map(v => text(v, 'Unknown')).join(' · '),
+      meshDetail: mesh.configured === false ? 'Not configured' : [mesh.node, mesh.transport, mesh.mqtt].map(v => text(v, 'Unknown')).join(' · '),
+      primaryState: object(data.storage).primary_share_available === true ? 'Yes' : object(data.storage).primary_share_available === false ? 'No' : 'Unavailable',
+      backupState: object(data.storage).backup_share_available === true ? 'Yes' : object(data.storage).backup_share_available === false ? 'No' : 'Unavailable',
+      backupAge: text(object(data.storage).last_backup_age),
+      timeSync: time.synchronized === true ? 'Synchronized' : time.synchronized === false ? 'Not synchronized' : 'Unknown',
       powerCharge: metric(power.total_charge_since_boot_mah, 0), powerEnergy: metric(power.total_energy_since_boot_wh),
       dcSource: power.dc_source === 'battery' ? 'Battery' : power.dc_source === 'power_supply' ? 'Power Supply' : 'Unknown',
       batteryCapacity: metric(power.battery_capacity_wh, 1, 'Not entered'), batteryRemaining: metric(power.battery_remaining_wh, 1, 'Not available'),

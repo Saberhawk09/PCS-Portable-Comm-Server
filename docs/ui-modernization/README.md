@@ -11,8 +11,9 @@ password inputs, command execution and fabricated history were excluded.
 ## Changes and navigation
 
 The public launcher now has Overview, Network, Radio, Power, Storage and
-Diagnostics. Administration's previous long card/action page and backup modal
-are organized into Overview, Actions, Network, Radio, Storage and System.
+Diagnostics. Public and admin dashboards now share Overview, Network, Radio, Power, Storage
+and Diagnostics. Administration adds compact, genuine form controls, privileged
+detail, and an Actions catalog.
 Desktop uses a left sidebar; tablet/phone navigation scrolls horizontally.
 Health, collection time, snapshot age, errors and alerts stay outside the selected
 section. Four summary cards lead each overview.
@@ -119,3 +120,25 @@ See [the scoped deployment and exact rollback procedure](deployment.md).
 Execution requires current authorization. Only the frontend/backend
 presentation files need activation; the existing snapshots and all appliance
 configuration/services can stay in place.
+
+## Follow-up: shared overview and compact scaling
+
+The revised homepage follows the supplied homepage.JPG reference: four primary
+readings, then Connectivity, Radio services, Power distribution, and Storage &
+time, followed by compact service shortcuts. Public and authenticated overviews
+use the same server-rendered structure and stylesheet. Admin adds small real POST
+buttons to the corresponding panels; all 31 allowlisted actions remain reachable.
+Power settings live in Power; system/advanced tools live in Diagnostics. The old
+`#system` and `#power-settings` anchors continue resolving to their new sections.
+
+Content is bounded to 1480 px and cards use content-driven heights rather than
+stretching across an ultrawide viewport. Desktop shortcuts are compact three-column
+rows. Browser checks include 2560 px as well as desktop/tablet/phone, with explicit
+bounds on content width, KPI width and shortcut height.
+
+The authenticated overview reads the existing cached public projection for the
+same core readings (including AP client count) and retains the separate privileged
+snapshot for card details. This adds no hardware polling or collection and changes
+no API schema, authentication, action validation or CSRF rules. No admin detail is
+copied into the public page. Actual returned action output appears only when there
+is a result, avoiding an empty console occupying the top of the dashboard.

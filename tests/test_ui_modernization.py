@@ -4,7 +4,7 @@ from html.parser import HTMLParser
 from urllib.parse import urlsplit
 import unittest
 
-from test_pcs_control_panel import pcs, ROOT, ADMIN_DATA
+from test_pcs_control_panel import pcs, ROOT, ADMIN_DATA, PUBLIC_DATA
 
 
 class Forms(HTMLParser):
@@ -28,6 +28,31 @@ class Forms(HTMLParser):
 
 
 class ModernizationTests(unittest.TestCase):
+    def test_public_and_admin_overviews_share_structure_and_readings(self):
+        public = deepcopy(PUBLIC_DATA)
+        public['network']['ap_client_count'] = 0
+        public['power'] = {'configured': True, 'input_online': True, 'input_power': 0, 'dc_source': 'battery'}
+        shared = pcs.render_overview(public)
+        admin = pcs.render_admin_page(ADMIN_DATA, 'test-token', public_data=public).decode()
+        homepage = (ROOT / 'web/pcs-home/index.html').read_text(encoding='utf-8')
+        for heading in ['Connectivity', 'Radio services', 'Power distribution', 'Storage &amp; time']:
+            self.assertIn(heading, shared.replace('Storage & time', 'Storage &amp; time'))
+        self.assertIn('data-field="clients">0<', shared)
+        self.assertIn('data-field="power">0.0 W<', shared)
+        self.assertIn('data-field="clients">0<', admin)
+        self.assertIn('data-field="power">0.0 W<', admin)
+        for panel in ['network', 'radio', 'power', 'storage']:
+            self.assertIn(f'data-panel="{panel}"', homepage)
+            self.assertIn(f'data-panel="{panel}"', admin)
+        self.assertIn('/assets/css/pcs.css', admin)
+        self.assertNotIn('No action output in this request', admin)
+
+    def test_overview_does_not_infer_standby_or_zero_from_unknown(self):
+        page = pcs.render_overview({})
+        self.assertIn('data-field="overviewWifi">Not reported<', page)
+        self.assertIn('data-field="power">Unavailable<', page)
+        self.assertIn('data-field="clients">Unavailable<', page)
+
     def test_every_allowlisted_action_keeps_endpoint_token_and_confirmation(self):
         page = pcs.render_admin_page(ADMIN_DATA, 'test-token').decode()
         forms = Forms(page).forms

@@ -8,6 +8,7 @@ import hmac
 import html
 import ipaddress
 import json
+import math
 import os
 import secrets
 import subprocess
@@ -96,7 +97,7 @@ ACTION_GROUPS = [
     ("Health", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
-    ("Communications", ["meshtastic-status", "restart-meshtastic", "aprs-mailbox-read"]),
+    ("Communications", ["restart-meshtastic", "aprs-mailbox-read"]),
     ("Storage", ["sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb"]),
     ("Services", ["restart-services", "restart-samba", "restart-modemmanager"]),
     ("Time / GPS", ["sync-time", "restart-chrony", "restart-gpsd"]),
@@ -629,8 +630,8 @@ input,select{max-width:100%;min-height:44px}select{background:var(--bg);color:va
 """
 
 
-def document(title: str, body: str, script: str = "", nonce: str = "", public_theme: bool = False, footer: str = "PCS local field network interface") -> bytes:
-    theme_html = '<link rel="stylesheet" href="/assets/css/pcs.css">' if public_theme else ""
+def document(title: str, body: str, script: str = "", nonce: str = "", public_theme: bool = False, footer: str = "PCS local field network interface", workspace_theme: bool = False) -> bytes:
+    theme_html = '<link rel="stylesheet" href="/assets/css/pcs.css">' if public_theme or workspace_theme else ""
     body_class = ' class="public-status"' if public_theme else ""
     script_html = f'<script nonce="{esc(nonce)}">{script}</script>' if script else ""
     return f"""<!doctype html>
@@ -907,17 +908,115 @@ def render_admin_card(card: dict) -> str:
     return f'<article class="card"><div class="card-top"><h2>{esc(card.get("title", "Status"))}</h2>{badge(card.get("status", "warn"))}</div><p class="summary">{esc(card.get("summary", ""))}</p>{metrics}{rows}</article>'
 
 
-def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str = "", return_code: int | None = None, nonce: str = "", backup_settings: dict | None = None, settings_notice: str = "", settings_error: str = "") -> bytes:
+
+def render_overview(data: dict, controls: dict | None = None) -> str:
+    """Common public/admin overview, populated only from the public projection.
+
+    The static homepage contains this same structure with unknown initial values;
+    pcs.js refreshes its explicit data-field bindings from the public endpoint.
+    Authentication-only controls are supplied by render_admin_page.
+    """
+    data = sanitize_public_dashboard(data)
+    controls = controls or {}
+    section = lambda key: data.get(key, {})
+    network, power, gps = section('network'), section('power'), section('gnss')
+    aprs, mesh, storage, clock = (section(key) for key in ('aprs', 'meshtastic', 'storage', 'time'))
+
+    def text(value, fallback='Unavailable'):
+        if isinstance(value, bool):
+            return 'Yes' if value else 'No'
+        return str(value) if isinstance(value, (str, int, float)) and str(value).strip() else fallback
+
+    def reading(value, unit, decimals=1):
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            return f'{value:.{decimals}f} {unit}'
+        if isinstance(value, str) and re.fullmatch(r'-?\d+(?:\.\d+)?\s*' + re.escape(unit), value.strip(), re.I):
+            return value
+        return 'Unavailable'
+
+    def optional(value):
+        return 'Not configured' if value.get('configured') is False else status_label(value['status']) if value.get('configured') is True and value.get('status') in {'ok', 'warn', 'bad'} else 'Unknown'
+
+    def link_state(kinds):
+        path = next((u for u in network.get('uplinks', []) if u.get('type') in kinds), None)
+        return ('Selected · ' if path.get('active') else '') + text(path.get('state'), 'Unknown') if path else 'Not reported'
+
+    active_wan = next((u for u in network.get('uplinks', []) if u.get('active') is True), {})
+    sl_ready = section('starlink').get('configured') is True and section('starlink').get('available') is True
+    uplink_name = text(network.get('uplink_type'))
+    if active_wan.get('type') in {'ethernet', 'vlan'}:
+        uplink_name = 'Starlink' if active_wan.get('id') == 'starlink' and sl_ready else 'Ethernet WAN'
+    elif uplink_name == 'Starlink' and not sl_ready:
+        uplink_name = 'Ethernet WAN'
+    values = {
+        'uplink': 'Offline' if data.get('offline') or network.get('internet_available') is False else uplink_name,
+        'power': reading(power.get('total_power') if 'total_power' in power else power.get('input_power') if power.get('input_online') else None, 'W') if power.get('configured') else 'Unavailable',
+        'voltage': reading(power.get('input_voltage'), 'V', 2) if power.get('configured') and power.get('input_online') else 'Unavailable',
+        'gps': text(gps.get('fix')), 'satellites': text(gps.get('satellites')), 'clients': str(network['ap_client_count']) if type(network.get('ap_client_count')) is int and network['ap_client_count'] >= 0 else 'Unavailable',
+        'dcSource': {'battery':'Battery', 'power_supply':'Power Supply'}.get(power.get('dc_source'), 'Unknown'),
+        'internet': 'Available' if network.get('internet_available') is True else 'Offline' if network.get('internet_available') is False else 'Unknown',
+        'apStatus': 'Connected' if network.get('openwrt_online') is True else 'Offline' if network.get('openwrt_online') is False else 'Unknown',
+        'overviewEthernet': link_state({'ethernet', 'vlan'}), 'overviewWifi': link_state({'wifi'}),
+        'overviewCellular': link_state({'cellular'}), 'carrier': text(section('cellular').get('carrier')),
+        'aprs': optional(aprs), 'aprsDetail': 'Not configured' if aprs.get('configured') is False else ' · '.join(text(aprs.get(key), 'Unknown') for key in ('callsign','engine','frequency')),
+        'mesh': optional(mesh), 'meshDetail': 'Not configured' if mesh.get('configured') is False else ' · '.join(text(mesh.get(key), 'Unknown') for key in ('node','transport','mqtt')),
+        'pistar': 'Not configured' if section('pistar').get('configured') is False else 'Online' if section('pistar').get('online') is True else 'Offline' if section('pistar').get('online') is False else 'Unknown',
+        'primaryState': text(storage.get('primary_share_available')), 'backupState': text(storage.get('backup_share_available')),
+        'backupAge': text(storage.get('last_backup_age')), 'timeSource': text(clock.get('source')),
+        'timeSync': 'Synchronized' if clock.get('synchronized') is True else 'Not synchronized' if clock.get('synchronized') is False else 'Unknown',
+    }
+    for field, key, online, unit in [('inputPower','input_power','input_online','W'), ('rail12DistributionPower','rail_12v_distribution_power','rail_12v_online','W'), ('rail5Power','rail_5v_power','rail_5v_online','W'), ('starlinkPower','starlink_power','starlink_online','W')]:
+        values[field] = reading(power.get(key), unit) if power.get('configured') and power.get(online) else 'Not commissioned' if field == 'starlinkPower' and not (power.get('configured') and power.get('starlink_configured')) else 'Unavailable'
+
+    def field(key, tag='strong'):
+        return f'<{tag} data-field="{key}">{esc(values[key])}</{tag}>'
+
+    def row(title, key, detail=''):
+        return f'<div class="subsystem-row"><div><strong>{title}</strong>{field(detail, "small") if detail else ""}</div>{field(key)}</div>'
+
+    kpis = ''.join(f'<article class="kpi"><span class="metric-label">{title}</span>{field(key)}<span class="metric-note">{detail}</span></article>' for title,key,detail in [
+        ('ACTIVE UPLINK','uplink',field('internet','span')),
+        ('TOTAL POWER','power','Input '+field('voltage','span')+' · '+field('dcSource','span')),
+        ('GNSS','gps',field('satellites','span')+' · '+field('timeSync','span')),
+        ('AP CLIENTS','clients','OpenWrt '+field('apStatus','span'))])
+    panels = [
+        ('Connectivity','WAN paths and current route',row('Ethernet WAN','overviewEthernet')+row('Wi-Fi','overviewWifi')+row('Cellular','overviewCellular','carrier'), 'network'),
+        ('Radio services','Packet, mesh and local hotspot',row('APRS','aprs','aprsDetail')+row('Meshtastic','mesh','meshDetail')+row('Pi-Star','pistar'), 'radio'),
+        ('Power distribution','Measured branches · source-dependent totals', ''.join(row(title,key) for title,key in [('PCS input','inputPower'),('12V distribution · includes 5V','rail12DistributionPower'),('5V output','rail5Power'),('Starlink passthrough','starlinkPower')])+'<p class="small">Battery totals include PCS and Starlink; Power Supply totals include PCS only.</p>', 'power'),
+        ('Storage & time','Field files, backup and time reference',row('PCS-Share available','primaryState')+row('PCS-Backup available','backupState')+row('Last backup','backupAge')+row('Time reference','timeSource'), 'storage')]
+    return '<div class="overview-kpis">'+kpis+'</div><h2 class="subsystems-title">Subsystems</h2><div class="subsystem-grid">'+''.join(
+        f'<article class="subsystem-panel" data-panel="{key}"><div class="panel-heading"><div><h3>{title}</h3><p>{subtitle}</p></div><a class="compact-control" href="#{key}">Details <span aria-hidden="true">↗</span></a></div>{rows}{controls.get(key, "")}</article>'
+        for title,subtitle,rows,key in panels)+'</div>'
+
+
+
+def render_dashboard_services() -> str:
+    return """    <section id="services" aria-labelledby="services-title">
+      <div class="section-heading"><h2 id="services-title">Quick access</h2><span>SELECT A SERVICE TO CONTINUE</span></div>
+      <div class="service-grid">
+        <a class="tile" href="/docs/"><span class="tile-top"><span class="icon" aria-hidden="true">≡</span><span class="tag">OFFLINE HELP</span></span><h3>Documentation <span aria-hidden="true">↗</span></h3><p>Quick start, file shares, service addresses and field reference.</p></a>
+        <a class="tile" href="/status/"><span class="tile-top"><span class="icon" aria-hidden="true">▤</span><span class="tag">PUBLIC</span></span><h3>Status <span aria-hidden="true">↗</span></h3><p>Detailed health, position, storage and network information.</p></a>
+        <a class="tile" href="/openwrt/"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag">LOCAL NETWORK</span></span><h3>OpenWrt <span aria-hidden="true">↗</span></h3><p>Open the PCS access point and router interface.</p></a>
+        <a class="tile" href="/pistar/" id="pistar-tile"><span class="tile-top"><span class="icon" aria-hidden="true">◉</span><span class="tag" data-field="pistar">Unknown</span></span><h3>Pi-Star <span aria-hidden="true">↗</span></h3><p>Open the paired digital voice hotspot dashboard.</p></a>
+        <a class="tile" href="/radio/#meshtastic"><span class="tile-top"><span class="icon" aria-hidden="true">⋈</span><span class="tag" data-field="mesh">Unknown</span></span><h3>Meshtastic <span aria-hidden="true">↗</span></h3><p>Mesh radio link and MQTT gateway information.</p></a>
+        <a class="tile" href="/radio/#aprs"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag" data-field="aprs">Unknown</span></span><h3>APRS <span aria-hidden="true">↗</span></h3><p>Packet radio station and messaging service information.</p></a>
+      </div>
+    </section>"""
+
+
+def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str = "", return_code: int | None = None, nonce: str = "", backup_settings: dict | None = None, settings_notice: str = "", settings_error: str = "", public_data: dict | None = None) -> bytes:
     # Presentation grouping only: the dispatcher and security boundary stay authoritative.
     section_actions = {
-        "actions": [("Frequently used", ["status", "self-test", "wifi-connect", "cellular-connect", "sync-backup"])],
-        "network": [("Wi-Fi and cellular", ["wifi-status", "wifi-disconnect", "cellular-status", "cellular-disconnect", "cellular-test"]),
+        "actions": [("Frequently used", ["self-test", "wifi-connect", "cellular-connect", "sync-backup"])],
+        "overview": [("Overview tools", ["wifi-status", "meshtastic-status", "storage-status", "status"])],
+        "network": [("Wi-Fi and cellular", ["wifi-disconnect", "cellular-status", "cellular-disconnect", "cellular-test"]),
                     ("Starlink", ["starlink-status", "starlink-reboot", "starlink-shutdown"])],
-        "radio": [("Radio operations", ["meshtastic-status", "restart-meshtastic", "aprs-mailbox-read"])],
-        "storage": [("Storage operations", ["storage-status", "mount-usb", "mount-new-usb", "safe-unmount-usb", "restart-samba"])],
-        "system": [("Services and time", ["restart-services", "restart-modemmanager", "sync-time", "restart-chrony", "restart-gpsd", "restart-logs", "buzzer-mute", "buzzer-unmute"]),
+        "radio": [("Radio operations", ["restart-meshtastic", "aprs-mailbox-read"])],
+        "storage": [("Storage operations", ["mount-usb", "mount-new-usb", "safe-unmount-usb", "restart-samba"])],
+        "diagnostics": [("Services and time", ["restart-services", "restart-modemmanager", "sync-time", "restart-chrony", "restart-gpsd", "restart-logs", "buzzer-mute", "buzzer-unmute"]),
                    ("Dangerous operations", ["reboot-system", "shutdown-system"])],
     }
+    overview_controls = {}
     action_groups = {key: [] for key in section_actions}
     for section, groups in section_actions.items():
         for title, action_names in groups:
@@ -932,13 +1031,17 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
                 forms.append(f"""<form method="POST" action="/admin/run#{section}" class="action-card" data-confirm="{esc(confirmation)}">
                 <input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="{esc(name)}">
                 <span class="eyebrow">{kind}</span><button class="{danger}" type="submit">{esc(label)}</button><p>{esc(description)}</p></form>""")
+            if section == "overview":
+                for destination, form in zip(['network', 'radio', 'storage', 'power'], forms):
+                    overview_controls[destination] = '<div class="panel-controls">' + form + '</div>'
+                continue
             action_groups[section].append(f'<section class="action-group"><h3>{esc(title)}</h3><div class="action-grid">{"".join(forms)}</div></section>')
 
     power = data.get("power", {})
     supply = power.get("dc_source") == "power_supply"
     capacity = power.get("battery_capacity_wh")
     power_settings_html = f'''<section class="card" id="power-settings"><h2>DC source</h2>
-    <form method="POST" action="/admin/power-settings#system" class="settings-form">
+    <form method="POST" action="/admin/power-settings#power" class="settings-form">
     <input type="hidden" name="csrf" value="{esc(csrf)}">
     <label for="dc-source">Source for this boot</label><select id="dc-source" name="dc_source">
     <option value="battery" {"" if supply else "selected"}>Battery</option>
@@ -983,48 +1086,46 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
         "network": {"network", "uplink-details", "client-lan", "cellular", "remote-management", "starlink"},
         "radio": {"aprs", "aprs-mailbox", "meshtastic"},
         "storage": {"storage", "backup-health", "samba"},
-        "system": {"system-stats", "system", "time", "gps", "services", "power", "web-admin"},
+        "power": {"power"},
+        "diagnostics": {"system-stats", "system", "time", "gps", "services", "web-admin"},
     }
     grouped = {key: [] for key in card_sections}
     other = []
     for card in data.get("cards", []):
         destination = next((key for key, ids in card_sections.items() if card.get("id") in ids), None)
         (grouped[destination] if destination else other).append(render_admin_card(card))
-    sections = [("overview", "Overview"), ("actions", "Actions"), ("network", "Network"),
-                ("radio", "Radio"), ("storage", "Storage"), ("system", "System")]
-    nav = ''.join(f'<a href="#{key}" data-view="{key}">{label}</a>' for key, label in sections)
-    cards_by_id = {card.get("id"): card for card in data.get("cards", [])}
-    summaries = ''.join(
-        f'<article class="card kpi"><p class="eyebrow">{label}</p><p>{esc(cards_by_id.get(key, {}).get("summary") or "Unavailable")}</p></article>'
-        for key, label in [("network", "Active uplink"), ("power", "DC power"), ("gps", "GNSS"), ("client-lan", "Client LAN")])
+    sections = [("overview", "Overview"), ("network", "Network"), ("radio", "Radio"),
+                ("power", "Power"), ("storage", "Storage"), ("diagnostics", "Diagnostics"), ("actions", "Actions")]
+    nav = ''.join(f'<a class="compact-control" href="#{key}" data-view="{key}">{label}</a>' for key, label in sections)
     snapshot = data.get("snapshot", {})
     freshness = f'{snapshot.get("state", "unknown")} · age {snapshot.get("age_seconds", "unknown")} s'
     alerts = ''.join(f'<li>{esc(a["component"])}: {esc(a["message"])}</li>' for a in sanitize_alerts(data.get("alerts", [])))
     error_html = f'<p class="notice error">{esc(data["error"])}</p>' if data.get("error") else ""
-    health = f'<section class="overview"><div><h1>PCS command center</h1><p>Snapshot {esc(freshness)} · collected {esc(data.get("generated_at", "unknown"))}</p>{error_html}<ul>{alerts}</ul></div>{overall_badge(data)}</section>'
-    overview = f'<div class="kpis">{summaries}</div><section class="card"><h2>Field operations</h2><p>Inspect status before changing services. Radio and network actions can interrupt field communications.</p><div class="quicklinks">{nav}</div></section><details><summary>Advanced / Other diagnostics</summary><div class="grid admin-grid">{"".join(other) or "No additional cards."}</div></details>'
+    health = f'<section class="overview health-banner"><div><p class="eyebrow">FIELD OPERATIONS · AUTHENTICATED</p><h1>System overview</h1><p>Snapshot {esc(freshness)} · collected {esc(data.get("generated_at", "unknown"))}</p>{error_html}<ul>{alerts}</ul></div>{overall_badge(data)}</section>'
+    overview = render_overview(public_data or {}, overview_controls) + render_dashboard_services()
     action_directory = ''.join(
         f'<details><summary>{esc(title)}</summary><ul>' + ''.join(
             f'<li><a href="#{section}">{esc(ACTION_MAP[name][0])}</a> — {esc(ACTION_MAP[name][1])}</li>' for name in names
         ) + '</ul></details>'
-        for section, groups in section_actions.items() if section != "actions" for title, names in groups)
+        for section, groups in section_actions.items() if section not in {"actions", "overview"} for title, names in groups)
     content = {"overview": overview,
         "actions": '<p>Frequently used operations are below. Browse all other commands by category and open their contextual controls.</p>',
         "network": '<section class="card"><h2>Bandwidth</h2><p>Whole-network ceilings, default client speeds and trusted-device exceptions.</p><a class="button secondary" href="/admin/bandwidth">Bandwidth settings</a></section><details><summary>Detailed field access and clients</summary>' + ''.join(access_rows) + '</details>',
-        "radio": graywolf_admin_card + '<p><a href="/pistar/">Optional Pi-Star access</a> · <a href="#system">Time / GPS controls</a></p>',
+        "radio": graywolf_admin_card + '<p><a href="/pistar/">Optional Pi-Star access</a> · <a href="#diagnostics">Time / GPS controls</a></p>',
         "storage": backup_settings_html,
-        "system": power_settings_html + '<section class="card"><h2>Administrator access</h2><p>Password changes invalidate active sessions. Forgotten passwords require the PCS terminal.</p><a class="button secondary" href="/admin/password">Change Admin Password</a></section>'}
+        "power": power_settings_html,
+        "diagnostics": '<details><summary>Advanced / Other diagnostics</summary><div class="grid admin-grid">' + ''.join(other) + '</div></details>' + '<section class="card"><h2>Administrator access</h2><p>Password changes invalidate active sessions. Forgotten passwords require the PCS terminal.</p><a class="button secondary" href="/admin/password">Change Admin Password</a></section>'}
     views = ''.join(f'<section class="workspace-view" id="{key}"><h2 class="section-title">{label}</h2><div class="grid admin-grid">{"".join(grouped.get(key, []))}</div>{content[key]}{"".join(action_groups.get(key, []))}{action_directory if key == "actions" else ""}</section>' for key, label in sections)
-    console = result_html or '<section class="output"><h2>Recent action output</h2><p>No action output in this request.</p></section>'
+    console = result_html
     body = f"""<a class="skip" href="#workspace-main">Skip to content</a><div class="workspace">
     <aside class="workspace-sidebar"><a class="workspace-brand" href="/">PCS<span>CONTROL CENTER</span></a><p class="eyebrow">Administration</p><nav class="workspace-nav" aria-label="Administration sections">{nav}</nav><p class="small">Authenticated operator<br>Local field network</p></aside>
-    <div class="workspace-content"><header><div class="nav"><div class="brand-group">{header_health(data)}</div><nav class="navlinks"><a href="#storage">Backup Settings</a><a href="/">Public Homepage</a><a href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
+    <div class="workspace-content"><header><div class="nav"><div class="brand-group">{header_health(data)}</div><nav class="navlinks"><a class="compact-control" href="#storage">Backup Settings</a><a class="compact-control" href="/">Public Homepage</a><a class="compact-control" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
     <main class="admin-main" id="workspace-main">{health}{console}{views}</main></div></div>"""
     script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});
-    function showSection(){var id=location.hash.slice(1)||'overview';if(id==='power-settings')id='system';if(!document.querySelector('.workspace-view#'+CSS.escape(id)))id='overview';document.querySelectorAll('.workspace-view').forEach(function(view){view.hidden=view.id!==id;});document.querySelectorAll('[data-view]').forEach(function(link){if(link.dataset.view===id)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');});}
+    function showSection(){var id=location.hash.slice(1)||'overview';if(id==='power-settings')id='power';if(id==='system')id='diagnostics';if(!document.querySelector('.workspace-view#'+CSS.escape(id)))id='overview';document.querySelectorAll('.workspace-view').forEach(function(view){view.hidden=view.id!==id;});document.querySelectorAll('[data-view]').forEach(function(link){if(link.dataset.view===id)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');});}
     window.addEventListener('hashchange',showSection);showSection();var result=document.getElementById('action-result');if(result){window.addEventListener('load',function(){result.focus();result.scrollIntoView({block:'nearest'});});}
     """
-    return document("PCS Administration", body, script=script, nonce=nonce)
+    return document("PCS Administration", body, script=script, nonce=nonce, workspace_theme=True)
 
 
 def bandwidth_request(payload=None):
@@ -1270,7 +1371,7 @@ class Handler(BaseHTTPRequestHandler):
             backup_settings, settings_error = load_backup_settings()
             body = render_admin_page(
                 get_admin_dashboard(), session["csrf"], nonce=nonce,
-                backup_settings=backup_settings, settings_error=settings_error,
+                backup_settings=backup_settings, settings_error=settings_error, public_data=get_public_dashboard(),
             )
             self.send_body(200, body, "text/html; charset=utf-8", nonce=nonce)
             return
@@ -1456,7 +1557,7 @@ class Handler(BaseHTTPRequestHandler):
                 get_admin_dashboard(), session["csrf"], nonce=nonce,
                 backup_settings=backup_settings,
                 settings_notice=message if updated else "",
-                settings_error=load_error or ("" if updated else message),
+                settings_error=load_error or ("" if updated else message), public_data=get_public_dashboard(),
             )
             self.send_body(200 if updated else 400, body, "text/html; charset=utf-8", nonce=nonce)
             return
@@ -1477,7 +1578,7 @@ class Handler(BaseHTTPRequestHandler):
             backup_settings, settings_error = load_backup_settings()
             body = render_admin_page(
                 get_admin_dashboard(), session["csrf"], output, ACTION_MAP[action][0], code, nonce,
-                backup_settings=backup_settings, settings_error=settings_error,
+                backup_settings=backup_settings, settings_error=settings_error, public_data=get_public_dashboard(),
             )
             self.send_body(200, body, "text/html; charset=utf-8", nonce=nonce)
             return
