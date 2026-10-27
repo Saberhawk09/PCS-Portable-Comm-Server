@@ -64,3 +64,5 @@ All actions are also discoverable from the Actions catalog. Each has one actual 
 Without JavaScript, every section remains visible and forms still POST normally. JavaScript only switches visible sections, focuses real returned output and preserves the preexisting confirmation prompts. Hash fragments never become command arguments.
 
 Follow-up navigation: the six public destinations are shared by admin, with an extra Actions catalog. Wi-Fi, Meshtastic, storage and PCS status read actions now live as compact Overview panel forms. Power data/settings live in Power; advanced/service diagnostics live in Diagnostics.
+
+All full authenticated status cards, mailbox bodies and client/management detail now live at `/admin/details`, grouped by subsystem. Clean cards, action forms and settings remain on `/admin/`.

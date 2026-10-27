@@ -7,9 +7,16 @@ const fs=require('node:fs');
  const browser=await chromium.launch({headless:true,executablePath:process.env.PCS_CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe'});
  const page=await browser.newPage();const issues=[];
  page.on('pageerror',e=>issues.push(String(e)));
+ async function checkSymmetry(width, audience){
+  if(width<900)return;
+  const boxes=await page.locator('#overview .subsystem-panel').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom};}));
+  if(boxes.length!==4){issues.push(audience+' missing grid');return;}
+  for(const [a,b] of [[0,1],[2,3]])if(Math.abs(boxes[a].width-boxes[b].width)>1||Math.abs(boxes[a].y-boxes[b].y)>1||Math.abs(boxes[a].bottom-boxes[b].bottom)>1)issues.push(audience+' asymmetric row '+width);
+ }
  for(const width of [2560,1440,768,360]){
   await page.setViewportSize({width,height:1000});await page.goto('http://127.0.0.1:8766/');
   await page.waitForFunction(()=>document.querySelector('[data-field="clients"]').textContent==='0');
+  await checkSymmetry(width,'public');
   if(width>=1440){
    if(await page.locator('.workspace-content').evaluate(e=>e.getBoundingClientRect().width>1480))issues.push('unbounded public width');
    if(await page.locator('.overview-kpis .kpi').first().evaluate(e=>e.getBoundingClientRect().width>360))issues.push('stretched KPI');
@@ -22,6 +29,7 @@ const fs=require('node:fs');
   await page.goto('http://127.0.0.1:8766/');await page.waitForFunction(()=>document.querySelector('[data-field=clients]').textContent==='0');await page.screenshot({path:path.join(out,'public-'+width+'.png'),fullPage:true});
   await page.goto('http://127.0.0.1:8766/admin/login');if(await page.locator('#password').count()){await page.locator('#password').fill('ui-preview-password');await page.getByRole('button',{name:'Sign in to PCS Administration'}).click();}
   const panels=await page.locator('#overview [data-panel]').count();if(panels!==4)issues.push('admin overview panels missing');
+  await checkSymmetry(width,'admin');
   for(const section of ['overview','network','radio','power','storage','diagnostics','actions']){
    await page.locator('.workspace-nav a[href="#'+section+'"]').click();
    if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))issues.push('admin overflow '+width+' '+section);
@@ -34,7 +42,7 @@ const fs=require('node:fs');
   if(await page.locator('#action-result').evaluate(e=>e!==document.activeElement))issues.push('output not focused');
  }
  // Secondary routes share the palette and retain usable narrow layouts.
- for(const route of ['/status/','/power/','/starlink/','/admin/password','/admin/bandwidth']){
+ for(const route of ['/status/','/power/','/starlink/','/admin/password','/admin/bandwidth','/admin/details']){
    await page.goto('http://127.0.0.1:8766'+route);
    if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))issues.push('secondary overflow '+route);
  }

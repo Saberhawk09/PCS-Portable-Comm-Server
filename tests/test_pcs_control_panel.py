@@ -215,7 +215,7 @@ class PublicDataTests(unittest.TestCase):
             "summary": "WireGuard remote management connected",
             "items": [{"label": "Approved routes", "value": "10.6.0.1/32, 10.6.0.2/32"}],
         })
-        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        admin_page = pcs.render_admin_details_page(admin, "csrf-token").decode("utf-8")
         self.assertIn("WireGuard remote management connected", admin_page)
         self.assertIn("Approved routes", admin_page)
 
@@ -352,7 +352,7 @@ class PublicDataTests(unittest.TestCase):
             "summary": "1 unread / 2 stored",
             "items": [{"label": "W8IJC-7 · 42", "value": "private field note"}],
         })
-        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        admin_page = pcs.render_admin_details_page(admin, "csrf-token").decode("utf-8")
         self.assertIn("APRS Mailbox", admin_page)
         self.assertIn("W8IJC-7", admin_page)
         self.assertIn("private field note", admin_page)
@@ -393,7 +393,7 @@ class PublicDataTests(unittest.TestCase):
 
         admin = deepcopy(ADMIN_DATA)
         admin["aprs"] = active["aprs"]
-        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        admin_page = pcs.render_admin_details_page(admin, "csrf-token").decode("utf-8")
         self.assertIn("Graywolf operator configuration and diagnostics", admin_page)
         self.assertIn("Open Graywolf dashboard", admin_page)
         self.assertIn("500 ms delay / 50 ms tail", admin_page)
@@ -524,6 +524,26 @@ class RouteSecurityTests(unittest.TestCase):
             self.assertEqual(status, 303)
             self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"dc_source": "power_supply", "battery_capacity_wh": 500})
             self.assertEqual(run.call_args.args[0], ["sudo", "-n", "/usr/local/sbin/pcs-power-monitor", "set-session"])
+
+    def test_detailed_diagnostics_are_separate_and_authenticated(self):
+        status, headers, _ = self.request("GET", "/admin/details")
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+        cookie = self.login()
+        data = deepcopy(ADMIN_DATA)
+        data['cards'].append({'id': 'future', 'title': 'Private diagnostic sentinel',
+                              'items': [{'label': 'Private field', 'value': '<script>private-marker</script>'}]})
+        data['client_info'] = {'router_side_clients': [{'name': 'private-client-marker', 'ip': '10.42.0.123'}]}
+        with mock.patch.object(pcs, 'get_admin_dashboard', return_value=data):
+            status, _, clean = self.request('GET', '/admin/', headers={'Cookie': cookie})
+            self.assertEqual(status, 200)
+            self.assertNotIn('Private diagnostic sentinel', clean)
+            self.assertNotIn('private-client-marker', clean)
+            status, _, detail = self.request('GET', '/admin/details', headers={'Cookie': cookie})
+            self.assertEqual(status, 200)
+            self.assertIn('Private diagnostic sentinel', detail)
+            self.assertIn('private-client-marker', detail)
+            self.assertIn('&lt;script&gt;private-marker&lt;/script&gt;', detail)
 
     @classmethod
     def setUpClass(cls):

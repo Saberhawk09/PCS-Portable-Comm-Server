@@ -73,7 +73,10 @@ class ModernizationTests(unittest.TestCase):
             data['cards'].append({'id': key, 'title': '<unsafe>', 'summary': 'unique-' + key,
                                   'items': [{'label': key, 'value': '<script>private detail</script>'}],
                                   'metrics': [{'label': 'meter-' + key, 'value': 0, 'suffix': '%'}]})
-        page = pcs.render_admin_page(data, 'token').decode()
+        page = pcs.render_admin_details_page(data, 'token').decode()
+        clean = pcs.render_admin_page(data, 'token', public_data=PUBLIC_DATA).decode()
+        self.assertNotIn('unique-new-future-card', clean)
+        self.assertNotIn('private detail', clean)
         for key in ['network', 'aprs-mailbox', 'power', 'new-future-card']:
             self.assertIn('unique-' + key, page)
             self.assertIn('meter-' + key, page)

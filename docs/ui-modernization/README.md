@@ -142,3 +142,21 @@ snapshot for card details. This adds no hardware polling or collection and chang
 no API schema, authentication, action validation or CSRF rules. No admin detail is
 copied into the public page. Actual returned action output appears only when there
 is a result, avoiding an empty console occupying the top of the dashboard.
+
+## Clean dashboard and separate detailed diagnostics
+
+The screenshot-marked decorative text has been removed. Subsystem panels use
+an equal-width two-column grid and stretch to the same height within each row,
+so the center gutter and horizontal edges align. Phone layouts remain one column.
+
+Authenticated users keep the same clean public cards in every dashboard section,
+with existing compact controls and settings. All original raw status cards,
+authenticated mailbox messages, client addresses/MACs, Graywolf configuration and
+future/unknown cards are now on **Detailed diagnostics** at `/admin/details`.
+This page uses the existing session gate and escaped card renderer. It is a real
+separate request, not hidden detail markup embedded in the dashboard. The public
+API remains unchanged, and no extra collectors or hardware polls are introduced.
+
+The installer smoke check now uses the stable homepage title element instead
+of the removed decorative copy. Browser checks assert equal panel widths, row
+positions and bottom edges on both public and admin dashboards.

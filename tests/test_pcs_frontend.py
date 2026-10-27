@@ -152,7 +152,7 @@ class NginxRouteSecurityTests(control.RouteSecurityTests):
         status, headers, body = self.request("GET", "/")
         self.assertEqual(status, 200)
         self.assertIn("Admin Login", body)
-        self.assertIn("LOCAL OPERATIONS", body)
+        self.assertIn('id="station-title"', body)
         self.assertIn("script-src 'self'", headers.get("Content-Security-Policy"))
         status, _, body = self.request("GET", "/status/")
         self.assertEqual(status, 200)
