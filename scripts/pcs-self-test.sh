@@ -829,7 +829,7 @@ fi
 if command_exists curl; then
     PCS_CONTROL_HTML="$(mktemp)"
     if curl -fsS --max-time 20 "${PCS_CONTROL_URL}" -o "${PCS_CONTROL_HTML}" 2>/dev/null \
-        && grep -q "LOCAL OPERATIONS" "${PCS_CONTROL_HTML}" \
+        && grep -q 'id="station-title"' "${PCS_CONTROL_HTML}" \
         && grep -q "Admin Login" "${PCS_CONTROL_HTML}"; then
         pass "PCS public homepage and Admin Login panel work at ${PCS_CONTROL_URL}"
     else
