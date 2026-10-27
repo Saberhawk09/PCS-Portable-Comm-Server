@@ -8,6 +8,8 @@ import hmac
 import html
 import ipaddress
 import json
+import math
+import re
 import os
 import secrets
 import subprocess
@@ -96,7 +98,7 @@ ACTION_GROUPS = [
     ("Health", ["status", "self-test", "storage-status", "restart-logs"]),
     ("Network", ["wifi-status", "wifi-connect", "wifi-disconnect"]),
     ("Cellular", ["cellular-status", "cellular-connect", "cellular-disconnect", "cellular-test"]),
-    ("Communications", ["meshtastic-status", "restart-meshtastic", "aprs-mailbox-read"]),
+    ("Communications", ["restart-meshtastic", "aprs-mailbox-read"]),
     ("Storage", ["sync-backup", "mount-usb", "mount-new-usb", "safe-unmount-usb"]),
     ("Services", ["restart-services", "restart-samba", "restart-modemmanager"]),
     ("Time / GPS", ["sync-time", "restart-chrony", "restart-gpsd"]),
@@ -604,11 +606,33 @@ main{max-width:1450px;margin:auto;padding:1.2rem}.admin-main{max-width:1600px}.h
 @media(min-width:1300px){.public-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(min-width:1500px){.admin-grid{grid-template-columns:repeat(6,minmax(0,1fr))}}
 @media(max-width:760px){.hero{grid-template-columns:1fr}.nav{align-items:flex-start}.brand-group{align-items:flex-start;flex-direction:column;gap:.35rem}.header-health{align-items:flex-start}.header-alerts{display:block;max-width:52vw}.header-alert{display:block}.navlinks{flex-wrap:wrap;justify-content:flex-end}main{padding:.85rem}.item{display:grid;gap:.2rem}.item span:last-child{text-align:left}.password-card{align-items:stretch;flex-direction:column}.settings-form{grid-template-columns:1fr}}
+
+/* PCS modernization: local, responsive presentation only. */
+:root{--bg:#090f17;--panel:#131d29;--panel2:#172331;--line:#293749;--accent:#70d8d1;--muted:#a5b6c7}
+:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.skip{position:absolute;left:12px;top:-100px;z-index:100}.skip:focus{top:12px}
+.workspace{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
+.workspace-sidebar{padding:26px 18px;background:#0d1520;border-right:1px solid var(--line)}
+.workspace-brand{display:block;font-size:25px;font-weight:850;text-decoration:none;margin-bottom:38px}.workspace-brand span{display:block;color:var(--muted);font-size:10px;letter-spacing:.18em}
+.workspace-nav{display:flex;flex-direction:column;gap:6px}.workspace-nav a{padding:12px;border:1px solid transparent;border-radius:9px;text-decoration:none;color:var(--muted);min-height:44px}
+.workspace-nav a:hover,.workspace-nav a[aria-current=page]{background:#1a333e;border-color:#2c5d63;color:#9af3e8}
+[hidden]{display:none!important}.workspace-content{min-width:0}.workspace header{position:static}.workspace .nav{flex-wrap:wrap}.workspace .header-alerts{display:none}
+.workspace main{padding:24px 32px}.workspace h1{font-size:28px;margin:0}.workspace .overview{align-items:flex-start}.workspace .overview ul{padding-left:20px;color:var(--warn)}
+.workspace .admin-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.workspace .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:20px}.kpi p{overflow-wrap:anywhere}
+.workspace-view>.card,.workspace-view>details{margin-bottom:18px}.quicklinks{display:flex;flex-wrap:wrap;gap:16px;margin:15px 0}.quicklinks a{min-height:44px;display:inline-flex;align-items:center}
+.workspace .output{margin:0 0 20px}.workspace .output h2{font-size:16px}.workspace .output pre{max-height:250px}.workspace .action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.action-card .eyebrow{display:block;font-size:10px;margin-bottom:9px}
+details{border:1px solid var(--line);padding:14px;border-radius:12px}summary{cursor:pointer;font-weight:650;min-height:30px}.workspace details .grid{margin-top:15px}
+input,select{max-width:100%;min-height:44px}select{background:var(--bg);color:var(--text);padding:10px;border:1px solid var(--line);border-radius:8px}
+.card,.action-card,.grid>*{min-width:0}p,code,.summary{overflow-wrap:anywhere}.nav,.navlinks{flex-wrap:wrap}.navlinks>a{min-height:44px;display:inline-flex;align-items:center}
+@media(max-width:1100px){.workspace{grid-template-columns:185px minmax(0,1fr)}.workspace .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.workspace main{padding:20px}}
+@media(max-width:760px){.workspace{display:block}.workspace-sidebar{padding:10px 12px;position:static;border-bottom:1px solid var(--line)}.workspace-brand,.workspace-sidebar>.eyebrow,.workspace-sidebar>.small{display:none}.workspace-nav{flex-direction:row;overflow-x:auto;white-space:nowrap}.workspace-nav a{padding:10px}.workspace main{padding:14px}.workspace .admin-grid,.workspace .action-grid{grid-template-columns:1fr}.workspace .overview{display:block}.workspace .badge{margin-top:10px}.workspace .nav{gap:8px}.workspace .navlinks{justify-content:flex-start}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
 """
 
 
-def document(title: str, body: str, script: str = "", nonce: str = "", public_theme: bool = False, footer: str = "PCS local field network interface") -> bytes:
-    theme_html = '<link rel="stylesheet" href="/assets/css/pcs.css">' if public_theme else ""
+def document(title: str, body: str, script: str = "", nonce: str = "", public_theme: bool = False, footer: str = "PCS local field network interface", workspace_theme: bool = False) -> bytes:
+    theme_html = '<link rel="stylesheet" href="/assets/css/pcs.css">' if public_theme or workspace_theme else ""
     body_class = ' class="public-status"' if public_theme else ""
     script_html = f'<script nonce="{esc(nonce)}">{script}</script>' if script else ""
     return f"""<!doctype html>
@@ -885,24 +909,221 @@ def render_admin_card(card: dict) -> str:
     return f'<article class="card"><div class="card-top"><h2>{esc(card.get("title", "Status"))}</h2>{badge(card.get("status", "warn"))}</div><p class="summary">{esc(card.get("summary", ""))}</p>{metrics}{rows}</article>'
 
 
-def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str = "", return_code: int | None = None, nonce: str = "", backup_settings: dict | None = None, settings_notice: str = "", settings_error: str = "") -> bytes:
-    action_groups = []
-    for title, action_names in ACTION_GROUPS:
-        forms = []
-        for name in action_names:
-            label, description = ACTION_MAP[name]
-            danger = "danger" if name in DANGEROUS_ACTIONS else ""
-            confirmation = ACTION_CONFIRMS.get(name, "")
-            forms.append(f"""<form method="POST" action="/admin/run" class="action-card" data-confirm="{esc(confirmation)}">
-            <input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="{esc(name)}">
-            <button class="{danger}" type="submit">{esc(label)}</button><p>{esc(description)}</p></form>""")
-        action_groups.append(f'<section class="action-group"><h3>{esc(title)}</h3><div class="action-grid">{"".join(forms)}</div></section>')
+
+def dashboard_values(data: dict) -> dict:
+    """Common public/admin overview, populated only from the public projection.
+
+    The static homepage contains this same structure with unknown initial values;
+    pcs.js refreshes its explicit data-field bindings from the public endpoint.
+    Authentication-only controls are supplied by render_admin_page.
+    """
+    data = sanitize_public_dashboard(data)
+    section = lambda key: data.get(key, {})
+    network, power, gps = section('network'), section('power'), section('gnss')
+    aprs, mesh, storage, clock = (section(key) for key in ('aprs', 'meshtastic', 'storage', 'time'))
+
+    def text(value, fallback='Unavailable'):
+        if isinstance(value, bool):
+            return 'Yes' if value else 'No'
+        return str(value) if isinstance(value, (str, int, float)) and str(value).strip() else fallback
+
+    def reading(value, unit, decimals=1):
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            return f'{value:.{decimals}f} {unit}'
+        if isinstance(value, str) and re.fullmatch(r'-?\d+(?:\.\d+)?\s*' + re.escape(unit), value.strip(), re.I):
+            return value
+        return 'Unavailable'
+
+    def optional(value):
+        return 'Not configured' if value.get('configured') is False else status_label(value['status']) if value.get('configured') is True and value.get('status') in {'ok', 'warn', 'bad'} else 'Unknown'
+
+    def link_state(kinds):
+        path = next((u for u in network.get('uplinks', []) if u.get('type') in kinds), None)
+        return ('Selected · ' if path.get('active') else '') + text(path.get('state'), 'Unknown') if path else 'Not reported'
+
+    active_wan = next((u for u in network.get('uplinks', []) if u.get('active') is True), {})
+    sl_ready = section('starlink').get('configured') is True and section('starlink').get('available') is True
+    uplink_name = text(network.get('uplink_type'))
+    if active_wan.get('type') in {'ethernet', 'vlan'}:
+        uplink_name = 'Starlink' if active_wan.get('id') == 'starlink' and sl_ready else 'Ethernet WAN'
+    elif uplink_name == 'Starlink' and not sl_ready:
+        uplink_name = 'Ethernet WAN'
+    values = {
+        'uplink': 'Offline' if data.get('offline') or network.get('internet_available') is False else uplink_name,
+        'power': reading(power.get('total_power') if 'total_power' in power else power.get('input_power') if power.get('input_online') else None, 'W') if power.get('configured') else 'Unavailable',
+        'voltage': reading(power.get('input_voltage'), 'V', 2) if power.get('configured') and power.get('input_online') else 'Unavailable',
+        'gps': text(gps.get('fix')), 'satellites': text(gps.get('satellites')), 'clients': str(network['ap_client_count']) if type(network.get('ap_client_count')) is int and network['ap_client_count'] >= 0 else 'Unavailable',
+        'dcSource': {'battery':'Battery', 'power_supply':'Power Supply'}.get(power.get('dc_source'), 'Unknown'),
+        'internet': 'Available' if network.get('internet_available') is True else 'Offline' if network.get('internet_available') is False else 'Unknown',
+        'apStatus': 'Connected' if network.get('openwrt_online') is True else 'Offline' if network.get('openwrt_online') is False else 'Unknown',
+        'overviewEthernet': link_state({'ethernet', 'vlan'}), 'overviewWifi': link_state({'wifi'}),
+        'overviewCellular': link_state({'cellular'}), 'carrier': text(section('cellular').get('carrier')),
+        'aprs': optional(aprs), 'aprsDetail': 'Not configured' if aprs.get('configured') is False else ' · '.join(text(aprs.get(key), 'Unknown') for key in ('callsign','engine','frequency')),
+        'mesh': optional(mesh), 'meshDetail': 'Not configured' if mesh.get('configured') is False else ' · '.join(text(mesh.get(key), 'Unknown') for key in ('node','transport','mqtt')),
+        'pistar': 'Not configured' if section('pistar').get('configured') is False else 'Online' if section('pistar').get('online') is True else 'Offline' if section('pistar').get('online') is False else 'Unknown',
+        'primaryState': text(storage.get('primary_share_available')), 'backupState': text(storage.get('backup_share_available')),
+        'backupAge': text(storage.get('last_backup_age')), 'timeSource': text(clock.get('source')),
+        'timeSync': 'Synchronized' if clock.get('synchronized') is True else 'Not synchronized' if clock.get('synchronized') is False else 'Unknown',
+    }
+    for field, key, online, unit in [('inputPower','input_power','input_online','W'), ('rail12DistributionPower','rail_12v_distribution_power','rail_12v_online','W'), ('rail12OnlyPower','rail_12v_power','rail_12v_online','W'), ('rail5Power','rail_5v_power','rail_5v_online','W'), ('starlinkPower','starlink_power','starlink_online','W')]:
+        values[field] = reading(power.get(key), unit) if power.get('configured') and power.get(online) else 'Not commissioned' if field == 'starlinkPower' and not (power.get('configured') and power.get('starlink_configured')) else 'Unavailable'
+
+    values.update({
+        'coordinates': text(gps.get('coordinates')), 'grid': text(gps.get('grid_square')),
+        'inputVoltage': values['voltage'],
+        'shutdownProtection': 'Enabled' if power.get('shutdown_armed') is True else 'Disabled' if power.get('shutdown_armed') is False else 'Unknown',
+        'wanUsage': text(network.get('usage_summary')),
+    })
+    for field, key in [('powerEnergy', 'total_energy_since_boot_wh'), ('batteryRemaining', 'battery_remaining_wh')]:
+        value = power.get(key)
+        values[field] = f'{value:.1f}' if type(value) in {int, float} and math.isfinite(value) and value >= 0 else 'Unavailable'
+    return values
+
+
+def render_overview(data: dict, controls: dict | None = None) -> str:
+    values = dashboard_values(data)
+    controls = controls or {}
+    def field(key, tag='strong'):
+        return f'<{tag} data-field="{key}">{esc(values[key])}</{tag}>'
+
+    def row(title, key, detail=''):
+        return f'<div class="subsystem-row"><div><strong>{title}</strong>{field(detail, "small") if detail else ""}</div>{field(key)}</div>'
+
+    kpis = ''.join(f'<article class="kpi"><span class="metric-label">{title}</span>{field(key)}<span class="metric-note">{detail}</span></article>' for title,key,detail in [
+        ('ACTIVE UPLINK','uplink',field('internet','span')),
+        ('TOTAL POWER','power','Input '+field('voltage','span')+' · '+field('dcSource','span')),
+        ('GNSS','gps',field('satellites','span')+' · '+field('timeSync','span')),
+        ('AP CLIENTS','clients','OpenWrt '+field('apStatus','span'))])
+    panels = [
+        ('Connectivity','WAN paths and current route',row('Ethernet WAN','overviewEthernet')+row('Wi-Fi','overviewWifi')+row('Cellular','overviewCellular','carrier'), 'network'),
+        ('Radio services','Packet, mesh and local hotspot',row('APRS','aprs','aprsDetail')+row('Meshtastic','mesh','meshDetail')+row('Pi-Star','pistar'), 'radio'),
+        ('Power distribution','Measured branches · source-dependent totals', ''.join(row(title,key) for title,key in [('PCS input','inputPower'),('12V distribution · includes 5V','rail12DistributionPower'),('5V output','rail5Power'),('Starlink passthrough','starlinkPower')]), 'power'),
+        ('Storage & time','Field files, backup and time reference',row('PCS-Share available','primaryState')+row('PCS-Backup available','backupState')+row('Last backup','backupAge')+row('Time reference','timeSource'), 'storage')]
+    return '<div class="overview-kpis">'+kpis+'</div><h2 class="subsystems-title">Subsystems</h2><div class="subsystem-grid">'+''.join(
+        f'<article class="subsystem-panel" data-panel="{key}"><div class="panel-heading"><div><h3>{title}</h3><p>{subtitle}</p></div><a class="compact-control" href="#{key}">Details <span aria-hidden="true">↗</span></a></div>{rows}{controls.get(key, "")}</article>'
+        for title,subtitle,rows,key in panels)+'</div>'
+
+
+
+def render_dashboard_services() -> str:
+    return """    <section id="services" aria-labelledby="services-title">
+      <div class="section-heading"><h2 id="services-title">Quick access</h2><span>SELECT A SERVICE TO CONTINUE</span></div>
+      <div class="service-grid">
+        <a class="tile" href="/docs/"><span class="tile-top"><span class="icon" aria-hidden="true">≡</span><span class="tag">OFFLINE HELP</span></span><h3>Documentation <span aria-hidden="true">↗</span></h3><p>Quick start, file shares, service addresses and field reference.</p></a>
+        <a class="tile" href="/status/"><span class="tile-top"><span class="icon" aria-hidden="true">▤</span><span class="tag">PUBLIC</span></span><h3>Status <span aria-hidden="true">↗</span></h3><p>Detailed health, position, storage and network information.</p></a>
+        <a class="tile" href="/openwrt/"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag">LOCAL NETWORK</span></span><h3>OpenWrt <span aria-hidden="true">↗</span></h3><p>Open the PCS access point and router interface.</p></a>
+        <a class="tile" href="/pistar/" id="pistar-tile"><span class="tile-top"><span class="icon" aria-hidden="true">◉</span><span class="tag" data-field="pistar">Unknown</span></span><h3>Pi-Star <span aria-hidden="true">↗</span></h3><p>Open the paired digital voice hotspot dashboard.</p></a>
+        <a class="tile" href="/radio/#meshtastic"><span class="tile-top"><span class="icon" aria-hidden="true">⋈</span><span class="tag" data-field="mesh">Unknown</span></span><h3>Meshtastic <span aria-hidden="true">↗</span></h3><p>Mesh radio link and MQTT gateway information.</p></a>
+        <a class="tile" href="/radio/#aprs"><span class="tile-top"><span class="icon" aria-hidden="true">⌁</span><span class="tag" data-field="aprs">Unknown</span></span><h3>APRS <span aria-hidden="true">↗</span></h3><p>Packet radio station and messaging service information.</p></a>
+      </div>
+    </section>"""
+
+
+
+DASHBOARD_SECTION_TEMPLATES = {
+    'network': """<div class="content-grid"><article class="content-panel"><h3>Client LAN and uplinks</h3><div class="pair"><span>Active uplink</span><strong data-field="uplink">Unavailable</strong></div><div class="pair"><span>AP clients</span><strong data-field="clients">Unavailable</strong></div><div class="pair"><span>Gateway</span><strong data-value="network.lan_gateway">Unavailable</strong></div><div class="pair"><span>OpenWrt</span><strong data-value="network.openwrt_online">Unavailable</strong></div><div class="pair"><span>Internet</span><strong data-value="network.internet_available">Unavailable</strong></div><div class="pair"><span>DNS</span><strong data-value="network.dns_available">Unavailable</strong></div></article><article class="content-panel"><h3>Cellular</h3><div class="pair"><span>Carrier</span><strong data-value="cellular.carrier">Unavailable</strong></div><div class="pair"><span>Signal</span><strong data-value="cellular.signal">Unavailable</strong></div><div class="pair"><span>Connected</span><strong data-value="cellular.connected">Unavailable</strong></div></article><article class="content-panel" data-optional="remote_management"><h3>Remote management</h3><div class="pair"><span>Connection</span><strong data-value="remote_management.connection">Unavailable</strong></div><div class="pair"><span>Management address</span><strong data-value="remote_management.management_address">Unavailable</strong></div><div class="pair"><span>Last handshake</span><strong data-value="remote_management.latest_handshake">Unavailable</strong></div></article><article class="content-panel"><h3>WAN traffic since boot</h3><p data-field="wanUsage">Unavailable</p><ul id="wan-breakdown"><li>Uplink details unavailable</li></ul><a href="/starlink/">Starlink telemetry</a> · <a href="/openwrt/">OpenWrt</a></article></div>""",
+    'radio': """<div class="content-grid"><article class="content-panel" data-optional="aprs"><h3>APRS</h3><div class="pair"><span>Station</span><strong data-value="aprs.callsign">Unavailable</strong></div><div class="pair"><span>Role</span><strong data-value="aprs.role">Unavailable</strong></div><div class="pair"><span>Service</span><strong data-value="aprs.service">Unavailable</strong></div><div class="pair"><span>Packet engine</span><strong data-value="aprs.engine">Unavailable</strong></div><div class="pair"><span>Unread mailbox</span><strong data-value="aprs.mailbox_unread">Unavailable</strong></div></article><article class="content-panel" data-optional="meshtastic"><h3>Meshtastic</h3><div class="pair"><span>Node</span><strong data-value="meshtastic.node">Unavailable</strong></div><div class="pair"><span>MQTT</span><strong data-value="meshtastic.mqtt">Unavailable</strong></div><div class="pair"><span>Transport</span><strong data-value="meshtastic.transport">Unavailable</strong></div></article><article class="content-panel" data-optional="pistar"><h3>Pi-Star</h3><div class="pair"><span>Status</span><strong data-field="pistar">Unavailable</strong></div></article><article class="content-panel"><h3>Radio services</h3><p>Configured services and aggregate diagnostics. Authenticated mailbox detail stays in Administration.</p><a href="/radio/">Radio service guide</a> · <a href="/pistar/">Pi-Star access</a> · <a href="/status/">Full public diagnostics</a></article></div>""",
+    'power': """<div class="content-grid"><article class="content-panel"><h3>Power overview</h3><div class="pair"><span>Source this boot</span><strong data-field="dcSource">Unavailable</strong></div><div class="pair"><span>Total power</span><strong data-field="power">Unavailable</strong></div><div class="pair"><span>Input voltage</span><strong data-field="inputVoltage">Unavailable</strong></div><div class="pair"><span>Low-voltage shutdown</span><strong data-field="shutdownProtection">Unavailable</strong></div><div class="pair"><span>Consumed this boot (Wh)</span><strong data-field="powerEnergy">Unavailable</strong></div><div class="pair"><span>Battery remaining (Wh)</span><strong data-field="batteryRemaining">Unavailable</strong></div></article><article class="content-panel"><h3>Measured branches</h3><div class="pair"><span>12V distribution (includes 5V)</span><strong data-field="rail12DistributionPower">Unavailable</strong></div><div class="pair"><span>12V-only load</span><strong data-field="rail12OnlyPower">Unavailable</strong></div><div class="pair"><span>5V output</span><strong data-field="rail5Power">Unavailable</strong></div><div class="pair"><span>Starlink passthrough</span><strong data-field="starlinkPower">Unavailable</strong></div></article><article class="content-panel"><h3>Accounting and protection</h3><p>Battery totals include PCS and Starlink; Power Supply totals include PCS only. Distribution readings include the downstream 5V converter. Estimates never replace voltage protection.</p><a href="/power/">All four monitors, charge and energy totals</a></article></div>""",
+    'storage': """<div class="content-grid"><article class="content-panel"><h3>Storage and backup</h3><div class="pair"><span>Primary share</span><strong data-value="storage.primary_share_available">Unavailable</strong></div><div class="pair"><span>USB mounted</span><strong data-value="storage.usb_mounted">Unavailable</strong></div><div class="pair"><span>USB free</span><strong data-value="storage.usb_free_gb">Unavailable</strong></div><div class="pair"><span>Backup available</span><strong data-value="storage.backup_share_available">Unavailable</strong></div><div class="pair"><span>Backup free</span><strong data-value="storage.backup_free_gb">Unavailable</strong></div></article><article class="content-panel"><h3>Field files</h3><p>Local shares remain accessible without Internet.</p><a href="/files/">File sharing instructions</a> · <a href="/status/">Backup and retention details</a></article></div>""",
+    'diagnostics': """<div class="content-grid"><article class="content-panel"><h3>Position and time</h3><div class="pair"><span>GNSS fix</span><strong data-field="gps">Unavailable</strong></div><div class="pair"><span>Satellites</span><strong data-value="gnss.satellites">Unavailable</strong></div><div class="pair"><span>Coordinates</span><strong data-field="coordinates">Unavailable</strong></div><div class="pair"><span>Grid square</span><strong data-field="grid">Unavailable</strong></div><div class="pair"><span>Time source</span><strong data-field="timeSource">Unavailable</strong></div><div class="pair"><span>Synchronized</span><strong data-value="time.synchronized">Unavailable</strong></div></article><article class="content-panel"><h3>System resources</h3><div class="pair"><span>CPU temperature</span><strong data-value="system.cpu_temperature">Unavailable</strong></div><div class="pair"><span>CPU load</span><strong data-value="system.cpu_load">Unavailable</strong></div><div class="pair"><span>Memory</span><strong data-value="system.memory_used">Unavailable</strong></div><div class="pair"><span>System storage</span><strong data-value="system.root_storage_used">Unavailable</strong></div></article><article class="content-panel"><h3>Advanced diagnostics</h3><p>The detailed status page retains every public measurement and optional service field.</p><a href="/status/">Detailed status</a> · <a href="/cockpit/">Cockpit</a> · <a href="/docs/">Offline documentation</a></article></div>""",
+}
+
+
+def render_dashboard_section(data: dict, key: str) -> str:
+    public = sanitize_public_dashboard(data)
+    values = dashboard_values(public)
+    def substitute(match):
+        tag, attr, field = match.group(1), match.group(2), match.group(3)
+        if attr == 'data-value':
+            section, name = field.split('.')
+            section = public.get(section, {})
+            value = section.get(name)
+            value = 'Not configured' if section.get('configured') is False else 'Yes' if value is True else 'No' if value is False else value if isinstance(value, (str, int, float)) else 'Unavailable'
+        else:
+            value = values.get(field, 'Unavailable')
+        return f'<{tag} {attr}="{field}">{esc(value)}</{tag}>'
+    markup = re.sub(r'<(strong|span|p) (data-value|data-field)="([^"]+)">[^<]*</\1>', substitute, DASHBOARD_SECTION_TEMPLATES[key])
+    if key == 'network':
+        rows = []
+        for uplink in public.get('network', {}).get('uplinks', []):
+            usage = uplink.get('usage') or {}
+            def amount(name):
+                value = usage.get(name)
+                return f'{value / 1_000_000:.3f} MB' if type(value) in {int, float} and math.isfinite(value) and value >= 0 else 'Unavailable'
+            name = uplink.get('name', 'WAN')
+            if uplink.get('type') in {'ethernet', 'vlan'}:
+                name = 'Starlink' if uplink.get('id') == 'starlink' and public.get('starlink', {}).get('available') is True else 'Ethernet WAN'
+            label = f"{name}: {uplink.get('state', 'unknown')}{' / active' if uplink.get('active') is True else ''} · Down {amount('rx_bytes')} / Up {amount('tx_bytes')} / Total {amount('total_bytes')}"
+            rows.append(f'<li>{esc(label)}</li>')
+        if rows:
+            markup = markup.replace('<li>Uplink details unavailable</li>', ''.join(rows))
+    return re.sub(r'data-optional="([^"]+)"', lambda m: m.group(0) + (' hidden' if public.get(m.group(1), {}).get('configured') is False else ''), markup)
+
+
+def render_admin_details_page(data: dict, csrf: str) -> bytes:
+    """Authenticated read-only diagnostics; no privileged data in clean cards."""
+    groups = {'network': {'network', 'uplink-details', 'client-lan', 'cellular', 'remote-management', 'starlink'},
+              'radio': {'aprs', 'aprs-mailbox', 'meshtastic'}, 'power': {'power'},
+              'storage': {'storage', 'backup-health', 'samba'},
+              'diagnostics': {'system-stats', 'system', 'time', 'gps', 'services', 'web-admin'}}
+    grouped = {key: [] for key in groups}
+    other = []
+    for card in data.get('cards', []):
+        group = next((key for key, ids in groups.items() if card.get('id') in ids), None)
+        (grouped[group] if group else other).append(render_admin_card(card))
+    sections = ''.join(f'<section id="{key}"><h2>{key.title()}</h2><div class="grid admin-grid">{"".join(cards)}</div></section>' for key, cards in grouped.items())
+    info = data.get('client_info', {})
+    clients = ''.join(item(client.get('name', 'Unknown'), f"{client.get('ip', 'unknown')} / {client.get('mac', 'unknown')} / {client.get('state', 'unknown')}") for client in info.get('router_side_clients', []))
+    access = item('WAN/public IP', info.get('wan_public_ip', 'Unavailable')) + item('Uplink interface', info.get('uplink_interface', 'Unknown'))
+    access += item('PCS-Share', r'\\10.42.0.1\PCS-Share') + item('PCS-Backup', r'\\10.42.0.1\PCS-Backup')
+    access += item('Windows discovery', 'PCS-FILE-SHARE') + item('PCS-Backup login', 'pcs-admin / current admin password')
+    alerts = ''.join(f'<li>{esc(a["component"])}: {esc(a["message"])}</li>' for a in sanitize_alerts(data.get('alerts', [])))
+    error = f'<p class="notice error">{esc(data["error"])}</p>' if data.get('error') else ''
+    graywolf = graywolf_access_card(data.get('aprs', {}), admin=True)
+    body = f"""<a class="skip" href="#workspace-main">Skip to content</a><div class="workspace">
+    <aside class="workspace-sidebar"><a class="workspace-brand" href="/admin/">PCS<span>CONTROL CENTER</span></a><nav class="workspace-nav"><a class="compact-control" href="/admin/">Dashboard</a><a class="compact-control" href="/admin/details" aria-current="page">Detailed diagnostics</a></nav></aside>
+    <div class="workspace-content"><header><div class="nav">{header_health(data)}<a class="compact-control" href="/admin/">Back to dashboard</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></div></header>
+    <main class="admin-main" id="workspace-main"><h1>Detailed diagnostics</h1><p class="small">Collected {esc(data.get('generated_at', 'unknown'))} · {esc(data.get('snapshot', {}).get('state', 'unknown'))}</p>{error}<ul>{alerts}</ul>{sections}{graywolf}<section class="card"><h2>Detailed field access and clients</h2>{access}{clients}</section><section><h2>Advanced / Other diagnostics</h2><div class="grid admin-grid">{"".join(other)}</div></section></main></div></div>"""
+    return document('PCS Detailed Diagnostics', body, workspace_theme=True)
+
+def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str = "", return_code: int | None = None, nonce: str = "", backup_settings: dict | None = None, settings_notice: str = "", settings_error: str = "", public_data: dict | None = None) -> bytes:
+    # Presentation grouping only: the dispatcher and security boundary stay authoritative.
+    section_actions = {
+        "actions": [("Frequently used", ["self-test", "wifi-connect", "cellular-connect", "sync-backup"])],
+        "overview": [("Overview tools", ["wifi-status", "meshtastic-status", "storage-status", "status"])],
+        "network": [("Wi-Fi and cellular", ["wifi-disconnect", "cellular-status", "cellular-disconnect", "cellular-test"]),
+                    ("Starlink", ["starlink-status", "starlink-reboot", "starlink-shutdown"])],
+        "radio": [("Radio operations", ["restart-meshtastic", "aprs-mailbox-read"])],
+        "storage": [("Storage operations", ["mount-usb", "mount-new-usb", "safe-unmount-usb", "restart-samba"])],
+        "diagnostics": [("Services and time", ["restart-services", "restart-modemmanager", "sync-time", "restart-chrony", "restart-gpsd", "restart-logs", "buzzer-mute", "buzzer-unmute"]),
+                   ("Dangerous operations", ["reboot-system", "shutdown-system"])],
+    }
+    overview_controls = {}
+    action_groups = {key: [] for key in section_actions}
+    for section, groups in section_actions.items():
+        for title, action_names in groups:
+            forms = []
+            for name in action_names:
+                label, description = ACTION_MAP[name]
+                danger = "danger" if name in DANGEROUS_ACTIONS else "secondary"
+                confirmation = ACTION_CONFIRMS.get(name, "")
+                kind = "Read-only" if name.endswith("-status") or name in {"status", "restart-logs"} else "Operator action"
+                if name == "starlink-shutdown":
+                    kind = "Staged / unsupported · status check only"
+                forms.append(f"""<form method="POST" action="/admin/run#{section}" class="action-card" data-confirm="{esc(confirmation)}">
+                <input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="action" value="{esc(name)}">
+                <span class="eyebrow">{kind}</span><button class="{danger}" type="submit">{esc(label)}</button><p>{esc(description)}</p></form>""")
+            if section == "overview":
+                for destination, form in zip(['network', 'radio', 'storage', 'power'], forms):
+                    overview_controls[destination] = '<div class="panel-controls">' + form + '</div>'
+                continue
+            action_groups[section].append(f'<section class="action-group"><h3>{esc(title)}</h3><div class="action-grid">{"".join(forms)}</div></section>')
 
     power = data.get("power", {})
     supply = power.get("dc_source") == "power_supply"
     capacity = power.get("battery_capacity_wh")
     power_settings_html = f'''<section class="card" id="power-settings"><h2>DC source</h2>
-    <form method="POST" action="/admin/power-settings" class="settings-form">
+    <form method="POST" action="/admin/power-settings#power" class="settings-form">
     <input type="hidden" name="csrf" value="{esc(csrf)}">
     <label for="dc-source">Source for this boot</label><select id="dc-source" name="dc_source">
     <option value="battery" {"" if supply else "selected"}>Battery</option>
@@ -913,49 +1134,93 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
     <p>Capacity estimates deduct consumption already recorded this boot. Saving never resets energy counters.</p>
     <button type="submit">Apply DC source</button></form></section>'''
     result_html = ""
-    if result:
-        result_html = f'<section class="output"><h2>Result: {esc(action_name)} <span class="small">exit {esc(return_code)}</span></h2><pre>{esc(result)}</pre></section>'
-
-    info = data.get("client_info", {})
-    access_rows = [
-        item("PCS-Share", r"\\10.42.0.1\PCS-Share"), item("PCS-Backup", r"\\10.42.0.1\PCS-Backup"),
-        item("Windows discovery", "PCS-FILE-SHARE"), item("PCS-Backup login", "pcs-admin / current admin password"),
-        item("WAN/public IP", info.get("wan_public_ip", "unavailable")), item("Uplink interface", info.get("uplink_interface", "unknown")),
-    ]
-    for client in info.get("router_side_clients", []):
-        access_rows.append(item(client.get("name", "unknown"), f"{client.get('ip', 'unknown')} / {client.get('mac', 'unknown')} / {client.get('state', 'unknown')}"))
+    if return_code is not None or result:
+        result_html = f'<section class="output" id="action-result" tabindex="-1"><h2>Result: {esc(action_name)} <span class="small">exit {esc(return_code)}</span></h2><pre>{esc(result)}</pre></section>'
 
     backup_settings = backup_settings or {"enabled": False, "interval_minutes": 10, "keep_history": False}
     checked = " checked" if backup_settings.get("enabled") else ""
     history_checked = " checked" if backup_settings.get("keep_history") else ""
     settings_notice_html = f'<div class="notice success">{esc(settings_notice)}</div>' if settings_notice else ""
     settings_error_html = f'<div class="notice error">{esc(settings_error)}</div>' if settings_error else ""
-    open_dialog = "true" if settings_notice or settings_error else "false"
     backup_settings_html = f"""{settings_notice_html}{settings_error_html}
-    <dialog id="backup-settings-dialog" data-open="{open_dialog}"><div class="dialog-head"><h2>Backup settings</h2><button class="secondary" type="button" id="close-backup-settings" aria-label="Close backup settings">Close</button></div>
-    <form class="settings-form" method="POST" action="/admin/backup-settings">
+    <section class="card" id="backup-settings-dialog"><h2>Backup settings</h2>
+    <form class="settings-form" method="POST" action="/admin/backup-settings#storage">
       <input type="hidden" name="csrf" value="{esc(csrf)}">
       <label class="check-line"><input type="checkbox" name="enabled" value="yes"{checked}> Enable automatic backups</label>
       <label>Interval in minutes (1–43,200)<input type="number" name="interval_minutes" min="1" max="43200" step="1" required value="{esc(backup_settings.get('interval_minutes', 10))}"></label>
       <label class="check-line"><input type="checkbox" name="keep_history" value="yes"{history_checked}> Keep every prior backup snapshot</label>
       <button type="submit">Save backup settings</button>
-    </form><p class="small">The rolling backup is additive: files removed from PCS-Share remain on PCS-Backup. Snapshot history preserves each dated version and is never pruned automatically, so storage use will grow.</p></dialog>"""
+    </form><p class="small">The rolling backup is additive: files removed from PCS-Share remain on PCS-Backup. Snapshot history preserves each dated version and is never pruned automatically, so storage use will grow.</p></section>"""
 
-    aprs_section = data.get("aprs", {}) if isinstance(data.get("aprs"), dict) else {}
-    graywolf_admin_card = graywolf_access_card(aprs_section, admin=True)
+    sections = [("overview", "Overview"), ("network", "Network"), ("radio", "Radio"),
+                ("power", "Power"), ("storage", "Storage"), ("diagnostics", "Diagnostics"), ("actions", "Actions")]
+    nav = ''.join(f'<a class="compact-control" href="#{key}" data-view="{key}">{label}</a>' for key, label in sections)
+    snapshot = data.get("snapshot", {})
+    freshness = f'{snapshot.get("state", "unknown")} · age {snapshot.get("age_seconds", "unknown")} s'
+    alerts = ''.join(f'<li>{esc(a["component"])}: {esc(a["message"])}</li>' for a in sanitize_alerts(data.get("alerts", [])))
+    error_html = f'<p class="notice error">{esc(data["error"])}</p>' if data.get("error") else ""
+    health = f'<section class="overview health-banner"><div><h1>System overview</h1><p>Snapshot {esc(freshness)} · collected {esc(data.get("generated_at", "unknown"))}</p>{error_html}<ul>{alerts}</ul></div>{overall_badge(data)}</section>'
+    overview = render_overview(public_data or {}, overview_controls) + render_dashboard_services()
+    action_directory = ''.join(
+        f'<details><summary>{esc(title)}</summary><ul>' + ''.join(
+            f'<li><a href="#{section}">{esc(ACTION_MAP[name][0])}</a> — {esc(ACTION_MAP[name][1])}</li>' for name in names
+        ) + '</ul></details>'
+        for section, groups in section_actions.items() if section not in {"actions", "overview"} for title, names in groups)
+    content = {"overview": overview,
+        "actions": '<p>Frequently used operations are below. Browse all other commands by category and open their contextual controls.</p>',
+        "network": '<section class="card"><h2>Bandwidth</h2><p>Whole-network ceilings, default client speeds and trusted-device exceptions.</p><a class="button secondary" href="/admin/bandwidth">Bandwidth settings</a></section>',
+        "radio":  '<p><a href="/pistar/">Optional Pi-Star access</a> · <a href="#diagnostics">Time / GPS controls</a></p>',
+        "storage": backup_settings_html,
+        "power": power_settings_html,
+        "diagnostics":  '<section class="card"><h2>Administrator access</h2><p>Password changes invalidate active sessions. Forgotten passwords require the PCS terminal.</p><a class="button secondary" href="/admin/password">Change Admin Password</a></section>'}
+    content['diagnostics'] = '<section class="card"><h2>Location</h2><p>Set a manual fallback or persistent position.</p><a class="button secondary" href="/admin/location">Location settings</a></section>' + content['diagnostics']
+    views = ''.join(f'<section class="workspace-view" id="{key}"><h2 class="section-title">{label}</h2>{render_dashboard_section(public_data or {}, key) if key in DASHBOARD_SECTION_TEMPLATES else ""}{content[key]}{"".join(action_groups.get(key, []))}{action_directory if key == "actions" else ""}</section>' for key, label in sections)
+    console = result_html
+    body = f"""<a class="skip" href="#workspace-main">Skip to content</a><div class="workspace">
+    <aside class="workspace-sidebar"><a class="workspace-brand" href="/">PCS<span>CONTROL CENTER</span></a><nav class="workspace-nav" aria-label="Administration sections">{nav}<a class="compact-control" href="/admin/details">Detailed diagnostics</a></nav></aside>
+    <div class="workspace-content"><header><div class="nav"><div class="brand-group">{header_health(data)}</div><nav class="navlinks"><a class="compact-control" href="/admin/details">Detailed diagnostics</a><a class="compact-control" href="#storage">Backup Settings</a><a class="compact-control" href="/">Public Homepage</a><a class="compact-control" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
+    <main class="admin-main" id="workspace-main">{health}{console}{views}</main></div></div>"""
+    script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});
+    function showSection(){var id=location.hash.slice(1)||'overview';if(id==='power-settings')id='power';if(id==='system')id='diagnostics';if(!document.querySelector('.workspace-view#'+CSS.escape(id)))id='overview';document.querySelectorAll('.workspace-view').forEach(function(view){view.hidden=view.id!==id;});document.querySelectorAll('[data-view]').forEach(function(link){if(link.dataset.view===id)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');});}
+    window.addEventListener('hashchange',showSection);showSection();var result=document.getElementById('action-result');if(result){window.addEventListener('load',function(){result.focus();result.scrollIntoView({block:'nearest'});});}
+    """
+    return document("PCS Administration", body, script=script, nonce=nonce, workspace_theme=True)
 
-    body = f"""
-    <header><div class="nav"><div class="brand-group"><div class="brand">PCS Administration</div>{header_health(data)}</div><nav class="navlinks"><button class="secondary" type="button" id="open-backup-settings">Backup Settings</button><a class="button secondary" href="/">Public Homepage</a><a class="button secondary" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
-    <main class="admin-main"><section class="overview"><div><h2>Administrative health overview</h2><p>Authenticated session · refreshed {esc(data.get('generated_at', 'unknown'))}</p></div>{overall_badge(data)}</section>
-    <section class="grid admin-grid">{''.join(render_admin_card(card) for card in data.get('cards', []))}{graywolf_admin_card}</section>
-    <h2 class="section-title">Detailed field access</h2><section class="card">{''.join(access_rows)}</section>
-    <section class="card"><h2>Bandwidth</h2><p>Manage whole-network ceilings, default client speeds, and trusted-device exceptions.</p><a class="button secondary" href="/admin/bandwidth">Bandwidth settings</a></section>
-    {power_settings_html}
-    {backup_settings_html}
-    <h2 class="section-title">Administrator access</h2><section class="card password-card"><div><h2>Admin panel password</h2><p>Change it here while the current password is known. A forgotten password cannot be recovered in the browser; rerun <code>./scripts/setup-pcs-control-panel.sh --reset-admin-password</code> from the Pi terminal.</p></div><a class="button" href="/admin/password">Change Admin Password</a></section>
-    <h2 class="section-title">Operator commands</h2>{''.join(action_groups)}{result_html}</main>"""
-    script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});var backupDialog=document.getElementById('backup-settings-dialog');document.getElementById('open-backup-settings').addEventListener('click',function(){backupDialog.showModal();});document.getElementById('close-backup-settings').addEventListener('click',function(){backupDialog.close();});backupDialog.addEventListener('click',function(event){if(event.target===backupDialog){backupDialog.close();}});if(backupDialog.dataset.open==='true'){backupDialog.showModal();}"""
-    return document("PCS Administration", body, script=script, nonce=nonce)
+
+def location_request(payload=None):
+    result = subprocess.run(
+        ['sudo', '-n', '/usr/local/sbin/pcs-location', 'show' if payload is None else 'set-from-stdin'],
+        input=None if payload is None else json.dumps(payload, allow_nan=False),
+        text=True, capture_output=True, timeout=10, check=False,
+    )
+    if result.returncode:
+        raise ValueError('Location settings unavailable or rejected; previous settings preserved.')
+    return json.loads(result.stdout) if payload is None else {}
+
+
+def render_location_page(data, csrf, error='', notice=''):
+    config, status = data.get('config', {}), data.get('status', {})
+    messages = (f'<p class="notice error">{esc(error)}</p>' if error else '') + (f'<p class="notice success">{esc(notice)}</p>' if notice else '')
+    def value(key):
+        return esc(config.get(key)) if config.get(key) is not None else ''
+    body = f'''<header><div class="nav"><div class="brand">PCS Location</div><a class="button secondary" href="/admin/#diagnostics">Dashboard</a></div></header>
+    <main class="admin-main"><section class="card"><h1>Manual position fallback</h1>
+    <p>Current position source: <strong>{esc(status.get('source', 'Unavailable'))}</strong></p>
+    {messages}
+    <form method="POST" action="/admin/location" class="settings-form">
+    <input type="hidden" name="csrf" value="{esc(csrf)}">
+    <label>Latitude (decimal degrees)<input type="number" name="latitude" min="-90" max="90" step="any" value="{value('latitude')}"></label>
+    <label>Longitude (decimal degrees)<input type="number" name="longitude" min="-180" max="180" step="any" value="{value('longitude')}"></label>
+    <label>Elevation above sea level (metres, optional)<input type="number" name="altitude_m" min="-500" max="10000" step="any" value="{value('altitude_m')}"></label>
+    <label class="check-line"><input type="checkbox" name="enabled" value="yes"{' checked' if config.get('enabled') else ''}>Enable manual fallback</label>
+    <label class="check-line"><input type="checkbox" name="persist" value="yes"{' checked' if config.get('persist') else ''}>Persist manual position even when GPS recovers</label>
+    <label class="check-line"><input type="checkbox" name="confirm" value="yes" required>I understand existing APRS/Meshtastic sharing may publish this position.</label>
+    <button type="submit">Save location settings</button></form>
+    <p>With fallback enabled, PCS uses Manual while GPS is unavailable, and returns to GPS after a fresh fix remains usable for five seconds. Persist keeps Manual selected until you change it. GPS stays monitored in both modes.</p>
+    <p>Time remains independent: Chrony prefers usable GPS time and falls back to network NTP. Manual position supplies no time, speed, heading or satellite fix. Other faults and unsynchronized time still need attention.</p>
+    <p>Saved {esc(config.get('updated_at', 'not yet'))}. Coordinates are stored privately on PCS; the public dashboard shows Manual and its grid locator.</p>
+    </section></main>'''
+    return document('PCS Location', body)
 
 
 def bandwidth_request(payload=None):
@@ -1201,9 +1466,26 @@ class Handler(BaseHTTPRequestHandler):
             backup_settings, settings_error = load_backup_settings()
             body = render_admin_page(
                 get_admin_dashboard(), session["csrf"], nonce=nonce,
-                backup_settings=backup_settings, settings_error=settings_error,
+                backup_settings=backup_settings, settings_error=settings_error, public_data=get_public_dashboard(),
             )
             self.send_body(200, body, "text/html; charset=utf-8", nonce=nonce)
+            return
+        if path == "/admin/details":
+            _, session = self.require_session()
+            if not session:
+                return
+            self.send_body(200, render_admin_details_page(get_admin_dashboard(), session['csrf']), 'text/html; charset=utf-8')
+            return
+        if path == '/admin/location':
+            _, session = self.require_session()
+            if not session:
+                return
+            try:
+                data, error = location_request(), ''
+            except (ValueError, OSError, subprocess.SubprocessError):
+                data, error = {}, 'Location settings are unavailable.'
+            notice = 'Location settings saved.' if parse_qs(parsed.query).get('saved') == ['1'] else ''
+            self.send_body(200, render_location_page(data, session['csrf'], error, notice), 'text/html; charset=utf-8')
             return
         if path == "/admin/bandwidth":
             _, session = self.require_session()
@@ -1331,6 +1613,33 @@ class Handler(BaseHTTPRequestHandler):
             self.redirect('/admin/bandwidth?saved=1')
             return
 
+        if path == '/admin/location':
+            _, session = self.require_session()
+            if not session:
+                return
+            if not self.csrf_valid(form, session):
+                self.send_body(403, b'CSRF validation failed\n', 'text/plain; charset=utf-8')
+                return
+            try:
+                if form.get('confirm') != 'yes':
+                    raise ValueError('Confirm position sharing before saving.')
+                payload = {'version': 1, 'enabled': form.get('enabled') == 'yes',
+                           'persist': form.get('persist') == 'yes'}
+                for key, low, high in [('latitude', -90, 90), ('longitude', -180, 180), ('altitude_m', -500, 10000)]:
+                    text = form.get(key, '').strip()
+                    value = float(text) if text else None
+                    if value is not None and (not math.isfinite(value) or not low <= value <= high):
+                        raise ValueError('Invalid position value.')
+                    payload[key] = value
+                if payload['enabled'] and (payload['latitude'] is None or payload['longitude'] is None):
+                    raise ValueError('Latitude and longitude are required for manual fallback.')
+                location_request(payload)
+            except (ValueError, OSError, subprocess.SubprocessError):
+                self.send_body(400, render_location_page({'config': {}}, session['csrf'], 'Invalid or unavailable location settings; previous configuration preserved.'), 'text/html; charset=utf-8')
+                return
+            self.redirect('/admin/location?saved=1')
+            return
+
         if path == "/admin/power-settings":
             _, session = self.require_session()
             if not session:
@@ -1387,7 +1696,7 @@ class Handler(BaseHTTPRequestHandler):
                 get_admin_dashboard(), session["csrf"], nonce=nonce,
                 backup_settings=backup_settings,
                 settings_notice=message if updated else "",
-                settings_error=load_error or ("" if updated else message),
+                settings_error=load_error or ("" if updated else message), public_data=get_public_dashboard(),
             )
             self.send_body(200 if updated else 400, body, "text/html; charset=utf-8", nonce=nonce)
             return
@@ -1408,7 +1717,7 @@ class Handler(BaseHTTPRequestHandler):
             backup_settings, settings_error = load_backup_settings()
             body = render_admin_page(
                 get_admin_dashboard(), session["csrf"], output, ACTION_MAP[action][0], code, nonce,
-                backup_settings=backup_settings, settings_error=settings_error,
+                backup_settings=backup_settings, settings_error=settings_error, public_data=get_public_dashboard(),
             )
             self.send_body(200, body, "text/html; charset=utf-8", nonce=nonce)
             return

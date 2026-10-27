@@ -171,7 +171,7 @@ def check_endpoints():
             raise RuntimeError("Local backend did not become healthy")
         time.sleep(1)
     status, _, body = request("http://127.0.0.1/")
-    if status != 200 or b"LOCAL OPERATIONS" not in body:
+    if status != 200 or b'id="station-title"' not in body:
         raise RuntimeError("Static homepage failed")
     for path, mime in (("/assets/css/pcs.css", "text/css"), ("/assets/js/pcs.js", "application/javascript"), ("/files/", "text/html"), ("/docs/", "text/html"), ("/radio/", "text/html"), ("/pistar/", "text/html"), ("/starlink/", "text/html"), ("/power/", "text/html")):
         status, headers, body = request("http://127.0.0.1" + path)

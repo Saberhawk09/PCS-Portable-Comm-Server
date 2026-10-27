@@ -410,7 +410,15 @@ else
 fi
 
 echo
-echo "[gpsd]"
+echo "[GPS / Location]"
+PYTHONPATH=/usr/local/lib/pcs python3 - <<'PYPOS' 2>/dev/null || true
+from pcs_location import read_status
+state = read_status()
+print('Location source: ' + state.get('source', 'Unavailable'))
+if state.get('source') == 'Manual':
+    print('Manual position; persist: ' + ('yes' if state.get('persist') else 'no'))
+PYPOS
+echo "[gpsd receiver]"
 if systemctl is-active --quiet gpsd.service 2>/dev/null; then
     echo "gpsd.service: active"
 else

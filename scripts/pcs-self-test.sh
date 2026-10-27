@@ -829,7 +829,7 @@ fi
 if command_exists curl; then
     PCS_CONTROL_HTML="$(mktemp)"
     if curl -fsS --max-time 20 "${PCS_CONTROL_URL}" -o "${PCS_CONTROL_HTML}" 2>/dev/null \
-        && grep -q "LOCAL OPERATIONS" "${PCS_CONTROL_HTML}" \
+        && grep -q 'id="station-title"' "${PCS_CONTROL_HTML}" \
         && grep -q "Admin Login" "${PCS_CONTROL_HTML}"; then
         pass "PCS public homepage and Admin Login panel work at ${PCS_CONTROL_URL}"
     else
@@ -1532,7 +1532,7 @@ assert status["privacy"]["remote_identities_stored"] is False
 assert status["privacy"]["positions_stored"] is False
 assert status["privacy"]["channel_keys_stored"] is False
 if os.environ.get("PCS_MESHTASTIC_GPSD_POSITION", "").lower() == "yes":
-    assert status["gateway"]["position_source"] == "gpsd"
+    assert status["gateway"]["position_source"] in {"gpsd", "Manual"}
     assert status["gateway"]["counters"]["position_updates"] > 0
     configured_interval = int(os.environ.get("PCS_MESHTASTIC_POSITION_INTERVAL", "1800"))
     assert 0 <= time.time() - status["gateway"]["last_position_update_at_epoch"] <= configured_interval + 60
@@ -1953,6 +1953,32 @@ else
     skip "LAN-only GPSD proxy is not installed"
 fi
 
+PCS_POSITION_SOURCE="$(PYTHONPATH=/usr/local/lib/pcs python3 - <<'PYPOS' 2>/dev/null || true
+from pcs_location import read_status
+state = read_status()
+if state.get('available') and not state.get('config_error'):
+    print(state.get('source', 'Unavailable'))
+PYPOS
+)"
+position_warn() {
+    if [[ "${PCS_POSITION_SOURCE}" == "Manual" ]]; then
+        pass "Manual position active; $* (receiver remains monitored)"
+    else
+        warn "$*"
+    fi
+}
+position_time_warn() {
+    if [[ "${PCS_POSITION_SOURCE}" == "Manual" ]] \
+        && chronyc -n sources 2>/dev/null | grep -qE '^\^\*'; then
+        pass "Manual position; network NTP selected; $*"
+    else
+        warn "$*"
+    fi
+}
+if [[ "${PCS_POSITION_SOURCE}" == "Manual" ]]; then
+    pass "Manual position selected for PCS location services"
+fi
+
 if command_exists gpspipe; then
     GPSPIPE_SAMPLE_FILE="$(make_temp_file)"
     timeout 15 gpspipe -r -n 40 >"${GPSPIPE_SAMPLE_FILE}" 2>/dev/null || true
@@ -1967,10 +1993,10 @@ if command_exists gpspipe; then
         ' "${GPSPIPE_SAMPLE_FILE}"; then
             pass "gpsd NMEA includes a valid GPS fix"
         else
-            warn "gpsd NMEA is present, but no valid GPS fix was seen during quick check"
+            position_warn "gpsd NMEA is present, but no valid GPS fix was seen during quick check"
         fi
     else
-        warn "gpsd did not report NMEA data during quick check"
+        position_warn "gpsd did not report NMEA data during quick check"
     fi
 else
     warn "gpspipe command missing"
@@ -2002,13 +2028,13 @@ if [[ -n "${CHRONY_GPS_SOURCE}" ]]; then
         if echo "${CHRONY_GPS_SOURCE}" | awk '$1 == "#*" { found=1 } END { exit found ? 0 : 1 }'; then
             pass "Chrony selected preferred GPS time"
         else
-            warn "GPS has samples but is not selected; inspect chronyc selectdata -a -v"
+            position_time_warn "GPS has samples but is not selected; inspect chronyc selectdata -a -v"
         fi
     else
-        warn "Chrony GPS source exists but reach is zero or unknown"
+        position_time_warn "Chrony GPS source exists but reach is zero or unknown"
     fi
 else
-    warn "Chrony does not currently show GPS source"
+    position_time_warn "Chrony does not currently show GPS source"
 fi
 
 

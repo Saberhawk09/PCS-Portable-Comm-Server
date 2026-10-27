@@ -345,6 +345,10 @@ set_gpsd_position() {
     require_normal_user
     require_prepared
     local value="$1"
+    if [[ "${value}" == "yes" ]] && ! systemctl is-active --quiet pcs-location.service; then
+        echo "Install/start pcs-location.service before enabling the position feed." >&2
+        return 1
+    fi
     local env_temp
     env_temp="$(mktemp)"
     sudo awk -v value="${value}" -v interval="1800" '

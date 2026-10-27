@@ -163,7 +163,7 @@ def stage_profile(api: Api, args: argparse.Namespace) -> dict[str, int]:
             "rate_5min": 10,
         },
     )
-    api.request("PUT", "gps", {"source": "gpsd", "serial_port": "", "baud_rate": 0, "gpsd_host": "localhost", "gpsd_port": 2947})
+    api.request("PUT", "gps", {"source": "gpsd", "serial_port": "", "baud_rate": 0, "gpsd_host": "localhost", "gpsd_port": 2948})
     api.request("PUT", "agw", {"listen_addr": "0.0.0.0:8000", "callsigns": args.callsign, "enabled": False})
     kiss = api.request(
         "POST",

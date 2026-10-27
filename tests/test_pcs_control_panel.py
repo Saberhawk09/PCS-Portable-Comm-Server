@@ -215,7 +215,7 @@ class PublicDataTests(unittest.TestCase):
             "summary": "WireGuard remote management connected",
             "items": [{"label": "Approved routes", "value": "10.6.0.1/32, 10.6.0.2/32"}],
         })
-        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        admin_page = pcs.render_admin_details_page(admin, "csrf-token").decode("utf-8")
         self.assertIn("WireGuard remote management connected", admin_page)
         self.assertIn("Approved routes", admin_page)
 
@@ -352,7 +352,7 @@ class PublicDataTests(unittest.TestCase):
             "summary": "1 unread / 2 stored",
             "items": [{"label": "W8IJC-7 · 42", "value": "private field note"}],
         })
-        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        admin_page = pcs.render_admin_details_page(admin, "csrf-token").decode("utf-8")
         self.assertIn("APRS Mailbox", admin_page)
         self.assertIn("W8IJC-7", admin_page)
         self.assertIn("private field note", admin_page)
@@ -393,7 +393,7 @@ class PublicDataTests(unittest.TestCase):
 
         admin = deepcopy(ADMIN_DATA)
         admin["aprs"] = active["aprs"]
-        admin_page = pcs.render_admin_page(admin, "csrf-token").decode("utf-8")
+        admin_page = pcs.render_admin_details_page(admin, "csrf-token").decode("utf-8")
         self.assertIn("Graywolf operator configuration and diagnostics", admin_page)
         self.assertIn("Open Graywolf dashboard", admin_page)
         self.assertIn("500 ms delay / 50 ms tail", admin_page)
@@ -525,6 +525,26 @@ class RouteSecurityTests(unittest.TestCase):
             self.assertEqual(json.loads(run.call_args.kwargs["input"]), {"dc_source": "power_supply", "battery_capacity_wh": 500})
             self.assertEqual(run.call_args.args[0], ["sudo", "-n", "/usr/local/sbin/pcs-power-monitor", "set-session"])
 
+    def test_detailed_diagnostics_are_separate_and_authenticated(self):
+        status, headers, _ = self.request("GET", "/admin/details")
+        self.assertEqual(status, 303)
+        self.assertEqual(headers.get("Location"), "/admin/login")
+        cookie = self.login()
+        data = deepcopy(ADMIN_DATA)
+        data['cards'].append({'id': 'future', 'title': 'Private diagnostic sentinel',
+                              'items': [{'label': 'Private field', 'value': '<script>private-marker</script>'}]})
+        data['client_info'] = {'router_side_clients': [{'name': 'private-client-marker', 'ip': '10.42.0.123'}]}
+        with mock.patch.object(pcs, 'get_admin_dashboard', return_value=data):
+            status, _, clean = self.request('GET', '/admin/', headers={'Cookie': cookie})
+            self.assertEqual(status, 200)
+            self.assertNotIn('Private diagnostic sentinel', clean)
+            self.assertNotIn('private-client-marker', clean)
+            status, _, detail = self.request('GET', '/admin/details', headers={'Cookie': cookie})
+            self.assertEqual(status, 200)
+            self.assertIn('Private diagnostic sentinel', detail)
+            self.assertIn('private-client-marker', detail)
+            self.assertIn('&lt;script&gt;private-marker&lt;/script&gt;', detail)
+
     @classmethod
     def setUpClass(cls):
         cls.tempdir = tempfile.TemporaryDirectory()
@@ -586,10 +606,35 @@ class RouteSecurityTests(unittest.TestCase):
         )
         return session_cookie
 
+    def test_location_settings_require_session_csrf_confirmation_and_finite_values(self):
+        fixture = {'config': {'enabled': True, 'latitude': 0, 'longitude': 0}, 'status': {'source': 'Manual'}}
+        with mock.patch.object(pcs, 'location_request', return_value=fixture) as helper:
+            for method in ['GET', 'POST']:
+                self.assertEqual(self.request(method, '/admin/location', 'csrf=invalid' if method == 'POST' else None,
+                                              {'Content-Type': 'application/x-www-form-urlencoded'})[0], 303)
+            helper.assert_not_called()
+            cookie = self.login()
+            status, _, page = self.request('GET', '/admin/location', headers={'Cookie': cookie})
+            self.assertEqual(status, 200)
+            self.assertIn('Manual', page)
+            csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+            headers = {'Cookie': cookie, 'Content-Type': 'application/x-www-form-urlencoded'}
+            helper.reset_mock()
+            self.assertEqual(self.request('POST', '/admin/location', urlencode({'csrf': 'bad'}), headers)[0], 403)
+            helper.assert_not_called()
+            payload = {'csrf': csrf, 'enabled': 'yes', 'latitude': '0', 'longitude': '0', 'confirm': 'yes'}
+            for invalid in [{'confirm': ''}, {'latitude': 'nan'}, {'longitude': 'inf'}, {'latitude': '91'}, {'longitude': ''}]:
+                self.assertEqual(self.request('POST', '/admin/location', urlencode(dict(payload, **invalid)), headers)[0], 400)
+            helper.assert_not_called()
+            status, response_headers, _ = self.request('POST', '/admin/location', urlencode(dict(payload, persist='yes')), headers)
+            self.assertEqual(status, 303)
+            self.assertEqual(response_headers['Location'], '/admin/location?saved=1')
+            self.assertEqual(helper.call_args.args[0], {'version': 1, 'enabled': True, 'persist': True, 'latitude': 0.0, 'longitude': 0.0, 'altitude_m': None})
+
     def test_public_home_keeps_admin_footer_and_public_api_allows_coordinates(self):
         status, _, page = self.request("GET", "/")
         self.assertEqual(status, 200)
-        self.assertEqual(page.count("Admin Login"), 1)
+        self.assertEqual(page[page.index("<footer"):].count("Admin Login"), 1)
         self.assertNotIn("Open Cockpit", page)
         self.assertNotIn("must-not-render", page)
 
@@ -659,10 +704,10 @@ class RouteSecurityTests(unittest.TestCase):
         session_cookie = self.login()
         status, _, admin_page = self.request("GET", "/admin/", headers={"Cookie": session_cookie})
         self.assertEqual(status, 200)
-        self.assertIn('<main class="admin-main">', admin_page)
-        self.assertIn("repeat(6,minmax(0,1fr))", admin_page)
+        self.assertIn('<main class="admin-main" id="workspace-main">', admin_page)
+        self.assertIn('aria-label="Administration sections"', admin_page)
         self.assertIn("Change Admin Password", admin_page)
-        self.assertIn("forgotten password cannot be recovered", admin_page)
+        self.assertIn("Forgotten passwords require the PCS terminal", admin_page)
         csrf = re.search(r'name="csrf" value="([^"]+)"', admin_page).group(1)
 
         self.action_mock.reset_mock()

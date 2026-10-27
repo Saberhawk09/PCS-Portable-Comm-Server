@@ -16,6 +16,10 @@ SERVICE_DEST="/etc/systemd/system/pcs-gpsd-lan.service"
 PROXY_BIN="/lib/systemd/systemd-socket-proxyd"
 LAN_ADDRESS="10.42.0.1"
 GPSD_PORT="2947"
+if ! systemctl is-active --quiet pcs-location.service; then
+    echo "Install/start the PCS position feed first: ./scripts/setup-pcs-location.sh --install" >&2
+    exit 1
+fi
 
 echo
 echo "=== PCS LAN-only GPSD Proxy Setup ==="

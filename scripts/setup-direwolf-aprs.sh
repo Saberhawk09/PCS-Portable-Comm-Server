@@ -119,7 +119,7 @@ PCS_APRS_IGATE_TX_LIMIT_1M="${PCS_APRS_IGATE_TX_LIMIT_1M:-6}"
 PCS_APRS_IGATE_TX_LIMIT_5M="${PCS_APRS_IGATE_TX_LIMIT_5M:-10}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-yes}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
-PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2948}"
 PCS_APRS_BEACON="${PCS_APRS_BEACON:-yes}"
 PCS_APRS_BEACON_TYPE="${PCS_APRS_BEACON_TYPE:-gps-tracker}"
 PCS_APRS_BEACON_INTERVAL="${PCS_APRS_BEACON_INTERVAL:-10:00}"
@@ -1182,6 +1182,9 @@ collect_activation_blockers() {
             grep -qi gpsd <<<"${help_text}" || record_blocker "Dire Wolf does not report compiled-in gpsd support"
         fi
         systemctl is-active --quiet gpsd.service 2>/dev/null || record_blocker "gpsd.service is not active"
+        if [[ "${PCS_APRS_GPSD_PORT}" == "2948" ]]; then
+            systemctl is-active --quiet pcs-location.service 2>/dev/null || record_blocker "pcs-location.service is not active"
+        fi
     fi
 
     if [[ "${profile}" == "tx" ]]; then
