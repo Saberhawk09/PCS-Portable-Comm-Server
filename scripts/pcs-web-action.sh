@@ -586,6 +586,11 @@ import sys
 sys.path.insert(0, "/usr/local/lib/pcs")
 from pcs_network_clients import read_ap_client_count
 try:
+    from pcs_location import apply_dashboard
+except ImportError:
+    def apply_dashboard(info):
+        return info, {}
+try:
     from pcs_uplink_manager import cached_status
 except ImportError:
     def cached_status(*args, **kwargs):
@@ -2366,6 +2371,8 @@ if uplink_manager_installed:
     cellular_fallback_owned = any(u.get("owned") for u in uplink_initial.get("uplinks", []) if u.get("type") == "cellular")
 gpsd_active = active("gpsd")
 gps_info = merge_gps_info(merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
+gps_info, position_state = apply_dashboard(gps_info)
+manual_position = position_state.get("source") == "Manual"
 
 aprs_engine = CONFIG.get("PCS_APRS_ENGINE", "direwolf").lower()
 if aprs_engine == "graywolf":
@@ -2446,7 +2453,7 @@ if aprs_kiss_port != "0":
     aprs_client_endpoints.append(f"KISS 10.42.0.1:{aprs_kiss_port}")
 aprs_kiss_label = " / ".join(aprs_client_endpoints) if aprs_client_endpoints else "disabled"
 if aprs_beacon:
-    aprs_beacon_source = "GPS" if aprs_beacon_type == "gps-tracker" else aprs_beacon_type
+    aprs_beacon_source = ("Manual" if manual_position else "GPS") if aprs_beacon_type == "gps-tracker" else aprs_beacon_type
     aprs_beacon_interval_label = "10 minutes" if aprs_beacon_interval == "10:00" else aprs_beacon_interval
     aprs_beacon_label = f"{aprs_beacon_source} every {aprs_beacon_interval_label}"
 else:
@@ -2627,6 +2634,8 @@ gps_has_valid_fix = any(term in gps_fix_text for term in [
     "rtk float",
 ])
 gps_status = "ok" if gps_has_valid_fix else "warn" if gps_has_modem_data or (gpsd_active and (gps_devices or pps_present or chrony_gps_source_present)) else "warn"
+if position_state:
+    gps_status = "ok" if position_state.get("available") and not position_state.get("config_error") else "warn"
 
 
 # BEGIN PCS ACTIVE UPLINK MODE
@@ -2869,6 +2878,8 @@ meshtastic_position_label = (
     if meshtastic_position_enabled
     else "disabled"
 )
+if manual_position and meshtastic_position_enabled:
+    meshtastic_position_label = meshtastic_position_label.replace("GPSD active", "Manual")
 meshtastic_temperature = metric_label(meshtastic_case.get("temperature_f"), " F")
 meshtastic_humidity = metric_label(meshtastic_case.get("humidity_percent"), "%")
 meshtastic_environment_label = (
@@ -3135,7 +3146,9 @@ cards = [
         "title": "GPS / GNSS",
         "status": gps_status,
         "summary": (
-            "WWAN NMEA GPS feeding gpsd and Chrony"
+            "Manual position active; receiver monitored for recovery"
+            if manual_position
+            else "WWAN NMEA GPS feeding gpsd and Chrony"
             if gpsd_active and chrony_gps_source_present
             else "WWAN GPS available, waiting for Chrony GPS source"
             if gpsd_active
@@ -3157,7 +3170,7 @@ cards = [
             {"label": "Chrony GPS source", "value": "present" if chrony_gps_source_present else "not shown"},
             {
                 "label": "Dashboard GPS source",
-                "value": "gpsd NMEA" if gps_info.get("nmea") == "present" else f"ModemManager {gps_info.get('enabled', 'unknown')}",
+                "value": "Manual" if manual_position else "gpsd NMEA" if gps_info.get("nmea") == "present" else f"ModemManager {gps_info.get('enabled', 'unknown')}",
             },
         ],
     },
@@ -3182,7 +3195,7 @@ if APRS_PREPARED:
             {"label": "AGW / KISS firewall", "value": "active" if active("pcs-aprs-kiss-firewall.service") else "inactive"},
             {"label": "Client endpoints", "value": aprs_kiss_label},
             {"label": "Frequency", "value": aprs_frequency},
-            {"label": "GPS tracker source", "value": f"{aprs_gpsd_host}:{aprs_gpsd_port}" if aprs_gpsd else "disabled"},
+            {"label": "GPS tracker source", "value": "Manual" if manual_position and aprs_gpsd else f"{aprs_gpsd_host}:{aprs_gpsd_port}" if aprs_gpsd else "disabled"},
             {"label": "APRS-IS", "value": "configured" if aprs_igate else "not configured"},
             {"label": "RF TX", "value": aprs_tx_label},
             {"label": "Packets", "value": aprs_packet_summary},
@@ -3537,7 +3550,7 @@ if PUBLIC_VIEW:
             "receiver_active": gpsd_active or modem_present,
             "fix": gps_items.get("Fix quality", "unknown"),
             "satellites": gps_items.get("Satellites", "unknown"),
-            "coordinates": gps_items.get("Lat/Lon", "not available"),
+            "coordinates": "Manual (coordinates hidden)" if manual_position else gps_items.get("Lat/Lon", "not available"),
             "grid_square": gps_items.get("Grid square", "unknown"),
             "utc_time": gps_items.get("UTC time", "unknown"),
         },

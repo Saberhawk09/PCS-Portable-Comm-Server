@@ -41,6 +41,7 @@ pcs.load_backup_settings = lambda: ({'enabled': False, 'interval_minutes': 10, '
 pcs.run_action = lambda action: (0, 'LOCAL FIXTURE ONLY: received ' + action + '\nNo hardware action executed.')
 pcs.update_backup_settings = lambda *args: (True, 'LOCAL FIXTURE ONLY: settings not saved.')
 pcs.bandwidth_request = lambda *args: {'status': 'LOCAL FIXTURE — unavailable', 'config': {}}
+pcs.location_request = lambda *args: {'config': {'enabled': True, 'persist': False, 'latitude': 0, 'longitude': 0}, 'status': {'source': 'Manual'}}
 pcs.change_admin_password = lambda *args: (False, 'Password changes disabled in fixture preview.')
 pcs.AUTH.configured = lambda: True
 pcs.AUTH.verify = lambda password: password == 'ui-preview-password'

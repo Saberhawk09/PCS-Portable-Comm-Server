@@ -1,4 +1,6 @@
 [Unit]
+After=pcs-location.service
+Wants=pcs-location.service
 Description=PCS persistent Meshtastic MQTT gateway
 After=pcs-bluetooth-ready.service dbus.service network-online.target
 Wants=network-online.target

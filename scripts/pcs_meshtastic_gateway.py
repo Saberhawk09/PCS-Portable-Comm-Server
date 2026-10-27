@@ -18,6 +18,13 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Sequence
+import sys
+sys.path.append('/usr/local/lib/pcs')
+try:
+    from pcs_location import read_status as read_position_status
+except ImportError:
+    def read_position_status():
+        return {}
 
 from pcs_meshtastic_status import build_status, classify_error, write_status
 
@@ -29,7 +36,7 @@ MAP_POSITION_UPDATE_DISTANCE_METERS = 500.0
 
 
 def read_gpsd_position(
-    host: str = "127.0.0.1", port: int = 2947, timeout: float = 3.0
+    host: str = "127.0.0.1", port: int = 2948, timeout: float = 3.0
 ) -> tuple[float, float, int]:
     """Return one valid GPSD TPV fix without retaining or logging coordinates."""
 
@@ -59,7 +66,7 @@ def read_gpsd_position(
                     continue
                 if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
                     continue
-                altitude_value = report.get("altHAE", report.get("alt", 0))
+                altitude_value = report.get("altMSL", report.get("altHAE", report.get("alt", 0)))
                 altitude = round(altitude_value) if isinstance(altitude_value, (int, float)) else 0
                 return float(latitude), float(longitude), altitude
     raise RuntimeError("gpsd has no valid position fix")
@@ -437,7 +444,8 @@ class Gateway:
             "map_publish_interval_secs": getattr(map_settings, "publish_interval_secs", None),
             "map_position_precision": getattr(map_settings, "position_precision", None),
             "started_at_epoch": int(self.started),
-            "position_source": "gpsd" if getattr(self.args, "gpsd_position", False) else "radio",
+            "position_source": ("Manual" if read_position_status().get('source') == 'Manual'
+                                and getattr(self.args, 'gpsd_port', 2948) == 2948 else "gpsd") if getattr(self.args, "gpsd_position", False) else "radio",
             "last_position_update_at_epoch": (
                 int(self.last_position_update) if self.last_position_update is not None else None
             ),
@@ -456,7 +464,7 @@ class Gateway:
         try:
             latitude, longitude, altitude = read_gpsd_position(
                 host=getattr(self.args, "gpsd_host", "127.0.0.1"),
-                port=getattr(self.args, "gpsd_port", 2947),
+                port=getattr(self.args, "gpsd_port", 2948),
                 timeout=getattr(self.args, "gpsd_timeout", 3.0),
             )
             current_position = radio_local_position(self.interface)
@@ -728,7 +736,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="send fresh PCS GPSD fixes through the Meshtastic node",
     )
     parser.add_argument("--gpsd-host", default=os.environ.get("PCS_MESHTASTIC_GPSD_HOST", "127.0.0.1"))
-    parser.add_argument("--gpsd-port", type=int, default=int(os.environ.get("PCS_MESHTASTIC_GPSD_PORT", "2947")))
+    parser.add_argument("--gpsd-port", type=int, default=int(os.environ.get("PCS_MESHTASTIC_GPSD_PORT", "2948")))
     parser.add_argument("--gpsd-timeout", type=float, default=3.0)
     parser.add_argument("--position-interval", type=int, default=int(os.environ.get("PCS_MESHTASTIC_POSITION_INTERVAL", "1800")))
     parser.add_argument("--position-channel", type=int, default=int(os.environ.get("PCS_MESHTASTIC_POSITION_CHANNEL", "0")))

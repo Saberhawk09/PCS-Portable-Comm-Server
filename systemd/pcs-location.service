@@ -1,0 +1,25 @@
+[Unit]
+Description=PCS automatic GPS and manual position selection
+After=gpsd.service
+Wants=gpsd.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=15
+ExecStart=/usr/local/sbin/pcs-location serve
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=pcs-location
+RuntimeDirectoryMode=0755
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/run/pcs-location
+RestrictAddressFamilies=AF_UNIX AF_INET
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

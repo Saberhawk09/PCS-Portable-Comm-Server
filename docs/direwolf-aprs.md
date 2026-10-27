@@ -386,7 +386,7 @@ hardware-evidence flags.
 | `PCS_APRS_IGATE_TX_LIMIT_5M` | Packet count | Selected as Dire Wolf's example limit of 10 per five minutes. |
 | `PCS_APRS_GPSD` | `no` | Adds `GPSD` for tracker/beacon profiles. |
 | `PCS_APRS_GPSD_HOST` | `localhost` | Uses the private gpsd listener on the PCS Pi. |
-| `PCS_APRS_GPSD_PORT` | `2947` | Standard gpsd TCP port; the selected directive is `GPSD localhost 2947`. |
+| `PCS_APRS_GPSD_PORT` | `2948` | PCS position feed (GPS or Manual); the selected directive is `GPSD localhost 2948`. Raw receiver/time GPSD stays on 2947. |
 | `PCS_APRS_LOGGING` | `no` | Adds `LOGDIR /var/log/direwolf` when enabled. |
 | `PCS_APRS_LOG_RETENTION_DAYS` | `14` | Controls the root-owned logrotate policy installed during activation. |
 
@@ -410,7 +410,8 @@ The selected GPS flow is:
 EM7565 GNSS
     -> NMEA /dev/ttyUSB1
     -> gpsd 127.0.0.1:2947
-    -> Dire Wolf: GPSD localhost 2947
+    -> PCS position selection 127.0.0.1:2948 (GPS or Manual)
+    -> Dire Wolf: GPSD localhost 2948
     -> 10-minute GPS tracker beacon
 ```
 
@@ -419,6 +420,10 @@ Dire Wolf must use the local listener. The LAN-only proxy at
 part of Dire Wolf's local path. This allows gpsd, Chrony, the PCS dashboard,
 and Dire Wolf to share the receiver without opening the serial device multiple
 times.
+
+Chrony continues reading the receiver's SHM clock directly; supplied positions
+never enter that time path. See [manual position fallback](manual-position.md)
+for existing-install migration, source labels and automatic recovery behavior.
 
 The APRS-IS passcode is deliberately not a PCS install-config option. It must
 be entered interactively when the root-owned live configuration is generated.

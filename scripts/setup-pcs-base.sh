@@ -142,7 +142,7 @@ PCS_APRS_IGATE_TX_LIMIT_1M="${PCS_APRS_IGATE_TX_LIMIT_1M:-6}"
 PCS_APRS_IGATE_TX_LIMIT_5M="${PCS_APRS_IGATE_TX_LIMIT_5M:-10}"
 PCS_APRS_GPSD="${PCS_APRS_GPSD:-yes}"
 PCS_APRS_GPSD_HOST="${PCS_APRS_GPSD_HOST:-localhost}"
-PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2947}"
+PCS_APRS_GPSD_PORT="${PCS_APRS_GPSD_PORT:-2948}"
 PCS_APRS_BEACON="${PCS_APRS_BEACON:-yes}"
 PCS_APRS_BEACON_TYPE="${PCS_APRS_BEACON_TYPE:-gps-tracker}"
 PCS_APRS_BEACON_INTERVAL="${PCS_APRS_BEACON_INTERVAL:-10:00}"
@@ -1074,6 +1074,7 @@ ensure_executable "scripts/setup-pcs-control-panel.sh"
 ensure_executable "scripts/setup-dashboard-redirect.sh"
 ensure_executable "scripts/setup-wwan-gps-nmea.sh"
 ensure_executable "scripts/setup-gpsd-lan-proxy.sh"
+ensure_executable "scripts/setup-pcs-location.sh"
 ensure_executable "scripts/setup-pistar-shutdown.sh"
 ensure_executable "scripts/setup-direwolf-aprs.sh"
 ensure_executable "scripts/pcs_aprs_agent.py"
@@ -1399,6 +1400,11 @@ else
     echo "Skipping WWAN modem NMEA GPS setup."
 fi
 
+echo
+echo "============================================================"
+echo "STEP: Install shared GPS / manual position selection"
+echo "============================================================"
+./scripts/setup-pcs-location.sh --install
 echo
 echo "============================================================"
 echo "OPTIONAL STEP: Share GPSD with trusted PCS LAN clients"

@@ -69,7 +69,7 @@ class DireWolfAprsTests(unittest.TestCase):
 
         self.assertIn("ADEVICE plughw:CARD=Device,DEV=0 null", active_lines)
         self.assertIn("MYCALL W8IJC-10", active_lines)
-        self.assertIn("GPSD localhost 2947", active_lines)
+        self.assertIn("GPSD localhost 2948", active_lines)
         self.assertIn("AGWPORT 0", active_lines)
         self.assertIn("KISSPORT 0", active_lines)
         for unsafe_prefix in ("PTT ", "IGLOGIN ", "IGSERVER ", "IGTXVIA ", "DIGIPEAT ", "PBEACON ", "TBEACON ", "FX25TX "):
@@ -172,8 +172,8 @@ class DireWolfAprsTests(unittest.TestCase):
 
         self.assertIn('PCS_APRS_GPSD="yes"', example)
         self.assertIn('PCS_APRS_GPSD_HOST="localhost"', example)
-        self.assertIn('PCS_APRS_GPSD_PORT="2947"', example)
-        self.assertIn("GPSD localhost 2947", documentation)
+        self.assertIn('PCS_APRS_GPSD_PORT="2948"', example)
+        self.assertIn("GPSD localhost 2948", documentation)
         self.assertIn("10.42.0.1:2947", documentation)
 
     def test_every_setup_command_flag_is_documented(self):
@@ -488,7 +488,7 @@ class DireWolfAprsTests(unittest.TestCase):
         self.assertNotIn("BLOCKED", result.stdout)
         self.assertIn('TBEACON SENDTO=0 DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
         self.assertIn('TBEACON SENDTO=IG DELAY=0:30 EVERY=10:00 SYMBOL="igate" OVERLAY=T ALT=1 COMMENT="PCS Portable Communication Server - W8IJC"', result.stdout)
-        self.assertIn("GPSD localhost 2947", result.stdout)
+        self.assertIn("GPSD localhost 2948", result.stdout)
         self.assertIn("ICHANNEL 8", result.stdout)
 
     @unittest.skipIf(os.name == "nt", "Bash render execution is validated in Linux CI and on PCS")

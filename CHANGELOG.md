@@ -4,6 +4,12 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+- Add an authenticated manual position fallback, automatic GPS recovery and an
+  explicit persistent-manual option. Position consumers share a read-only local
+  GPSD-compatible feed; Chrony retains its independent GPS/NTP time selection.
+  PCS location fields show Manual, LCD uses Man, and a valid manual selection
+  resolves the no-lock warning without suppressing unrelated faults.
+
 ## [2.2.2] - 2026-10-22
 
 - Restore Starlink telemetry on the managed-switch VLAN WAN. The collector's

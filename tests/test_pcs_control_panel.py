@@ -606,6 +606,31 @@ class RouteSecurityTests(unittest.TestCase):
         )
         return session_cookie
 
+    def test_location_settings_require_session_csrf_confirmation_and_finite_values(self):
+        fixture = {'config': {'enabled': True, 'latitude': 0, 'longitude': 0}, 'status': {'source': 'Manual'}}
+        with mock.patch.object(pcs, 'location_request', return_value=fixture) as helper:
+            for method in ['GET', 'POST']:
+                self.assertEqual(self.request(method, '/admin/location', 'csrf=invalid' if method == 'POST' else None,
+                                              {'Content-Type': 'application/x-www-form-urlencoded'})[0], 303)
+            helper.assert_not_called()
+            cookie = self.login()
+            status, _, page = self.request('GET', '/admin/location', headers={'Cookie': cookie})
+            self.assertEqual(status, 200)
+            self.assertIn('Manual', page)
+            csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+            headers = {'Cookie': cookie, 'Content-Type': 'application/x-www-form-urlencoded'}
+            helper.reset_mock()
+            self.assertEqual(self.request('POST', '/admin/location', urlencode({'csrf': 'bad'}), headers)[0], 403)
+            helper.assert_not_called()
+            payload = {'csrf': csrf, 'enabled': 'yes', 'latitude': '0', 'longitude': '0', 'confirm': 'yes'}
+            for invalid in [{'confirm': ''}, {'latitude': 'nan'}, {'longitude': 'inf'}, {'latitude': '91'}, {'longitude': ''}]:
+                self.assertEqual(self.request('POST', '/admin/location', urlencode(dict(payload, **invalid)), headers)[0], 400)
+            helper.assert_not_called()
+            status, response_headers, _ = self.request('POST', '/admin/location', urlencode(dict(payload, persist='yes')), headers)
+            self.assertEqual(status, 303)
+            self.assertEqual(response_headers['Location'], '/admin/location?saved=1')
+            self.assertEqual(helper.call_args.args[0], {'version': 1, 'enabled': True, 'persist': True, 'latitude': 0.0, 'longitude': 0.0, 'altitude_m': None})
+
     def test_public_home_keeps_admin_footer_and_public_api_allows_coordinates(self):
         status, _, page = self.request("GET", "/")
         self.assertEqual(status, 200)

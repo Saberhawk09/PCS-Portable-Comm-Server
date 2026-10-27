@@ -72,7 +72,7 @@ jobs:
       - name: Install nginx for real frontend integration tests
         run: |
           sudo apt-get update
-          sudo apt-get install -y nginx
+          sudo apt-get install -y nginx libgps-dev
 
       - name: Run Python tests
         run: |

@@ -355,6 +355,8 @@ activate() {
         || { echo "ERROR: Graywolf staged profile database is missing." >&2; return 1; }
     systemctl is-active --quiet gpsd.service \
         || { echo "ERROR: gpsd.service is not active." >&2; return 1; }
+    systemctl is-active --quiet pcs-location.service \
+        || { echo "ERROR: pcs-location.service is not active." >&2; return 1; }
     sudo /usr/local/sbin/pcs-sa818 --config /etc/pcs/aprs/sa818.ini --check >/dev/null
     sudo /usr/local/sbin/pcs-aprs-audio --check >/dev/null
     sudo /usr/local/sbin/pcs-aprs-kiss-firewall --check >/dev/null

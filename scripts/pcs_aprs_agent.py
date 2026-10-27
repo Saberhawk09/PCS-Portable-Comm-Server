@@ -91,7 +91,7 @@ class AgentConfig:
     dedupe_ttl_seconds: int = 86400
     mailbox_limit: int = 100
     gpsd_host: str = "127.0.0.1"
-    gpsd_port: int = 2947
+    gpsd_port: int = 2948
     command_timeout_seconds: float = 3.0
     sender_rate_per_minute: int = 12
     global_rate_per_minute: int = 60
@@ -1052,7 +1052,7 @@ class StatusProvider:
         *,
         runner: CommandRunner | None = None,
         gpsd_host: str = "127.0.0.1",
-        gpsd_port: int = 2947,
+        gpsd_port: int = 2948,
         timeout: float = 3.0,
         temperature_path: str | Path = "/sys/class/thermal/thermal_zone0/temp",
         uptime_path: str | Path = "/proc/uptime",
@@ -1129,6 +1129,8 @@ class StatusProvider:
                             mode = int(report.get("mode", 0))
                         except (TypeError, ValueError):
                             mode = 0
+                        if mode >= 2 and report.get('pcs_source') == 'Manual':
+                            return 'Manual'
                         if mode >= 2 and not self._gps_report_is_fresh(report):
                             stale_fix = True
                             continue
@@ -1314,7 +1316,8 @@ class StatusProvider:
 
     def status(self) -> str:
         uplink = self.uplink_value()
-        gps = "3D" if self.gps_value() == "3D" else "NoFX"
+        gps_state = self.gps_value()
+        gps = gps_state if gps_state in {'3D', '2D', 'Manual'} else "NoFX"
         temperature = self.temperature_c()
         health = "BAD" if uplink in {"Down", "Unknown"} or temperature is None or temperature >= 85 else "OK"
         temperature_label = "N/A" if temperature is None else f"{temperature}C"

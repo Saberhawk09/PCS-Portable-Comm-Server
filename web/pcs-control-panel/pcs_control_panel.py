@@ -1173,6 +1173,7 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
         "storage": backup_settings_html,
         "power": power_settings_html,
         "diagnostics":  '<section class="card"><h2>Administrator access</h2><p>Password changes invalidate active sessions. Forgotten passwords require the PCS terminal.</p><a class="button secondary" href="/admin/password">Change Admin Password</a></section>'}
+    content['diagnostics'] = '<section class="card"><h2>Location</h2><p>Set a manual fallback or persistent position.</p><a class="button secondary" href="/admin/location">Location settings</a></section>' + content['diagnostics']
     views = ''.join(f'<section class="workspace-view" id="{key}"><h2 class="section-title">{label}</h2>{render_dashboard_section(public_data or {}, key) if key in DASHBOARD_SECTION_TEMPLATES else ""}{content[key]}{"".join(action_groups.get(key, []))}{action_directory if key == "actions" else ""}</section>' for key, label in sections)
     console = result_html
     body = f"""<a class="skip" href="#workspace-main">Skip to content</a><div class="workspace">
@@ -1184,6 +1185,42 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
     window.addEventListener('hashchange',showSection);showSection();var result=document.getElementById('action-result');if(result){window.addEventListener('load',function(){result.focus();result.scrollIntoView({block:'nearest'});});}
     """
     return document("PCS Administration", body, script=script, nonce=nonce, workspace_theme=True)
+
+
+def location_request(payload=None):
+    result = subprocess.run(
+        ['sudo', '-n', '/usr/local/sbin/pcs-location', 'show' if payload is None else 'set-from-stdin'],
+        input=None if payload is None else json.dumps(payload, allow_nan=False),
+        text=True, capture_output=True, timeout=10, check=False,
+    )
+    if result.returncode:
+        raise ValueError('Location settings unavailable or rejected; previous settings preserved.')
+    return json.loads(result.stdout) if payload is None else {}
+
+
+def render_location_page(data, csrf, error='', notice=''):
+    config, status = data.get('config', {}), data.get('status', {})
+    messages = (f'<p class="notice error">{esc(error)}</p>' if error else '') + (f'<p class="notice success">{esc(notice)}</p>' if notice else '')
+    def value(key):
+        return esc(config.get(key)) if config.get(key) is not None else ''
+    body = f'''<header><div class="nav"><div class="brand">PCS Location</div><a class="button secondary" href="/admin/#diagnostics">Dashboard</a></div></header>
+    <main class="admin-main"><section class="card"><h1>Manual position fallback</h1>
+    <p>Current position source: <strong>{esc(status.get('source', 'Unavailable'))}</strong></p>
+    {messages}
+    <form method="POST" action="/admin/location" class="settings-form">
+    <input type="hidden" name="csrf" value="{esc(csrf)}">
+    <label>Latitude (decimal degrees)<input type="number" name="latitude" min="-90" max="90" step="any" value="{value('latitude')}"></label>
+    <label>Longitude (decimal degrees)<input type="number" name="longitude" min="-180" max="180" step="any" value="{value('longitude')}"></label>
+    <label>Elevation above sea level (metres, optional)<input type="number" name="altitude_m" min="-500" max="10000" step="any" value="{value('altitude_m')}"></label>
+    <label class="check-line"><input type="checkbox" name="enabled" value="yes"{' checked' if config.get('enabled') else ''}>Enable manual fallback</label>
+    <label class="check-line"><input type="checkbox" name="persist" value="yes"{' checked' if config.get('persist') else ''}>Persist manual position even when GPS recovers</label>
+    <label class="check-line"><input type="checkbox" name="confirm" value="yes" required>I understand existing APRS/Meshtastic sharing may publish this position.</label>
+    <button type="submit">Save location settings</button></form>
+    <p>With fallback enabled, PCS uses Manual while GPS is unavailable, and returns to GPS after a fresh fix remains usable for five seconds. Persist keeps Manual selected until you change it. GPS stays monitored in both modes.</p>
+    <p>Time remains independent: Chrony prefers usable GPS time and falls back to network NTP. Manual position supplies no time, speed, heading or satellite fix. Other faults and unsynchronized time still need attention.</p>
+    <p>Saved {esc(config.get('updated_at', 'not yet'))}. Coordinates are stored privately on PCS; the public dashboard shows Manual and its grid locator.</p>
+    </section></main>'''
+    return document('PCS Location', body)
 
 
 def bandwidth_request(payload=None):
@@ -1439,6 +1476,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_body(200, render_admin_details_page(get_admin_dashboard(), session['csrf']), 'text/html; charset=utf-8')
             return
+        if path == '/admin/location':
+            _, session = self.require_session()
+            if not session:
+                return
+            try:
+                data, error = location_request(), ''
+            except (ValueError, OSError, subprocess.SubprocessError):
+                data, error = {}, 'Location settings are unavailable.'
+            notice = 'Location settings saved.' if parse_qs(parsed.query).get('saved') == ['1'] else ''
+            self.send_body(200, render_location_page(data, session['csrf'], error, notice), 'text/html; charset=utf-8')
+            return
         if path == "/admin/bandwidth":
             _, session = self.require_session()
             if not session:
@@ -1563,6 +1611,33 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_body(400, render_bandwidth_page(data, session['csrf'], str(exc)), 'text/html; charset=utf-8')
                 return
             self.redirect('/admin/bandwidth?saved=1')
+            return
+
+        if path == '/admin/location':
+            _, session = self.require_session()
+            if not session:
+                return
+            if not self.csrf_valid(form, session):
+                self.send_body(403, b'CSRF validation failed\n', 'text/plain; charset=utf-8')
+                return
+            try:
+                if form.get('confirm') != 'yes':
+                    raise ValueError('Confirm position sharing before saving.')
+                payload = {'version': 1, 'enabled': form.get('enabled') == 'yes',
+                           'persist': form.get('persist') == 'yes'}
+                for key, low, high in [('latitude', -90, 90), ('longitude', -180, 180), ('altitude_m', -500, 10000)]:
+                    text = form.get(key, '').strip()
+                    value = float(text) if text else None
+                    if value is not None and (not math.isfinite(value) or not low <= value <= high):
+                        raise ValueError('Invalid position value.')
+                    payload[key] = value
+                if payload['enabled'] and (payload['latitude'] is None or payload['longitude'] is None):
+                    raise ValueError('Latitude and longitude are required for manual fallback.')
+                location_request(payload)
+            except (ValueError, OSError, subprocess.SubprocessError):
+                self.send_body(400, render_location_page({'config': {}}, session['csrf'], 'Invalid or unavailable location settings; previous configuration preserved.'), 'text/html; charset=utf-8')
+                return
+            self.redirect('/admin/location?saved=1')
             return
 
         if path == "/admin/power-settings":

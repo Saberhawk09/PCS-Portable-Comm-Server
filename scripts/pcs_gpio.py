@@ -13,6 +13,11 @@ import sys
 # Installed driver lives in sbin; development imports use the adjacent source.
 sys.path.append("/usr/local/lib/pcs")
 from pcs_network_clients import parse_ap_client_count, read_ap_client_count
+try:
+    from pcs_location import read_status as read_position_status
+except ImportError:
+    def read_position_status():
+        return {}
 import importlib.util
 import json
 import math
@@ -482,6 +487,7 @@ class StatsSnapshot:
     aprs_messages_received: int | None = None
     aprs_mailbox_total: int | None = None
     aprs_mailbox_unread: int | None = None
+    position_source: str | None = None
 
     def as_dict(self) -> dict[str, int | bool | str | None]:
         return asdict(self)
@@ -1168,12 +1174,16 @@ def read_power_status(
 def collect_stats() -> StatsSnapshot:
     cellular_online, cellular_quality = read_cellular_status()
     gps_satellites, gps_satellites_used, gps_locked, grid_square = read_gps_details()
+    position = read_position_status()
+    if position.get('available'):
+        grid_square = position.get('grid_square') or grid_square
     aprs_status, aprs_packets, aprs_messages, mailbox_total, mailbox_unread = read_aprs_status()
     return StatsSnapshot(
         temperature_c=read_temperature(),
         cellular_quality=cellular_quality,
         gps_satellites=gps_satellites,
         gps_locked=gps_locked,
+        position_source=position.get('source') if not position.get('config_error') else None,
         cellular_online=cellular_online,
         gps_satellites_used=gps_satellites_used,
         network_uplink=read_network_uplink(),
@@ -1303,7 +1313,9 @@ def lcd_status_pages(
     cellular_state = "On" if snapshot.cellular_online is True else "Off"
     cellular_quality = snapshot.cellular_quality if snapshot.cellular_quality is not None else 0
 
-    if snapshot.gps_locked is True:
+    if snapshot.position_source == 'Manual':
+        gps_heading = "GPS Status: Man"
+    elif snapshot.gps_locked is True:
         gps_heading = "GPS Status: Lock"
     elif snapshot.gps_locked is False or snapshot.gps_satellites == 0:
         gps_heading = "GPS Status: NoFx"
@@ -1334,7 +1346,7 @@ def lcd_status_pages(
         ("Network Uplink", network_uplink),
         (f"Cell Data: {cellular_state}", f"Signal: {cellular_quality:03d}%"),
         (gps_heading, f"View {gps_view} Used {gps_used}"),
-        (f"AP Clients: {ap_clients}", f"GridSq: {grid_square}"),
+        (f"AP Clients: {ap_clients}", f"{'Man' if snapshot.position_source == 'Manual' else 'GridSq'}: {grid_square}"),
         (f"APRS Stats: {aprs_state}", aprs_counts),
     )
     if power is not None:
@@ -1394,7 +1406,9 @@ def lcd_health_pages(
 
 
 def stats_frames(snapshot: StatsSnapshot) -> tuple[StatsFrame, ...]:
-    if snapshot.gps_satellites == 0 or snapshot.gps_locked is False:
+    if snapshot.position_source == 'Manual':
+        gps_value = (0x00, 0x63, 0x77, 0x7F, 0x6B, 0x63, 0x63, 0x00)  # M
+    elif snapshot.gps_satellites == 0 or snapshot.gps_locked is False:
         gps_value = NO_FIX_ICON
     elif snapshot.gps_satellites is None or snapshot.gps_locked is None:
         gps_value = UNKNOWN_ICON
@@ -1624,7 +1638,7 @@ def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
         alerts.append(MatrixAlert("pistar", "warning", PISTAR_ICON))
     if snapshot.stats.network_uplink == "Offline":
         alerts.append(MatrixAlert("network_uplink", "warning", SIGNAL_ICON))
-    if snapshot.stats.gps_locked is not True:
+    if snapshot.stats.gps_locked is not True and snapshot.stats.position_source != 'Manual':
         alerts.append(MatrixAlert("gps_fix", "warning", SATELLITE_DISH_ICON))
     if snapshot.power is not None:
         if snapshot.power.low_voltage_active:
@@ -1731,7 +1745,9 @@ def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator,
     else:
         network = ("unknown", LED_UNKNOWN)
 
-    if snapshot.stats.gps_locked is True:
+    if snapshot.stats.position_source == 'Manual':
+        gps = ("manual", LED_HEALTHY)
+    elif snapshot.stats.gps_locked is True:
         gps = ("locked", LED_HEALTHY)
     elif snapshot.stats.gps_locked is False:
         gps = ("no_fix", LED_WARNING)

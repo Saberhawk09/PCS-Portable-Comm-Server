@@ -1,12 +1,12 @@
 [Unit]
 Description=PCS LAN-only GPSD proxy
 Documentation=man:systemd-socket-proxyd(8)
-Requires=gpsd.service pcs-gpsd-lan.socket
-After=gpsd.service pcs-gpsd-lan.socket
+Requires=pcs-location.service pcs-gpsd-lan.socket
+After=pcs-location.service pcs-gpsd-lan.socket
 
 [Service]
 Type=notify
-ExecStart=/lib/systemd/systemd-socket-proxyd --exit-idle-time=5min 127.0.0.1:2947
+ExecStart=/lib/systemd/systemd-socket-proxyd --exit-idle-time=5min 127.0.0.1:2948
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
