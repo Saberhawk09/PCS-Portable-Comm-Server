@@ -4,6 +4,15 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-10-27
+
+- Add direct Location settings navigation to the public and authenticated
+  dashboards, retaining authentication for configuration and private coordinates.
+- Bring Power and Starlink into the shared main tab group. Combine power totals,
+  battery estimates, protection and all four monitor readings in the modern Power
+  view; keep Starlink telemetry and its protected controls together. Existing
+  Power and Starlink bookmarks select the matching tab in the full workspace.
+
 ## [2.3.0] - 2026-10-27
 
 - Modernize the public and authenticated web interfaces with compact responsive
