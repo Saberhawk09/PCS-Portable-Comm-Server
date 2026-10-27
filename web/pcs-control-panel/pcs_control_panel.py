@@ -1042,7 +1042,7 @@ def render_dashboard_section(data: dict, key: str) -> str:
         else:
             value = values.get(field, 'Unavailable')
         return f'<{tag} {attr}="{field}">{esc(value)}</{tag}>'
-    markup = re.sub(r'<(strong|span) (data-value|data-field)="([^"]+)">[^<]*</\1>', substitute, DASHBOARD_SECTION_TEMPLATES[key])
+    markup = re.sub(r'<(strong|span|p) (data-value|data-field)="([^"]+)">[^<]*</\1>', substitute, DASHBOARD_SECTION_TEMPLATES[key])
     if key == 'network':
         rows = []
         for uplink in public.get('network', {}).get('uplinks', []):
