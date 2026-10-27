@@ -262,7 +262,8 @@ class PositionHandler(socketserver.BaseRequestHandler):
         decoder = json.JSONDecoder()
 
         def send(value):
-            self.request.sendall((json.dumps(value, allow_nan=False) + '\r\n').encode())
+            # libgps dispatches on compact class tags before JSON parsing.
+            self.request.sendall((json.dumps(value, allow_nan=False, separators=(',', ':')) + '\r\n').encode())
 
         try:
             send(VERSION)
