@@ -1,6 +1,6 @@
 # Manual position fallback
 
-Development feature; installing or activating it on an existing appliance is a
+Available in PCS v2.3.0. Installing or activating it on an existing appliance is a
 separate deployment operation. No coordinates are enabled by default.
 
 In Administration → Diagnostics → Location settings, enter WGS84 decimal-degree
@@ -91,6 +91,12 @@ explicit rollback. Stage and review the concrete appliance-specific changes firs
 5. After authorization, start/enable the location service and restart only affected
    consumers as required. Radio consumers may publish the position under their
    existing settings after reconnection; commissioning and RF testing stay separate.
+   For an existing commissioned Dire Wolf/APRS Agent installation, stop the agent
+   and Dire Wolf first, start/confirm `pcs-aprs-ptt-safe.service`, start Dire Wolf,
+   then start the agent. Do not put Dire Wolf in a combined restart transaction:
+   its existing ExecStopPost safety-holder activation can cancel the pending start.
+   Restore only the services that were active before the change; preserve all radio
+   settings and the safety holder's normal conflict-based ownership handoff.
 6. Before enabling fallback, verify every configured consumer is using 2948 (or
    the existing LAN proxy), the receiver/time path is still raw 2947/SHM, and actual
    Chrony selection is correct. Check protected settings, source labels, public
