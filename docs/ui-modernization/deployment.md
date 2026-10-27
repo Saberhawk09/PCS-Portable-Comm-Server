@@ -1,13 +1,16 @@
-# UI deployment and rollback — instructions only
+# UI deployment and rollback
 
-**Deployment is not authorized by this development task.** Obtain current
-approval before executing on PCS. Publish/review the exact branch commit and
+Obtain current explicit approval before executing on PCS. The operator authorized
+the deployment recorded in [live-deployment.md](live-deployment.md). Publish/review the exact branch commit and
 complete GitHub CI before appliance activation. The validated baseline is
 v2.2.2 (`ba80c8d`); recheck newer main/live changes and preserve local work before
 deploying. Do not overwrite a dirty appliance checkout or substitute a baseline.
 
 This scoped procedure uses the existing allowlisted static stager and atomically
-switches its versioned site. It restarts only the Python web backend. nginx
+switches its versioned site. It explicitly restarts the Python web backend.
+The legacy port-8080 redirect also restarts through its existing
+`Requires=pcs-control-panel.service` dependency. Treat both as the web restart
+scope when comparing service processes; verify every other service is unchanged. nginx
 configuration, units, snapshots, credentials, privileged helpers, VLANs, WAN,
 power monitoring and radio remain in place. The normal complete installer is
 still supported, but is unnecessary for a commissioned stack receiving only

@@ -1,8 +1,9 @@
 # PCS web UI modernization
 
 Development branch: `codex/pcs-ui-modernization`, based on current fetched main
-`ba80c8dc067cb1c038e425cbc283a0167efc4fb9` (v2.2.2). No PCS deployment, appliance
-probe, service restart, network change, radio operation or release was performed.
+`ba80c8dc067cb1c038e425cbc283a0167efc4fb9` (v2.2.2). The development validation
+below preceded deployment. The operator subsequently authorized draft PR/CI and
+PCS deployment; see [live deployment evidence](live-deployment.md).
 
 The supplied brief and both HTML concepts were inspected. Their simulated data,
 password inputs, command execution and fabricated history were excluded.
@@ -91,8 +92,8 @@ Never deploy or expose the fixture server.
 
 Windows full discovery also ran: 931 discovered, 785 passed, 143 platform skips
 and three errors in existing POSIX-shell fixtures. Those three passed in Debian.
-The Windows-only nginx skips were covered by the Linux run. GitHub CI was not
-triggered because the branch remains local. No real-device/physical mobile,
+The Windows-only nginx skips were covered by the Linux run. Subsequent GitHub CI
+passed all five jobs before the authorized live deployment. No physical mobile,
 RF, WAN switching, electrical protection or live telemetry acceptance is claimed.
 
 ## Screenshots and reference differences
@@ -115,6 +116,6 @@ their original meanings. All original confirmations are preserved.
 ## Deployment and rollback
 
 See [the scoped deployment and exact rollback procedure](deployment.md).
-Execution requires separate current authorization. Only the frontend/backend
+Execution requires current authorization. Only the frontend/backend
 presentation files need activation; the existing snapshots and all appliance
 configuration/services can stay in place.

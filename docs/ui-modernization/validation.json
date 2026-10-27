@@ -36,6 +36,6 @@
     "keyboard_skip_link": true,
     "issues": []
   },
-  "github_ci": "Not triggered: local branch",
-  "live_deployment": "Not authorized or performed"
+  "github_ci": "All five jobs passed for f19ff958e569b3d5eb8e1f0a3dc8193f26b995b4; run 40436206604",
+  "live_deployment": "Authorized and passed; see live-deployment.md"
 }
