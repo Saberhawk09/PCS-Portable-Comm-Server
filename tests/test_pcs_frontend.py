@@ -164,7 +164,10 @@ class NginxRouteSecurityTests(control.RouteSecurityTests):
     def test_static_pages_assets_and_clean_service_redirects(self):
         status, _, body = self.request("GET", "/starlink/")
         self.assertEqual(status, 200)
-        self.assertIn("Dish diagnostics", body)
+        self.assertIn('data-default-view="starlink"', body)
+        self.assertIn('href="#power" data-view="power"', body)
+        self.assertIn('data-field="starlinkLatency"', body)
+        self.assertIn('href="/admin/location"', body)
         self.assertNotIn("<form", body)
         self.assertNotIn("starlink-reboot", body)
         for path, mime in (("/files/", "text/html"), ("/docs/", "text/html"), ("/radio/", "text/html"), ("/pistar/", "text/html"), ("/assets/css/pcs.css", "text/css"), ("/assets/js/pcs.js", "application/javascript")):

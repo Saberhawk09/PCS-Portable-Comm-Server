@@ -64,6 +64,14 @@
       dcSource: power.dc_source === 'battery' ? 'Battery' : power.dc_source === 'power_supply' ? 'Power Supply' : 'Unknown',
       batteryCapacity: metric(power.battery_capacity_wh, 1, 'Not entered'), batteryRemaining: metric(power.battery_remaining_wh, 1, 'Not available'),
       batteryPercent: text(power.battery_remaining_percent, 'Not available'),
+      powerElapsed: reading(power.energy_tracking_elapsed_seconds, 's', 0),
+      non5vPower: power.configured === true ? watts(power.estimated_non_5v_power) : 'Unavailable',
+      lowVoltage: power.low_voltage_active === true ? 'Yes' : power.low_voltage_active === false ? 'No' : 'Unknown',
+      shutdownRemaining: reading(power.shutdown_remaining_seconds, 's', 0),
+      inputMonitor: power.configured !== true ? 'Not commissioned' : power.input_online === true ? 'Online' : 'Unavailable',
+      rail12Monitor: power.configured !== true ? 'Not commissioned' : power.rail_12v_online === true ? 'Online' : 'Unavailable',
+      rail5Monitor: power.configured !== true ? 'Not commissioned' : power.rail_5v_online === true ? 'Online' : 'Unavailable',
+      starlinkMonitor: power.configured !== true || power.starlink_configured !== true ? 'Not commissioned' : power.starlink_online === true ? 'Online' : 'Unavailable',
       batteryWarning: power.battery_capacity_warning === true ? 'Estimated capacity is at or below 10%. Voltage protection remains authoritative.' : 'Capacity is an estimate; voltage protection operates independently.',
       shutdownProtection: power.shutdown_armed === true ? 'Enabled' : power.shutdown_armed === false ? 'Disabled' : 'Unknown',
       inputPower: power.configured === true && power.input_online === true ? watts(power.input_power) : 'Unavailable',
@@ -73,6 +81,7 @@
       inputCharge: power.configured === true && power.input_online === true ? reading(power.input_charge_since_boot_mah, 'mAh', 1) : 'Unavailable',
       rail12Voltage: power.configured === true && power.rail_12v_online === true ? reading(power.rail_12v_voltage, 'V', 2) : 'Unavailable',
       rail12Current: power.configured === true && power.rail_12v_online === true ? reading(power.rail_12v_current, 'A', 3) : 'Unavailable',
+      rail12Charge: power.configured === true && power.rail_12v_online === true ? reading(power.rail_12v_charge_since_boot_mah, 'mAh', 1) : 'Unavailable',
       rail12DistributionPower: power.configured === true && power.rail_12v_online === true ? watts(power.rail_12v_distribution_power) : 'Unavailable',
       rail12DistributionEnergy: power.configured === true && power.rail_12v_online === true ? reading(power.rail_12v_distribution_energy_since_boot_wh, 'Wh this boot', 3) : 'Unavailable',
       rail12OnlyPower: power.configured === true && power.rail_12v_online === true ? watts(power.rail_12v_power) : 'Unavailable',
@@ -179,7 +188,7 @@
   function showSection() {
     const views = Array.from(doc.querySelectorAll('.workspace-view'));
     if (!views.length) return;
-    const requested = root.location.hash.slice(1) || 'overview';
+    const requested = root.location.hash.slice(1) || doc.body.dataset.defaultView || 'overview';
     const selected = views.some(view => view.id === requested) ? requested : 'overview';
     views.forEach(view => { view.hidden = view.id !== selected; });
     doc.querySelectorAll('[data-view]').forEach(link => {

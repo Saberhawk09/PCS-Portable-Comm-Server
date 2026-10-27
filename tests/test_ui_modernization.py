@@ -29,6 +29,56 @@ class Forms(HTMLParser):
 
 
 class ModernizationTests(unittest.TestCase):
+    def test_shared_navigation_and_bookmarks_reach_complete_power_and_starlink(self):
+        home = (ROOT / 'web/pcs-home/index.html').read_text(encoding='utf-8')
+        admin = pcs.render_admin_page(ADMIN_DATA, 'test-token', public_data=PUBLIC_DATA).decode()
+        required_power = {'power', 'powerCharge', 'powerEnergy', 'batteryCapacity', 'batteryRemaining',
+                          'batteryPercent', 'batteryWarning', 'shutdownProtection', 'shutdownRemaining',
+                          'lowVoltage', 'powerElapsed', 'non5vPower'}
+        for prefix in ['input', 'rail12', 'rail5', 'starlink']:
+            required_power.update(prefix + suffix for suffix in ['Monitor', 'Voltage', 'Current', 'Charge'])
+        required_power.update(['inputPower', 'inputEnergy', 'rail12DistributionPower', 'rail12DistributionEnergy',
+                               'rail12OnlyPower', 'rail12OnlyEnergy', 'rail5Power', 'rail5Energy', 'starlinkPower', 'starlinkEnergy'])
+        power = pcs.DASHBOARD_SECTION_TEMPLATES['power']
+        self.assertFalse(required_power - set(re.findall(r'data-field="([^"]+)"', power)))
+        for page in [home, admin]:
+            self.assertIn('href="#starlink" data-view="starlink"', page)
+            self.assertIn('href="#power" data-view="power"', page)
+            self.assertIn('href="/admin/location">Location settings</a>', page)
+            self.assertIn('id="starlink"', page)
+            self.assertIn('power-readings', page)
+            self.assertNotIn('All four monitors, charge and energy totals</a>', page)
+        for view in ['power', 'starlink']:
+            alias = (ROOT / f'web/pcs-home/{view}/index.html').read_text(encoding='utf-8')
+            self.assertIn(f'data-default-view="{view}"', alias)
+            self.assertEqual(alias.replace(f' data-default-view="{view}"', '').replace(f'PCS • {view.title()}', 'PCS • Field communications'), home)
+        forms = Forms(admin).forms
+        for form in forms:
+            if form['fields'].get('action', '').startswith('starlink-'):
+                self.assertEqual(form['attrs']['action'], '/admin/run#starlink')
+
+    def test_full_power_and_starlink_keep_zero_unavailable_and_escaped_values(self):
+        data = deepcopy(PUBLIC_DATA)
+        data['power'] = {'configured': True, 'input_online': True, 'input_power': 0,
+                         'input_voltage': 12.6, 'input_current': 0, 'input_charge_since_boot_mah': 0,
+                         'rail_12v_online': False, 'rail_12v_voltage': 99, 'starlink_configured': False,
+                         'starlink_online': False, 'shutdown_remaining_seconds': 0, 'low_voltage_active': False}
+        data['starlink'] = {'configured': True, 'available': True, 'state': '<script>bad</script>',
+                            'latency_ms': 0, 'downlink_bps': 2_000_000, 'packet_loss_percent': 0}
+        power = pcs.render_dashboard_section(data, 'power')
+        self.assertIn('data-field="inputPower">0.0 W<', power)
+        self.assertIn('data-field="inputCharge">0.0 mAh<', power)
+        self.assertIn('data-field="rail12Voltage">Unavailable<', power)
+        self.assertIn('data-field="starlinkMonitor">Not commissioned<', power)
+        self.assertIn('data-field="shutdownRemaining">0 s<', power)
+        sl = pcs.render_dashboard_section(data, 'starlink')
+        self.assertIn('data-field="starlinkDown">2.0 Mbps<', sl)
+        self.assertIn('&lt;script&gt;bad&lt;/script&gt;', sl)
+        data['starlink']['available'] = False
+        sl = pcs.render_dashboard_section(data, 'starlink')
+        self.assertIn('data-field="starlinkLatency">Unavailable<', sl)
+        self.assertIn('data-field="starlinkState">Unavailable<', sl)
+
     def test_all_clean_section_bindings_have_server_values(self):
         fields = set(re.findall(r'data-field="([^"]+)"', ''.join(pcs.DASHBOARD_SECTION_TEMPLATES.values())))
         self.assertFalse(fields - pcs.dashboard_values({}).keys())
