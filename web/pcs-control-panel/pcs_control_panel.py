@@ -1024,7 +1024,7 @@ def render_overview(data: dict, controls: dict | None = None) -> str:
     panels = [
         ('Connectivity','WAN paths and current route',row('Ethernet WAN','overviewEthernet')+row('Wi-Fi','overviewWifi')+row('Cellular','overviewCellular','carrier'), 'network'),
         ('Radio services','Packet, mesh and local hotspot',row('APRS','aprs','aprsDetail')+row('Meshtastic','mesh','meshDetail')+row('Pi-Star','pistar'), 'radio'),
-        ('Power distribution','Measured branches · source-dependent totals', ''.join(row(title,key) for title,key in [('PCS input','inputPower'),('12V distribution · includes 5V','rail12DistributionPower'),('5V output','rail5Power'),('Starlink passthrough','starlinkPower')]), 'power'),
+        ('Power distribution','Measured branches · source-dependent totals', ''.join(row(title,key) for title,key in [('PCS input','inputPower'),('12V rail','rail12OnlyPower'),('5V rail','rail5Power'),('Starlink passthrough','starlinkPower')]), 'power'),
         ('Storage & time','Field files, backup and time reference',row('PCS-Share available','primaryState')+row('PCS-Backup available','backupState')+row('Last backup','backupAge')+row('Time reference','timeSource'), 'storage')]
     return '<div class="overview-kpis">'+kpis+'</div><h2 class="subsystems-title">Subsystems</h2><div class="subsystem-grid">'+''.join(
         f'<article class="subsystem-panel" data-panel="{key}"><div class="panel-heading"><div><h3>{title}</h3><p>{subtitle}</p></div><a class="compact-control" href="#{key}">Details <span aria-hidden="true">↗</span></a></div>{rows}{controls.get(key, "")}</article>'

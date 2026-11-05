@@ -4,6 +4,12 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-11-04
+
+- Show 12V-only power with the measured 5V output excluded on the public and
+  authenticated overview cards. Simplify the overview labels to 12V rail and
+  5V rail; retain both accounting views on the detailed Power tab.
+
 ## [2.3.1] - 2026-10-27
 
 - Add direct Location settings navigation to the public and authenticated
