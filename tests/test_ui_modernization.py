@@ -113,6 +113,27 @@ class ModernizationTests(unittest.TestCase):
         self.assertIn('data-field="power">Unavailable<', page)
         self.assertIn('data-field="clients">Unavailable<', page)
 
+    def test_overview_12v_rail_excludes_5v_without_losing_distribution_detail(self):
+        data = deepcopy(PUBLIC_DATA)
+        data['power'] = {'configured': True, 'rail_12v_online': True, 'rail_5v_online': True,
+                         'rail_12v_distribution_power': 20, 'rail_12v_power': 12, 'rail_5v_power': 8}
+        overview = pcs.render_overview(data)
+        self.assertIn('<strong>12V rail</strong></div><strong data-field="rail12OnlyPower">12.0 W<', overview)
+        self.assertIn('<strong>5V rail</strong></div><strong data-field="rail5Power">8.0 W<', overview)
+        self.assertNotIn('20.0 W', overview)
+        self.assertNotIn('includes 5V', overview)
+        for relative in ['index.html', 'power/index.html', 'starlink/index.html']:
+            page = (ROOT / 'web/pcs-home' / relative).read_text(encoding='utf-8')
+            overview_html = page.split('id="overview"', 1)[1].split('id="network"', 1)[0]
+            self.assertIn('<strong>12V rail</strong></div><strong data-field="rail12OnlyPower">', overview_html)
+            self.assertIn('<strong>5V rail</strong>', overview_html)
+            self.assertNotIn('data-field="rail12DistributionPower"', overview_html)
+        detail = pcs.render_dashboard_section(data, 'power')
+        self.assertIn('data-field="rail12DistributionPower">20.0 W<', detail)
+        self.assertIn('data-field="rail12OnlyPower">12.0 W<', detail)
+        data['power']['rail_12v_online'] = False
+        self.assertIn('data-field="rail12OnlyPower">Unavailable<', pcs.render_overview(data))
+
     def test_every_allowlisted_action_keeps_endpoint_token_and_confirmation(self):
         page = pcs.render_admin_page(ADMIN_DATA, 'test-token').decode()
         forms = Forms(page).forms
