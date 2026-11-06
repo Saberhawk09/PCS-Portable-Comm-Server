@@ -586,6 +586,11 @@ import sys
 sys.path.insert(0, "/usr/local/lib/pcs")
 from pcs_network_clients import read_ap_client_count
 try:
+    from pcs_gnss import read_status as read_gnss_status
+except ImportError:
+    def read_gnss_status():
+        return {}
+try:
     from pcs_location import apply_dashboard
 except ImportError:
     def apply_dashboard(info):
@@ -2329,6 +2334,12 @@ chrony_ref = chrony.get("Reference ID", "")
 chrony_stratum = chrony.get("Stratum", "")
 chrony_local_fallback = chrony_ref.startswith("7F7F0101") or chrony_stratum == "10"
 chrony_selected_gps = "(GPS)" in chrony_ref.upper()
+chrony_selected_gps = chrony_selected_gps or any("(" + ref + ")" in chrony_ref.upper() for ref in ("F10N", "F10P"))
+gnss_runtime = read_gnss_status()
+neo_configured = gnss_runtime.get("mode") in {"neo-f10n", "invalid"}
+gnss_time_label = "NEO-F10N PPS" if "(F10P)" in chrony_ref.upper() else "NEO-F10N USB" if "(F10N)" in chrony_ref.upper() else "GNSS"
+neo_reference_invalid = neo_configured and gnss_time_label.startswith("NEO-") and not (
+    gnss_runtime.get("state") == "fresh" and gnss_runtime.get("utc_valid"))
 rtc_seed_active = active("pcs-rtc-seed.service")
 
 smbd_active = active("smbd")
@@ -2370,7 +2381,7 @@ if uplink_manager_installed:
     cellular_fallback_service_active = active("pcs-uplink-manager.service")
     cellular_fallback_owned = any(u.get("owned") for u in uplink_initial.get("uplinks", []) if u.get("type") == "cellular")
 gpsd_active = active("gpsd")
-gps_info = merge_gps_info(merge_gps_info(modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
+gps_info = merge_gps_info(merge_gps_info({} if neo_configured else modem_gps_safe_info(modem_number), gpsd_nmea_safe_info()), gpsd_json_safe_info())
 gps_info, position_state = apply_dashboard(gps_info)
 manual_position = position_state.get("source") == "Manual"
 
@@ -2588,16 +2599,22 @@ gps_device_candidates = [
 
 gps_devices = [dev for dev in gps_device_candidates if path_exists(dev)]
 pps_present = path_exists("/dev/pps0")
+if neo_configured:
+    gps_devices = ["/dev/pcs-gnss-neo"] if gnss_runtime.get("connected") else []
+    pps_present = bool(gnss_runtime.get("pps_present"))
 
 chrony_sources_rc, chrony_sources_out, _ = run(["chronyc", "-n", "sources"], timeout=1)
 chrony_gps_source_present = any(term in chrony_sources_out.upper() for term in [
     "GPS",
     "PPS",
     "NMEA",
+    "F10N", "F10P",
 ])
 
 storage_status = "ok" if usb_mount and primary_share_ok and backup_share_ok else "warn"
 time_status = "ok" if chrony_active and clock_sync == "yes" and not chrony_local_fallback else "warn"
+if neo_reference_invalid:
+    time_status = "warn"
 samba_base_ok = smbd_active and primary_share_ok and backup_share_ok
 samba_status = "ok" if samba_base_ok and wsdd_active else "warn" if samba_base_ok else "bad"
 services_status = "ok" if all(core_services.values()) else "warn"
@@ -2636,6 +2653,8 @@ gps_has_valid_fix = any(term in gps_fix_text for term in [
 gps_status = "ok" if gps_has_valid_fix else "warn" if gps_has_modem_data or (gpsd_active and (gps_devices or pps_present or chrony_gps_source_present)) else "warn"
 if position_state:
     gps_status = "ok" if position_state.get("available") and not position_state.get("config_error") else "warn"
+if neo_configured and not (gnss_runtime.get("utc_valid") and gnss_runtime.get("pps_active") and gnss_runtime.get("source") == "NEO-F10N PPS"):
+    gps_status = "warn"
 
 
 # BEGIN PCS ACTIVE UPLINK MODE
@@ -3077,7 +3096,7 @@ cards = [
         "id": "time",
         "title": "Time / NTP",
         "status": time_status,
-        "summary": "Chrony synchronized to preferred GPS" if time_status == "ok" and chrony_selected_gps else "Chrony synchronized to Internet NTP" if time_status == "ok" else "Chrony using RTC holdover" if chrony_local_fallback and rtc_seed_active else "Chrony using local clock fallback" if chrony_local_fallback else "Time needs attention",
+        "summary": "Chrony synchronized to " + gnss_time_label if time_status == "ok" and chrony_selected_gps else "Chrony synchronized to Internet NTP" if time_status == "ok" else "Chrony using RTC holdover" if chrony_local_fallback and rtc_seed_active else "Chrony using local clock fallback" if chrony_local_fallback else "Time needs attention",
         "items": [
             {"label": "Chrony", "value": "active" if chrony_active else "inactive"},
             {"label": "System synchronized", "value": clock_sync or "unknown"},
@@ -3086,6 +3105,16 @@ cards = [
             {"label": "RTC boot seed", "value": "completed" if rtc_seed_active else "inactive or unavailable"},
             {"label": "Reference", "value": chrony_ref or "unknown"},
             {"label": "Stratum", "value": chrony_stratum or "unknown"},
+            {"label": "GNSS receiver", "value": gnss_runtime.get("model", "Legacy EM7565")},
+            {"label": "GNSS timing", "value": gnss_runtime.get("diagnostic", "Legacy timing")},
+            {"label": "PPS validation", "value": gnss_runtime.get("pps_validation", "not configured")},
+            {"label": "PPS age (s)", "value": str(gnss_runtime.get("pps_age_seconds", "unavailable"))},
+            {"label": "Time uncertainty (s)", "value": str(gnss_runtime.get("uncertainty_seconds", "unavailable"))},
+            {"label": "Clock offset (s)", "value": str(gnss_runtime.get("offset_seconds", "unavailable"))},
+            {"label": "Receiver UTC valid", "value": str(gnss_runtime.get("utc_valid", "legacy"))},
+            {"label": "PPS device present", "value": str(gnss_runtime.get("pps_present", "not configured"))},
+            {"label": "PPS pulse active", "value": str(gnss_runtime.get("pps_active", "not configured"))},
+            {"label": "GNSS antenna path", "value": gnss_runtime.get("antenna_path", "unknown")},
         ],
     },
     {
@@ -3146,7 +3175,9 @@ cards = [
         "title": "GPS / GNSS",
         "status": gps_status,
         "summary": (
-            "Manual position active; receiver monitored for recovery"
+            gnss_runtime.get("diagnostic", "Dedicated receiver timing unavailable")
+            if neo_configured
+            else "Manual position active; receiver monitored for recovery"
             if manual_position
             else "WWAN NMEA GPS feeding gpsd and Chrony"
             if gpsd_active and chrony_gps_source_present
@@ -3157,9 +3188,9 @@ cards = [
             else "Waiting for GPS/GNSS hardware"
         ),
         "items": [
-            {"label": "GPS path", "value": "WWAN NMEA -> gpsd -> Chrony"},
-            {"label": "Starter service", "value": "active/exited" if active("pcs-wwan-gps-nmea") else "inactive or missing"},
-            {"label": "NMEA port", "value": "/dev/ttyUSB1 present" if os.path.exists("/dev/ttyUSB1") else "/dev/ttyUSB1 missing"},
+            {"label": "GPS path", "value": "NEO-F10N USB + GPIO26 kernel PPS" if neo_configured else "WWAN NMEA -> gpsd -> Chrony"},
+            {"label": "Starter service", "value": "not used (dedicated receiver)" if neo_configured else "active/exited" if active("pcs-wwan-gps-nmea") else "inactive or missing"},
+            {"label": "NMEA port", "value": "/dev/pcs-gnss-neo" if neo_configured else "/dev/ttyUSB1 present" if os.path.exists("/dev/ttyUSB1") else "/dev/ttyUSB1 missing"},
             {"label": "gpsd", "value": "active" if gpsd_active else "inactive"},
             {"label": "NMEA", "value": gps_info.get("nmea", "unknown")},
             {"label": "Lat/Lon", "value": gps_info.get("lat_lon", "not available")},
@@ -3531,9 +3562,12 @@ if PUBLIC_VIEW:
         "time": {
             "status": time_status,
             "chrony_active": chrony_active,
-            "synchronized": clock_sync == "yes",
+            "synchronized": clock_sync == "yes" and not neo_reference_invalid,
             "source": (
-                "GNSS"
+                "GNSS holdover (validation unavailable)"
+                if neo_reference_invalid
+                else
+                gnss_time_label
                 if chrony_selected_gps and clock_sync == "yes"
                 else "Internet NTP"
                 if clock_sync == "yes" and not chrony_local_fallback
@@ -3547,10 +3581,11 @@ if PUBLIC_VIEW:
         },
         "gnss": {
             "status": gps_status,
-            "receiver_active": gpsd_active or modem_present,
+            "receiver": gnss_runtime,
+            "receiver_active": bool(gnss_runtime.get("connected")) if neo_configured else gpsd_active or modem_present,
             "fix": gps_items.get("Fix quality", "unknown"),
             "satellites": gps_items.get("Satellites", "unknown"),
-            "coordinates": "Manual (coordinates hidden)" if manual_position else gps_items.get("Lat/Lon", "not available"),
+            "coordinates": "Coordinates hidden" if neo_configured else "Manual (coordinates hidden)" if manual_position else gps_items.get("Lat/Lon", "not available"),
             "grid_square": gps_items.get("Grid square", "unknown"),
             "utc_time": gps_items.get("UTC time", "unknown"),
         },

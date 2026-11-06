@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+# This historical campaign manipulates only the legacy GPS refid. Never apply
+# it to the independently gated NEO references.
+if [[ -f /etc/pcs/gnss.json ]] && ! PYTHONPATH=/usr/local/lib/pcs python3 -c \
+  'from pcs_gnss import load_config, LEGACY; raise SystemExit(load_config()["mode"] != LEGACY)' 2>/dev/null; then
+    echo 'Use the supervised NEO-F10N commissioning runbook for this receiver mode.' >&2
+    exit 2
+fi
+
 set -Eeuo pipefail
 
 if [[ "${1:-}" != "--run" ]]; then

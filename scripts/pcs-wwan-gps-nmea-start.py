@@ -152,6 +152,18 @@ def nmea_seen() -> bool:
 
 
 def main() -> int:
+    # Optional timing receiver selection must never initialize modem GNSS.
+    # Preserve the original path when the feature has not been installed.
+    if os.path.exists('/etc/pcs/gnss.json'):
+        sys.path.insert(0, '/usr/local/lib/pcs')
+        try:
+            from pcs_gnss import load_config, LEGACY
+            if load_config()['mode'] != LEGACY:
+                log('WWAN GPS initializer skipped: dedicated receiver selected.')
+                return 0
+        except (ImportError, OSError, ValueError):
+            log('Invalid GNSS configuration; modem initialization refused.')
+            return 1
     log("PCS WWAN modem GPS NMEA starter beginning.")
 
     if not wait_for_modem():

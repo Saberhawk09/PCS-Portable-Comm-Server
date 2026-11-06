@@ -1879,6 +1879,10 @@ else
     skip "Cellular NetworkManager profile not created yet"
 fi
 
+PCS_GNSS_MODE="$(PYTHONPATH=/usr/local/lib/pcs python3 -c 'from pcs_gnss import load_config; print(load_config()["mode"])' 2>/dev/null || true)"
+if [[ "${PCS_GNSS_MODE}" == "neo-f10n" ]]; then
+    skip "WWAN GNSS initialization is independent and not required in NEO-F10N mode"
+else
 if service_enabled pcs-wwan-gps-nmea; then
     pass "WWAN GPS NMEA starter service is enabled: pcs-wwan-gps-nmea"
 else
@@ -1895,6 +1899,7 @@ if [[ -e /dev/ttyUSB1 ]]; then
     pass "WWAN GPS NMEA serial port exists: /dev/ttyUSB1"
 else
     warn "WWAN GPS NMEA serial port missing: /dev/ttyUSB1"
+fi
 fi
 
 if service_active gpsd; then
@@ -2002,6 +2007,22 @@ else
     warn "gpspipe command missing"
 fi
 
+if [[ "${PCS_GNSS_MODE}" == "neo-f10n" ]]; then
+    if /usr/local/sbin/pcs-gnss status; then
+        pass "Dedicated GNSS diagnostics available (PPS and UTC are separate)"
+    else
+        warn "Dedicated GNSS diagnostics unavailable"
+    fi
+    if chronyc -n sources 2>/dev/null | grep -qE '^#\* +F10P '; then
+        pass "Chrony selected paired NEO-F10N kernel PPS"
+    elif chronyc -n sources 2>/dev/null | grep -qE '^#\* +F10N '; then
+        warn "Validated USB GNSS time selected; precision PPS degraded"
+    elif chronyc -n sources 2>/dev/null | grep -qE '^\^\*'; then
+        warn "Network NTP selected; dedicated GNSS timing degraded"
+    else
+        warn "GNSS unavailable; inspect local holdover/Chrony state"
+    fi
+else
 if grep -Rqi "refclock SHM 0 refid GPS" /etc/chrony /etc/chrony/conf.d 2>/dev/null; then
     pass "Chrony GPS SHM refclock is configured"
 
@@ -2035,6 +2056,7 @@ if [[ -n "${CHRONY_GPS_SOURCE}" ]]; then
     fi
 else
     position_time_warn "Chrony does not currently show GPS source"
+fi
 fi
 
 

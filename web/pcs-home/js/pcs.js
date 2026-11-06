@@ -110,6 +110,7 @@
       voltage: power.configured === true && power.input_online === true && typeof power.input_voltage === "number" && Number.isFinite(power.input_voltage) ? power.input_voltage.toFixed(2) + " V" : "Unavailable",
       gps: text(gps.fix), power: inputWatts, clients, aprs: optional(aprs), mesh: optional(mesh),
       timeSource: text(time.source, 'Unknown'),
+      gnssTiming: text(object(gps.receiver).diagnostic, 'Legacy timing'),
       pistar: pistar.configured === false ? 'Not configured' : pistar.configured === true ? (pistar.online === true ? 'Online' : pistar.online === false ? 'Offline' : 'Unknown') : 'Unknown',
       pistarURL: pistar.configured === true ? safeURL(pistar.url) : null,
       generated: text(data.generated_at, 'time unavailable'),
