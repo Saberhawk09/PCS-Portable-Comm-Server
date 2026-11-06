@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "mode": "neo-f10n",
+  "receiver": {
+    "vid": "1a86",
+    "pid": "7523",
+    "serial": "",
+    "id_path": "REPLACE_WITH_PRIVATE_PROBE_RESULT",
+    "model": "NEO-F10N",
+    "protocol": "40.00"
+  },
+  "serial_offset": null,
+  "serial_delay": null,
+  "ram_profile": true
+}
