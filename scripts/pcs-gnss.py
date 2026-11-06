@@ -284,8 +284,10 @@ def stage():
     target.mkdir(parents=True, exist_ok=True, mode=0o755)
     for path in paths:
         destination = target / path.name
-        if destination.exists() and destination.read_bytes() != path.read_bytes():
-            raise ValueError('Stage content conflict')
+        if destination.exists():
+            if destination.read_bytes() != path.read_bytes():
+                raise ValueError('Stage content conflict')
+            continue
         shutil.copyfile(path, destination)
         os.chmod(destination, 0o644)
     return target

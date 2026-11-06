@@ -1,5 +1,10 @@
 # GPS Network Sharing
 
+The optional [dedicated NEO-F10N receiver](gnss-pps.md) changes only the explicitly
+selected raw receiver on loopback 2947. Selected position remains on 2948 and the
+trusted-LAN proxy retains its existing target. No independent GPSD listener or
+new public coordinate feed is introduced. Hardware commissioning is pending.
+
 PCS can share the WWAN modem's GNSS data with trusted devices on the field LAN.
 The preferred path keeps GPSD private on the PCS server and publishes a second
 listener only on the PCS LAN address.

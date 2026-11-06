@@ -393,7 +393,9 @@ class InstallationTests(unittest.TestCase):
     def test_staging_only_writes_versioned_inactive_artifacts(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(cli, 'STAGES', Path(temp)), patch.object(cli, 'command') as command:
             first = cli.stage()
+            before = {path.name: path.stat().st_mtime_ns for path in first.iterdir()}
             self.assertEqual(first, cli.stage())
+            self.assertEqual(before, {path.name: path.stat().st_mtime_ns for path in first.iterdir()})
             self.assertEqual(len(list(first.iterdir())), 4)
             command.assert_not_called()
 

@@ -1,5 +1,10 @@
 # PCS Time-Source Hierarchy
 
+Optional, uncommissioned [NEO-F10N/PPS integration](gnss-pps.md) preserves this
+legacy default. After explicit commissioning, paired NEO PPS and validated USB
+time replace the EM7565 refclock, ahead of Internet NTP and the same RTC/local
+holdover. Manual position never supplies a clock reference.
+
 PCS serves NTP to trusted clients on `10.42.0.0/24` from the Raspberry Pi at
 `10.42.0.1`. Chrony uses this order:
 

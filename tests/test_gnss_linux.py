@@ -96,7 +96,11 @@ class GPSDProtocolTests(unittest.TestCase):
         import pty
         master, slave = pty.openpty()
         device = os.ttyname(slave)
-        with tempfile.TemporaryDirectory(prefix='pcs-gpsd-') as temp:
+        with tempfile.TemporaryDirectory(prefix='gn-') as temp:
+            os.chmod(temp, 0o755)
+            alias = Path(temp) / 'receiver'
+            alias.symlink_to(device)
+            device = str(alias)
             with socket.socket() as reserve:
                 reserve.bind(('127.0.0.1', 0))
                 port = reserve.getsockname()[1]

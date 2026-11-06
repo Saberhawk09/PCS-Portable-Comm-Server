@@ -1,5 +1,10 @@
 # EM7565 GPS / GNSS Notes
 
+Optional shared AUX/GNSS reception is **unproven**, and is not a qualified backup.
+See [the guarded manufacturer-based procedure](gnss-pps-commissioning.md#phase-3--optional-em7565-shared-auxgnss).
+The dedicated antenna/bulkhead may later move to NEO-F10N; MAIN and LTE diversity
+remain untouched. Do not run the historical installer as a receiver migration.
+
 This document captures the current known-good PCS GPS/GNSS behavior for the EM7565 modem path.
 
 The PCS build uses a generic WWAN NMEA/gpsd/Chrony software path for modem GPS.
@@ -70,13 +75,17 @@ AT+WANT=1
 If the modem is configured intentionally from an AT command session, the GPS RF path may also need to be selected:
 
 ```text
-AT!ENTERCND="A710"
+AT!ENTERCND="<operator-provided key; never log>"
 AT!CUSTOM="GPSSEL",0
 AT+WANT=1
-AT!RESET
+# Apply only the activation action documented for the installed firmware.
 ```
 
 Use these only when intentionally configuring the modem. Do not change AT settings blindly on a working modem.
+
+Do not query ENTERCND? or place credentials in shell arguments, terminal logs or
+source. GPSSEL activation/reset requirements must be established for the exact
+firmware before writing it; a reset requires separate approval.
 
 ## GPS Fix Test
 

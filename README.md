@@ -1,5 +1,9 @@
 # Portable Comm Server
 
+Optional development: [dedicated NEO-F10N GNSS and kernel PPS](docs/gnss-pps.md),
+with a separate [hardware commissioning runbook](docs/gnss-pps-commissioning.md).
+Legacy timing remains the default; new hardware is not commissioned.
+
 [![CI](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml)
 
 A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and multi-protocol radio interface/hotspot.
