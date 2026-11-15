@@ -15,10 +15,13 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, '/usr/local/lib/pcs')
-from pcs_gnss import (CONFIG, RUNTIME, KEYS, LEGACY, NEO, atomic_json, decode_values,
+# A source candidate must use its own policy, even when older libraries are
+# already installed on PCS. The installed sbin entry point uses the managed lib.
+sys.path.insert(0, str(Path(__file__).resolve().parent) if Path(__file__).with_name('pcs_gnss.py').is_file()
+                else '/usr/local/lib/pcs')
+from pcs_gnss import (CONFIG, RUNTIME, KEYS, OUTPUT_KEYS, BAUDS, LEGACY, NEO, atomic_json, decode_values,
                       load_config, match_receiver, mon_ver, pps_devices, read_status,
-                      ubx, UBXStream, validate_config, valget, valset)
+                      ubx, UBXStream, validate_config, valget, valset, required_values, export_report)
 
 REPO = Path(__file__).resolve().parent.parent
 BACKUPS = Path('/var/backups/pcs-gnss')
@@ -56,9 +59,11 @@ def usb_devices():
 
 
 @contextlib.contextmanager
-def serial_port(path):
+def serial_port(path, baud=38400):
     import fcntl
     import termios
+    if baud not in BAUDS:
+        raise ValueError('Unsupported host baud')
     # Check existing open handles before TIOCEXCL (which only prevents future opens).
     if not stat.S_ISCHR(os.stat(path).st_mode):
         raise ValueError('Receiver must be a character device')
@@ -72,13 +77,17 @@ def serial_port(path):
         attrs = termios.tcgetattr(fd)
         attrs[0] = attrs[1] = attrs[3] = 0
         attrs[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
-        attrs[4] = attrs[5] = termios.B38400
+        attrs[4] = attrs[5] = getattr(termios, 'B' + str(baud))
         termios.tcsetattr(fd, termios.TCSANOW, attrs)
         yield fd
     finally:
         termios.tcsetattr(fd, termios.TCSANOW, original)
         fcntl.ioctl(fd, termios.TIOCNXCL)
         os.close(fd)
+
+
+class ReceiverTimeout(ValueError):
+    pass
 
 
 def exchange(fd, request, cls, msg, ack=None):
@@ -94,20 +103,41 @@ def exchange(fd, request, cls, msg, ack=None):
                 raise ValueError('Receiver rejected UBX request')
             if (group, number) == (cls, msg) and (ack is None or payload == ack):
                 return payload
-    raise ValueError('Receiver did not acknowledge/query at verified 38400 8N1')
+    raise ReceiverTimeout('Receiver did not answer at selected host baud')
 
 
 def receiver_values(fd):
-    keys = [key for key, _ in KEYS.values()]
+    keys = [key for key, _ in KEYS.values()] + list(OUTPUT_KEYS.values())
     values = decode_values(exchange(fd, valget(keys), 6, 0x8B))
     if set(values) != set(keys):
         raise ValueError('Incomplete configuration readback')
     return values
 
 
+@contextlib.contextmanager
+def identified_receiver(path, preferred=115200, fallback=True):
+    """Query only the enrolled unowned port, changing host termios, never baud keys."""
+    speeds = [preferred] + ([baud for baud in BAUDS if baud != preferred] if fallback else [])
+    for baud in speeds:
+        with serial_port(path, baud) as fd:
+            try:
+                identity = mon_ver(exchange(fd, ubx(10, 4), 10, 4))
+            except ReceiverTimeout:
+                continue
+            # A different model/protocol, NAK or owned port is not a baud retry.
+            values = receiver_values(fd)
+            if values[KEYS['baud'][0]] != baud:
+                raise ValueError('UART1 baud readback disagrees with host communication')
+            yield fd, identity, values, baud
+            return
+    raise ValueError('No supported NEO-F10N response at admitted host baud(s)')
+
+
 def configure_receiver(fd, desired):
     before = receiver_values(fd)
     changes = {key: value for key, value in desired.items() if before.get(key) != value}
+    if KEYS['baud'][0] in changes or any(key not in required_values() for key in changes):
+        raise ValueError('Only required timing RAM changes are permitted; preserve baud/message profile')
     if not changes:
         return before
     try:
@@ -157,15 +187,22 @@ def prepare_receiver():
     device = match_receiver(usb_devices(), config['receiver'])['device']
     if not Path('/dev/pcs-gnss-neo').exists() or os.stat(device).st_rdev != os.stat('/dev/pcs-gnss-neo').st_rdev:
         raise ValueError('Enrolled USB alias does not match receiver')
-    with serial_port(device) as fd:
-        identity = mon_ver(exchange(fd, ubx(10, 4), 10, 4))
+    # Remove stale options before probing, so failure cannot reuse old admission.
+    (RUNTIME / 'gpsd.env').unlink(missing_ok=True)
+    with identified_receiver(device, config.get('baud', 38400)) as (fd, identity, before, baud):
         if identity['protocol'] != config['receiver']['protocol']:
             raise ValueError('Receiver protocol changed')
-        before = receiver_values(fd)
         # Save before applying, not afterwards; preserve first pre-profile state.
         if not (RUNTIME / 'receiver-before.json').exists():
             atomic_json(RUNTIME / 'receiver-before.json', {str(key): value for key, value in before.items()})
-        configure_receiver(fd, dict(KEYS.values()))
+        configure_receiver(fd, required_values())
+        write_file(RUNTIME / 'gpsd.env', gpsd_environment(baud))
+
+
+def gpsd_environment(baud):
+    if baud not in BAUDS:
+        raise ValueError('Unsupported GPSD host baud')
+    return f'GPSD_OPTIONS="-n -b -s {baud} -f 8N1"\n'
 
 
 def write_file(path, text, mode=0o644):
@@ -358,8 +395,7 @@ def restore(target):
     if profile.exists() and active and active['mode'] == NEO:
         try:
             device = match_receiver(usb_devices(), active['receiver'])['device']
-            with serial_port(device) as fd:
-                mon_ver(exchange(fd, ubx(10, 4), 10, 4))
+            with identified_receiver(device, active.get('baud', 38400)) as (fd, identity, values, baud):
                 configure_receiver(fd, {int(key): value for key, value in json.loads(profile.read_text()).items()})
             receiver_restored = True
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
@@ -429,11 +465,10 @@ def activate(config, receipt_path, confirmed):
         binding = config['receiver']
         device = match_receiver(usb_devices(), binding)['device']
         # Capture receiver RAM before any authorized profile changes.
-        with serial_port(device) as fd:
-            identity = mon_ver(exchange(fd, ubx(10, 4), 10, 4))
+        with identified_receiver(device, config.get('baud', 38400)) as (fd, identity, values, baud):
             if identity['protocol'] != binding['protocol']:
                 raise ValueError('Enrolled receiver changed')
-            atomic_json(target / 'receiver-before.json', {str(key): value for key, value in receiver_values(fd).items()})
+            atomic_json(target / 'receiver-before.json', {str(key): value for key, value in values.items()})
         for name in ('pcs_gnss.py', 'pcs_gnss_runtime.py'):
             write_file(Path('/usr/local/lib/pcs') / name, (staged / name).read_text())
         write_file('/usr/local/sbin/pcs-gnss', (staged / 'pcs-gnss.py').read_text(), 0o755)
@@ -443,8 +478,8 @@ def activate(config, receipt_path, confirmed):
         command(['udevadm', 'control', '--reload-rules'])
         command(['udevadm', 'trigger', '--action=add', '/sys/class/tty/' + Path(device).name])
         command(['udevadm', 'settle', '--timeout=5'])
-        write_file('/etc/default/gpsd', 'START_DAEMON="true"\nGPSD_OPTIONS="-n -b -s 38400 -f 8N1"\nDEVICES="/dev/pcs-gnss-neo"\nUSBAUTO="false"\nGPSD_SOCKET="/run/gpsd.sock"\n')
-        write_file('/etc/systemd/system/gpsd.service.d/pcs-gnss.conf', '[Unit]\nAfter=chrony.service\n[Service]\nExecStartPre=/usr/local/sbin/pcs-gnss prepare-receiver\n')
+        write_file('/etc/default/gpsd', 'START_DAEMON="true"\n' + gpsd_environment(baud) + 'DEVICES="/dev/pcs-gnss-neo"\nUSBAUTO="false"\nGPSD_SOCKET="/run/gpsd.sock"\n')
+        write_file('/etc/systemd/system/gpsd.service.d/pcs-gnss.conf', '[Unit]\nAfter=chrony.service\n[Service]\nEnvironmentFile=-/run/pcs-gnss/gpsd.env\nExecStartPre=/usr/local/sbin/pcs-gnss prepare-receiver\n')
         write_file('/etc/systemd/system/chrony.service.d/pcs-gnss.conf', '[Service]\nExecStartPre=+/usr/local/sbin/pcs-gnss prepare-pps\n')
         write_file('/etc/systemd/system/pcs-wwan-gps-nmea.service.d/pcs-gnss.conf', '[Service]\nExecCondition=/usr/local/sbin/pcs-gnss legacy-condition\n')
         Path('/etc/chrony/conf.d/pcs-wwan-gps.conf').unlink(missing_ok=True)
@@ -473,10 +508,13 @@ def activate(config, receipt_path, confirmed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('preflight', 'plan', 'stage', 'probe', 'activate', 'status', 'rollback', 'prepare-receiver', 'prepare-pps', 'legacy-condition'))
+    parser.add_argument('action', choices=('preflight', 'plan', 'stage', 'probe', 'export-report', 'activate', 'status', 'rollback', 'prepare-receiver', 'prepare-pps', 'legacy-condition'))
     parser.add_argument('--config', type=Path, default=CONFIG)
     parser.add_argument('--receipt', type=Path)
     parser.add_argument('--device')
+    parser.add_argument('--baud', choices=('auto', '115200', '38400'), default='auto', help='Host probe speed only; auto tries 115200 then 38400 on this one port')
+    parser.add_argument('--stock', type=Path)
+    parser.add_argument('--finished', type=Path)
     parser.add_argument('--gpio26-confirmed', action='store_true')
     parser.add_argument('--backup', type=Path)
     args = parser.parse_args()
@@ -501,16 +539,24 @@ def main():
         result = {'stage': str(stage()), 'active': False}
     elif args.action == 'status':
         result = read_status()
+    elif args.action == 'export-report':
+        if not args.stock or not args.finished:
+            parser.error('--stock and --finished are required')
+        result = export_report(args.stock, args.finished)
     elif args.action == 'probe':
         if not args.device:
             parser.error('--device is required; no automatic serial scanning')
         candidates = [item for item in usb_devices() if item['device'] == args.device]
         if len(candidates) != 1:
             parser.error('Select one discovered USB serial interface')
-        with serial_port(args.device) as fd:
-            identity = mon_ver(exchange(fd, ubx(10, 4), 10, 4))
+        preferred = 115200 if args.baud == 'auto' else int(args.baud)
+        with identified_receiver(args.device, preferred, args.baud == 'auto') as (fd, identity, values, baud):
             result = {'receiver': {key: candidates[0][key] for key in ('vid', 'pid', 'serial', 'id_path')} | identity,
-                      'values': receiver_values(fd)}
+                      'baud': baud, 'values': values,
+                      'required_ram_changes': {str(key): value for key, value in required_values().items() if values.get(key) != value}}
+            # Keep the enrollment binding compatible; firmware/hardware are evidence.
+            result['identity'] = identity
+            result['receiver'] = {key: value for key, value in result['receiver'].items() if key not in ('firmware', 'hardware')}
     elif args.action == 'activate':
         if not args.receipt:
             parser.error('--receipt is required')

@@ -10,7 +10,7 @@ import struct
 import subprocess
 import time
 
-from pcs_gnss import (CONFIG, RUNTIME, NEO, MAX_AGE, TimeGate, UBXStream,
+from pcs_gnss import (CONFIG, RUNTIME, NEO, MAX_AGE, TimeGate, UBXStream, MessageActivity,
                       atomic_json, diagnostic, load_config, parse_chrony, pps_devices)
 
 SERIAL_ALIAS = '/dev/pcs-gnss-neo'
@@ -125,6 +125,7 @@ def serve():
     selection = Selection()
     selection.withdraw()
     gate, binary, pulse = TimeGate(), UBXStream(), PPSActivity()
+    activity = MessageActivity()
     connections, buffers, pending = {}, {}, []
     state = {'version': 1, 'mode': NEO, 'model': 'NEO-F10N', 'antenna_path': 'Dedicated L1/L5 (operator wiring)',
              'connected': False, 'fix_valid': False, 'satellites_visible': None, 'satellites_used': None}
@@ -153,13 +154,16 @@ def serve():
                     connection.close()
                 connections, buffers, pending = {}, {}, []
                 binary = UBXStream()
+                activity = MessageActivity()
                 last_sample = float('-inf')
                 last_report = float('-inf')
                 last_generation = generation
                 # Only the enrolled receiver's GPSD path is restarted. Its
                 # ExecStartPre verifies model/profile again, before opening it.
                 if generation is not None:
-                    run(['systemctl', 'restart', 'gpsd.service'])
+                    # A two-speed admission may take longer than the watchdog.
+                    # Queue only; the gate stays withdrawn while GPSD prepares.
+                    run(['systemctl', 'restart', '--no-block', 'gpsd.service'])
             if not connections and now - last_probe >= 5:
                 last_probe = now
                 try:
@@ -179,6 +183,7 @@ def serve():
                         raise ConnectionError('GPSD disconnected')
                     if connections[connection]:
                         for cls, msg, payload in binary.feed(data):
+                            activity.update(cls, msg, payload)
                             if (cls, msg) == (1, 7):
                                 last_report = time.monotonic()
                                 gate.update(payload)
@@ -217,6 +222,7 @@ def serve():
                 elif now - received > MAX_AGE:
                     pending.remove((received, report))
             state.update(pulse.status())
+            state.update(activity.status())
             if state['pps_present'] != last_pps:
                 # Chrony opens the kernel PPS handle at startup. Its fixed
                 # ExecStartPre rebuilds the include/alias, including USB-only

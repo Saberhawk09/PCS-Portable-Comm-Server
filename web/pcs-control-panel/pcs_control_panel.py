@@ -539,6 +539,7 @@ def sanitize_public_dashboard(data: dict) -> dict:
 def sanitize_gnss_receiver(value):
     # An explicit scalar projection, never an arbitrary nested receiver report.
     fields = {"version", "mode", "model", "connected", "usb_connected", "fix_valid", "utc_valid", "satellites_visible",
+              "signals_reported", "signal_age_seconds", "timeutc_age_seconds", "tim_tp_age_seconds",
               "satellites_used", "pps_present", "pps_active", "pps_age_seconds", "pps_validation",
               "source", "synchronized", "selected_ref", "pps_selection", "offset_seconds",
               "uncertainty_seconds", "diagnostic", "antenna_path", "state"}
@@ -788,6 +789,8 @@ def render_public_page(data: dict) -> bytes:
             ("USB connected", "usb_connected", "not configured"), ("Receiver communicating", "connected", "not configured"), ("UTC valid", "utc_valid", "legacy"),
             ("PPS device", "pps_present", "not configured"), ("PPS active", "pps_active", "not configured"),
             ("Pulse age (seconds)", "pps_age_seconds", "unknown"), ("PPS validation", "pps_validation", "unknown"),
+            ("Signals reported", "signals_reported", "unknown"), ("Signal report age", "signal_age_seconds", "unknown"),
+            ("UTC report age", "timeutc_age_seconds", "unknown"), ("Timepulse metadata age", "tim_tp_age_seconds", "unknown"),
             ("Selected source", "source", "legacy"), ("Clock offset (seconds)", "offset_seconds", "unknown"),
             ("Uncertainty (seconds)", "uncertainty_seconds", "unknown"),
         ]).replace(">True<", ">Yes<").replace(">False<", ">No<"),

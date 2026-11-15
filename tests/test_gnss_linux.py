@@ -125,20 +125,26 @@ class GPSDProtocolTests(unittest.TestCase):
                     connection.sendall(('?WATCH=' + json.dumps(watch, separators=(',', ':')) + ';\n').encode())
                     connection.settimeout(0.2)
                 decoder, buffer, seen_raw, seen_toff = gnss.UBXStream(), b'', False, False
+                activity = gnss.MessageActivity()
                 deadline = time.monotonic() + 12
                 sequence = 0
-                while time.monotonic() < deadline and not (seen_raw and seen_toff):
+                while time.monotonic() < deadline and not (seen_raw and seen_toff and len(activity.seen) == 3):
                     epoch = int(time.time())
                     stamp = dt.datetime.fromtimestamp(epoch, dt.timezone.utc)
                     payload = bytearray(92)
                     struct.pack_into('<IHBBBBBBIi', payload, 0, 100000 + sequence * 1000, stamp.year, stamp.month,
                                      stamp.day, stamp.hour, stamp.minute, stamp.second, 7, 30, 0)
                     payload[20:24] = bytes((3, 1, 0, 8))
-                    os.write(master, gnss.ubx(1, 7, payload))
+                    # Mixed NMEA + UBX as on the operator profile. Diagnostic
+                    # contents are synthetic, never receiver acceptance evidence.
+                    sig = bytes((0, 0, 0, 0, 0, 1, 0, 0)) + bytes(16)
+                    os.write(master, b'$GPTXT,01,01,02,fixture*2C\r\n' + gnss.ubx(1, 7, payload) +
+                             gnss.ubx(1, 0x43, sig) + gnss.ubx(1, 0x21, bytes(20)) + gnss.ubx(13, 1, bytes(16)))
                     sequence += 1
                     time.sleep(0.2)
                     try:
                         for cls, msg, value in decoder.feed(connections[1].recv(65536)):
+                            activity.update(cls, msg, value)
                             seen_raw |= (cls, msg) == (1, 7) and len(value) == 92
                     except socket.timeout:
                         pass
@@ -158,6 +164,8 @@ class GPSDProtocolTests(unittest.TestCase):
                             seen_toff = True
                 self.assertTrue(seen_raw, 'GPSD must preserve receiver UBX via device-scoped WATCH raw=2')
                 self.assertTrue(seen_toff, 'GPSD must publish original serial timing with WATCH pps=true')
+                self.assertEqual(set(activity.seen), {'signal', 'timeutc', 'tim_tp'})
+                self.assertEqual(activity.signals, 1)
             finally:
                 for connection in connections:
                     connection.close()

@@ -20,17 +20,18 @@ NEO = 'neo-f10n'
 DEFAULT = {'version': 1, 'mode': LEGACY}
 MAX_AGE = 2.0
 RECOVERY = 5.0
+BAUDS = (115200, 38400)
 # UBX-23002975, F10 SPG 6.00. Deliberately use the documented configuration
 # database, not legacy CFG-TP5 payloads or another u-blox generation's keys.
 KEYS = {
-    'baud': (0x40520001, 38400),
+    'baud': (0x40520001, 115200),
     'measurement_ms': (0x30210001, 1000),
     'navigation_ratio': (0x30210002, 1),
     'ubx_out': (0x10740001, 1),
     'nmea_out': (0x10740002, 1),
     'pvt_uart1': (0x20910007, 1),
     'timeutc_uart1': (0x2091005C, 1),
-    'timels_uart1': (0x20910061, 1),
+    'timels_uart1': (0x20910061, 0),
     'tp_enabled': (0x10050007, 1),
     'tp_sync': (0x10050008, 1),
     'tp_period': (0x40050002, 1000000),
@@ -44,17 +45,69 @@ KEYS = {
     'tp_pulse_def': (0x20050023, 0),
     'tp_length_def': (0x20050030, 1),
 }
+# Read-only diagnostics: retain the operator's per-port message rates.
+OUTPUT_KEYS = {'sat_uart1': 0x20910016, 'status_uart1': 0x2091001B,
+               'posecef_uart1': 0x20910025, 'posllh_uart1': 0x2091002A,
+               'dop_uart1': 0x20910039, 'clock_uart1': 0x20910066,
+               'sig_uart1': 0x20910346, 'timtp_uart1': 0x2091017E,
+               'gga_uart1': 0x209100BB, 'gsa_uart1': 0x209100C0,
+               'gsv_uart1': 0x209100C5, 'rmc_uart1': 0x209100AC,
+               'gll_uart1': 0x209100CA, 'vtg_uart1': 0x209100B1}
+
+
+def required_values():
+    # Baud is discovered, never changed. NAV-TIMELS is not used by this gate.
+    return {key: value for name, (key, value) in KEYS.items()
+            if name not in ('baud', 'timels_uart1')}
+
+
+def ucf_layers(path):
+    """Read an operator export as evidence only; this is never a write profile."""
+    value = json.loads(Path(path).read_text(encoding='utf-8-sig'))
+    if value.get('type') != 'CFG-ITEM' or not isinstance(value.get('items'), list):
+        raise ValueError('Unsupported u-center export')
+    layers = {0: {}, 1: {}, 2: {}}
+    for row in value['items']:
+        key, layer, number = int(row['key'], 16), row['layer'], row['value']
+        kind = row.get('valueType', '')
+        if kind == 'X8' and isinstance(number, str) and re.fullmatch(r'BI:\d+', number):
+            number = int(number[3:])
+        bits = 8 * key_size(key)
+        numeric = (type(number) is int and (-(2 ** (bits - 1)) if kind.startswith('I') else 0) <= number <
+                   2 ** (bits - 1 if kind.startswith('I') else bits))
+        if kind in ('R4', 'R8'):
+            numeric = type(number) in (int, float) and math.isfinite(number)
+        if (type(layer) is not int or layer not in layers or key in layers[layer]
+                or row.get('action') != 'Set' or not numeric
+                or (key >> 28 == 1 and number not in (0, 1))):
+            raise ValueError('Invalid/duplicate export item')
+        layers[layer][key] = number
+    return layers
+
+
+def export_report(stock, finished):
+    before, after = ucf_layers(stock), ucf_layers(finished)
+    ram = {f'0x{key:08x}': {'stock': before[0].get(key), 'finished': after[0].get(key)}
+           for key in sorted(before[0].keys() | after[0].keys()) if before[0].get(key) != after[0].get(key)}
+    return {'stock_layers': {str(k): len(v) for k, v in before.items()},
+            'finished_layers': {str(k): len(v) for k, v in after.items()},
+            'ram_changes': ram, 'unchanged_ram': sum(after[0].get(k) == v for k, v in before[0].items()),
+            'persistent_evidence': {str(k): {f'0x{key:08x}': value for key, value in after[k].items()} for k in (1, 2)},
+            'required_ram_changes': {f'0x{key:08x}': value for key, value in required_values().items() if after[0].get(key) != value},
+            'applied': False}
 
 
 def validate_config(value):
     if not isinstance(value, dict) or value.get('version') != 1:
         raise ValueError('Unsupported GNSS configuration')
-    if set(value) - {'version', 'mode', 'receiver', 'serial_offset', 'serial_delay', 'ram_profile'}:
+    if set(value) - {'version', 'mode', 'receiver', 'serial_offset', 'serial_delay', 'ram_profile', 'baud'}:
         raise ValueError('Unknown GNSS setting')
     if value.get('mode') not in (LEGACY, NEO):
         raise ValueError('Invalid GNSS mode')
     result = dict(value)
     if result['mode'] == NEO:
+        if type(result.get('baud', 38400)) is not int or result.get('baud', 38400) not in BAUDS:
+            raise ValueError('Unsupported verified UART baud')
         binding = result.get('receiver', {})
         if (not isinstance(binding, dict) or set(binding) != {'vid', 'pid', 'id_path', 'serial', 'model', 'protocol'}
                 or binding.get('model') != 'NEO-F10N'
@@ -162,7 +215,9 @@ def mon_ver(payload):
     protocol = next((field[8:] for field in fields if field.startswith('PROTVER=')), '')
     if protocol != '40.00':
         raise ValueError('Unsupported F10 protocol; review against its interface document')
-    return {'model': 'NEO-F10N', 'protocol': protocol}
+    return {'model': 'NEO-F10N', 'protocol': protocol,
+            'firmware': payload[:30].rstrip(b'\0').decode('ascii', errors='replace'),
+            'hardware': payload[30:40].rstrip(b'\0').decode('ascii', errors='replace')}
 
 
 def key_size(key):
@@ -197,6 +252,31 @@ def valset(changes, persistent=False):
     for key, value in changes.items():
         payload += struct.pack('<I', key) + int(value).to_bytes(key_size(key), 'little')
     return ubx(6, 0x8A, payload)
+
+
+class MessageActivity:
+    """Fresh, coordinate-free metadata; never authorizes a clock reference."""
+    def __init__(self, clock=time.monotonic):
+        self.clock, self.seen, self.signals = clock, {}, None
+
+    def update(self, cls, msg, payload):
+        if (cls, msg) == (1, 0x43):  # NAV-SIG, protocol 40.00 version 0
+            if len(payload) < 8 or payload[4] != 0 or len(payload) != 8 + payload[5] * 16:
+                return
+            self.signals = payload[5]
+            self.seen['signal'] = self.clock()
+        elif (cls, msg) == (1, 0x21) and len(payload) == 20:
+            self.seen['timeutc'] = self.clock()
+        elif (cls, msg) == (13, 1) and len(payload) == 16:
+            # TIM-TP describes the next pulse, not an authenticated UTC fix.
+            self.seen['tim_tp'] = self.clock()
+
+    def status(self):
+        now = self.clock()
+        ages = {name + '_age_seconds': round(now - self.seen[name], 2) if name in self.seen else None
+                for name in ('signal', 'timeutc', 'tim_tp')}
+        age = ages['signal_age_seconds']
+        return ages | {'signals_reported': self.signals if age is not None and 0 <= age <= MAX_AGE else None}
 
 
 def pvt_time(payload):
@@ -360,6 +440,7 @@ def diagnostic(state):
 
 
 PUBLIC_FIELDS = {'version', 'mode', 'model', 'connected', 'usb_connected', 'fix_valid', 'utc_valid', 'satellites_visible',
+                 'signals_reported', 'signal_age_seconds', 'timeutc_age_seconds', 'tim_tp_age_seconds',
                  'satellites_used', 'pps_present', 'pps_active', 'pps_age_seconds', 'pps_validation',
                  'source', 'synchronized', 'selected_ref', 'pps_selection', 'offset_seconds',
                  'uncertainty_seconds', 'diagnostic', 'antenna_path', 'state'}

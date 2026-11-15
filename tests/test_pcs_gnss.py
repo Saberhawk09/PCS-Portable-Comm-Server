@@ -9,6 +9,7 @@ import struct
 import sys
 import tempfile
 import unittest
+import contextlib
 from unittest.mock import patch, Mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -126,6 +127,170 @@ class ReceiverTests(unittest.TestCase):
                 cli.configure_receiver(1, desired)
             self.assertEqual(send.call_count, 2)
             self.assertEqual(send.call_args.args[1], gnss.valset({gnss.KEYS['tp_grid'][0]: 1}))
+
+
+class DeliveredProfileTests(unittest.TestCase):
+    fixtures = ROOT / 'tests/fixtures/gnss'
+
+    def test_exact_operator_exports_and_no_required_receiver_writes(self):
+        report = gnss.export_report(self.fixtures / 'stock-f10-neo.ucf', self.fixtures / 'f10-neo-pcs-finished.ucf')
+        self.assertEqual(report['stock_layers'], {'0': 380, '1': 0, '2': 0})
+        self.assertEqual(report['finished_layers'], {'0': 380, '1': 11, '2': 11})
+        self.assertEqual(len(report['ram_changes']), 17)
+        self.assertEqual(report['unchanged_ram'], 363)
+        self.assertEqual(report['required_ram_changes'], {})
+        self.assertFalse(report['applied'])
+        ram = gnss.ucf_layers(self.fixtures / 'f10-neo-pcs-finished.ucf')[0]
+        with patch.object(cli, 'receiver_values', return_value=ram), patch.object(cli, 'exchange') as exchange:
+            cli.configure_receiver(1, gnss.required_values())
+            exchange.assert_not_called()
+
+    def test_only_eleven_keys_have_persistence_evidence(self):
+        layers = gnss.ucf_layers(self.fixtures / 'f10-neo-pcs-finished.ucf')
+        self.assertEqual(layers[1], layers[2])
+        self.assertEqual(layers[2][gnss.KEYS['baud'][0]], 115200)
+        self.assertNotIn(gnss.OUTPUT_KEYS['sig_uart1'], layers[2])
+        self.assertEqual(layers[0][gnss.OUTPUT_KEYS['sig_uart1']], 1)
+        self.assertEqual(layers[0][gnss.OUTPUT_KEYS['gll_uart1']], 0)
+        self.assertEqual(layers[0][gnss.OUTPUT_KEYS['vtg_uart1']], 0)
+        self.assertEqual(layers[0][gnss.KEYS['timels_uart1'][0]], 0)
+
+    def test_delivered_firmware_identity_keeps_evidence_separate(self):
+        payload = b'EXT SPG L1L5 6.00 (041e8a)'.ljust(30, b'\0') + b'000A0000'.ljust(10, b'\0')
+        payload += b'MOD=NEO-F10N'.ljust(30, b'\0') + b'PROTVER=40.00'.ljust(30, b'\0')
+        value = gnss.mon_ver(payload)
+        self.assertEqual(value['hardware'], '000A0000')
+        self.assertEqual(value['firmware'], 'EXT SPG L1L5 6.00 (041e8a)')
+
+    def test_baud_is_host_configuration_and_old_config_remains_valid(self):
+        self.assertNotIn('baud', gnss.validate_config(config()))
+        for baud in gnss.BAUDS:
+            self.assertEqual(gnss.validate_config(config() | {'baud': baud})['baud'], baud)
+            self.assertIn('-s ' + str(baud), cli.gpsd_environment(baud))
+        for baud in (True, 9600, '115200'):
+            with self.assertRaises(ValueError):
+                gnss.validate_config(config() | {'baud': baud})
+
+    def test_no_automatic_baud_or_diagnostic_message_reconfiguration(self):
+        before = dict(gnss.KEYS.values()) | {gnss.OUTPUT_KEYS['sig_uart1']: 1}
+        for change in ({gnss.KEYS['baud'][0]: 38400}, {gnss.OUTPUT_KEYS['sig_uart1']: 5}):
+            with patch.object(cli, 'receiver_values', return_value=before), patch.object(cli, 'exchange') as send:
+                with self.assertRaises(ValueError):
+                    cli.configure_receiver(1, before | change)
+                send.assert_not_called()
+
+    def test_missing_required_report_is_only_a_differential_ram_write(self):
+        before = dict(gnss.KEYS.values())
+        before[gnss.KEYS['pvt_uart1'][0]] = 0
+        after = before | {gnss.KEYS['pvt_uart1'][0]: 1}
+        with patch.object(cli, 'receiver_values', side_effect=[before, after]), patch.object(cli, 'exchange') as send:
+            cli.configure_receiver(1, gnss.required_values())
+            self.assertEqual(send.call_args.args[1], gnss.valset({gnss.KEYS['pvt_uart1'][0]: 1}))
+            self.assertEqual(send.call_args.args[1][7], 1)  # RAM only
+
+    def identify(self, baud, responses, fallback=True):
+        calls = []
+        @contextlib.contextmanager
+        def port(path, speed):
+            calls.append((path, speed))
+            yield 3
+        values = dict(gnss.KEYS.values()) | {gnss.KEYS['baud'][0]: baud}
+        with patch.object(cli, 'serial_port', side_effect=port), patch.object(cli, 'exchange', side_effect=responses), \
+                patch.object(cli, 'mon_ver', return_value={'model': 'NEO-F10N', 'protocol': '40.00'}), \
+                patch.object(cli, 'receiver_values', return_value=values):
+            with cli.identified_receiver('/dev/ttyUSB9', 115200, fallback) as result:
+                self.assertEqual(result[3], baud)
+        return calls
+
+    def test_115200_probe_and_38400_power_loss_recovery(self):
+        self.assertEqual(self.identify(115200, [b'mon']), [('/dev/ttyUSB9', 115200)])
+        self.assertEqual(self.identify(38400, [cli.ReceiverTimeout(), b'mon']),
+                         [('/dev/ttyUSB9', 115200), ('/dev/ttyUSB9', 38400)])
+
+    def test_no_baud_retry_for_wrong_model_or_owned_port(self):
+        @contextlib.contextmanager
+        def port(*_):
+            yield 3
+        with patch.object(cli, 'serial_port', side_effect=port) as opened, \
+                patch.object(cli, 'exchange', return_value=b'bad'), patch.object(cli, 'mon_ver', side_effect=ValueError('wrong model')):
+            with self.assertRaises(ValueError):
+                with cli.identified_receiver('/dev/ttyUSB9'):
+                    self.fail('Admitted wrong receiver')
+            self.assertEqual(opened.call_count, 1)
+
+    def test_explicit_baud_does_not_silently_scan_other_speeds(self):
+        with self.assertRaises(ValueError):
+            self.identify(38400, [cli.ReceiverTimeout()], fallback=False)
+
+    def test_export_rejects_duplicate_layers_and_does_not_open_hardware(self):
+        row = {'key': '0x40520001', 'value': 115200, 'valueType': 'U4', 'layer': 0, 'action': 'Set'}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(cli, 'command') as command:
+            path = Path(tmp) / 'bad.ucf'
+            path.write_text(json.dumps({'type': 'CFG-ITEM', 'items': [row, row]}))
+            with self.assertRaises(ValueError):
+                gnss.ucf_layers(path)
+            command.assert_not_called()
+
+    def test_signal_and_timing_metadata_is_not_a_clock_authorization(self):
+        now = [10]
+        activity = gnss.MessageActivity(lambda: now[0])
+        sig = bytes((0, 0, 0, 0, 0, 2, 0, 0)) + bytes(32)
+        activity.update(1, 0x43, sig)
+        activity.update(1, 0x21, bytes(20))
+        activity.update(13, 1, bytes(16))
+        self.assertEqual(activity.status()['signals_reported'], 2)
+        self.assertNotIn('utc_valid', activity.status())
+        now[0] = 13
+        self.assertIsNone(activity.status()['signals_reported'])
+        activity.update(1, 0x43, sig[:-1])
+        self.assertEqual(activity.status()['signal_age_seconds'], 3)
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX termios/PTYS')
+    def test_real_termios_probe_recovers_factory_baud_without_receiver_writes(self):
+        import pty
+        import termios
+        import threading
+        import time
+        master, slave = pty.openpty()
+        path = os.ttyname(slave)
+        os.close(slave)
+        stop, requests = threading.Event(), []
+        os.set_blocking(master, False)
+        def receiver():
+            decoder = gnss.UBXStream()
+            while not stop.is_set():
+                try:
+                    data = os.read(master, 65536)
+                except (BlockingIOError, OSError):
+                    time.sleep(0.01)
+                    continue
+                for cls, msg, payload in decoder.feed(data):
+                    requests.append((cls, msg))
+                    if termios.tcgetattr(master)[4] != termios.B38400:
+                        continue  # simulated baud reversion on power loss
+                    if (cls, msg) == (10, 4):
+                        response = b'EXT SPG L1L5 6.00 (041e8a)'.ljust(30, b'\0') + b'000A0000'.ljust(10, b'\0')
+                        response += b'MOD=NEO-F10N'.ljust(30, b'\0') + b'PROTVER=40.00'.ljust(30, b'\0')
+                    elif (cls, msg) == (6, 0x8B):
+                        keys = struct.unpack('<' + 'I' * ((len(payload) - 4) // 4), payload[4:])
+                        values = dict(gnss.KEYS.values()) | {gnss.KEYS['baud'][0]: 38400}
+                        response = bytes((1, 0, 0, 0)) + b''.join(struct.pack('<I', key) +
+                            int(values.get(key, 1)).to_bytes(gnss.key_size(key), 'little') for key in keys)
+                    else:
+                        continue
+                    os.write(master, gnss.ubx(cls, msg, response))
+        worker = threading.Thread(target=receiver)
+        worker.start()
+        try:
+            with patch.object(cli, 'command', return_value=Mock(returncode=1, stdout='')):
+                with cli.identified_receiver(path, 115200) as (_, identity, values, baud):
+                    self.assertEqual(baud, 38400)
+                    self.assertEqual(identity['hardware'], '000A0000')
+            self.assertEqual(requests, [(10, 4), (10, 4), (6, 0x8B)])
+        finally:
+            stop.set()
+            worker.join(timeout=2)
+            os.close(master)
 
 
 class TimingTests(unittest.TestCase):
@@ -427,7 +592,7 @@ class InstallationTests(unittest.TestCase):
             if isinstance(node, ast.List) and node.elts and isinstance(node.elts[0], ast.Constant) and node.elts[0].value in ('chronyc', 'systemctl'):
                 commands.append([item.value for item in node.elts if isinstance(item, ast.Constant)])
         self.assertTrue(commands)
-        self.assertTrue(all(call[0] == 'chronyc' or call in (['systemctl', 'restart', 'gpsd.service'],
+        self.assertTrue(all(call[0] == 'chronyc' or call in (['systemctl', 'restart', '--no-block', 'gpsd.service'],
                                                           ['systemctl', 'restart', 'chrony.service']) for call in commands))
 
 

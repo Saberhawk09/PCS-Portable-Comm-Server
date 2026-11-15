@@ -1,0 +1,2820 @@
+{
+	"type": "CFG-ITEM",
+	"items": [
+		{
+			"key": "0x10230001",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x30230002",
+			"value": 100,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x10340014",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a3002e",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a3002f",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a30030",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a30031",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a30032",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a30033",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a30034",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a30035",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20a30036",
+			"value": 7,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20a30037",
+			"value": 6,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20a30038",
+			"value": 5,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x30a3003c",
+			"value": 500,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x20a30054",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20a30055",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20a30056",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20a30057",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20510001",
+			"value": 132,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x10510002",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10510003",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10710001",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10710002",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10720001",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10720002",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20920001",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X1"
+		},
+		{
+			"key": "0x20920002",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X1"
+		},
+		{
+			"key": "0x20920005",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X1"
+		},
+		{
+			"key": "0x20920006",
+			"value": 7,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X1"
+		},
+		{
+			"key": "0x20920007",
+			"value": 7,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X1"
+		},
+		{
+			"key": "0x2092000a",
+			"value": 7,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X1"
+		},
+		{
+			"key": "0x20410001",
+			"value": 3,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20410002",
+			"value": 15,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x1041000d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20410010",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x10410013",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20250038",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x3025003b",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x209100a6",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100aa",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100a7",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100dd",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100e1",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100de",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ba",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100be",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100bb",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100c9",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100c9",
+			"value": 0,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100c9",
+			"value": 0,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100cd",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100cd",
+			"value": 0,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100cd",
+			"value": 0,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ca",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ca",
+			"value": 0,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ca",
+			"value": 0,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b5",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b9",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b6",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ce",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100d2",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100cf",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100bf",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100c3",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100c0",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100d3",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100d7",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100d4",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100c4",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100c8",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100c5",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910400",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910404",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910401",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ab",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100af",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ac",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100e7",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100eb",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100e8",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b0",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b0",
+			"value": 0,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b0",
+			"value": 0,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b4",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b4",
+			"value": 0,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b4",
+			"value": 0,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b1",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b1",
+			"value": 0,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100b1",
+			"value": 0,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100d8",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100dc",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100d9",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ec",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100f0",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100ed",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100f1",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100f5",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100f2",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100f6",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100fa",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209100f7",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091034f",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910353",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910350",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101b9",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101bd",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101ba",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910354",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910358",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910355",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101b4",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101b8",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101b5",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101a5",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101a9",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101a6",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910196",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091019a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910197",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910359",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091035d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091035a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101a0",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101a4",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209101a1",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910187",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091018b",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910188",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091038b",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091038f",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091038c",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091069d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209106a1",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091069e",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091019b",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091019f",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091019c",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910079",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091007d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091007a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910065",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910069",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910066",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910066",
+			"value": 1,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910066",
+			"value": 1,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910083",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910087",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910084",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910038",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091003c",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910039",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091015f",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910163",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910160",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091007e",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910082",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091007f",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910010",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910014",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910011",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910415",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910419",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910416",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910024",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910028",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910025",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910029",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091002d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091002a",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910006",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091000a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910007",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910007",
+			"value": 1,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910007",
+			"value": 1,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910015",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910019",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910016",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091006a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091006e",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091006b",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910345",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910349",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910346",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910336",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091033a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910337",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091001a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091001e",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091001b",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910051",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910055",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910052",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910056",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091005a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910057",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910047",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091004b",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910048",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910060",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910064",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910061",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209106a2",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209106a6",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209106a3",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910386",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091038a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910387",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091005b",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091005f",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091005c",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091005c",
+			"value": 1,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091005c",
+			"value": 1,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091003d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910041",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091003e",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910042",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910046",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910043",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910204",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910208",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910205",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209102a4",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209102a8",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x209102a5",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091025e",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910262",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091025f",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910231",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910235",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910232",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910689",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091068d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091068a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910634",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910638",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910635",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910178",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091017c",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910179",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091017d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910181",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091017e",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091017e",
+			"value": 1,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x2091017e",
+			"value": 1,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910092",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910096",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20910093",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x50180013",
+			"value": "BI:18446744073709551615",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x50180014",
+			"value": "BI:18446744073709551615",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x50180016",
+			"value": "BI:18446744073709551615",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x50180017",
+			"value": "BI:18446744073709551615",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x50180018",
+			"value": "BI:18446744073709551615",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x20110011",
+			"value": 3,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x10110013",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x30110017",
+			"value": 2280,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x2011001c",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20110021",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x10110025",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10110061",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x50110062",
+			"value": 6378137,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R8"
+		},
+		{
+			"key": "0x50110063",
+			"value": 298.257223563,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R8"
+		},
+		{
+			"key": "0x40110064",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R4"
+		},
+		{
+			"key": "0x40110065",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R4"
+		},
+		{
+			"key": "0x40110066",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R4"
+		},
+		{
+			"key": "0x40110067",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R4"
+		},
+		{
+			"key": "0x40110068",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R4"
+		},
+		{
+			"key": "0x40110069",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R4"
+		},
+		{
+			"key": "0x4011006a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R4"
+		},
+		{
+			"key": "0x201100a1",
+			"value": 3,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x201100a2",
+			"value": 32,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x201100a3",
+			"value": 6,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x201100a4",
+			"value": 5,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "I1"
+		},
+		{
+			"key": "0x201100aa",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x201100ab",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x301100b1",
+			"value": 250,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x301100b2",
+			"value": 250,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x301100b3",
+			"value": 100,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x301100b4",
+			"value": 350,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x301100b5",
+			"value": 150,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x401100c1",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "I4"
+		},
+		{
+			"key": "0x401100c2",
+			"value": 10000,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x201100c4",
+			"value": 60,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x201100d6",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x101100d7",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20930001",
+			"value": 42,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20930002",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x10930003",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930004",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930005",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930006",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20930007",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x10930011",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930012",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930013",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930015",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930017",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930018",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930021",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930022",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930023",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930024",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930025",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10930026",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20930031",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20930032",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x30930033",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x10220001",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10220002",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10220003",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10220004",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20220005",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20220021",
+			"value": 10,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20220022",
+			"value": 50,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20220031",
+			"value": 153,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x20220032",
+			"value": 76,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x10370005",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10370006",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10370007",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x30370008",
+			"value": 350,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x30210001",
+			"value": 1000,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x30210002",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x20210003",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x10c70001",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10c70002",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20c70003",
+			"value": 22,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x50c70004",
+			"value": "BI:2322280035508318030",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x50c70005",
+			"value": "BI:2333274043595124590",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x50c70006",
+			"value": "BI:36715082703219",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x50c70007",
+			"value": "BI:0",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x10360002",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10360003",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10360004",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10360005",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x30360008",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X2"
+		},
+		{
+			"key": "0x10360007",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x50360006",
+			"value": "BI:240520",
+			"layer": 0,
+			"action": "Set",
+			"valueType": "X8"
+		},
+		{
+			"key": "0x10f60009",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x30f6000a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x30f6000b",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x1031001f",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310001",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310004",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310020",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310005",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310021",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310007",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310009",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310022",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x1031000d",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x1031000f",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310028",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310024",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310012",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310014",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310017",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10310026",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x1031001d",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20640001",
+			"value": 50,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x10640002",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10640003",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10640005",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10640006",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10790001",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10790002",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x107a0001",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x107a0002",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20050023",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20050030",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x30050001",
+			"value": 50,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "I2"
+		},
+		{
+			"key": "0x40050002",
+			"value": 1000000,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x40050003",
+			"value": 1000000,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x40050024",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x40050025",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x40050004",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x40050005",
+			"value": 100000,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x5005002a",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R8"
+		},
+		{
+			"key": "0x5005002b",
+			"value": 10,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "R8"
+		},
+		{
+			"key": "0x40050006",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "I4"
+		},
+		{
+			"key": "0x10050007",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10050008",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10050009",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x1005000a",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x1005000b",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x2005000c",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20050035",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x10a20001",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10a20002",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x20a20003",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U1"
+		},
+		{
+			"key": "0x30a20004",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U2"
+		},
+		{
+			"key": "0x20a20005",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x40520001",
+			"value": 115200,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x40520001",
+			"value": 115200,
+			"layer": 1,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x40520001",
+			"value": 115200,
+			"layer": 2,
+			"action": "Set",
+			"valueType": "U4"
+		},
+		{
+			"key": "0x20520002",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20520003",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x20520004",
+			"value": 0,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "E1"
+		},
+		{
+			"key": "0x10520005",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10730001",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10730002",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10740001",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		},
+		{
+			"key": "0x10740002",
+			"value": 1,
+			"layer": 0,
+			"action": "Set",
+			"valueType": "L"
+		}
+	],
+	"description": ""
+}
