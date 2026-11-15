@@ -1,5 +1,12 @@
 # NEO-F10N/PPS development report
 
+Historical November 6 software evidence below is retained. For the delivered
+115200 profile, Waveshare puck and offline-only November 15 update, use the
+[new preparation report](gnss-pps-preparation-2026-11-15.md) and
+[operator sequence](gnss-pps-install.md). Optional EM7565 AUX acceptance listed
+below is now deferred and is not part of the NEO commissioning scope. Nothing
+in this historical report claims the November 15 revision is deployed.
+
 Date: 2026-11-06. Baseline: PCS v2.3.2 / current main
 `7873faaec908c10e5d86e824e8097d6068561c2f`.
 Development branch: `codex/gnss-pps-v232`, isolated worktree `pcs-gnss-pps`.

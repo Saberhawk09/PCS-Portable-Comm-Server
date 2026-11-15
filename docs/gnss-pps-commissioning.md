@@ -1,10 +1,12 @@
 # GNSS/PPS commissioning — operator-run, hardware acceptance pending
 
-This runbook is preparation, not execution authority. No hardware phase has been
-performed. Use an independent local management connection and record time,
+This runbook is preparation, not execution authority. No Pi integration phase has been
+performed. The November 15 handoff reports bench USB reception only; see
+[the delivered profile and operator sequence](gnss-pps-install.md). Use an independent local management connection and record time,
 firmware/package versions, source commit, wiring photographs and private backups.
 Separate approvals cover software deployment, GPIO/boot changes and reboot,
-receiver persistent settings/L5 override, and modem customization/reset. No RF
+receiver persistent settings/L5 override. EM7565 AUX work is deferred; no modem
+authentication, customization, reset or ModemManager restart is part of this plan. No RF
 transmissions are included. Do not repeat historical acceptance as new evidence.
 
 ## Phase 1 — USB, antenna, electrical and kernel PPS
@@ -21,7 +23,7 @@ transmissions are included. Do not repeat historical acceptance as new evidence.
    branding as receiver identity. Obtain authorization for exclusive UBX polling
    on that specific port; run the documented `probe`. Capture MOD, firmware,
    protocol, baud/protocol outputs and time-pulse readback privately.
-4. Verify the helix antenna datasheet: active L1/L5 coverage, bias voltage/current,
+4. Verify the Waveshare GPS External Antenna (D), model 25346, puck datasheet: active L1/L5 coverage, bias voltage/current,
    SMA gender/polarity and extension attenuation. Move the former EM7565 GNSS
    bulkhead to NEO only after documenting its original path. Keep MAIN/AUX intact.
    Test sky view with USB only before connecting PPS to the Pi.
@@ -67,8 +69,10 @@ Chrony and LTE operation. Reboot reversal is a separate authorized action.
    source. A coarse timestamp must identify the correct PPS second; choose
    conservative bounds including USB jitter. The candidate requires measured
    offset and delay; no hard-coded example calibration is accepted.
-3. Review the RAM-only profile diff and approve initialization. It keeps NMEA,
-   enables required UBX reports, uses UTC-aligned rising-edge 1 Hz pulses, and
+3. Review the RAM-only profile diff and approve initialization. It preserves GGA/GSA/GSV/RMC, operator diagnostic message rates and actual baud.
+   The delivered export already meets required timing values. Any necessary
+   differential RAM write is reviewed first. The required profile uses
+   UTC-aligned rising-edge 1 Hz pulses and
    suppresses unlocked pulses through the documented unlocked pulse length.
    It does not enable GPS L5 overrides, write flash/BBR or reset the receiver.
 4. Generate a current preflight receipt and explicitly activate. Verify exactly
@@ -96,64 +100,15 @@ of invalid/stale input. Absolute precision target is set after measurements.
 network time path. Boot configuration and electrical changes have their own
 rollback. Retain data; do not claim hardware precision from simulated tests.
 
-## Phase 3 — optional EM7565 shared AUX/GNSS
+## Phase 3 — EM7565 AUX deferred
 
-This phase is independent of NEO timing. A no-fix AUX result must not impair LTE.
-Do not change MAIN, diversity/MIMO, band selection, carrier aggregation, USB
-composition, APN, antenna bias or data-session configuration to obtain GNSS.
-
-1. Record exact modem firmware/carrier revision and pre-change LTE bearer,
-   registration, bands/CA state, signal, throughput and stability. Use existing
-   read-only diagnostics before any separately authorized AT session.
-2. Obtain the applicable [manufacturer EM75xx command reference](https://source.sierrawireless.com/resources/airprime/minicard/75xx/41111748-airprime-em75xx-at-command-reference).
-   Revision 8's official download currently requires sign-in; retain the document
-   matching the installed firmware. The manufacturer-authored [revision 4 copy](https://www.bipom.com/documents/GetWireless/41111748%20EM75xx%20and%20EM-MC74x1%20AT%20Command%20Reference%20r4.pdf)
-   describes authentication and GPSSEL on pages 16 and 25–26, but does not state
-   GPSSEL-specific activation/reset semantics. Resolve that gap through matching
-   firmware documentation or manufacturer support **before writing GPSSEL**.
-   If unresolved, mark this phase BLOCKED and leave the modem unchanged.
-3. After explicit AT-session authorization, use a suitable owner-coordinated
-   diagnostic AT port. Never contend with ModemManager's port, stop it implicitly,
-   or use `mmcli --command` with credentials in process arguments. Use an
-   interactive terminal with local echo, logging, scrollback capture and shell
-   tracing disabled for authentication. Handle modem echo privately as well.
-4. Read firmware identification (`ATI`/`AT+GMR` as documented). Authenticate with
-   `AT!ENTERCND="<operator-provided key>"`; never include a real key in source,
-   logs or reports. Do not use `AT!ENTERCND?`: it can disclose the stored key.
-   Do not change the key with SETCND. Authentication remains unlocked until
-   modem reset/power cycle; do not promise that closing the terminal relocks it.
-5. Query `AT!CUSTOM=?` for supported customization names and `AT!CUSTOM?` for
-   enabled customizations. Record baseline GPSSEL. Revision 4 documents default
-   zero and a list of enabled settings, so a missing entry alone must not be
-   presented as an explicit zero readback without firmware documentation.
-   Confirm that GPSSEL=1 is supported; unsupported/ambiguous responses stop here.
-6. Review the exact activation requirements and potential data-session impact.
-   If a reset is required, obtain separate downtime/reset approval before any
-   write. Do not guess that a GNSS restart is sufficient or that a modem reset
-   is required. Once admitted, the only customization change is:
-
-   ```text
-   AT!CUSTOM="GPSSEL",1
-   ```
-
-   Perform only the documented, separately approved activation action. Read back
-   the setting using the supported firmware query; record configured versus
-   proven-active antenna path separately.
-7. Observe GNSS for 15 minutes with sky view; record fix, satellites and time to
-   acquisition without coordinates in public reports. Repeat LTE measurements
-   with the same placement/test endpoint. Require maintained registration,
-   existing diversity/MIMO/CA capability and no unexplained disconnects. Throughput
-   varies with the network; investigate material regression before acceptance.
-8. Test rollback using `AT!CUSTOM="GPSSEL",0` and the same documented activation
-   process. Restore the dedicated GNSS antenna physically if reception is needed;
-   software selection alone cannot restore an antenna moved to NEO. Verify LTE
-   and original GNSS behavior. Return to shared mode only with operator direction.
-
-**PASS:** firmware-supported applied setting, documented activation and tested
-rollback, maintained LTE behavior. A separate **GNSS reception PASS** requires
-actual fix acquisition through AUX; otherwise label AUX GNSS unavailable and keep
-LTE unchanged. Neither a successful AT response nor shared-path support makes
-EM7565 a reliable backup. No automatic receiver failover is enabled.
+Operator decision (2026-11-15): NEO-F10N is the sole time/position receiver when
+selected. Preserve EM7565 LTE MAIN/AUX, diversity and data sessions unchanged.
+No GPSSEL writes, protected-AT authentication, modem reset, firmware change or
+ModemManager restart is included. The legacy GNSS path is an explicit software
+rollback only, requiring its original antenna and proven NMEA device identity.
+No automatic receiver failover or claim of AUX reception is permitted. Earlier
+optional modem notes are reference material, not this commissioning sequence.
 
 ## Phase 4 — PCS ecosystem and physical acceptance
 
@@ -165,9 +120,11 @@ Verify that no new public coordinates/raw reports/USB identifiers are exposed.
 
 In an approved boot/shutdown window, check normal startup and shutdown, receiver
 power sequencing, no service-order cycles, absent hardware fallback and clean
-recovery. Compare NEO and EM7565 acquisition in the same conditions without
-concurrently mixing their timing references. Compare antenna inside cassette,
-outside on magnetic base and with the proposed extension. Record visible/used
+recovery. Test the Waveshare puck inside the lid and temporarily deployed outdoors or
+near a window using its approximately 3 m coax. Preserve the LTE antenna baseline;
+do not enable modem GNSS for a comparison. Verify loose Velcro cable loops, strain
+relief, gasket/closure and the upper-center ferromagnetic mounting plate with
+removable foam. Keep metal and coax away from the corner LTE radiating elements. Record visible/used
 satellites, acquisition/recovery, Chrony statistics and exact final configuration.
 
 **PASS:** all existing consumers and manual selection retain their contracts;

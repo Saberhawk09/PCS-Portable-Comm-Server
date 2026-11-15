@@ -6,24 +6,36 @@ this repository changes no installed service or configuration. Legacy EM7565
 remains the default when `/etc/pcs/gnss.json` is absent. Do not run the full base
 installer to deploy this feature.
 
+November 15 local preparation: see [delivered profile and install sequence](gnss-pps-install.md).
+PCS is offline; this revision has not been deployed. Only one receiver is selected;
+EM7565 GNSS is retained for explicit rollback, with AUX commissioning deferred.
+
 ## Architecture and boundaries
 
 NEO-F10N USB-C supplies power and connects the onboard CH340C to receiver UART1.
-It is not native u-blox USB. UART defaults are 38400 8N1; delivery readback is
-mandatory. The Pi UART remains reserved for SA818S. The breakout uses 3.3 V
+It is not native u-blox USB. The delivered operator profile uses **115200 8N1**
+(factory 38400). Exclusive MON-VER/configuration readback on the actual Pi remains
+mandatory. Discovery tries the preferred host baud, then the other supported baud
+on that one enrolled port only; it never writes a receiver baud key. A factory-baud
+return is reported and used for GPSD without forcing a receiver downgrade.
+The Pi UART remains reserved for SA818S. The breakout uses 3.3 V
 logic. PPS is a separate connection to BCM GPIO26 (header pin 37); common
 ground is through USB. Leave SAFE, RESET and EVENT unconnected. Use a compatible
-active L1/L5 antenna on SMA and verify bias voltage, current, connector, cable
+Waveshare GPS External Antenna (D), model 25346, active L1/L5 magnetic puck on SMA
+with approximately 3 m coax. Verify bias voltage, current, connector, cable
 loss and power sequencing before connecting it. The reused external SMA must
 connect exclusively to the new receiver. Do not split or change LTE MAIN.
 
 Raw GPSD on loopback 2947 reads exactly one selected receiver. In NEO mode it
 uses `-b` to prevent receiver writes and an enrolled `/dev/pcs-gnss-neo` alias.
 An exclusive pre-start step polls MON-VER, verifies the supported protocol
-40.00 and reads configuration. Only differences from the explicitly authorized
-RAM profile are applied and read back. Original values are saved first. Neither
+40.00 and reads configuration. The bench-reported firmware is EXT SPG L1L5 6.00
+(041e8a), hardware 000A0000; Pi readback must confirm this evidence. Only differences
+in required timing values from the explicitly authorized RAM profile are applied
+and read back. The delivered export needs **zero** such changes. Other message
+rates, signals and baud are preserved; original values are saved first. Neither
 boot nor ordinary installation saves flash/BBR, changes L5 health policy, or resets
-the receiver. Other firmware is refused pending a documented compatibility update.
+the receiver. Other protocol versions are refused pending a documented compatibility update.
 
 The UTC validator reads receiver-specific raw UBX NAV-PVT and GPSD TOFF over
 GPSD connections. It checks validDate/validTime/fullyResolved, fix acceptance,
@@ -67,15 +79,21 @@ python3 scripts/pcs-gnss.py preflight
 # Installs an inactive versioned bundle only; no service or boot changes.
 sudo python3 scripts/pcs-gnss.py stage
 # Later, after USB enrollment is authorized (not a generic CH340 scan):
-sudo python3 scripts/pcs-gnss.py probe --device /dev/ttyUSB_REPLACE > /root/gnss-probe.json
+sudo python3 scripts/pcs-gnss.py probe --device /dev/ttyUSB_REPLACE --baud auto > /root/gnss-probe.json
 ```
 
 Prepare a private candidate from `config-examples/gnss-neo.json`; copy the entire
-verified receiver binding and replace null serial offset/delay with measured
+verified receiver binding and observed `baud`, and replace null serial offset/delay with measured
 values. The example deliberately cannot activate. CH340 metadata alone never
 proves NEO-F10N identity. Without a unique USB serial, enrollment is tied to one
 physical USB path; moving it requires supervised enrollment. A replacement on
 that path must still pass MON-VER. USB metadata is not a security attestation.
+
+The dedicated port name is `/dev/pcs-gnss-neo`, an enrolled udev symlink rather
+than a reserved `ttyUSB` number. GPSD's pre-start generates a root-owned runtime
+environment with the actual baud; systemd reads it for ExecStart, overriding the
+saved host default. Wrong model/protocol, ownership conflicts or incomplete
+readback stop admission. An absent receiver leaves network/local timing available.
 
 Install dependencies separately in the maintenance window: gpsd with UBX/TOFF/raw
 support, gpsd-clients, Chrony with SOCK/PPS/selectopts, pps-tools, psmisc (`fuser`),
@@ -158,5 +176,5 @@ resolve this before another boot.
 - [Raspberry Pi PPS overlay](https://github.com/raspberrypi/linux/blob/rpi-6.12.y/arch/arm/boot/dts/overlays/pps-gpio-overlay.dts), input and no-pull defaults; verify the installed kernel version.
 
 The [commissioning runbook](gnss-pps-commissioning.md) contains physical acceptance,
-EM7565 shared AUX/GNSS and the separately authorized L5 procedure. Historical
+the deferred EM7565 AUX boundary and separately authorized L5 procedure. Historical
 tests and existing hardware acceptance records are unchanged.

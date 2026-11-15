@@ -2,6 +2,8 @@
 
 Optional development: [dedicated NEO-F10N GNSS and kernel PPS](docs/gnss-pps.md),
 with a separate [hardware commissioning runbook](docs/gnss-pps-commissioning.md).
+The [November 15 install preparation](docs/gnss-pps-install.md) covers the delivered
+115200 profile and stable serial-port enrollment; it remains local and uncommissioned.
 Legacy timing remains the default; new hardware is not commissioned.
 
 [![CI](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml)
