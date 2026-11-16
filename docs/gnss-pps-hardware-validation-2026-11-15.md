@@ -97,7 +97,7 @@ acceptance. The earlier two real isolated GPSD/Chrony fixtures used synthetic in
 The tested startup order is **Pi first, verified input/no-pull, receiver USB
 second**. Simultaneous cold start and other power sequences remain unaccepted:
 u-blox documents TIMEPULSE/SAFEBOOT coupling and low-loading behavior at startup.
-No new reboot or power-cycle was performed after reconnecting the wired receiver.
+No new reboot or power-cycle was performed during this initial F10/display phase.
 Electrical voltage/edge measurements, physical antenna/PPS loss and recovery,
 all power-up orders and an independent precision reference remain hardware gates.
 
@@ -144,3 +144,27 @@ verification remains open, alongside the F10 hardware gates above.
 
 Reference: [Sierra Wireless command reference, manufacturer-authored revision 4](https://www.bipom.com/documents/GetWireless/41111748%20EM75xx%20and%20EM-MC74x1%20AT%20Command%20Reference%20r4.pdf),
 printed pages 25–26, 77–78, 80 and 90.
+
+## Subsequent reboot and release validation
+
+The separately authorized v2.4.0 validation subsequently completed two PCS
+software reboots. Each recovered the enrolled USB receiver, GPIO26 input/no-pull,
+valid UTC, advancing PPS and Chrony F10P selection; each 180-second observation
+contained 151 paired samples. Both appliance self-tests passed without failed
+units. The persistent receiver alias followed USB renumbering. The operator
+confirmed normal LCD/matrix indications after the first reboot.
+
+The first reboot exposed an MBIM control-path failure despite LTE registration.
+One separately authorized actual modem reset restored MBIM. Query-only readback
+then confirmed GNSS remained disabled (GPSENABLE=0, GPSAUTOSTART=0, session NONE).
+The second PCS reboot recovered MBIM/LTE automatically, with a successful MBIM
+capability query and original LTE configuration preserved. No data session or
+further reset was initiated. Initial failure evidence remains retained; its
+cause has not been established.
+
+The full software regression and candidate CI passed. The operator authorized
+publication with the live authenticated admin-action check deferred. These
+subsequent results do not retroactively change the initial-phase evidence above
+or qualify simultaneous cold power, electrical PPS behavior, physical signal
+loss/recovery, RF performance or absolute timing accuracy. See the
+[complete v2.4.0 record](v2.4.0-validation.md).

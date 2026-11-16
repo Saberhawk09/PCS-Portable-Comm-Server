@@ -8,8 +8,15 @@ ModemManager stop/start. EM7565 sessions were ended, GPSENABLE changed from 1
 to 0, and GPSAUTOSTART changed from function 2 to 0. Readback verified both
 disable settings and no active fix session. LTE settings and active network
 connections were preserved; the final PCS self-test passed. No modem reset or
-PCS reboot was performed. Auto-start changes activate at the next modem reset;
-post-power-cycle persistence remains to be checked.
+PCS reboot was performed during that initial shutdown transaction.
+
+Subsequent release validation included two PCS software reboots and one
+separately authorized actual modem reset. Query-only readback after that reset
+confirmed GPSENABLE=0, GPSAUTOSTART=0 and fix session NONE. The repeated PCS
+reboot automatically recovered MBIM/LTE with GNSS still disabled. The first
+reboot's MBIM failure and its recovery are retained in the
+[v2.4.0 validation record](v2.4.0-validation.md). Physical cold-power acceptance
+remains separate.
 
 Root-only evidence and original settings are retained on the appliance at
 `/var/backups/pcs-em7565-gnss-otmawogp/`. A supervised modem rollback restores
@@ -23,7 +30,7 @@ They are not instructions to re-enable it on the commissioned F10 installation.
 
 Optional shared AUX/GNSS reception is **unproven**, and is not a qualified backup.
 See [the guarded manufacturer-based procedure](gnss-pps-commissioning.md#phase-3--optional-em7565-shared-auxgnss).
-The dedicated antenna/bulkhead may later move to NEO-F10N; MAIN and LTE diversity
+The former dedicated GNSS bulkhead is now used by NEO-F10N; MAIN and LTE diversity
 remain untouched. Do not run the historical installer as a receiver migration.
 
 The remaining sections capture the historical known-good EM7565 modem path.
