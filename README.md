@@ -1,5 +1,11 @@
 # Portable Comm Server
 
+The v2.4.1 development candidate adds authenticated [GNSS Information, RF/spectrum
+diagnostics and AssistNow](docs/gnss-intelligence.md) to the commissioned v2.4.0
+architecture. It is staged offline; receiver writes require explicit maintenance
+and paid assistance stays disabled. See [installation/rollback](docs/gnss-intelligence-install.md)
+and [candidate acceptance](docs/v2.4.1-validation.md).
+
 PCS v2.4.0 adds optional [dedicated NEO-F10N GNSS and kernel PPS](docs/gnss-pps.md),
 with a separate [hardware commissioning runbook](docs/gnss-pps-commissioning.md).
 The [installation guide](docs/gnss-pps-install.md) covers the delivered 115200

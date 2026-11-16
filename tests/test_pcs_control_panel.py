@@ -477,6 +477,64 @@ class PublicDataTests(unittest.TestCase):
 
 
 class RouteSecurityTests(unittest.TestCase):
+    def test_gnss_login_head_post_csrf_and_redacted_export(self):
+        for method in ('GET', 'HEAD', 'POST'):
+            status, _, _ = self.request(method, '/admin/gnss', 'operation=stop-spectrum' if method == 'POST' else None,
+                                        {'Content-Type': 'application/x-www-form-urlencoded'} if method == 'POST' else None)
+            self.assertEqual(status, 303)
+        cookie = self.login()
+        fixture = {'state': 'Fresh', 'messages': {}, 'assistance': {'live_state': 'Disabled'}}
+        with mock.patch.object(pcs, 'gnss_request', return_value=fixture) as helper:
+            headers = {'Cookie': cookie, 'Content-Type': 'application/x-www-form-urlencoded'}
+            status, _, page = self.request('GET', '/admin/gnss', headers=headers)
+            self.assertEqual(status, 200)
+            self.assertIn('GNSS Information', page)
+            self.assertIn('Start Spectrum Capture', page)
+            self.assertIn('disabled>Start Spectrum Capture', page)
+            csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
+            for path in ('/admin/gnss', '/admin/gnss/export'):
+                self.assertEqual(self.request('POST', path, urlencode({'operation': 'refresh-predictive'}), headers)[0], 403)
+            status, response_headers, content = self.request('POST', '/admin/gnss/export', urlencode({'csrf': csrf}), headers)
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(content), fixture)
+            self.assertIn('no-store', response_headers.get('Cache-Control'))
+            status, _, _ = self.request('POST', '/admin/gnss', urlencode({'csrf': csrf, 'operation': 'stop-spectrum'}), headers)
+            self.assertEqual(status, 303)
+            helper.assert_called_with({'operation': 'stop-spectrum'})
+
+    def test_gnss_unavailable_and_untrusted_query_are_escaped(self):
+        cookie = self.login()
+        with mock.patch.object(pcs, 'gnss_request', side_effect=ValueError('private-secret-query')):
+            status, _, page = self.request('GET', '/admin/gnss?view=%3Cscript%3E&trace=%3Cscript%3E', headers={'Cookie': cookie})
+            self.assertEqual(status, 200)
+            self.assertNotIn('private-secret-query', page)
+            self.assertNotIn('<script>', page)
+            self.assertIn('unavailable', page)
+
+    def test_gnss_helper_fixed_argv_and_stdin_only(self):
+        with mock.patch.object(pcs.subprocess, 'run', return_value=mock.Mock(returncode=0, stdout='{}')) as runner:
+            pcs.gnss_request({'operation': 'policy', 'window_days': '7'})
+            self.assertEqual(runner.call_args.args[0], ['sudo', '-n', '/usr/local/sbin/pcs-gnss-info', 'web-update'])
+            self.assertIn('window_days', runner.call_args.kwargs['input'])
+            self.assertNotIn('shell', runner.call_args.kwargs)
+
+    def test_gnss_plot_uses_measured_points_and_keeps_gaps(self):
+        plot = pcs.gnss_plot([('L1', [(100, 0), (110, 42)])], 'Hz', 'dB', 'Measured')
+        self.assertEqual(plot.count('<circle '), 2)
+        self.assertNotIn('<polyline', plot)
+        self.assertIn('100, 0', plot)
+        self.assertIn('110, 42', plot)
+
+    def test_gnss_export_schema_discards_credentials_coordinates_and_altitude(self):
+        value = {'chipcode': 'private-credential', 'receiver': {'model': 'NEO-F10N', 'binding': 'private-chip'},
+                 'messages': {'navigation': {'state': 'Fresh', 'data': {'latitude': 'private-position', 'altitude_msl_m': 'private-altitude', 'horizontal_accuracy_m': 2}},
+                              'satellites': {'data': {'rows': [{'svid': 1, 'elevation_deg': 'private-elevation', 'azimuth_deg': 'private-azimuth'}]}}},
+                 'assistance': {'credentials': 'Configured', 'chipcode': 'private-token', 'usage': {'downloaded_bytes': 100}}}
+        exported = pcs.gnss_redacted(value)
+        self.assertNotIn('private-', json.dumps(exported))
+        self.assertEqual(exported['messages']['navigation']['data'], {'horizontal_accuracy_m': 2})
+        self.assertEqual(exported['assistance']['usage']['downloaded_bytes'], 100)
+
     def test_bandwidth_requires_login_csrf_and_fixed_helper(self):
         with mock.patch.object(pcs, 'bandwidth_request', return_value={'config': {}}) as helper:
             status, _, _ = self.request('GET', '/admin/bandwidth')

@@ -1,0 +1,22 @@
+[Unit]
+Description=PCS explicitly requested potentially chargeable Live Orbits
+After=pcs-dashboard-snapshot.service
+ConditionPathExists=/etc/pcs/assistnow.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-gnss-info refresh-live
+TimeoutStartSec=30
+StateDirectory=pcs-assistnow
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/pcs-assistnow
+MemoryMax=64M
+CPUQuota=10%

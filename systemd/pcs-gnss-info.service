@@ -1,0 +1,28 @@
+[Unit]
+Description=PCS passive GNSS RF and spectrum diagnostics
+After=gpsd.service
+ConditionPathExists=/etc/pcs/gnss.json
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/pcs-gnss-info serve
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=pcs-gnss-info
+RuntimeDirectoryMode=0700
+StateDirectory=pcs-assistnow
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET
+ReadWritePaths=/run/pcs-gnss-info /var/lib/pcs-assistnow
+MemoryMax=96M
+CPUQuota=10%
+
+[Install]
+WantedBy=multi-user.target

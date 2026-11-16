@@ -1,0 +1,11 @@
+[Unit]
+Description=PCS optional bounded AssistNow cache schedule
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=1h
+RandomizedDelaySec=30s
+Unit=pcs-assistnow-refresh.service
+
+[Install]
+WantedBy=timers.target

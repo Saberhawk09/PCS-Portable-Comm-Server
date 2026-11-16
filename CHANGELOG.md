@@ -4,6 +4,19 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+- Add the authenticated GNSS Information page with measured L1/L5 signal and
+  spectrum plots, RF/security states, freshness and bounded persisted events.
+- Add a GPSD-only passive diagnostics service, bounded capture controls and
+  redacted exports using existing admin sessions and CSRF protection.
+- Add identity-bound Thingstream enrollment, free Predictive Orbits caching,
+  opt-in metered/automatic refresh, and separately authorized Live Orbits with
+  durable quota reservations, backoff and conservative data limits.
+- Add explicit Autonomous RAM maintenance and an optional cache-only injection
+  hook within existing exclusive GPSD admission. Preserve F10N/F10P timing,
+  enrollment, baud, manual position, modem and uplink contracts.
+- Keep unavailable live message-rate changes and unqualified DBD backup/restore
+  disabled; document staging, rollback and remaining hardware/account gates.
+
 ## [2.4.0] - 2026-11-15
 
 - Add optional SparkFun NEO-F10N USB GNSS support and GPIO26/pin37 Linux kernel
