@@ -1,5 +1,8 @@
 # F10 source cutover — November 15, 2026
 
+Later step: [physical PPS commissioning](gnss-pps-hardware-validation-2026-11-15.md).
+USB-only results below retain their original phase-specific scope.
+
 The operator explicitly authorized moving all GNSS positioning and timing from
 EM7565 to NEO-F10N, with PPS wiring still disconnected. This supersedes the
 earlier legacy-default deployment boundary for this appliance only. New and

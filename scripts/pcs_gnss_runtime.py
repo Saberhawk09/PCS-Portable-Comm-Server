@@ -11,7 +11,7 @@ import subprocess
 import time
 
 from pcs_gnss import (CONFIG, RUNTIME, NEO, MAX_AGE, TimeGate, UBXStream, MessageActivity,
-                      atomic_json, diagnostic, load_config, parse_chrony, pps_devices)
+                      atomic_json, diagnostic, load_config, parse_chrony, pps_devices, SatelliteActivity)
 
 SERIAL_ALIAS = '/dev/pcs-gnss-neo'
 PPS_ALIAS = RUNTIME / 'pps'
@@ -137,6 +137,7 @@ def serve():
     selection.withdraw()
     gate, binary, pulse = TimeGate(), UBXStream(), PPSActivity()
     activity = MessageActivity()
+    satellites = SatelliteActivity()
     connections, buffers, pending = {}, {}, []
     state = {'version': 1, 'mode': NEO, 'model': 'NEO-F10N', 'antenna_path': 'Dedicated L1/L5 (operator wiring)',
              'connected': False, 'fix_valid': False, 'satellites_visible': None, 'satellites_used': None}
@@ -167,6 +168,7 @@ def serve():
                 connections, buffers, pending = {}, {}, []
                 binary = UBXStream()
                 activity = MessageActivity()
+                satellites = SatelliteActivity()
                 last_sample = float('-inf')
                 last_report = float('-inf')
                 last_generation = generation
@@ -219,9 +221,7 @@ def serve():
                                 if not state['fix_valid']:
                                     gate.invalidate('No receiver fix')
                             elif report.get('class') == 'SKY':
-                                satellites = report.get('satellites', [])
-                                state['satellites_visible'] = len(satellites)
-                                state['satellites_used'] = sum(item.get('used') is True for item in satellites)
+                                satellites.update(report)
             else:
                 time.sleep(0.2)
             now = time.monotonic()
@@ -235,6 +235,7 @@ def serve():
                     pending.remove((received, report))
             state.update(pulse.status())
             state.update(activity.status())
+            state.update(satellites.status())
             if pps_enabled and state['pps_present'] != last_pps:
                 # Chrony opens the kernel PPS handle at startup. Its fixed
                 # ExecStartPre rebuilds the include/alias, including USB-only

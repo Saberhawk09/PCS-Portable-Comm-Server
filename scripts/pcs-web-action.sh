@@ -591,6 +591,14 @@ except ImportError:
     def read_gnss_status():
         return {}
 try:
+    from pcs_gnss import satellite_counts
+except ImportError:
+    def satellite_counts(record):
+        rows = record.get("satellites") or []
+        viewed, used = record.get("nSat"), record.get("uSat")
+        return (len(rows) if viewed is None and rows else viewed,
+                sum(row.get("used") is True for row in rows) if used is None and rows else used)
+try:
     from pcs_location import apply_dashboard
 except ImportError:
     def apply_dashboard(info):
@@ -1885,7 +1893,9 @@ def gpsd_json_safe_info():
     if not shutil.which("gpspipe"):
         return info
 
-    rc, out, _ = run(["gpspipe", "-w", "-n", "12"], timeout=4)
+    # Mixed UBX/NMEA can emit twelve JSON records before a complete SKY cycle.
+    # Use the same bounded two-second window as the physical status displays.
+    rc, out, _ = run(["gpspipe", "-w", "-x", "2"], timeout=4)
     if rc != 0 or not out:
         return info
 
@@ -1920,14 +1930,7 @@ def gpsd_json_safe_info():
 
         elif message_class == "SKY":
             satellites = message.get("satellites") or []
-            n_sat = message.get("nSat")
-            u_sat = message.get("uSat")
-
-            if n_sat is None and satellites:
-                n_sat = len(satellites)
-
-            if u_sat is None and satellites:
-                u_sat = sum(1 for sat in satellites if sat.get("used"))
+            n_sat, u_sat = satellite_counts(message)
 
             strong_sat = 0
             for sat in satellites:
@@ -1950,15 +1953,7 @@ def gpsd_json_safe_info():
         info["gps_data"] = "present"
         info["nmea"] = "present"
 
-        satellites = best_sky.get("satellites") or []
-        n_sat = best_sky.get("nSat")
-        u_sat = best_sky.get("uSat")
-
-        if n_sat is None and satellites:
-            n_sat = len(satellites)
-
-        if u_sat is None and satellites:
-            u_sat = sum(1 for sat in satellites if sat.get("used"))
+        n_sat, u_sat = satellite_counts(best_sky)
 
         if n_sat is not None and u_sat is not None:
             info["satellites"] = f"{n_sat} in view / {u_sat} used"

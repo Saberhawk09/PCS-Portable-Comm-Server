@@ -479,6 +479,72 @@ class PPSTests(unittest.TestCase):
 
 
 class StatusTests(unittest.TestCase):
+    def test_unprivileged_display_uses_only_fresh_public_projection(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            gnss.atomic_json(root / 'status.json', {'mode': gnss.NEO, 'state': 'fresh', 'updated_monotonic': 100,
+                'utc_valid': True, 'source': 'NEO-F10N PPS', 'raw': 'PRIVATE', 'lat': 10})
+            with patch.object(gnss, 'load_config', side_effect=PermissionError):
+                result = gnss.read_status(root, now=101)
+                self.assertEqual(result['source'], 'NEO-F10N PPS')
+                self.assertNotIn('PRIVATE', json.dumps(result))
+                self.assertNotIn('lat', result)
+                self.assertFalse(gnss.read_status(root, now=110)['utc_valid'])
+            with patch.object(gnss, 'load_config', return_value=gnss.DEFAULT):
+                self.assertEqual(gnss.read_status(root, now=101)['mode'], gnss.LEGACY)
+
+    def test_multiband_rows_count_spacecraft_and_any_used_signal(self):
+        report = {'nSat': 4, 'uSat': 4, 'satellites': [
+            {'gnssid': 0, 'svid': 3, 'sigid': 0, 'used': False},
+            {'gnssid': 0, 'svid': 3, 'sigid': 6, 'used': True},
+            {'gnssid': 2, 'svid': 3, 'sigid': 0, 'used': True},
+            {'gnssid': 2, 'svid': 3, 'sigid': 3, 'used': True}]}
+        before = json.dumps(report)
+        self.assertEqual(gnss.satellite_counts(report), (2, 2))
+        self.assertEqual(gpio.satellite_counts_from_sky(report), (2, 2))
+        self.assertEqual(gpio.satellite_count_from_sky(report), 2)
+        self.assertEqual(json.dumps(report), before)
+
+    def test_missing_satellite_identity_is_not_guessed(self):
+        self.assertEqual(gnss.satellite_counts({'satellites': [
+            {'PRN': 7, 'sigid': 0, 'used': True}, {'PRN': 7, 'sigid': 6, 'used': False}]}), (1, 1))
+        self.assertEqual(gnss.satellite_counts({'satellites': [
+            {'gnssid': 0, 'PRN': 7, 'used': True}, {'gnssid': 2, 'PRN': 7, 'used': True}]}), (2, 2))
+        self.assertEqual(gnss.satellite_counts({'nSat': 9, 'uSat': 4, 'satellites': [{}, {}]}), (9, 4))
+        self.assertEqual(gnss.satellite_counts({'satellites': [{}, {}, None]}), (3, 0))
+        self.assertEqual(gnss.satellite_counts({}), (None, None))
+        self.assertEqual(gnss.satellite_counts({'satellites': [
+            {'gnssid': True, 'svid': 3}, {'gnssid': True, 'svid': 3}]}), (2, 0))
+
+    def test_web_satellite_summary_and_best_report_use_spacecraft_counts(self):
+        import ast
+        source = (ROOT / 'scripts/pcs-web-action.sh').read_text().split("    python3 - <<'PY'\n", 1)[1].split('\nPY\n}', 1)[0]
+        fn = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == 'gpsd_json_safe_info')
+        duplicate = {'class': 'SKY', 'nSat': 4, 'uSat': 4, 'satellites': [
+            {'gnssid': 0, 'svid': 3, 'used': True}, {'gnssid': 0, 'svid': 3, 'used': True},
+            {'gnssid': 2, 'svid': 3, 'used': True}, {'gnssid': 2, 'svid': 3, 'used': True}]}
+        complete = {'class': 'SKY', 'nSat': 3, 'uSat': 2, 'satellites': [
+            {'gnssid': 0, 'svid': 3, 'used': True}, {'gnssid': 2, 'svid': 3, 'used': True},
+            {'gnssid': 2, 'svid': 4, 'used': False}]}
+        for reports, expected in (([duplicate], '2 in view / 2 used'), ([duplicate, complete], '3 in view / 2 used')):
+            namespace = {'json': json, 'shutil': Mock(), 'satellite_counts': gnss.satellite_counts,
+                         'run': lambda *args, **kwargs: (0, '\n'.join(map(json.dumps, reports)), '')}
+            exec(compile(ast.Module(body=[fn], type_ignores=[]), '<web-collector>', 'exec'), namespace)
+            self.assertEqual(namespace['gpsd_json_safe_info']()['satellites'], expected)
+
+    def test_partial_sky_reports_cannot_erase_full_cycle_or_keep_stale_peak(self):
+        now = [0.0]
+        activity = gnss.SatelliteActivity(lambda: now[0])
+        activity.update({'nSat': 20, 'uSat': 12})
+        now[0] = 1
+        activity.update({'uSat': 12})
+        self.assertEqual(activity.status(), {'satellites_visible': 20, 'satellites_used': 12})
+        now[0] = 2.1
+        activity.update({'nSat': 8, 'uSat': 4})
+        self.assertEqual(activity.status(), {'satellites_visible': 8, 'satellites_used': 4})
+        now[0] = 4.2
+        self.assertEqual(activity.status(), {'satellites_visible': None, 'satellites_used': None})
+
     def test_web_public_projection_drops_raw_and_private_receiver_data(self):
         spec = importlib.util.spec_from_file_location('gnss_web_fixture', ROOT / 'web/pcs-control-panel/pcs_control_panel.py')
         web = importlib.util.module_from_spec(spec)
@@ -532,7 +598,7 @@ class StatusTests(unittest.TestCase):
         self.assertIn('gnss_timing', [item.name for item in gpio.matrix_alerts(health)])
         self.assertNotIn('gps_fix', [item.name for item in gpio.matrix_alerts(health)])
         self.assertEqual(gpio.led_status_indicators(health)[5].state, 'timing_degraded')
-        self.assertTrue(any(page[0] == 'GNSS Time / PPS' for page in gpio.lcd_status_pages(stats, 10)))
+        self.assertFalse(any(page[0] == 'GNSS Time / PPS' for page in gpio.lcd_status_pages(stats, 10)))
 
 
 class InstallationTests(unittest.TestCase):

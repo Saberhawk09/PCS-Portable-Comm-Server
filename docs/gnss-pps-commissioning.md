@@ -1,7 +1,9 @@
 # GNSS/PPS commissioning — operator-run, hardware acceptance pending
 
-This runbook is preparation, not execution authority. No Pi integration phase has been
-performed. The November 15 handoff reports bench USB reception only; see
+This runbook describes acceptance criteria, not execution authority.
+[November 15 live PPS evidence](gnss-pps-hardware-validation-2026-11-15.md) records
+the separately authorized, limited Pi integration; its remaining gates stay open.
+The earlier November 15 handoff reports bench USB reception only; see
 [the delivered profile and operator sequence](gnss-pps-install.md). Use an independent local management connection and record time,
 firmware/package versions, source commit, wiring photographs and private backups.
 Separate approvals cover software deployment, GPIO/boot changes and reboot,

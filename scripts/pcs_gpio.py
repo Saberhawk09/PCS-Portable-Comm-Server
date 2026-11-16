@@ -36,6 +36,10 @@ try:
 except ImportError:
     def read_gnss_status():
         return {}
+try:
+    from pcs_gnss import satellite_counts as unique_satellite_counts
+except ImportError:
+    unique_satellite_counts = None
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Protocol, Sequence
@@ -939,6 +943,9 @@ def maidenhead_grid(latitude: float, longitude: float) -> str | None:
 
 def satellite_count_from_sky(record: dict[str, object]) -> int | None:
     """Return gpsd's satellites-in-view count without retaining satellite details."""
+    if unique_satellite_counts is not None:
+        viewed, _used = unique_satellite_counts(record)
+        return min(99, viewed) if viewed is not None else None
     count = record.get("nSat")
     if isinstance(count, int) and not isinstance(count, bool):
         return max(0, min(99, count))
@@ -950,6 +957,8 @@ def satellite_count_from_sky(record: dict[str, object]) -> int | None:
 
 def satellite_counts_from_sky(record: dict[str, object]) -> tuple[int | None, int | None]:
     """Return gpsd satellites in view and used from one SKY report."""
+    if unique_satellite_counts is not None:
+        return tuple(min(99, count) if count is not None else None for count in unique_satellite_counts(record))
     viewed = satellite_count_from_sky(record)
     used = record.get("uSat")
     if isinstance(used, int) and not isinstance(used, bool):
@@ -1362,8 +1371,6 @@ def lcd_status_pages(
         (f"AP Clients: {ap_clients}", f"{'Man' if snapshot.position_source == 'Manual' else 'GridSq'}: {grid_square}"),
         (f"APRS Stats: {aprs_state}", aprs_counts),
     )
-    if snapshot.gnss_timing is not None:
-        pages += (("GNSS Time / PPS", snapshot.gnss_timing[:LCD_COLUMNS]),)
     if power is not None:
         power_pages = (lcd_power_page(power), lcd_rails_page(power))
         pages = pages[:1] + power_pages + pages[1:]

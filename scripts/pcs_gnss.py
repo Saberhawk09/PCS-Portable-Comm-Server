@@ -471,6 +471,11 @@ PUBLIC_FIELDS = {'version', 'mode', 'model', 'connected', 'usb_connected', 'fix_
 def read_status(runtime=RUNTIME, config=CONFIG, now=None):
     try:
         mode = load_config(config)['mode']
+    except PermissionError:
+        # Display services run as pi; enrollment remains root-only. The root
+        # validator's public runtime projection is their authority, bounded by
+        # the same freshness, mode, type and privacy checks below.
+        mode = NEO
     except (OSError, ValueError, TypeError):
         return {'mode': 'invalid', 'state': 'configuration-error', 'diagnostic': 'Invalid GNSS configuration'}
     if mode == LEGACY:
@@ -493,3 +498,55 @@ def read_status(runtime=RUNTIME, config=CONFIG, now=None):
 
 def time_label(status, fallback):
     return status.get('source', fallback) if status.get('mode') == NEO and status.get('state') == 'fresh' else fallback
+
+
+def satellite_counts(record):
+    """Count spacecraft, combining signal rows only with explicit identity."""
+    def count(key):
+        value = record.get(key)
+        return max(0, value) if type(value) is int else None
+    rows = record.get('satellites')
+    if not isinstance(rows, list):
+        return count('nSat'), count('uSat')
+    groups, identified, used_flags = {}, False, False
+    for index, row in enumerate(rows):
+        key = ('unknown', index)
+        if isinstance(row, dict):
+            gnss, sv, prn = row.get('gnssid'), row.get('svid'), row.get('PRN')
+            if type(gnss) is int and 0 <= gnss <= 255 and type(sv) is int and 0 < sv <= 1023:
+                key, identified = ('sv', gnss, sv), True
+            elif type(prn) is int and 0 < prn <= 4095:
+                # PRN-only reports cannot establish cross-constellation mappings.
+                key, identified = ('prn', gnss if type(gnss) is int else None, prn), True
+            used_flags = used_flags or type(row.get('used')) is bool
+            used = row.get('used') is True
+        else:
+            used = False
+        groups[key] = groups.get(key, False) or used
+    if identified:
+        viewed = len(groups)
+        reported_used = count('uSat')
+        used = sum(groups.values()) if used_flags else min(viewed, reported_used) if reported_used is not None else None
+        return viewed, used
+    # Retain legacy receivers' aggregate counts when no identities are supplied.
+    viewed = count('nSat')
+    return (len(rows) if viewed is None else viewed,
+            count('uSat') if count('uSat') is not None else sum(groups.values()))
+
+
+class SatelliteActivity:
+    """Choose a complete recent SKY report without retaining a historical peak."""
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.samples = []
+
+    def update(self, report):
+        self.samples.append((self.clock(), satellite_counts(report)))
+        self.samples = self.samples[-128:]
+
+    def status(self):
+        now = self.clock()
+        self.samples = [(stamp, counts) for stamp, counts in self.samples if 0 <= now - stamp <= MAX_AGE]
+        counts = max((counts for stamp, counts in self.samples), default=(None, None),
+                     key=lambda row: tuple(number if number is not None else -1 for number in row))
+        return dict(zip(('satellites_visible', 'satellites_used'), counts))
