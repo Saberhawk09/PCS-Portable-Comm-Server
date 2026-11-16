@@ -4,6 +4,29 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-15
+
+- Add optional SparkFun NEO-F10N USB GNSS support and GPIO26/pin37 Linux kernel
+  PPS timing. Pair validated receiver UTC (`F10N`) with PPS (`F10P`) in Chrony;
+  stale, invalid or unpaired references are withdrawn. Internet NTP and local
+  holdover remain available.
+- Preserve legacy EM7565 defaults for existing installations. Dedicated-receiver
+  enrollment, configuration, staging, activation and rollback are explicit;
+  pulling updates does not switch receivers, edit boot configuration, issue
+  modem commands or change LTE sessions. Document supervised modem GNSS shutdown
+  and optional, unqualified AUX/GNSS reception separately.
+- Keep raw receiver, selected/manual position and trusted LAN GPSD sharing
+  compatible with APRS and Meshtastic. Manual position remains independent of
+  clock validity. Add receiver/UTC/PPS/Chrony diagnostics to existing status
+  surfaces while preserving public-coordinate privacy.
+- Correct false LCD/matrix timing warnings when display collectors cannot read
+  private enrollment files. Count each GNSS spacecraft once across L1/L5 signals
+  on PCS displays and web summaries; retain original per-signal GPSD reports.
+- Include simulated failure/recovery and installer tests, commissioning/rollback
+  instructions and dated appliance evidence. Software reboot, cold-power
+  sequencing, electrical acceptance and absolute timing measurements are
+  distinct claims; see [v2.4.0 validation](docs/v2.4.0-validation.md).
+
 ## [2.3.2] - 2026-11-04
 
 - Show 12V-only power with the measured 5V output excluded on the public and
