@@ -112,6 +112,14 @@ must be resolved under review, never by silently rewriting the operator profile.
    Re-enroll deliberately if a serial-less receiver moves to another USB socket.
    Every admission still requires actual UBX model/protocol readback.
 
+   Preserve legacy rollback through a separate enrolled modem NMEA alias when
+   USB numbering changes. Its rule must match the modem identity **and** NMEA
+   interface, rather than every port sharing its serial. The existing starter
+   accepts a root-managed `PCS_WWAN_GPS_NMEA_PORT` service environment override;
+   without it, historical installations retain `/dev/ttyUSB1`. GPSD and the
+   starter must agree on the proven NMEA device. This does not authorize modem
+   customization or a source switch.
+
 5. **Electrical/PPS approval.** Follow Phase 1 of
    [the commissioning runbook](gnss-pps-commissioning.md): BCM26/pin37 ownership,
    3.3 V signaling, both power-up orders, no output/pull-down or SAFEBOOT loading,
