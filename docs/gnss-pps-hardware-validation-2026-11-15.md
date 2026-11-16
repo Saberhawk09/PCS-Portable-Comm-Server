@@ -103,9 +103,44 @@ all power-up orders and an independent precision reference remain hardware gates
 
 Sustained observation and final integration/self-test results are recorded in the
 workspace commissioning report. A small Chrony residual offset is not an absolute
-accuracy specification. No receiver persistent setting, modem AT/reset, LTE
+accuracy specification. During the F10/display phase, no receiver persistent setting, modem AT/reset, LTE
 configuration, primary UART or forced RF transmission was changed.
 
 References: [GPSD spacecraft/signal identity](https://gpsd.io/gpsd_json.html#_prn_gnss_id_sv_id_and_sig_id),
 [SparkFun GPIO voltage and PPS pad](https://docs.sparkfun.com/SparkFun_u-blox_NEO-F10N/hardware_overview/),
 [u-blox startup behavior, section 3.1.2.3](https://docs.sparkfun.com/SparkFun_u-blox_NEO-F10N/assets/component_documentation/NEO-F10N_IntegrationManual_UBXDOC-963802114-12193.pdf).
+
+## Subsequent authorized EM7565 GNSS shutdown
+
+After the F10 acceptance observations above, the operator separately authorized
+GNSS-only AT commands and the necessary brief ModemManager stop/start. The
+enrolled Sierra AT interface and firmware SWI9X50C_01.14.02.00 were verified
+before maintenance. An initial basic-AT handover failed without GNSS writes;
+service recovery succeeded. A settling delay and bounded handshake retry then
+allowed the guarded transaction to complete.
+
+`AT!GPSEND=0,255` ended fix sessions; GPSAUTOSTART was set to 0 and CUSTOM
+GPSENABLE to 0. Readback confirmed both disable settings and session NONE.
+Unrelated customizations, BAND, SELRAT and RXDEN readbacks were unchanged.
+GPSSEL remained dedicated mode; no diversity or LTE setting was written.
+Protected credentials were excluded from logs/source/arguments.
+
+ModemManager was restored with its original enablement and temporary runtime
+masks removed. LTE returned registered/attached without a data session. Active
+network connections and protected GNSS/GPSD/Chrony/uplink process IDs matched
+the preflight. A transient inactive Starlink DHCP row disappeared; this is
+recorded separately and no network setting was changed. Legacy NMEA remains
+inactive and unowned. F10 UTC/PPS stayed paired with Chrony selecting F10P,
+and raw/selected/LAN position endpoints matched. Final appliance self-test:
+exit 0, ALL ENABLED CHECKS PASSED, PCS STATUS: OK. Seven focused command/readback
+parser tests pass; no new RF or absolute-accuracy acceptance is claimed.
+
+Private evidence: `/var/backups/pcs-em7565-gnss-otmawogp/`. Original GPSENABLE=1
+and GPSAUTOSTART=2,1,180,50,1 are captured for a supervised authenticated rollback.
+Restoring only the previous PCS software source no longer re-enables modem GPS.
+Auto-start changes take effect at the next modem reset per Sierra's reference;
+no reset or PCS reboot was performed. Post-power-cycle persistence/activation
+verification remains open, alongside the F10 hardware gates above.
+
+Reference: [Sierra Wireless command reference, manufacturer-authored revision 4](https://www.bipom.com/documents/GetWireless/41111748%20EM75xx%20and%20EM-MC74x1%20AT%20Command%20Reference%20r4.pdf),
+printed pages 25–26, 77–78, 80 and 90.

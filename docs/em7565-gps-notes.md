@@ -1,17 +1,38 @@
 # EM7565 GPS / GNSS Notes
 
+## Current PCS commissioning state — November 15, 2026
+
+NEO-F10N supplies all PCS GNSS positioning and timing, with GPIO26/pin37 PPS.
+The operator separately authorized GNSS-only AT maintenance and a brief
+ModemManager stop/start. EM7565 sessions were ended, GPSENABLE changed from 1
+to 0, and GPSAUTOSTART changed from function 2 to 0. Readback verified both
+disable settings and no active fix session. LTE settings and active network
+connections were preserved; the final PCS self-test passed. No modem reset or
+PCS reboot was performed. Auto-start changes activate at the next modem reset;
+post-power-cycle persistence remains to be checked.
+
+Root-only evidence and original settings are retained on the appliance at
+`/var/backups/pcs-em7565-gnss-otmawogp/`. A supervised modem rollback restores
+GPSENABLE=1 and GPSAUTOSTART=2,1,180,50,1 using protected authentication, exclusive
+AT access and readback verification. It does not switch PCS's selected source.
+The earlier PCS software rollback alone no longer restores modem GNSS operation.
+See [the separate hardware-validation addendum](gnss-pps-hardware-validation-2026-11-15.md#subsequent-authorized-em7565-gnss-shutdown).
+
+The baseline and antenna instructions below describe the historical modem path.
+They are not instructions to re-enable it on the commissioned F10 installation.
+
 Optional shared AUX/GNSS reception is **unproven**, and is not a qualified backup.
 See [the guarded manufacturer-based procedure](gnss-pps-commissioning.md#phase-3--optional-em7565-shared-auxgnss).
 The dedicated antenna/bulkhead may later move to NEO-F10N; MAIN and LTE diversity
 remain untouched. Do not run the historical installer as a receiver migration.
 
-This document captures the current known-good PCS GPS/GNSS behavior for the EM7565 modem path.
+The remaining sections capture the historical known-good EM7565 modem path.
 
 The PCS build uses a generic WWAN NMEA/gpsd/Chrony software path for modem GPS.
 
 ## Known-Good Baseline
 
-Current known-good state:
+Historical known-good state before F10 commissioning:
 
 ```text
 Modem:       Sierra Wireless / Semtech EM7565
