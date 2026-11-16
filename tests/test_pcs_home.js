@@ -8,6 +8,15 @@ const path = require('node:path');
 const source = path.join(__dirname, '../web/pcs-home/js/pcs.js');
 const {viewModel, safeURL} = require(source);
 
+test('dedicated GNSS timing diagnostics remain separate from Manual position', () => {
+  const model = viewModel({gnss: {fix: 'Manual', receiver: {mode: 'neo-f10n', diagnostic: 'PPS present; UTC invalid'}},
+                           time: {source: 'Internet NTP', synchronized: true}});
+  assert.equal(model.gps, 'Manual');
+  assert.equal(model.gnssTiming, 'PPS present; UTC invalid');
+  assert.equal(model.timeSource, 'Internet NTP');
+  assert.equal(viewModel({}).gnssTiming, 'Legacy timing');
+});
+
 test('Ethernet is named Starlink only with available dish telemetry', () => {
   for (const kind of ['ethernet', 'vlan']) {
     const network = {uplink_type: 'Starlink', uplinks: [{id: 'starlink', name: 'Starlink', type: kind, active: true}]};

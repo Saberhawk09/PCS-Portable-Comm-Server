@@ -1,5 +1,9 @@
 # Manual position fallback
 
+Optional [NEO-F10N/PPS timing](gnss-pps.md) preserves these selection rules and
+ports. Actual receiver identity, UTC validity, pulse activity and clock discipline
+are separate diagnostics. A valid Manual position cannot mask PPS degradation.
+
 Available in PCS v2.3.0. Installing or activating it on an existing appliance is a
 separate deployment operation. No coordinates are enabled by default.
 

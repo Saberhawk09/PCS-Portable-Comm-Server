@@ -37,6 +37,7 @@ Use BCM GPIO numbering in software. Physical pin numbers refer to the Pi 4
 | SA818S UART RX | GPIO15 | 10 | Installed / tested | `/dev/serial0` Pi RX from SA818S TXD at 9600 8N1; managed by `pcs-sa818.service`. |
 | LCD E | GPIO17 | 11 | Installed and bench-tested | HD44780 enable. |
 | Fan PWM | GPIO18 | 12 | Hardware PWM control implemented; RPM unmeasured | PWM0/ALT5, 100 Hz, fail-safe full duty. |
+| Dedicated GNSS PPS | GPIO26 | 37 | Reserved; hardware uncommissioned | Kernel pps-gpio input only. Verify physical ownership and startup bias; TIMEPULSE must not be pulled low into SAFEBOOT. See [GNSS commissioning](gnss-pps-commissioning.md). |
 | WS2812 data | GPIO21 | 40 | Installed and live-tested | PCM output through the 74AHCT125 to six WS2812-compatible status pixels. |
 | LCD D4 | GPIO27 | 13 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |
 | LCD D5 | GPIO22 | 15 | Installed and bench-tested | HD44780 4-bit data; as-built wiring. |

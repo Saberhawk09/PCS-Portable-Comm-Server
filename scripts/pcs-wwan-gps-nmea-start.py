@@ -7,7 +7,7 @@ import sys
 import termios
 import time
 
-NMEA_PORT = "/dev/ttyUSB1"
+NMEA_PORT = os.environ.get("PCS_WWAN_GPS_NMEA_PORT", "/dev/ttyUSB1")
 NMEA_BAUD = 115200
 MODEM_WAIT_SECONDS = 90
 NMEA_WAIT_SECONDS = 20
@@ -142,7 +142,7 @@ def nmea_seen() -> bool:
                 line = raw_line.decode("ascii", errors="ignore").strip()
 
                 if line.startswith("$G"):
-                    log("NMEA output detected on /dev/ttyUSB1. Location hidden.")
+                    log(f"NMEA output detected on {NMEA_PORT}. Location hidden.")
                     return True
     finally:
         os.close(fd)
@@ -152,6 +152,18 @@ def nmea_seen() -> bool:
 
 
 def main() -> int:
+    # Optional timing receiver selection must never initialize modem GNSS.
+    # Preserve the original path when the feature has not been installed.
+    if os.path.exists('/etc/pcs/gnss.json'):
+        sys.path.insert(0, '/usr/local/lib/pcs')
+        try:
+            from pcs_gnss import load_config, LEGACY
+            if load_config()['mode'] != LEGACY:
+                log('WWAN GPS initializer skipped: dedicated receiver selected.')
+                return 0
+        except (ImportError, OSError, ValueError):
+            log('Invalid GNSS configuration; modem initialization refused.')
+            return 1
     log("PCS WWAN modem GPS NMEA starter beginning.")
 
     if not wait_for_modem():

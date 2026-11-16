@@ -1,5 +1,13 @@
 # Portable Comm Server
 
+PCS v2.4.0 adds optional [dedicated NEO-F10N GNSS and kernel PPS](docs/gnss-pps.md),
+with a separate [hardware commissioning runbook](docs/gnss-pps-commissioning.md).
+The [installation guide](docs/gnss-pps-install.md) covers the delivered 115200
+profile and stable serial-port enrollment. Existing installations retain legacy
+EM7565 defaults until explicitly migrated. The PCS appliance uses the F10 for
+position and GPIO26/pin37 PPS timing; [dated validation](docs/v2.4.0-validation.md)
+separates verified operation from remaining electrical, cold-start and timing gates.
+
 [![CI](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/actions/workflows/ci.yml)
 
 A portable communications server built around a Raspberry Pi 4 with dedicated routing, integrated cellular internet, GPS-disciplined NTP, LAN file sharing, web monitoring, and multi-protocol radio interface/hotspot.
@@ -30,7 +38,7 @@ In its current state, PCS is *much* more feature complete. It integrates the cor
 - Simple and straightforward software setup with a single script
 - Reliable LAN communication between connected clients
 - Samba file share reachable by connected clients
-- NMEA GPS-disciplined / internet NTP reference for connected clients
+- GNSS/PPS-disciplined and internet NTP references for connected clients
 - Support multiple redundant internet uplinks - Cellular, Ethernet, Starlink
 - Multi-Protocol radio interface (APRS, Meshtastic, Pi-Star)
 - Rugged and durable enclosure for field deployment
@@ -40,6 +48,12 @@ In its current state, PCS is *much* more feature complete. It integrates the cor
 For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
+
+Version 2.4.0 adds the optional dedicated USB GNSS/PPS path while preserving the
+v2.3.x manual-position service, GPSD sharing, existing networking and radio
+consumers. Receiver selection is independent of LTE uplink state. Software
+updates do not activate new hardware or automatically fail over to modem GNSS.
+See [v2.4.0 validation](docs/v2.4.0-validation.md) for release and appliance evidence.
 
 Version 2.2.2 restores Starlink telemetry on the VLAN WAN by repairing the
 collector environment's missing D-Bus dependency. See the

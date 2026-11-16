@@ -31,6 +31,15 @@ import socket
 import subprocess
 import tempfile
 import time
+try:
+    from pcs_gnss import read_status as read_gnss_status
+except ImportError:
+    def read_gnss_status():
+        return {}
+try:
+    from pcs_gnss import satellite_counts as unique_satellite_counts
+except ImportError:
+    unique_satellite_counts = None
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Protocol, Sequence
@@ -59,6 +68,7 @@ PIN_ASSIGNMENTS: tuple[PinAssignment, ...] = (
     PinAssignment("LCD E", 17, 11, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("Fan PWM", 18, 12, "pcs_gpio", "hardware PWM control; RPM unmeasured"),
     PinAssignment("WS2812 data", 21, 40, "pcs_gpio", "installed and live-tested"),
+    PinAssignment("Dedicated GNSS PPS", 26, 37, "Linux pps-gpio", "reserved; hardware uncommissioned; input only"),
     PinAssignment("LCD D4", 27, 13, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("LCD D5", 22, 15, "pcs_gpio", "installed and bench-tested"),
     PinAssignment("LCD D6", 23, 16, "pcs_gpio", "installed and bench-tested"),
@@ -488,6 +498,8 @@ class StatsSnapshot:
     aprs_mailbox_total: int | None = None
     aprs_mailbox_unread: int | None = None
     position_source: str | None = None
+    gnss_timing: str | None = None
+    gnss_degraded: bool = False
 
     def as_dict(self) -> dict[str, int | bool | str | None]:
         return asdict(self)
@@ -931,6 +943,9 @@ def maidenhead_grid(latitude: float, longitude: float) -> str | None:
 
 def satellite_count_from_sky(record: dict[str, object]) -> int | None:
     """Return gpsd's satellites-in-view count without retaining satellite details."""
+    if unique_satellite_counts is not None:
+        viewed, _used = unique_satellite_counts(record)
+        return min(99, viewed) if viewed is not None else None
     count = record.get("nSat")
     if isinstance(count, int) and not isinstance(count, bool):
         return max(0, min(99, count))
@@ -942,6 +957,8 @@ def satellite_count_from_sky(record: dict[str, object]) -> int | None:
 
 def satellite_counts_from_sky(record: dict[str, object]) -> tuple[int | None, int | None]:
     """Return gpsd satellites in view and used from one SKY report."""
+    if unique_satellite_counts is not None:
+        return tuple(min(99, count) if count is not None else None for count in unique_satellite_counts(record))
     viewed = satellite_count_from_sky(record)
     used = record.get("uSat")
     if isinstance(used, int) and not isinstance(used, bool):
@@ -1172,6 +1189,7 @@ def read_power_status(
 
 
 def collect_stats() -> StatsSnapshot:
+    timing = read_gnss_status()
     cellular_online, cellular_quality = read_cellular_status()
     gps_satellites, gps_satellites_used, gps_locked, grid_square = read_gps_details()
     position = read_position_status()
@@ -1184,6 +1202,10 @@ def collect_stats() -> StatsSnapshot:
         gps_satellites=gps_satellites,
         gps_locked=gps_locked,
         position_source=position.get('source') if not position.get('config_error') else None,
+        gnss_timing=timing.get('source', 'Unknown') if timing.get('mode') == 'neo-f10n' else None,
+        gnss_degraded=timing.get('mode') in {'neo-f10n', 'invalid'} and not (
+            timing.get('state') == 'fresh' and timing.get('source') == 'NEO-F10N PPS'
+            and timing.get('utc_valid') and timing.get('pps_active') and timing.get('synchronized')),
         cellular_online=cellular_online,
         gps_satellites_used=gps_satellites_used,
         network_uplink=read_network_uplink(),
@@ -1378,6 +1400,8 @@ def lcd_alert_page(
         condition = "UPLINK OFFLINE"
     elif alert.name == "gps_fix":
         condition = "NO GPS FIX"
+    elif alert.name == "gnss_timing":
+        condition = "GNSS PPS DEGRADED"
     else:
         condition = alert.name.replace("_", " ").upper()
     return heading, condition[:LCD_COLUMNS]
@@ -1640,6 +1664,8 @@ def matrix_alerts(snapshot: MatrixHealthSnapshot) -> tuple[MatrixAlert, ...]:
         alerts.append(MatrixAlert("network_uplink", "warning", SIGNAL_ICON))
     if snapshot.stats.gps_locked is not True and snapshot.stats.position_source != 'Manual':
         alerts.append(MatrixAlert("gps_fix", "warning", SATELLITE_DISH_ICON))
+    if snapshot.stats.gnss_degraded:
+        alerts.append(MatrixAlert("gnss_timing", "warning", SATELLITE_DISH_ICON))
     if snapshot.power is not None:
         if snapshot.power.low_voltage_active:
             alerts.append(MatrixAlert("low_voltage", "critical", POWER_ICON))
@@ -1745,7 +1771,9 @@ def led_status_indicators(snapshot: MatrixHealthSnapshot) -> tuple[LedIndicator,
     else:
         network = ("unknown", LED_UNKNOWN)
 
-    if snapshot.stats.position_source == 'Manual':
+    if snapshot.stats.gnss_degraded:
+        gps = ("timing_degraded", LED_WARNING)
+    elif snapshot.stats.position_source == 'Manual':
         gps = ("manual", LED_HEALTHY)
     elif snapshot.stats.gps_locked is True:
         gps = ("locked", LED_HEALTHY)

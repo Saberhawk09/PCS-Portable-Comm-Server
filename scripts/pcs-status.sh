@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Coordinate-free optional GNSS diagnostics; absence preserves legacy output.
+if [[ -x /usr/local/sbin/pcs-gnss ]]; then
+    /usr/local/sbin/pcs-gnss status || true
+fi
+
 # The topology marker is written only by the supervised VLAN migration.
 PCS_NETWORK_MODE=legacy
 if [[ -e /etc/pcs/network-mode ]]; then

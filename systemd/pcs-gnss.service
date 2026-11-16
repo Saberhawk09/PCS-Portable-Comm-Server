@@ -1,0 +1,31 @@
+[Unit]
+Description=PCS NEO-F10N UTC validation and PPS timing diagnostics
+After=chrony.service gpsd.service
+Wants=chrony.service gpsd.service
+ConditionPathExists=/etc/pcs/gnss.json
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/bin/python3 /usr/local/lib/pcs/pcs_gnss_runtime.py
+ExecStopPost=/usr/bin/python3 /usr/local/lib/pcs/pcs_gnss_runtime.py withdraw
+Restart=on-failure
+RestartSec=3
+WatchdogSec=8
+TimeoutStopSec=10
+RuntimeDirectory=pcs-gnss
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/run/pcs-gnss /run/chrony
+RestrictAddressFamilies=AF_UNIX AF_INET
+# chronyc must bind its reply socket in Chrony's private command directory. No clock,
+# GPIO, network-administration or modem capability is granted.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE
+
+[Install]
+WantedBy=multi-user.target
