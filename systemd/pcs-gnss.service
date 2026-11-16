@@ -21,9 +21,9 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=/run/pcs-gnss
+ReadWritePaths=/run/pcs-gnss /run/chrony
 RestrictAddressFamilies=AF_UNIX AF_INET
-# chronyc must traverse Chrony's private command-socket directory. No clock,
+# chronyc must bind its reply socket in Chrony's private command directory. No clock,
 # GPIO, network-administration or modem capability is granted.
 CapabilityBoundingSet=CAP_DAC_OVERRIDE
 

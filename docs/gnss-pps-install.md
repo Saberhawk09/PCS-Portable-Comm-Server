@@ -1,5 +1,8 @@
 # Delivered NEO-F10N: local preparation and supervised installation
 
+Live follow-up: [November 15 F10 cutover](gnss-f10-cutover-2026-11-15.md).
+The local-preparation evidence below retains its original scope and date.
+
 Updated 2026-11-15. **Local software preparation only. PCS is offline and the
 receiver is not installed. No commands in this document have been executed on
 PCS for this revision.** The handoff is configuration/bench evidence, not source
@@ -160,6 +163,33 @@ must be resolved under review, never by silently rewriting the operator profile.
    No RF transmission is required. A green Chrony source alone is not acceptance.
 
 ## Stop / rollback
+
+### USB time and position before PPS wiring
+
+An explicitly authorized source cutover can use `"pps_enabled": false` in the
+private enrolled configuration. It still requires measured `serial_offset` and
+`serial_delay`, actual UBX identity/profile admission, a current preflight and
+transaction backup. Generate the plan and activate **without**
+`--gpio26-confirmed`; no physical wiring confirmation is claimed. GPSD uses the
+F10 only, the legacy SHM refclock is removed, and validated F10N USB time is
+selectable alongside network/holdover. The legacy helper's ExecCondition defers
+modem GNSS initialization at subsequent starts. LTE remains independent.
+
+In this state no PPS refclock or alias is created. The runtime cannot enable
+F10P, including if an unwired GPIO produces stray edges, and reports PPS awaiting
+commissioning. Omitting `pps_enabled` preserves the prior PPS-enabled policy and
+all its GPIO confirmation requirements. Changing the active configuration to
+enable PPS requires a separately reviewed transaction and physical validation;
+editing the JSON alone is not a supported commissioning procedure. Keep the
+recorded rollback and follow the electrical/runbook checks before connection.
+
+The Pi 4 kernel can expose PPS as a virtual class device. Identification also
+checks its uniquely bound `pps-gpio` platform driver, device-tree GPIO26,
+rising-assert flags and supported BCM2835/BCM2711 controller; a PPS name alone
+does not establish identity. See the
+[Raspberry Pi PPS driver](https://raw.githubusercontent.com/raspberrypi/linux/rpi-6.18.y/drivers/pps/clients/pps-gpio.c).
+
+### Restore the recorded configuration
 
 Any identity, wiring, UTC continuity, PPS pairing or LTE regression fails the
 phase. Before cutover, leave legacy software/settings unchanged. After cutover:

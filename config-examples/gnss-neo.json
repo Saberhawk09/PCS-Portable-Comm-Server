@@ -2,6 +2,7 @@
   "version": 1,
   "mode": "neo-f10n",
   "baud": 115200,
+  "pps_enabled": true,
   "receiver": {
     "vid": "1a86",
     "pid": "7523",

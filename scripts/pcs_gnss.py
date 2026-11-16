@@ -100,12 +100,14 @@ def export_report(stock, finished):
 def validate_config(value):
     if not isinstance(value, dict) or value.get('version') != 1:
         raise ValueError('Unsupported GNSS configuration')
-    if set(value) - {'version', 'mode', 'receiver', 'serial_offset', 'serial_delay', 'ram_profile', 'baud'}:
+    if set(value) - {'version', 'mode', 'receiver', 'serial_offset', 'serial_delay', 'ram_profile', 'baud', 'pps_enabled'}:
         raise ValueError('Unknown GNSS setting')
     if value.get('mode') not in (LEGACY, NEO):
         raise ValueError('Invalid GNSS mode')
     result = dict(value)
     if result['mode'] == NEO:
+        if type(result.get('pps_enabled', True)) is not bool:
+            raise ValueError('PPS enablement must be an explicit boolean')
         if type(result.get('baud', 38400)) is not int or result.get('baud', 38400) not in BAUDS:
             raise ValueError('Unsupported verified UART baud')
         binding = result.get('receiver', {})
@@ -379,15 +381,33 @@ def pps_devices(sysroot=Path('/sys')):
     result = []
     for item in sorted((sysroot / 'class/pps').glob('pps*')):
         try:
-            node = (item / 'device/of_node').resolve(strict=True)
+            parent = item / 'device/of_node'
+            if parent.exists():
+                node = parent.resolve(strict=True)
+            else:
+                # Raspberry Pi kernels can expose PPS as virtual class nodes,
+                # without a device parent. pps-gpio's kernel-generated name is
+                # pdev->name + '.' + pdev->id (-1 for these OF devices). Pair it
+                # with exactly one device bound to the actual pps-gpio driver,
+                # then apply the same GPIO-controller/line/edge validation.
+                name = (item / 'name').read_text().strip()
+                driver = sysroot / 'bus/platform/drivers/pps-gpio'
+                matches = [path for path in driver.glob('*')
+                           if (path / 'of_node').exists() and name == path.name + '.-1']
+                if len(matches) != 1:
+                    continue
+                node = (matches[0] / 'of_node').resolve(strict=True)
             compatible = (node / 'compatible').read_bytes().split(b'\0')
             gpios = (node / 'gpios').read_bytes()
             # Pi 4: phandle, BCM line, flags. Reject a different GPIO controller.
             phandle, line, flags = struct.unpack('>III', gpios)
             controllers = [path.parent for path in (sysroot / 'firmware/devicetree/base').rglob('phandle')
                            if path.read_bytes() == struct.pack('>I', phandle)]
+            supported_controller = (len(controllers) == 1 and bool(
+                {b'brcm,bcm2835-gpio', b'brcm,bcm2711-gpio'} &
+                set((controllers[0] / 'compatible').read_bytes().split(b'\0'))))
             if (b'pps-gpio' in compatible and line == 26 and flags == 0 and not (node / 'assert-falling-edge').exists() and len(controllers) == 1
-                    and b'brcm,bcm2835-gpio' in (controllers[0] / 'compatible').read_bytes()):
+                    and supported_controller):
                 result.append('/dev/' + item.name)
         except (OSError, ValueError, struct.error):
             continue
@@ -432,6 +452,8 @@ def diagnostic(state):
         return 'USB present; receiver communication unavailable' if state.get('usb_connected') else 'NEO-F10N not connected'
     if not state.get('utc_valid'):
         return 'PPS present; UTC invalid' if state.get('pps_active') else 'Receiver connected; no fix / UTC unavailable' if not state.get('fix_valid') else 'Receiver fix; UTC unavailable'
+    if state.get('pps_validation') == 'disabled':
+        return 'Valid USB GNSS time; PPS awaiting commissioning'
     if not state.get('pps_present') or not state.get('pps_active'):
         return 'Valid USB GNSS time; PPS unavailable'
     if state.get('source') == 'NEO-F10N PPS' and state.get('synchronized'):

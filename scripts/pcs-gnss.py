@@ -170,7 +170,7 @@ def chrony_config(config):
 
 def prepare_pps():
     RUNTIME.mkdir(mode=0o755, parents=True, exist_ok=True)
-    devices = pps_devices()
+    devices = pps_devices() if load_config().get('pps_enabled', True) else []
     alias = RUNTIME / 'pps'
     alias.unlink(missing_ok=True)
     text = '# No uniquely identified GPIO26 PPS; serial/network fallback only.\n'
@@ -295,16 +295,17 @@ def preflight(config, gpio_confirmed=False):
             device = match_receiver(inventory, config['receiver'])['device']
         except ValueError as exc:
             errors.append(str(exc))
-        if len(pps_devices()) != 1:
+        if config.get('pps_enabled', True) and len(pps_devices()) != 1:
             errors.append('Unique GPIO26 kernel PPS device required for initial activation')
-        if not gpio_confirmed:
+        if config.get('pps_enabled', True) and not gpio_confirmed:
             errors.append('Operator physical GPIO26/startup wiring confirmation required')
-        try:
-            pins = command(['pinctrl', 'get', '26']).stdout
-            if not re.search(r'\bip\b', pins) or not re.search(r'\bpn\b', pins):
-                errors.append('GPIO26 must be input with no pull')
-        except (OSError, RuntimeError, subprocess.SubprocessError):
-            errors.append('GPIO26 input/bias could not be verified')
+        if config.get('pps_enabled', True):
+            try:
+                pins = command(['pinctrl', 'get', '26']).stdout
+                if not re.search(r'\bip\b', pins) or not re.search(r'\bpn\b', pins):
+                    errors.append('GPIO26 must be input with no pull')
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                errors.append('GPIO26 input/bias could not be verified')
     states = {path: file_state(path) for path in MANAGED}
     return {'version': 1, 'config_digest': config_digest(config), 'gpio_confirmed': gpio_confirmed,
             'device': device, 'pps': pps_devices(), 'versions': versions,
@@ -370,7 +371,10 @@ def legacy_matches(binding):
     if not binding:
         return False
     try:
-        current = match_receiver(usb_devices(), binding)
+        # A modem exposes several interfaces with the same USB serial number.
+        # Match its proven NMEA interface before applying identity uniqueness.
+        current = match_receiver([item for item in usb_devices()
+                                  if item.get('interface') == binding.get('interface')], binding)
         return (os.path.realpath(current['device']) == os.path.realpath(binding.get('configured_device', binding['device']))
                 and current.get('interface') == binding.get('interface'))
     except (ValueError, OSError):

@@ -1879,7 +1879,7 @@ else
     skip "Cellular NetworkManager profile not created yet"
 fi
 
-PCS_GNSS_MODE="$(PYTHONPATH=/usr/local/lib/pcs python3 -c 'from pcs_gnss import load_config; print(load_config()["mode"])' 2>/dev/null || true)"
+PCS_GNSS_MODE="$(sudo -n /usr/local/sbin/pcs-gnss status 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["mode"])' 2>/dev/null || true)"
 if [[ "${PCS_GNSS_MODE}" == "neo-f10n" ]]; then
     skip "WWAN GNSS initialization is independent and not required in NEO-F10N mode"
 else
@@ -2008,7 +2008,7 @@ else
 fi
 
 if [[ "${PCS_GNSS_MODE}" == "neo-f10n" ]]; then
-    if /usr/local/sbin/pcs-gnss status; then
+    if sudo -n /usr/local/sbin/pcs-gnss status; then
         pass "Dedicated GNSS diagnostics available (PPS and UTC are separate)"
     else
         warn "Dedicated GNSS diagnostics unavailable"

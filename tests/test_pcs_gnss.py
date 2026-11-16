@@ -418,6 +418,52 @@ class PPSTests(unittest.TestCase):
                 self.tree(root, line, falling)
                 self.assertEqual(gnss.pps_devices(root), [])
 
+    def virtual_tree(self, root, line=26, falling=False, name='pps@1a.-1'):
+        self.tree(root, line, falling)
+        node = root / 'class/pps/pps7/device/of_node'
+        destination = root / 'bus/platform/drivers/pps-gpio/pps@1a/of_node'
+        destination.parent.mkdir(parents=True)
+        node.rename(destination)
+        node.parent.rmdir()
+        (root / 'class/pps/pps7/name').write_text(name)
+
+    def test_virtual_pps_node_requires_bound_platform_and_gpio_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.virtual_tree(root)
+            self.assertEqual(gnss.pps_devices(root), ['/dev/pps7'])
+
+    def test_virtual_serial_other_gpio_wrong_name_and_falling_edge_rejected(self):
+        for line, falling, name in ((18, False, 'pps@1a.-1'), (26, True, 'pps@1a.-1'),
+                                    (26, False, 'usbserial2'), (26, False, 'pps@1b.-1')):
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                self.virtual_tree(root, line, falling, name)
+                self.assertEqual(gnss.pps_devices(root), [])
+
+    def test_virtual_name_alone_without_bound_driver_is_not_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            pps = root / 'class/pps/pps4'
+            pps.mkdir(parents=True)
+            (pps / 'name').write_text('pps@1a.-1')
+            self.assertEqual(gnss.pps_devices(root), [])
+
+    def test_pi4_bcm2711_controller_is_supported_for_virtual_and_parented_pps(self):
+        for virtual in (False, True):
+            with tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (self.virtual_tree if virtual else self.tree)(root)
+                (root / 'firmware/devicetree/base/gpio/compatible').write_bytes(b'brcm,bcm2711-gpio\0')
+                self.assertEqual(gnss.pps_devices(root), ['/dev/pps7'])
+
+    def test_unqualified_controller_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.virtual_tree(root)
+            (root / 'firmware/devicetree/base/gpio/compatible').write_bytes(b'brcm,bcm2712-gpio\0')
+            self.assertEqual(gnss.pps_devices(root), [])
+
     def test_kernel_event_activity_uses_sequence_and_monotonic_age(self):
         now = [10]
         pulse = runtime.PPSActivity(lambda: now[0])
@@ -490,6 +536,54 @@ class StatusTests(unittest.TestCase):
 
 
 class InstallationTests(unittest.TestCase):
+    def test_serial_only_activation_retains_calibration_and_explicit_pps_gate(self):
+        value = config() | {'pps_enabled': False}
+        self.assertFalse(gnss.validate_config(value)['pps_enabled'])
+        for change in ({'pps_enabled': 0}, {'pps_enabled': 'false'}, {'serial_offset': None}):
+            with self.assertRaises(ValueError):
+                gnss.validate_config(value | change)
+
+    def test_uncommissioned_pps_never_selected_even_with_valid_utc_and_noise(self):
+        selection = Mock()
+        runtime.select_time_sources(selection, True, True, False)
+        self.assertEqual(selection.set.call_args_list, [unittest.mock.call('F10P', False), unittest.mock.call('F10N', True)])
+        selection.reset_mock()
+        runtime.select_time_sources(selection, False, True, True)
+        self.assertEqual(selection.set.call_args_list, [unittest.mock.call('F10P', False), unittest.mock.call('F10N', False)])
+
+    def test_serial_only_prepare_pps_has_no_kernel_refclock_or_alias(self):
+        with tempfile.TemporaryDirectory() as temp, patch.object(cli, 'RUNTIME', Path(temp)), \
+                patch.object(cli, 'load_config', return_value=config() | {'pps_enabled': False}), \
+                patch.object(cli, 'pps_devices', return_value=['/dev/pps7']) as devices:
+            (Path(temp) / 'pps').write_text('stale')
+            cli.prepare_pps()
+            self.assertFalse((Path(temp) / 'pps').exists())
+            self.assertNotIn('refclock', (Path(temp) / 'pps.conf').read_text())
+            devices.assert_not_called()
+
+    def test_serial_only_preflight_requires_no_wiring_claim_or_pps_device(self):
+        def command(args, **kwargs):
+            values = {'gpsd': 'gpsd: 3.25', 'chronyd': 'chronyd version 4.6.1', 'pinctrl': '26: ip pn | hi'}
+            return Mock(stdout=('pool example\nlocal stratum 10\nrtcsync\n' if '-p' in args
+                                else values[args[0]]))
+        def read(path, *args, **kwargs):
+            return ('confdir /etc/chrony/conf.d\n' if str(path).endswith('chrony.conf')
+                    else 'fixture-boot-id')
+        with patch.object(cli, 'usb_devices', return_value=[config()['receiver'] | {'device': '/dev/ttyUSB9'}]), \
+                patch.object(cli, 'pps_devices', return_value=[]), patch.object(cli, 'file_state', return_value=None), \
+                patch.object(cli, 'command', side_effect=command) as commands, \
+                patch.object(Path, 'read_text', read), patch.object(Path, 'exists', return_value=False):
+            result = cli.preflight(config() | {'pps_enabled': False})
+            self.assertEqual(result['blockers'], [])
+            self.assertFalse(result['gpio_confirmed'])
+            self.assertFalse(any(call.args[0][0] == 'pinctrl' for call in commands.call_args_list))
+            self.assertIn('Unique GPIO26', ';'.join(cli.preflight(config())['blockers']))
+
+    def test_pairing_enabled_only_after_serial_reference(self):
+        selection = Mock()
+        runtime.select_time_sources(selection, True, True, True)
+        self.assertEqual(selection.set.call_args_list, [unittest.mock.call('F10N', True), unittest.mock.call('F10P', True)])
+
     @unittest.skipIf(os.name == 'nt', 'POSIX ownership and symlink restoration')
     def test_rollback_restores_bytes_permissions_and_absence_in_sorted_receipt(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -529,6 +623,10 @@ class InstallationTests(unittest.TestCase):
             with patch.object(cli, 'usb_devices', return_value=[current]):
                 self.assertFalse(cli.legacy_matches(binding))
         with patch.object(cli, 'usb_devices', return_value=[binding]):
+            self.assertTrue(cli.legacy_matches(binding))
+        with patch.object(cli, 'usb_devices', return_value=[binding,
+                binding | {'device': '/dev/ttyUSB0', 'interface': '00'},
+                binding | {'device': '/dev/ttyUSB3', 'interface': '03'}]):
             self.assertTrue(cli.legacy_matches(binding))
 
     def test_activation_failure_triggers_recorded_software_rollback(self):
@@ -576,7 +674,8 @@ class InstallationTests(unittest.TestCase):
 
     def test_activation_refuses_stale_or_changed_receipts_before_commands(self):
         value = {'created_epoch': 0, 'blockers': [], 'config_digest': 'test'}
-        with tempfile.TemporaryDirectory() as temp, patch.object(cli, 'preflight', return_value=value), patch.object(cli, 'command') as command:
+        with tempfile.TemporaryDirectory() as temp, patch.object(cli, 'load_config', return_value=gnss.DEFAULT), \
+                patch.object(cli, 'preflight', return_value=value), patch.object(cli, 'command') as command:
             path = Path(temp) / 'receipt'
             path.write_text(json.dumps(value))
             with self.assertRaises(ValueError):

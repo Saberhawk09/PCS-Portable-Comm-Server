@@ -118,6 +118,17 @@ def connect(raw=False):
     return connection
 
 
+def select_time_sources(selection, utc_valid, pps_active, pps_enabled=True):
+    # An unwired PPS input can register noise. Software commissioning consent
+    # is independent of device presence and UTC validity.
+    paired = bool(utc_valid and pps_active and pps_enabled)
+    if not paired:
+        selection.set('F10P', False)
+    selection.set('F10N', bool(utc_valid))
+    if paired:
+        selection.set('F10P', True)
+
+
 def serve():
     config = load_config()
     if config['mode'] != NEO:
@@ -138,6 +149,7 @@ def serve():
     last_probe, last_sample, last_generation = float('-inf'), float('-inf'), None
     last_report = float('-inf')
     last_pps = PPS_ALIAS.exists()
+    pps_enabled = config.get('pps_enabled', True)
     notify('READY=1')
     try:
         while not stopping:
@@ -223,7 +235,7 @@ def serve():
                     pending.remove((received, report))
             state.update(pulse.status())
             state.update(activity.status())
-            if state['pps_present'] != last_pps:
+            if pps_enabled and state['pps_present'] != last_pps:
                 # Chrony opens the kernel PPS handle at startup. Its fixed
                 # ExecStartPre rebuilds the include/alias, including USB-only
                 # startup when the optional kernel device is absent.
@@ -238,16 +250,12 @@ def serve():
             if not state['connected']:
                 state.update(fix_valid=False, satellites_visible=None, satellites_used=None)
             state['utc_valid'] = gate.ready() and now - last_sample <= MAX_AGE
-            if not state['utc_valid']:
-                selection.set('F10P', False)
-                selection.set('F10N', False)
-            else:
-                selection.set('F10N', True)
-                selection.set('F10P', state['pps_active'])
+            select_time_sources(selection, state['utc_valid'], state['pps_active'], pps_enabled)
             _, tracking = run(['chronyc', '-n', 'tracking'])
             _, sources = run(['chronyc', '-n', 'sources'])
             state.update(parse_chrony(tracking, sources))
-            state['pps_validation'] = ('paired' if state['utc_valid'] and state['pps_active'] else 'unpaired')
+            state['pps_validation'] = ('disabled' if not pps_enabled else
+                                       'paired' if state['utc_valid'] and state['pps_active'] else 'unpaired')
             state.update(state='fresh', updated_monotonic=time.monotonic())
             state['diagnostic'] = diagnostic(state)
             atomic_json(RUNTIME / 'status.json', state, 0o644)
