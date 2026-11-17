@@ -16,13 +16,17 @@ The numbered files and `manifest.json` contain the exact installation bytes,
 SHA-256 hashes, destinations and modes. No secrets enter the bundle. Review
 `git diff`, tests, the manifest and the candidate acceptance report first.
 
-The installer has an exact destination allowlist: five Python library files,
+The v2.5.0 installer has an exact destination allowlist: eight Python library files,
 the updated existing `pcs-gnss` admission helper, the existing web backend copy,
-five new units, a fixed root helper wrapper, two-command sudoers allowlist and
+nine units, a fixed root helper wrapper, two-command sudoers allowlist and
 one backend ExecStart drop-in. It refuses symlink targets/parents and checks
 the complete stage before the first write. Existing root GNSS enrollment,
 Chrony/GPSD configuration, GPIO boot settings, modem and networking settings are
 outside the manifest.
+
+The acquisition extension includes the updated UTC gate in this exact backup
+manifest. See [acquisition ownership and qualification](gnss-acquisition.md)
+before activating its maintenance, shutdown or boot-policy functions.
 
 ## Install inactive, only after authorization
 

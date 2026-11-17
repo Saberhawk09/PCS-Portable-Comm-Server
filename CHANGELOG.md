@@ -4,6 +4,20 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-17
+
+- Add a responsive five-section GNSS dashboard with actual differential fix,
+  WAAS/EGNOS/MSAS/GAGAN source and NAV-SBAS per-satellite correction reporting.
+- Add confirmed hot/warm/software-cold acquisition experiments, alternating A/B
+  trials, actual event metrics, bounded history, redacted JSON/CSV/text reports,
+  cancellation and journaled exclusive receiver handover/recovery.
+- Add separately configured boot assistance/fallback policies, exact-receiver
+  navigation snapshots/restoration and evidence-gated clean-shutdown saving.
+  Keep current boot settings unchanged until explicitly configured; keep
+  database automation disabled until qualified on the specific F10N.
+- Add bounded independent coarse acquisition-time aiding without bypassing
+  the existing UTC freshness gate or F10N/F10P pairing.
+
 - Add the authenticated GNSS Information page with measured L1/L5 signal and
   spectrum plots, RF/security states, freshness and bounded persisted events.
 - Add a GPSD-only passive diagnostics service, bounded capture controls and
@@ -14,8 +28,8 @@ All notable user-facing PCS changes are recorded here.
 - Add explicit Autonomous RAM maintenance and an optional cache-only injection
   hook within existing exclusive GPSD admission. Preserve F10N/F10P timing,
   enrollment, baud, manual position, modem and uplink contracts.
-- Keep unavailable live message-rate changes and unqualified DBD backup/restore
-  disabled; document staging, rollback and remaining hardware/account gates.
+- Keep unqualified live message-rate changes and database automation disabled;
+  document staged installation, rollback and hardware/account qualification.
 
 ## [2.4.0] - 2026-11-15
 

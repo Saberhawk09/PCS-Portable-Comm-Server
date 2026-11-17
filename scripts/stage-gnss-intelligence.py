@@ -21,9 +21,13 @@ from pcs_assistnow import atomic_bytes, DEFAULT
 from pcs_gnss import atomic_json
 
 REPO = Path(__file__).resolve().parents[1]
-MODULES = ('pcs_gnss.py', 'pcs_assistnow.py', 'pcs_gnss_diagnostics.py', 'pcs_gnss_manager.py', 'pcs_gnss_info.py')
+LEGACY_MODULES = ('pcs_gnss.py', 'pcs_assistnow.py', 'pcs_gnss_diagnostics.py', 'pcs_gnss_manager.py', 'pcs_gnss_info.py')
+MODULES = LEGACY_MODULES + ('pcs_gnss_acquisition.py','pcs_gnss_maintenance.py','pcs_gnss_runtime.py')
 UNITS = ('pcs-gnss-info.service', 'pcs-assistnow-refresh.service', 'pcs-assistnow-manual.service',
          'pcs-assistnow-live.service', 'pcs-assistnow-refresh.timer')
+LEGACY_UNITS = UNITS
+UNITS += ('pcs-gnss-acquisition.service','pcs-gnss-acquisition-recover.service',
+          'pcs-gnss-navigation-shutdown.service','pcs-assistnow-boot-refresh.service')
 CONFIRM = 'I authorize PCS GNSS software installation'
 ASSIST_JOURNAL = Path('/var/lib/pcs-assistnow/receiver-transaction.json')
 
@@ -109,7 +113,7 @@ def install(target, backups=Path('/var/backups/pcs-gnss-info')):
             atomic_bytes(path, (target / entry['source']).read_bytes())
             os.chmod(path, entry['mode'])
             os.chown(path, 0, 0)
-        for path in (Path('/etc/pcs/assistnow'), Path('/var/lib/pcs-assistnow')):
+        for path in (Path('/etc/pcs/assistnow'), Path('/var/lib/pcs-assistnow'), Path('/var/lib/pcs-gnss-acquisition')):
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
             os.chown(path, 0, 0)
             os.chmod(path, 0o700)
@@ -129,9 +133,22 @@ def rollback(backup, interrupted=False):
         journal = json.loads(ASSIST_JOURNAL.read_text())
         if not isinstance(journal, dict) or journal.get('state') == 'pending':
             raise ValueError('Resolve the receiver RAM recovery journal before removing its management software')
+    for journal_path in (Path('/var/lib/pcs-gnss-acquisition/hardware-journal.json'),
+                         Path('/var/lib/pcs-gnss-acquisition/boot-restore.json')):
+        try:
+            if not interrupted and journal_path.exists():
+                if json.loads(journal_path.read_text()).get('state') in ('pending','stopped'):
+                    raise ValueError('Resolve acquisition receiver recovery before rollback')
+        except OSError:
+            raise ValueError('Cannot verify acquisition recovery journal; root review required') from None
+    if not interrupted and Path('/run/pcs-gnss/maintenance.json').exists():
+        raise ValueError('Release verified maintenance lease before rollback')
     receipt = json.loads((backup / 'receipt.json').read_text())
-    if set(receipt['before']) != set(plan()) | {'/usr/local/sbin/pcs-gnss-info', '/etc/sudoers.d/pcs-gnss-info',
-                      '/etc/systemd/system/pcs-control-panel.service.d/gnss-info.conf'}:
+    generated={'/usr/local/sbin/pcs-gnss-info', '/etc/sudoers.d/pcs-gnss-info',
+               '/etc/systemd/system/pcs-control-panel.service.d/gnss-info.conf'}
+    legacy={('/usr/local/lib/pcs/'+n) for n in LEGACY_MODULES} | {('/etc/systemd/system/'+n) for n in LEGACY_UNITS}
+    legacy |= {'/usr/local/sbin/pcs-gnss','/usr/local/lib/pcs/pcs_control_panel.py'} | generated
+    if set(receipt['before']) not in (set(plan())|generated,legacy) or set(receipt['installed'])!=set(receipt['before']):
         raise ValueError('Unexpected rollback targets')
     if not interrupted:
         for destination, entry in receipt['installed'].items():

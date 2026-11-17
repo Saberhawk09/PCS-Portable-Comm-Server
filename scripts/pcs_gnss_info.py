@@ -69,6 +69,12 @@ def status():
             cache['state'] = 'Expired'
     value['injection'] = assist.read_json(assist.ROOT / 'injection.json', {'state': 'Not attempted'})
     value['maintenance_request'] = assist.read_json(assist.ROOT / 'maintenance-request.json', {})
+    import pcs_gnss_acquisition as acquisition
+    facts = assist.read_json(assist.ROOT / 'receiver-facts.json', {}, private=True)
+    try:
+        value['acquisition'] = acquisition.public_status(identity=facts.get('identity'))
+    except (ValueError,OSError,KeyError,TypeError):
+        value['acquisition'] = {'job':{'state':'Unavailable','phase':'Private acquisition state needs operator review'}}
     return value
 
 
@@ -103,6 +109,9 @@ def web_update(request):
     if not isinstance(request, dict):
         raise assist.AssistanceError('Invalid GNSS action')
     operation = request.get('operation')
+    if operation in ('acquisition-start','acquisition-cancel','acquisition-recover','navigation-snapshot',
+                     'navigation-restore','boot-policy','acquisition-export'):
+        return acquisition_update(request)
     allowed = {'operation', 'seconds', 'confirm', 'enabled', 'window_days', 'refresh_hours',
                'predictive_requests_day', 'live_requests_day', 'requests_month', 'bytes_day'}
     if set(request) - allowed:
@@ -344,6 +353,9 @@ def selected_network():
 
 
 def refresh(kind='predictive', force=False):
+    import pcs_gnss_acquisition as acquisition
+    if acquisition.Jobs().read().get('state') in ('Queued','Running','Recovering','Recovery required'):
+        return  # No external download during an explicitly unassisted experiment.
     assist.ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
     with lock(assist.ROOT / 'download.lock'):
         settings = assist.load_config()
@@ -413,18 +425,103 @@ def maintenance(operation, confirm, token_file=None):
     raise assist.AssistanceError('Unsupported maintenance operation')
 
 
+def acquisition_update(request):
+    import pcs_gnss_acquisition as acq
+    operation=request.get('operation')
+    if operation=='acquisition-export':
+        if set(request)-{'operation','id','format'}:
+            raise assist.AssistanceError('Unknown export field')
+        ident=request.get('id','')
+        if not re.fullmatch('[a-f0-9]{32}',ident):
+            raise assist.AssistanceError('Invalid report identifier')
+        value=acq.private_json(acq.ROOT/'history'/(ident+'.json'),{})
+        if value.get('id')!=ident:
+            raise assist.AssistanceError('Report unavailable')
+        return {'report':acq.result_export(value,request.get('format','json'))}
+    with lock(acq.ROOT/'queue.lock'):
+        jobs=acq.Jobs()
+        if operation in ('acquisition-cancel','acquisition-recover'):
+            if set(request)-{'operation'}:
+                raise assist.AssistanceError('Unknown cancellation field')
+            jobs.cancel()
+            unit='pcs-gnss-acquisition.service' if jobs.read().get('state') in ('Running','Queued') else 'pcs-gnss-acquisition-recover.service'
+            verb='stop' if unit=='pcs-gnss-acquisition.service' else 'start'
+            result=subprocess.run(['systemctl',verb,'--no-block',unit],capture_output=True,timeout=3)
+        elif operation=='boot-policy':
+            if jobs.read().get('state') in ('Queued','Running','Recovering','Recovery required'):
+                raise assist.AssistanceError('Finish or recover maintenance before changing normal policy')
+            allowed={'operation','confirm','boot_policy','fallback','save_on_shutdown','restore_next_start',
+                     'database_max_age_hours','backup_retention','power_hold_seconds','shutdown_budget_seconds'}
+            if set(request)-allowed or request.get('confirm')!='yes':
+                raise assist.AssistanceError('Confirm boot policy change')
+            with lock(Path('/run/pcs-gnss/installation.lock')):
+                cfg=acq.load_policy()
+                for name in allowed-{'operation','confirm'}:
+                    if name in request:
+                        cfg[name]=(request[name]=='yes') if name in ('save_on_shutdown','restore_next_start') else (request[name] if name in ('boot_policy','fallback') else int(request[name]))
+                cfg=acq.policy(cfg)
+                bound=assist.read_json(assist.ROOT/'receiver-facts.json',{},private=True).get('identity')
+                if (cfg['save_on_shutdown'] and not acq.qualified(acq.ROOT,bound,'shutdown') or
+                    (cfg['restore_next_start'] or cfg['boot_policy']=='database') and not acq.qualified(acq.ROOT,bound,'database_restore')):
+                    raise assist.AssistanceError('Database automation requires exact-receiver hardware qualification')
+                if cfg['boot_policy']=='live':
+                    settings=assist.load_config()
+                    credentials=assist.load_credentials()
+                    if not (settings['live_enabled'] and settings['live_cost_authorized'] and assist.valid_credentials(credentials)
+                            and 'ulorb_l1' in credentials.get('allowed_data',[])):
+                        raise assist.AssistanceError('Live entitlement and explicit cost activation required')
+                atomic_json(acq.CONFIG,cfg)
+            return {'state':'Boot policy saved; no receiver reset or immediate injection'}
+        else:
+            kind={'acquisition-start':'benchmark','navigation-snapshot':'snapshot','navigation-restore':'restore'}[operation]
+            if kind!='benchmark' and set(request)-{'operation','confirm'}:
+                raise assist.AssistanceError('Unknown navigation maintenance field')
+            if request.get('confirm')!=acq.CONFIRM:
+                raise assist.AssistanceError('Explicit timing-interruption confirmation required')
+            if kind=='benchmark':
+                acq.trials(request)
+            active=subprocess.run(['systemctl','show','pcs-gnss-acquisition.service','-p','ActiveState','--value'],
+                                  capture_output=True,text=True,timeout=3)
+            if active.returncode or active.stdout.strip() not in ('inactive','failed'):
+                raise assist.AssistanceError('Previous acquisition service has not finished cleanup')
+            jobs.queue(request,kind)
+            result=subprocess.run(['systemctl','start','--no-block','pcs-gnss-acquisition.service'],capture_output=True,timeout=3)
+            if result.returncode:
+                value=jobs.read()
+                value.update(state='Failed',phase='Service queue rejected')
+                jobs.finish(value)
+        if result.returncode:
+            raise assist.AssistanceError('Acquisition service action unavailable')
+    return {'state':'Acquisition operation queued'}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('serve', 'web-status', 'web-update', 'refresh', 'refresh-manual',
-                        'refresh-live', 'maintenance-inspect', 'maintenance-apply', 'enroll'))
+                        'refresh-live', 'maintenance-inspect', 'maintenance-apply', 'enroll',
+                        'acquisition-worker','acquisition-recover','navigation-shutdown','boot-refresh',
+                        'qualification-record','qualification-arm-shutdown'))
     parser.add_argument('--maintenance-confirm')
     parser.add_argument('--token-file', type=Path)
+    parser.add_argument('--evidence-file',type=Path)
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise assist.AssistanceError('Root required')
     assist.ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
     if args.action == 'serve':
         serve()
+        return
+    if args.action.startswith('qualification-'):
+        import pcs_gnss_maintenance as maintenance_ops
+        if args.evidence_file is None:
+            raise assist.AssistanceError('Private hardware evidence file required')
+        print(json.dumps(maintenance_ops.qualify(args.evidence_file,args.maintenance_confirm,
+                                               args.action=='qualification-arm-shutdown')))
+        return
+    if args.action in ('acquisition-worker','acquisition-recover','navigation-shutdown','boot-refresh'):
+        import pcs_gnss_maintenance as maintenance_ops
+        {'acquisition-worker':maintenance_ops.worker,'acquisition-recover':maintenance_ops.recover_job,
+         'navigation-shutdown':maintenance_ops.shutdown_backup,'boot-refresh':maintenance_ops.boot_refresh}[args.action]()
         return
     if args.action == 'web-status':
         result = status()

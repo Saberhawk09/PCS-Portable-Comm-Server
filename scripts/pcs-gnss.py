@@ -225,12 +225,24 @@ def prepare_receiver():
                     return exchange(fd, request, cls, msg, ack, timeout=0.25)
                 restore_pending(managed_exchange)
                 try:
+                    from pcs_gnss_maintenance import recover_admission
+                except ImportError:
+                    pass
+                else:
+                    recover_admission(managed_exchange)
+                try:
                     options = assist_config()
                     if options['boot_injection']:
                         version = managed_exchange(ubx(10, 4), 10, 4)
                         unique = managed_exchange(ubx(0x27, 3), 0x27, 3)
-                        result = boot_assistance(managed_exchange, version, unique,
-                                                 timing_healthy=read_status().get('utc_valid') is True)
+                        try:
+                            from pcs_gnss_acquisition import CONFIG as acquisition_config
+                            from pcs_gnss_maintenance import boot_assistance as policy_assistance
+                        except ImportError:
+                            policy_assistance = None
+                        operation = policy_assistance if policy_assistance and acquisition_config.exists() else boot_assistance
+                        result = operation(managed_exchange, version, unique,
+                                           timing_healthy=read_status().get('utc_valid') is True)
                         try:
                             atomic_json(assist_root / 'injection.json', dict(result, timestamp=time.time()))
                         except OSError:

@@ -149,12 +149,52 @@ def serve():
     signal.signal(signal.SIGINT, stop)
     last_probe, last_sample, last_generation = float('-inf'), float('-inf'), None
     last_report = float('-inf')
+    maintenance_id = None
     last_pps = PPS_ALIAS.exists()
     pps_enabled = config.get('pps_enabled', True)
     notify('READY=1')
     try:
         while not stopping:
             now = time.monotonic()
+            # A maintenance lease is fail-closed, including malformed/stale
+            # leases. Only the exclusive owner's verified cleanup releases it.
+            lease = RUNTIME / 'maintenance.json'
+            if lease.exists():
+                try:
+                    request = json.loads(lease.read_text())
+                    ident = request['id']
+                    if not isinstance(ident, str) or len(ident) != 32:
+                        raise ValueError('Invalid maintenance identifier')
+                except (OSError, ValueError, KeyError, TypeError):
+                    ident = 'invalid'
+                if maintenance_id != ident:
+                    selection.withdraw()
+                    gate.reset()
+                    for connection in connections:
+                        connection.close()
+                    connections, buffers, pending = {}, {}, []
+                    binary, activity, satellites = UBXStream(), MessageActivity(), SatelliteActivity()
+                    last_report = last_sample = last_probe = float('-inf')
+                    maintenance_id = ident
+                state.update(pulse.status())
+                state.update(utc_valid=False, fix_valid=False, connected=False, pps_validation='maintenance',
+                             state='fresh', diagnostic='Authorized receiver maintenance; GNSS references withdrawn',
+                             updated_monotonic=now)
+                _, tracking = run(['chronyc', '-n', 'tracking'])
+                _, sources = run(['chronyc', '-n', 'sources'])
+                state.update(parse_chrony(tracking, sources))
+                atomic_json(RUNTIME / 'status.json', state, 0o644)
+                atomic_json(RUNTIME / 'maintenance-ack.json', {'id':ident, 'pid':os.getpid(), 'withdrawn':True,
+                                                             'updated_monotonic':time.monotonic()})
+                notify('WATCHDOG=1')
+                time.sleep(0.2)
+                continue
+            if maintenance_id is not None:
+                # Discard all pre-maintenance timing evidence; fresh UTC/TOFF
+                # pairing is required before either reference can return.
+                gate.reset()
+                maintenance_id = None
+                (RUNTIME / 'maintenance-ack.json').unlink(missing_ok=True)
             try:
                 generation = (os.stat(SERIAL_ALIAS).st_rdev, os.stat(SERIAL_ALIAS).st_ino)
             except OSError:

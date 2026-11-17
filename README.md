@@ -1,10 +1,12 @@
 # Portable Comm Server
 
-The v2.4.1 development candidate adds authenticated [GNSS Information, RF/spectrum
-diagnostics and AssistNow](docs/gnss-intelligence.md) to the commissioned v2.4.0
-architecture. It is staged offline; receiver writes require explicit maintenance
-and paid assistance stays disabled. See [installation/rollback](docs/gnss-intelligence-install.md)
-and [candidate acceptance](docs/v2.4.1-validation.md).
+The PCS v2.5.0 candidate extends the commissioned v2.4.0 timing architecture with
+authenticated [GNSS Information, RF/spectrum diagnostics and AssistNow](docs/gnss-intelligence.md),
+a responsive five-section dashboard, actual DGPS/SBAS source reporting, and
+[controlled acquisition testing and navigation preservation](docs/gnss-acquisition.md).
+Disruptive operations require explicit confirmation; paid assistance remains
+separately authorized. See [installation/rollback](docs/gnss-intelligence-install.md)
+and [v2.5.0 acceptance](docs/v2.5.0-validation.md) for verified and deferred gates.
 
 PCS v2.4.0 adds optional [dedicated NEO-F10N GNSS and kernel PPS](docs/gnss-pps.md),
 with a separate [hardware commissioning runbook](docs/gnss-pps-commissioning.md).

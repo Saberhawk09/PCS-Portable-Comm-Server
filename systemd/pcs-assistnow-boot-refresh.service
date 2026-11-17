@@ -1,0 +1,19 @@
+[Unit]
+Description=PCS optional bounded AssistNow boot download on existing uplink
+After=pcs-uplink-manager.service
+# No Before=GPSD: ordinary acquisition never waits for Internet.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-gnss-info boot-refresh
+TimeoutStartSec=20
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/pcs-gnss-acquisition /var/lib/pcs-assistnow
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

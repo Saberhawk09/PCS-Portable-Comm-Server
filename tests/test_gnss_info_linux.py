@@ -152,7 +152,7 @@ info.serve()
             source = (REPO / 'systemd' / name).read_text()
             self.assertNotIn('assistnow', source)
         source = (REPO / 'scripts/pcs-gnss.py').read_text()
-        self.assertLess(source.index('boot_assistance(managed_exchange'), source.index("write_file(RUNTIME / 'gpsd.env'"))
+        self.assertLess(source.index('operation(managed_exchange'), source.index("write_file(RUNTIME / 'gpsd.env'"))
         self.assertIn("timing_healthy=read_status().get('utc_valid') is True", source)
 
 

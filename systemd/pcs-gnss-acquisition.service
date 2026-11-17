@@ -1,0 +1,20 @@
+[Unit]
+Description=PCS confirmed GNSS acquisition and navigation maintenance
+After=pcs-gnss.service gpsd.service chrony.service
+Requires=pcs-gnss.service gpsd.service chrony.service
+ConditionPathExists=/etc/pcs/gnss.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-gnss-info acquisition-worker
+ExecStopPost=/usr/local/sbin/pcs-gnss-info acquisition-recover
+TimeoutStartSec=80min
+TimeoutStopSec=45
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/pcs-gnss-acquisition /var/lib/pcs-assistnow /run/pcs-gnss /run/chrony /run/gpsd.sock
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

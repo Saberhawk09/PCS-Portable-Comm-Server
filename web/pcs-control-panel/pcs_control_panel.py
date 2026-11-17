@@ -1379,7 +1379,30 @@ GNSS_SECTIONS = {'overview': 'Overview', 'satellites': 'Satellites', 'rf': 'RF D
 
 def gnss_action_section(operation):
     return ('rf' if operation in ('start-spectrum', 'stop-spectrum', 'snapshot') else
-            'advanced' if operation.startswith('autonomous-') else 'assistnow')
+            'advanced' if operation.startswith(('autonomous-','acquisition-')) else 'assistnow')
+
+
+GNSS_INTERRUPTION_CONFIRM = 'I understand GNSS positioning and PPS timing will be interrupted'
+
+
+def render_gnss_confirmation(form, csrf):
+    operation=form.get('operation','')
+    target={'acquisition-review':'acquisition-start','navigation-snapshot-review':'navigation-snapshot',
+            'navigation-restore-review':'navigation-restore'}.get(operation)
+    if target is None:
+        raise ValueError('Unknown review action')
+    allowed={'start','source','comparison','repetitions','timeout_seconds','fallback','paid_consent','antenna'}
+    values={k:v for k,v in form.items() if k in allowed} if target=='acquisition-start' else {}
+    hidden=''.join(f'<input type="hidden" name="{esc(k)}" value="{esc(v)}">' for k,v in values.items())
+    rows=''.join(f'<dt>{esc(k.replace("_"," ").title())}</dt><dd>{esc(v)}</dd>' for k,v in values.items())
+    body=f'''<style>{GNSS_CSS}</style><main class="gnss-app"><section class="card"><h1>Confirm GNSS timing interruption</h1>
+    <p>This operation temporarily interrupts GNSS positioning and PPS-disciplined timing. PCS withdraws its GNSS Chrony references, releases GPSD ownership, and uses an exclusive maintenance session. Internet NTP or holdover remains available.</p>
+    <p>A software cold start is not an electrical power cycle. Autonomous and flash-resident data may remain. Keep the antenna location unchanged for comparisons.</p><dl>{rows}</dl>
+    <p>Live Orbits can be chargeable and requires existing entitlement, activation, limits and per-experiment paid-service consent. A fresh response is shared across repetitions.</p>
+    <form method="POST" action="/admin/gnss"><input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="operation" value="{target}">{hidden}
+    <label><input type="checkbox" name="confirm" value="{esc(GNSS_INTERRUPTION_CONFIRM)}" required> {esc(GNSS_INTERRUPTION_CONFIRM)}</label>
+    <button type="submit">Confirm and Start Maintenance</button></form><a class="button" href="/admin/gnss?section=advanced">Return without starting</a></section></main>'''
+    return document('Confirm PCS GNSS maintenance',body)
 
 
 def gnss_epochs_match(a, b):
@@ -1472,6 +1495,8 @@ def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current'
         return f'<section class="card {extra}"><h2>{esc(title)}</h2>{contents}</section>'
     def details(title, contents):
         return f'<details><summary>{esc(title)}</summary>{contents}</details>'
+    def select_field(name,label,choices,selected=''):
+        return f'<label>{esc(label)}<select name="{esc(name)}">'+''.join(f'<option value="{esc(value)}" {"selected" if value==selected else ""}>{esc(text)}</option>' for value,text in choices)+'</select></label>'
     def rows_table(headers, rows):
         return '<div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable data table"><table><thead><tr>' + ''.join(f'<th scope="col">{esc(h)}</th>' for h in headers) + '</tr></thead><tbody>' + ''.join('<tr>' + ''.join(f'<td>{esc("Unknown" if v is None else "Yes" if v is True else "No" if v is False else v)}</td>' for v in row) + '</tr>' for row in rows) + '</tbody></table></div>'
     def badge(text, good=False):
@@ -1613,6 +1638,17 @@ def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current'
             content += card('Live Orbits', table([('Entitlement', assistance.get('live_entitlement')), ('Activation', assistance.get('live_state')), ('Account profile', assistance.get('registration_profile')), ('Cache', live_cache.get('state', 'Unknown'))]) + '<p class="fine">Potentially chargeable. Explicit activation and request limits still apply.</p>') + '</div>'
             content += card('Downloads and startup readiness', table([('Last success', timestamp(usage.get('last_success'))), ('Uplink used', usage.get('last_uplink')), ('Download state', usage.get('state')), ('Last injection', injection.get('state', 'Not attempted')), ('Injection timestamp', timestamp(injection.get('timestamp')))]) + details('Usage, validity and request accounting', assistance_html[:maintenance_at]) + '<p class="fine">Offline startup can use valid cache and Autonomous data alongside ordinary acquisition. Healthy PPS timing defers injection. AssistNow provides orbit assistance, not DGPS/SBAS corrections. GPS/Galileo predictions are qualified; BeiDou assistance is excluded pending B1C compatibility verification.</p>')
             content += card('Assistance settings', '<p class="fine">Administrator controls · confirmations required for policy changes.</p>' + details('Manage refresh, cache and service limits', host_controls))
+            bench=data.get('acquisition',{})
+            boot=bench.get('policy',{})
+            qualification=bench.get('qualification',{})
+            fields=select_field('boot_policy','Normal boot assistance',[(v,t) for v,t in [('automatic','Automatic · qualified database → cache → retained'),('retained','Receiver-retained only'),('database','Saved receiver database · qualification required'),('cached','Cached Predictive Orbits'),('internet','Internet Predictive Orbits · bounded, asynchronous'),('live','Live Orbits · potentially chargeable'),('none','No host assistance')]],boot.get('boot_policy','automatic'))
+            fields+=select_field('fallback','Fallback policy',[('local','Valid local assistance, then retained'),('retained','Receiver-retained only'),('none','No fallback')],boot.get('fallback','local'))
+            fields+=select_field('save_on_shutdown','Save navigation on clean shutdown · qualified hardware only',[('no','Disabled'),('yes','Enabled')],'yes' if boot.get('save_on_shutdown') else 'no')
+            fields+=select_field('restore_next_start','Restore database on next eligible startup',[('no','Normal policy'),('yes','One successful restore · qualified hardware only')],'yes' if boot.get('restore_next_start') else 'no')
+            for name,label,default in [('database_max_age_hours','Maximum database age (hours)',24),('backup_retention','Successful backups retained',5),('shutdown_budget_seconds','Shutdown collection budget (seconds)',30),('power_hold_seconds','Verified power hold interval (seconds)',0)]:
+                fields+=f'<label>{label}<input type="number" name="{name}" value="{esc(boot.get(name,default))}" required></label>'
+            content+=card('Boot assistance policy',table([('Policy configured',bench.get('policy_configured')),('Active policy',boot.get('boot_policy') if bench.get('policy_configured') else 'Legacy cache-only admission'),('Fallback',boot.get('fallback') if bench.get('policy_configured') else 'Existing retained/ordinary acquisition'),('Saved database',bench.get('database',{}).get('state','Unknown')),('Backup creation',timestamp(bench.get('database',{}).get('created_at'))),('Backup size (bytes)',bench.get('database',{}).get('bytes')),('Database restore qualified',qualification.get('database_restore')),('Shutdown saving qualified',qualification.get('shutdown')),('Last shutdown backup',bench.get('shutdown',{}).get('state','Not attempted'))])+details('Configure normal startup and shutdown',form('boot-policy','Save Boot Assistance Policy',fields,confirmation=True))+'<p class="fine">Installation preserves existing startup behavior until a policy is saved. Internet downloads never delay ordinary GNSS acquisition. Healthy fix/PPS defers injection. Shutdown saving defaults off and requires hardware qualification and a verified power-hold interval.</p>')
+            content+=card('Pi-hosted receiver navigation database', '<p class="fine">Separate from the Thingstream orbit cache. Exact receiver and firmware binding, complete-transfer validation, maximum age and bounded retention apply. Snapshot and restore interrupt GNSS timing.</p>'+form('navigation-snapshot-review','Review Save Navigation Snapshot Now')+form('navigation-restore-review','Review Restore Saved Navigation Database')+'<p class="fine">Receiver-retained data and Autonomous predictions are internal; their survival after complete power loss is not guaranteed. Unqualified periodic snapshots remain disabled.</p>')
         else:
             receiver = measured('receiver') or data.get('receiver', {})
             serial = data.get('serial', {})
@@ -1623,14 +1659,36 @@ def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current'
             content += card('Correction diagnostics', table(correction_fields + [('Receiver mode', correction.get('mode')), ('Correction age', correction.get('correction_age'))]) + details('Per-satellite SBAS corrections', f'<p class="fine">{freshness("sbas")}. NAV-SBAS correction values are reception reports; application is indicated separately by NAV-PVT / NAV-SIG / NAV-SAT. UDRE is the receiver-reported monitoring code. Single-SV identifiers are mapped using the documented constellation numbering; unknown IDs remain unknown.</p>' + rows_table(('GNSS', 'SV', 'Raw SV ID', 'Reported system', 'Services', 'UDRE code', 'Pseudorange (m)', 'Ionosphere (m)'), correction_rows)))
             telemetry = [(name, msg.get('availability', 'Unknown'), msg.get('state', 'Unknown'), msg.get('age_seconds'), timestamp(msg.get('received_at'))) for name, msg in sorted(messages.items())]
             content += card('Receiver diagnostics', details('Message availability and freshness', rows_table(('Message', 'Availability', 'State', 'Age (s)', 'Received UTC'), telemetry)) + details('Raw decoded diagnostics', '<pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px">' + esc(json.dumps(messages, indent=2, ensure_ascii=False)) + '</pre>') + table([('Rejected messages', data.get('rejected_messages')), ('Last receiver update', timestamp(data.get('last_measurement_at')))]))
-            content += card('Receiver maintenance', '<p class="fine">Privileged · changes require confirmation and a separate authorized ownership handover. GPSD owns the UART during normal operation; routine page access never writes receiver configuration.</p>' + details('Autonomous configuration requests', maintenance_controls) + '<p class="fine">Pending request: ' + esc(data.get('maintenance_request', {}).get('state', 'None')) + '</p><p><button disabled>Backup Receiver Assistance Data</button> <button disabled>Restore Receiver Assistance Data</button></p><p class="fine">Database backup/restoration remains unqualified and unavailable.</p>')
+            content += card('Receiver maintenance', '<p class="fine">Privileged · changes require confirmation and a separate authorized ownership handover. GPSD owns the UART during normal operation; routine page access never writes receiver configuration.</p>' + details('Autonomous configuration requests', maintenance_controls) + '<p class="fine">Pending request: ' + esc(data.get('maintenance_request', {}).get('state', 'None')) + '</p><p><a href="?section=assistnow">Navigation snapshot and restoration →</a></p>')
+            bench=data.get('acquisition',{})
+            job=bench.get('job',{})
+            busy=job.get('state') in ('Queued','Running','Recovering','Recovery required')
+            fields=select_field('start','Software GNSS start',[('cold','Full cold · 0xFFFF'),('warm','Warm · 0x0001'),('hot','Hot · 0x0000')],'cold')
+            fields+=select_field('source','Assistance source',[('none','No external assistance'),('cached','Stored Predictive Orbits · offline'),('internet','Fresh Internet Predictive Orbits'),('database','Saved receiver navigation database'),('live','Live Orbits · potentially chargeable'),('automatic','Configured normal boot policy')])
+            fields+=select_field('comparison','Comparison · overrides individual start/source',[('','Single trial or repeated source'),('cold-unassisted-predictive','Cold unassisted / cached predictions'),('cold-cached-internet','Cold cached / fresh predictions'),('warm-unassisted-assisted','Warm unassisted / cached predictions'),('hot-unassisted-assisted','Hot unassisted / cached predictions'),('database-predictive','Cold database / cached predictions')])
+            fields+=select_field('fallback','Experiment fallback',[('none','No fallback · recommended for comparisons'),('local','Valid local assistance'),('retained','Receiver-retained only')])
+            fields+='<label>Repetitions (A/B pairs when comparing)<input type="number" name="repetitions" min="1" max="5" value="1" required></label><label>Acquisition timeout per trial (seconds)<input type="number" name="timeout_seconds" min="15" max="300" value="180" required></label><label>Antenna / conditions · private operator note<input name="antenna" maxlength="160"></label><label><input type="checkbox" name="paid_consent" value="yes"> Authorize potentially chargeable Live requests for this experiment, within existing limits</label>'
+            progress=table([('Operation',job.get('kind')),('State',job.get('state','Not started')),('Progress',job.get('phase')),('GNSS UTC valid',timing.get('utc_valid')),('PPS pairing',timing.get('pps_validation')),('Selected timing reference',timing.get('selected_ref'))])
+            results=[]
+            for row in job.get('results',[]):
+                metric=row.get('metrics') or {}
+                results.append((row.get('trial'),row.get('start'),row.get('requested_source'),row.get('selected_source'),row.get('state'),row.get('download_seconds'),metric.get('receiver_ttff_seconds'),metric.get('first_3d_seconds'),metric.get('f10p_seconds')))
+            histories=''
+            for item in bench.get('history',[]):
+                exports=''.join(form('acquisition-export',kind.upper(),f'<input type="hidden" name="id" value="{esc(item.get("id"))}"><input type="hidden" name="format" value="{kind}">') for kind in ('json','csv','text'))
+                histories+=details(f'{timestamp(item.get("created_at"))} · {item.get("kind")} · {item.get("state")}',exports)
+            comparison=job.get('summary',{})
+            content=card('Acquisition Testing', '<p class="fine">Disruptive administrator controls. Timing interruption requires a separate confirmation screen. Software resets preserve receiver configuration and PPS electrical settings.</p>'+progress+('<p><a class="button" href="?section=advanced">Update Test Progress</a></p>' if busy else '')+details('Configure a test or A/B comparison',form('acquisition-review','Review Acquisition Test',fields,disabled=busy))+form('acquisition-cancel','Cancel and Recover',disabled=not busy)+form('acquisition-recover','Recover Interrupted Maintenance')+details('Measured trial results',rows_table(('Trial','Start','Requested','Selected','Result','Download s','Receiver TTFF s','Host 3D s','F10P recovery s'),results)+ '<pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(json.dumps(comparison,indent=2))+'</pre>')+details('History and redacted reports',histories)+'<p class="fine">Download latency, receiver TTFF and PPS-disciplined NTP recovery are separate measurements. Retained Autonomous/flash data and warm/hot trial carry-over prevent a claim of equivalent fully unassisted conditions. A/B order alternates. Never move the antenna between trials.</p>')+content
             content += card('Diagnostic exports', f'<p class="fine">Exports omit credentials, device identity, coordinates, altitude and satellite geometry.</p><form method="POST" action="/admin/gnss/export"><input type="hidden" name="csrf" value="{esc(csrf)}"><button>Export Redacted Diagnostic and Assistance Report</button></form>')
     links = ''.join(f'<a href="?section={key}" {"aria-current=page" if key == section else ""}>{label}</a>' for key, label in GNSS_SECTIONS.items())
     message_text = error or notice
     notification = f'<p class="notice" role="status">{esc(message_text)}</p>' if message_text else ''
     state = data.get('state', 'Unavailable')
     body = f'<style>{GNSS_CSS}</style><main class="gnss-app"><div class="gnss-heading"><div><div class="gnss-eyebrow">PCS · Navigation &amp; timing</div><h1>GNSS Information</h1></div><a class="button" href="/admin/">Administration</a></div><nav class="gnss-tabs" aria-label="GNSS sections">{links}</nav><div class="gnss-titleline section-intro"><div>{badge(state, state == "Fresh")} <span class="fine">Last receiver update {esc(timestamp(data.get("last_measurement_at")))}</span></div><a class="button" href="?section={section}&amp;view={view}&amp;trace={trace}">Refresh</a></div>{notification}<div class="gnss-stack">{content}</div><p class="fine">Read-only telemetry · authenticated administrator controls · missing and stale data remain explicitly marked.</p></main>'
-    return document('PCS GNSS Information', body)
+    result=document('PCS GNSS Information', body)
+    if section=='advanced' and data.get('acquisition',{}).get('job',{}).get('state') in ('Queued','Running','Recovering'):
+        result=result.replace(b'</head>',b'<meta http-equiv="refresh" content="5"></head>',1)
+    return result
 
 
 def bandwidth_request(payload=None):
@@ -1951,6 +2009,15 @@ class Handler(BaseHTTPRequestHandler):
                 return
             section = gnss_action_section(form.get('operation', ''))
             try:
+                if form.get('operation') in ('acquisition-review','navigation-snapshot-review','navigation-restore-review'):
+                    self.send_body(200,render_gnss_confirmation(form,session['csrf']),'text/html; charset=utf-8')
+                    return
+                if form.get('operation')=='acquisition-export':
+                    result=gnss_request({k:v for k,v in form.items() if k!='csrf'})
+                    kind=form.get('format','json')
+                    mime={'json':'application/json','csv':'text/csv','text':'text/plain'}.get(kind,'text/plain')
+                    self.send_body(200,result['report'].encode(),mime+'; charset=utf-8')
+                    return
                 if path.endswith('/export'):
                     body = json.dumps(gnss_redacted(gnss_request()), indent=2, allow_nan=False).encode()
                     self.send_body(200, body, 'application/json; charset=utf-8')
