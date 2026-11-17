@@ -71,6 +71,15 @@ def fixture():
 
 
 class CorrectionTests(unittest.TestCase):
+    def test_sbas_single_sv_ids_include_galileo_and_beidou_not_just_gps(self):
+        for raw, gnss, sv in ((4, 0, 4), (56, 3, 29), (240, 2, 30), (214, 2, 4),
+                              (159, 3, 1), (131, 1, 131), (193, 5, 1), (65, 6, 1), (247, 7, 1), (255, 6, 255)):
+            value = bytearray(sbas())
+            value[12] = raw
+            row = diag.decode(1, 0x32, value)['rows'][0]
+            self.assertEqual((row['gnssid'], row['svid'], row['raw_svid']), (gnss, sv, raw))
+        self.assertEqual(diag.single_satellite_id(100)['constellation'], 'Unknown')
+
     def test_standard_and_differential_fixes_and_invalid_fix(self):
         for fix in (2, 3):
             for differential in (False, True):

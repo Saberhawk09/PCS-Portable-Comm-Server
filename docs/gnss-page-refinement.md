@@ -34,9 +34,12 @@ protocol 40.00, as used by the commissioned NEO-F10N.
   3 GAGAN and 16 GPS. Unrecognized codes stay Unknown with their numeric code
   retained. GEO PRN zero means unavailable. Services include ranging,
   corrections, integrity, test mode and bad signal; integrity-used status and
-  receiver mode remain separate. Per-GPS-satellite pseudorange and ionospheric
+  receiver mode remain separate. Per-satellite pseudorange and ionospheric
   corrections are signed centimetres, displayed in metres. UDRE is exposed as
   the reported monitoring code without inventing an error bound.
+  NAV-SBAS single-SV identifiers use protocol table 2 and can include Galileo
+  and BeiDou. The page preserves the raw ID and shows normalized constellation
+  and SV identity; it never labels every NAV-SBAS row as GPS.
 * NAV-SIG exposes reported correction source and PR/carrier/Doppler correction
   application independently of navigation measurement usage. NAV-SAT exposes
   correction availability and SBAS/RTCM/SLAS/SPARTN/CLAS usage. Orbit prediction

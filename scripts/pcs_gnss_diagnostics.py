@@ -42,6 +42,16 @@ def sbas_services(flags):
             if flags & (1 << bit)]
 
 
+def single_satellite_id(raw):
+    """UBX single-svid numbering, table 2; NAV-SBAS is not GPS-only."""
+    for first, last, gnss, offset in ((1, 32, 0, 0), (33, 64, 3, 27), (65, 96, 6, 64),
+            (120, 158, 1, 0), (159, 163, 3, 158), (193, 202, 5, 192),
+            (211, 246, 2, 210), (247, 253, 7, 246), (255, 255, 6, 0)):
+        if first <= raw <= last:
+            return {'raw_svid': raw, 'gnssid': gnss, 'svid': raw - offset, 'constellation': CONSTELLATIONS[gnss]}
+    return {'raw_svid': raw, 'gnssid': None, 'svid': raw, 'constellation': 'Unknown'}
+
+
 def correction_summary(messages):
     """Keep application, reception and source separate; only join current epochs.
 
@@ -234,7 +244,7 @@ def decode(cls, msg, p):
             if not p[i]:
                 raise ValueError('Invalid SBAS satellite identity')
             sv_system = struct.unpack_from('<b', p, i + 3)[0]
-            rows.append({'svid': p[i], 'udre_code': p[i + 2], 'system_code': sv_system,
+            rows.append({**single_satellite_id(p[i]), 'udre_code': p[i + 2], 'system_code': sv_system,
                          'system': SBAS_SYSTEMS.get(sv_system, 'Unknown'), 'services': sbas_services(p[i + 4]),
                          'pseudorange_correction_m': struct.unpack_from('<h', p, i + 6)[0] * .01,
                          'ionosphere_correction_m': struct.unpack_from('<h', p, i + 10)[0] * .01})
