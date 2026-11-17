@@ -227,6 +227,37 @@ class MeasurementTests(unittest.TestCase):
 
 
 class TransferTests(unittest.TestCase):
+    @unittest.skipUnless(os.name=='posix','POSIX ownership receipt')
+    def test_restricted_gate_accepts_only_root_bound_nonreused_owner_receipts(self):
+        import pcs_gnss_runtime as runtime
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'123').mkdir()
+            ticks=10000
+            (root/'123'/'stat').write_text('123 (gpsd) '+' '.join(['S']+['0']*18+[str(ticks)]))
+            proof=root/'proof.json'
+            original_lstat=Path.lstat
+            metadata=SimpleNamespace(st_uid=0,st_mode=0o100644,st_size=256)
+            def lstat(path,*args,**kwargs):
+                return metadata if path==proof else original_lstat(path,*args,**kwargs)
+            value={'kind':'owner','pid':'123','start_ticks':ticks,'generation':[99,100],'read_only':True}
+            with mock.patch.object(runtime.os,'stat',return_value=SimpleNamespace(st_rdev=99,st_ino=100)),mock.patch.object(Path,'lstat',lstat):
+                def owned(data):
+                    proof.write_text(json.dumps(data))
+                    return runtime.owned_generation('/fake/device',root,mock.Mock(side_effect=[(0,'123'),(1,'')]),proof)
+                self.assertEqual(owned(value),(99,100))
+                for changed in (value|{'start_ticks':ticks+1},value|{'generation':[99,101]},value|{'read_only':False}):
+                    self.assertIsNone(owned(changed))
+                metadata.st_uid=65534
+                self.assertIsNone(owned(value))
+                metadata.st_uid=0;metadata.st_mode=0o100666
+                self.assertIsNone(owned(value))
+                metadata.st_mode=0o100644
+                admission={'kind':'admission','generation':[99,100],'read_only':True,
+                           'admitted_monotonic':ticks/os.sysconf('SC_CLK_TCK')-1}
+                self.assertEqual(owned(admission),(99,100))
+                self.assertIsNone(owned(admission|{'admitted_monotonic':-1000}))
+
     def test_gate_restart_recognizes_existing_readonly_owner_without_serial_open(self):
         import pcs_gnss_runtime as runtime
         with tempfile.TemporaryDirectory() as tmp:

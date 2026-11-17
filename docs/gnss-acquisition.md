@@ -47,6 +47,15 @@ control socket releases only the enrolled alias from the same read-only GPSD
 process. The existing admission helper checks enrollment, exclusive ownership,
 115200 baud and exact MON-VER/SEC-UNIQID identity before any command.
 
+The restricted UTC gate retains its existing capability set. A root-owned
+runtime admission receipt binds the device generation to the GPSD process birth;
+this lets a gate update recognize the existing verified owner without ptrace
+privileges or a GPSD restart. Deployment uses the root-only `record-owner` helper
+after verifying the sole read-only owner. New admissions replace that receipt
+only after successful exclusive receiver preparation. PID reuse, a changed
+device generation, writable/non-root receipts and stale admission timing fail
+the ownership check.
+
 The gate remains withdrawn for the entire lease, including malformed or stale
 leases. It does not restart GPSD or Chrony. Cleanup restores temporary RAM
 ACK policy, starts a deliberately stopped GNSS engine, closes the exclusive

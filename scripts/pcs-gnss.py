@@ -201,6 +201,7 @@ def prepare_receiver():
         raise ValueError('Enrolled USB alias does not match receiver')
     # Remove stale options before probing, so failure cannot reuse old admission.
     (RUNTIME / 'gpsd.env').unlink(missing_ok=True)
+    (RUNTIME / 'gpsd-owner.json').unlink(missing_ok=True)
     with identified_receiver(device, config.get('baud', 38400)) as (fd, identity, before, baud):
         if identity['protocol'] != config['receiver']['protocol']:
             raise ValueError('Receiver protocol changed')
@@ -256,6 +257,9 @@ def prepare_receiver():
                     except OSError:
                         pass
         write_file(RUNTIME / 'gpsd.env', gpsd_environment(baud))
+        info=os.stat(device)
+        atomic_json(RUNTIME/'gpsd-owner.json',{'kind':'admission','read_only':True,
+                    'generation':[info.st_rdev,info.st_ino],'admitted_monotonic':time.monotonic()},0o644)
 
 
 def gpsd_environment(baud):

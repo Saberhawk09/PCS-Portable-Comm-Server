@@ -500,7 +500,7 @@ def main():
     parser.add_argument('action', choices=('serve', 'web-status', 'web-update', 'refresh', 'refresh-manual',
                         'refresh-live', 'maintenance-inspect', 'maintenance-apply', 'enroll',
                         'acquisition-worker','acquisition-recover','navigation-shutdown','boot-refresh',
-                        'qualification-record','qualification-arm-shutdown'))
+                        'qualification-record','qualification-arm-shutdown','record-owner'))
     parser.add_argument('--maintenance-confirm')
     parser.add_argument('--token-file', type=Path)
     parser.add_argument('--evidence-file',type=Path)
@@ -510,6 +510,10 @@ def main():
     assist.ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
     if args.action == 'serve':
         serve()
+        return
+    if args.action=='record-owner':
+        from pcs_gnss_runtime import record_owner
+        record_owner()
         return
     if args.action.startswith('qualification-'):
         import pcs_gnss_maintenance as maintenance_ops
