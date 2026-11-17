@@ -81,8 +81,11 @@ data cannot be assumed to survive complete power loss.
 
 The acquisition policy file remains absent after this deployment, so the active
 boot behavior is the existing cache-only admission. Saving policy is a separate
-operator choice. Database capture/restore/shutdown are qualified for this F10N;
-normal shutdown saving remains off. Downloaded Predictive archives and Pi-hosted
+operator choice. Extended testing on 17 November placed unattended database
+restore and shutdown snapshots on a [qualification hold](v2.5.0-extended-qualification.md)
+after a PPS recovery timeout and a restore rejection over retained data. Normal
+shutdown saving remains off; confirmed manual maintenance remains available.
+Downloaded Predictive archives and Pi-hosted
 receiver databases are separate stores, with separate dates and validity checks.
 
 Autonomous, predictions and fresh ephemerides can coexist; they are not DGPS/SBAS

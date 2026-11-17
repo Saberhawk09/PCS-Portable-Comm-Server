@@ -378,6 +378,31 @@ class TransferTests(unittest.TestCase):
                 maintenance.prepare('live',IDENTITY,{'valid':True},paid=False)
             downloader.assert_not_called()
 
+    def test_fresh_download_revalidates_independent_date_before_cache_selection(self):
+        from test_gnss_intelligence import CREDENTIALS
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);root.chmod(0o700)
+            cache=assist.Cache(root)
+            downloader=assist.Downloader(cache,request=lambda _:prediction(),clock=lambda:NOW+2)
+            hint=acq.independent_time(NOW,True,'network',uncertainty=1)
+            later=acq.independent_time(NOW+3,True,'network',uncertainty=1)
+            with mock.patch.object(acq,'load_policy',return_value=acq.DEFAULT), \
+                 mock.patch.object(assist,'ROOT',root),mock.patch.object(assist,'Cache',return_value=cache), \
+                 mock.patch.object(assist,'load_config',return_value=assist.DEFAULT|{'allow_metered':True}), \
+                 mock.patch.object(assist,'load_credentials',return_value=CREDENTIALS), \
+                 mock.patch.object(assist,'Downloader',return_value=downloader), \
+                 mock.patch.object(info,'selected_network',return_value={'online':True,'uplink':'existing','metered':False}), \
+                 mock.patch.object(info,'save_assist_status'), \
+                 mock.patch.object(maintenance,'lock',return_value=contextlib.nullcontext()), \
+                 mock.patch.object(maintenance.time,'time',return_value=NOW+1), \
+                 mock.patch.object(maintenance,'time_hint',return_value=later):
+                result=maintenance.prepare('internet',IDENTITY,hint,'none')
+            self.assertEqual(result['source'],'internet')
+            self.assertEqual(result['frames'],[prediction()])
+            self.assertEqual(assist.read_json(root/'usage.json',{})['predictive_requests'],1)
+            # A genuinely pre-download date must remain rejected by the cache.
+            self.assertEqual(cache.selected(IDENTITY,NOW)[1],[])
+
     def test_boot_no_host_and_healthy_timing_do_not_reset(self):
         from test_gnss_intelligence import version,unique
         exchange=mock.Mock()
@@ -446,7 +471,7 @@ class InterfaceTests(unittest.TestCase):
 
 
 class WorkerTests(unittest.TestCase):
-    def run_worker(self,mode='hot',cancel_phase=None,source='none',injection_failure=False):
+    def run_worker(self,mode='hot',cancel_phase=None,source='none',injection_failure=False,time_hints=None):
         temporary=tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root=Path(temporary.name);root.chmod(0o700)
@@ -485,14 +510,18 @@ class WorkerTests(unittest.TestCase):
         owner=mock.Mock();owner.acquire=acquired
         paired={'state':'fresh','synchronized':True,'selected_ref':'F10P','utc_valid':True,'pps_active':True,'pps_validation':'paired','pps_selection':'*'}
         aid={'source':source,'frames':[prediction()] if source!='none' else [],'download_seconds':0}
+        self.prepared_dates=[]
+        def prepared(source,bound,hint,*args):
+            self.prepared_dates.append(hint['utc'])
+            return aid
         read_json=assist.read_json
         def read(path,*args,**kwargs):
             return {'identity':IDENTITY} if Path(path).name=='receiver-facts.json' else read_json(path,*args,**kwargs)
         with mock.patch.object(acq,'Jobs',return_value=jobs),mock.patch.object(maintenance,'lock',return_value=contextlib.nullcontext()), \
              mock.patch.object(assist,'ROOT',root), \
              mock.patch.object(assist,'read_json',side_effect=read),mock.patch.object(maintenance.signal,'signal'), \
-             mock.patch.object(maintenance,'time_hint',side_effect=lambda:acq.independent_time(NOW,True,'network',uncertainty=1)), \
-             mock.patch.object(maintenance,'prepare',return_value=aid),mock.patch.object(maintenance,'Owner',return_value=owner), \
+             mock.patch.object(maintenance,'time_hint',side_effect=time_hints or (lambda:acq.independent_time(NOW,True,'network',uncertainty=1))), \
+             mock.patch.object(maintenance,'prepare',side_effect=prepared),mock.patch.object(maintenance,'Owner',return_value=owner), \
              mock.patch.object(maintenance,'read_status',return_value=paired),mock.patch.object(maintenance,'pps_sequence',return_value=20), \
              mock.patch.object(maintenance,'recover') as recover, mock.patch.dict(sys.modules,{'termios':mock.Mock()}), \
              mock.patch.object(maintenance,'stopped'),mock.patch.object(maintenance,'started') as restart, \
@@ -503,6 +532,14 @@ class WorkerTests(unittest.TestCase):
             if source=='database' and not injection_failure:
                 restart.assert_called_once_with(channel)
         return jobs.read(),sent
+
+    def test_worker_rechecks_independent_date_after_download_before_reset(self):
+        hints=[acq.independent_time(NOW+offset,True,'network',uncertainty=1) for offset in (0,0,3)]
+        with mock.patch.object(manager,'inject',return_value={'state':'Accepted','accepted':1}):
+            job,sent=self.run_worker(source='internet',time_hints=hints)
+        self.assertEqual(job['state'],'Completed')
+        self.assertEqual(self.prepared_dates,[NOW,NOW+3])
+        self.assertEqual(sent,[acq.reset_frame('hot')])
 
     def test_hot_warm_cold_actual_fixture_events_without_reset_ack(self):
         for mode in acq.MASKS:

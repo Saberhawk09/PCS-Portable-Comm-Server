@@ -454,6 +454,11 @@ def _prepare(source,bound,hint,fallback='none',paid=False,_local=False):
                 if fallback=='none':
                     raise assist.AssistanceError('Fresh assistance unavailable; selected no-fallback policy')
                 selected='automatic' if fallback=='local' else 'retained'
+            else:
+                # The cache publication is newer than the pre-download hint.
+                # Revalidate independent time; never relax future-date checks or
+                # use the downloaded assistance as a clock source.
+                hint=time_hint()
     if selected=='automatic':
         # Local priority: qualified exact-receiver database, current-day cache,
         # then receiver-retained data. Live requests are never implicit here.
@@ -553,6 +558,9 @@ def worker():
                     if key not in prepared:
                         prepared[key]=prepare(trial['source'],bound,hint,trial['fallback'],trial['paid_consent'])
                     aid=prepared[key]
+                    # Network preparation can take seconds or cross UTC midnight.
+                    # Recheck the date before selecting frames and resetting GNSS.
+                    hint=time_hint()
                     if key in prepared and aid['frames']:
                         if aid['source']=='live':
                             kind,frames=assist.Cache().selected(bound,hint['utc'],live=True)
