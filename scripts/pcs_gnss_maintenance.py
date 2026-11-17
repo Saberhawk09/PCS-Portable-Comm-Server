@@ -588,6 +588,7 @@ def worker():
         if job.get('state')!='Queued':
             return
         stopped_signal=False
+        receiver_owned=False
         def stop(*_):
             nonlocal stopped_signal
             stopped_signal=True
@@ -615,6 +616,7 @@ def worker():
                     raise assist.AssistanceError('Independent UTC date unavailable')
                 phase('Receiver navigation maintenance')
                 with Owner(job['id'],check).acquire() as (channel,actual):
+                    receiver_owned=True
                     if actual!=bound:
                         raise assist.AssistanceError('Receiver changed during preparation')
                     aop=channel.exchange(ubx(1,0x60),1,0x60)
@@ -675,6 +677,7 @@ def worker():
                     metrics=None
                     try:
                         with Owner(job['id'],check).acquire() as (channel,actual):
+                            receiver_owned=True
                             if actual!=bound:
                                 raise assist.AssistanceError('Receiver changed')
                             row['receiver_verified']=True
@@ -717,10 +720,14 @@ def worker():
                                             channel.exchange(ubx(1,3),1,3)
                                         if not metrics.after_reset_seen:
                                             raise assist.AssistanceError('Software cold reset session was not observed; database not restored')
-                                        stopped(channel)
+                                    phase('Trial '+str(trial['trial'])+': independent time aiding')
                                     inject_time(counted_exchange,hint,bound['binding'])
                                     row['time_aiding']='Independent coarse UTC accepted; not a trusted timing sample'
                                     if aid['source']=='database':
+                                        # The F10N rejects MGA-INI while stopped.
+                                        # Aid time in the running new session first.
+                                        stopped(channel)
+                                        phase('Trial '+str(trial['trial'])+': database restoration')
                                         result=restore_database(counted_exchange,aid['frames'],bound['binding'])
                                         started(channel)
                                     else:
@@ -792,6 +799,23 @@ def worker():
             else:
                 job['ownership_recovered']=True
                 job['phase']='UART returned to GPSD; timing recovery is independently reported'
+                if receiver_owned and job['state']!='Completed' and not job.get('navigation_recovery'):
+                    # Recovery ignores the cancelled trial but remains bounded.
+                    # Leave time for StopPost within systemd's stop budget.
+                    seconds=30 if stopped_signal or jobs.cancelled(job['id']) else 120
+                    def recovery_phase(text):
+                        job['phase']='Recovery: '+text
+                        jobs.save(job)
+                    try:
+                        job['navigation_recovery']=navigation_recovery(seconds=seconds,phase=recovery_phase)
+                    except NavigationRecoveryError as error:
+                        job['navigation_recovery']=error.evidence
+                        job['phase']='UART returned; '+str(error)
+                    except (ValueError,OSError,subprocess.SubprocessError):
+                        job['navigation_recovery']={key:None for key in ('utc_seconds','pps_seconds','stable_pps_seconds','f10p_seconds')}
+                        job['phase']='UART returned; timing recovery observation unavailable'
+                    else:
+                        job['phase']='UART and stable paired timing recovered after unsuccessful operation'
             try:
                 job['timing_recovered']=paired_timing()
             except (ValueError,OSError,subprocess.SubprocessError):

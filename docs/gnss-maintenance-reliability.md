@@ -37,6 +37,12 @@ request was used. A software cold start is not a complete electrical power cycle
   serial ownership. Saved database benchmarks require an explicit cold start.
   The worker observes a new NAV-STATUS session before stopping the engine and
   restoring the database; CFG-RST acknowledgement is not assumed.
+* Coarse time is offered while that new session is running, before the database
+  stop/restore/start sequence. The installed-worker test exposed rejection of
+  MGA-INI when offered after engine stop. Failed operations now attempt bounded
+  timing recovery after handover, preserving the original failure. Cancellation
+  limits this observation to 30 seconds within the systemd stop budget; other
+  failures allow 120 seconds. Neither path resets the receiver.
 * Restore errors still stop at the first rejected/missing acknowledgement and
   preserve accepted/rejected/unacknowledged counts and the failed entry. Unknown
   code 255 remains a rejection. There is no whole-archive retry or automatic
@@ -111,6 +117,16 @@ maximum. The candidate was rejected, the last valid backup retained and normal
 timing recovered. The product retains stop/dump/start; validation was not relaxed
 to accommodate undocumented firmware output.
 
+Two installed-worker snapshots subsequently captured 201 entries each and
+returned to selected F10P in 7.576 and 7.562 seconds after GPSD handover. Stable
+cadence was observed in 7.372 and 7.358 seconds. The first installed cold database
+trial exposed a separate ordering defect: its only offered assistance frame was
+coarse time, rejected after engine stop; no database entries were sent. GPSD
+ownership returned, ordinary acquisition subsequently recovered UTC/PPS/F10P,
+and the saved backup remained intact. The corrected ordering follows the three
+successful early-start investigative trials above. The failed trial is retained
+as failed evidence, not relabeled as a successful restore.
+
 ## Evidence, compatibility and remaining work
 
 The reviewed primary references are [F10 SPG 6.00, protocol 40.00 R02](https://content.u-blox.com/sites/default/files/documents/u-blox-F10-SPG-6.00_InterfaceDescription_UBX-23002975.pdf)
@@ -129,8 +145,8 @@ observations. Raw receiver identity, location, payloads and credentials are not
 public exports. Trial units have bounded execution and the established recovery
 StopPost. Full suites use unprivileged processes with devices hidden.
 
-Automated validation: 1,200 ARM64 Python tests, four expected skips, no failures
-(99.500 seconds); 145 Windows GNSS tests, six expected skips; all 19 frontend
+Automated validation: 1,201 ARM64 Python tests, four expected skips, no failures
+(98.216 seconds); all 19 frontend
 JavaScript tests passed. Fixtures cover burst PPS, absent/reset counters,
 invalid UTC, missing Chrony pairing, malformed/missing ACK, timeout, identity,
 ownership, partial transfer, cancellation, redaction and independent qualification

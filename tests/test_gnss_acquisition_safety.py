@@ -318,11 +318,14 @@ class AcquisitionSafetyTests(unittest.TestCase):
                  mock.patch.object(maintenance,'prepare',return_value={'source':'database','frames':acq.dbd_frames(dbd(2)),'download_seconds':0}), \
                  mock.patch.object(maintenance,'inject_time'),mock.patch.dict(sys.modules,{'termios':mock.Mock()}), \
                  mock.patch.object(maintenance,'stopped'),mock.patch.object(maintenance,'restore_database',side_effect=error), \
-                 mock.patch.object(maintenance,'recover'),mock.patch.object(maintenance,'paired_timing',return_value=False):
+                 mock.patch.object(maintenance,'recover'),mock.patch.object(maintenance,'paired_timing',return_value=False),mock.patch.object(maintenance,'navigation_recovery',side_effect=maintenance.NavigationRecoveryError('Waiting for stable 1 Hz kernel PPS',{'utc_seconds':1,'pps_seconds':2,'stable_pps_seconds':None,'f10p_seconds':None})) as recovery:
                 maintenance.worker()
             job=jobs.read()
             self.assertEqual(job['state'],'Failed')
-            self.assertEqual(job['failure_phase'],'Trial 1: receiver acquisition')
+            self.assertEqual(job['failure_phase'],'Trial 1: database restoration')
             self.assertEqual(job['database_evidence'],evidence)
             self.assertTrue(job['ownership_recovered'])
             self.assertFalse(job['timing_recovered'])
+            self.assertEqual(recovery.call_args.kwargs['seconds'],120)
+            self.assertIn('Waiting for stable 1 Hz kernel PPS',job['phase'])
+            self.assertIsNone(job['navigation_recovery']['stable_pps_seconds'])
