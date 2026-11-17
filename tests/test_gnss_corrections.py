@@ -72,6 +72,9 @@ def fixture():
 
 class CorrectionTests(unittest.TestCase):
     def test_sbas_single_sv_ids_include_galileo_and_beidou_not_just_gps(self):
+        signal = struct.pack('<IBB2x', 123000, 0, 1) + struct.pack('<BBBBhBBBBH4x', 1, 131, 0, 0, 0, 40, 5, 1, 2, 9)
+        signal_row = diag.decode(1, 0x43, signal)['rows'][0]
+        self.assertEqual((signal_row['constellation'], signal_row['signal'], signal_row['band']), ('SBAS', 'L1 C/A', 'L1'))
         for raw, gnss, sv in ((4, 0, 4), (56, 3, 29), (240, 2, 30), (214, 2, 4),
                               (159, 3, 1), (131, 1, 131), (193, 5, 1), (65, 6, 1), (247, 7, 1), (255, 6, 255)):
             value = bytearray(sbas())

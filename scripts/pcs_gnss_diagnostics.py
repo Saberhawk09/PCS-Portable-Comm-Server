@@ -16,7 +16,7 @@ from pcs_gnss import mon_ver, satellite_counts, SatelliteActivity
 
 CONSTELLATIONS = {0: 'GPS', 1: 'SBAS', 2: 'Galileo', 3: 'BeiDou', 5: 'QZSS', 6: 'GLONASS', 7: 'NavIC'}
 # Signal identifiers, section 1.5.4. Unknown IDs are deliberately not guessed.
-SIGNALS = {(0, 0): 'L1 C/A', (0, 6): 'L5 I', (0, 7): 'L5 Q',
+SIGNALS = {(0, 0): 'L1 C/A', (0, 6): 'L5 I', (0, 7): 'L5 Q', (1, 0): 'L1 C/A',
            (2, 0): 'E1 C', (2, 1): 'E1 B', (2, 3): 'E5a I', (2, 4): 'E5a Q',
            (3, 5): 'B1C P', (3, 6): 'B1C D', (3, 7): 'B2a P', (3, 8): 'B2a D',
            (5, 0): 'L1 C/A', (5, 8): 'L5 I', (5, 9): 'L5 Q', (7, 0): 'L5 A'}
