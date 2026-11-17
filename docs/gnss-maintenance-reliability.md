@@ -2,12 +2,14 @@
 
 ## Operator outcome
 
-The investigation found a reproducible receiver-state restriction: the pinned
-same-receiver database is rejected over retained navigation data, but accepted
-after an explicitly authorized software cold start. Live overlay restoration is
-therefore blocked. The supported manual path is Advanced → Acquisition Testing,
-Cold start + Saved receiver database, with the existing interruption confirmation.
-Normal startup never silently clears navigation data to satisfy a restore policy.
+The investigation found reproducible receiver-state and snapshot limitations:
+the pinned 159-entry database is rejected over retained navigation data, but
+accepted after an explicitly authorized software cold start. A newer 199-entry
+database is rejected even after cold start. Live overlay restoration is blocked.
+The experimental manual path is Advanced → Acquisition Testing, Cold start +
+Saved receiver database, with the existing interruption confirmation. Cold start
+is required for that path but is not sufficient to guarantee acceptance. Normal
+startup never silently clears navigation data to satisfy a restore policy.
 
 The historical snapshot failure to recover PPS within 120 seconds was **not
 reproduced**. One stopped-receiver interval did produce approximately 244 kernel
@@ -16,7 +18,7 @@ qualification holds contain the risk; they are not a claimed electrical fix.
 
 | Unattended feature | Final qualification | Activation |
 | --- | --- | --- |
-| Startup database restoration | Unqualified: retained-state restoration rejected | Disabled |
+| Startup database restoration | Unqualified: retained-state and some cold-start restorations rejected | Disabled |
 | Clean-shutdown navigation snapshot | Unqualified: unexplained stop-associated PPS events | Disabled |
 
 Qualification remains independent and exact-receiver bound. No qualification
@@ -127,6 +129,35 @@ and the saved backup remained intact. The corrected ordering follows the three
 successful early-start investigative trials above. The failed trial is retained
 as failed evidence, not relabeled as a successful restore.
 
+With corrected ordering, the installed worker accepted all 201 database entries
+and one coarse-time frame, without rejection or missing ACK. Receiver TTFF was
+17.093 seconds, host-observed valid 3D 39.069 seconds, UTC 40.061 seconds and F10P
+47.425 seconds from reset. A further 2.574-second cadence check passed before
+completion. Acceptance does not establish which restored orbit records the
+receiver used or demonstrate improved absolute PPS accuracy.
+
+A real cancellation after snapshot handover preserved its Cancelled outcome,
+returned sole GPSD ownership and observed stable paired F10P in 5.721 seconds of
+bounded cleanup. It did not reset the receiver.
+
+The next installed cold trial used a newer, complete 199-entry same-receiver
+snapshot. It accepted coarse time and 61 database entries, then rejected database
+entry 62 with code 255. Transfer stopped immediately; ordinary UTC, stable PPS and
+F10P recovered in 34.574 seconds after handover without intervention. The bounded
+failure-recovery path retained Failed status and exact numeric transfer evidence.
+
+The same 199-entry backup was pinned and repeated with the instrumented
+three-second startup wait used by earlier successful trials. It again rejected
+entry 62 after 61 accepts with matching type 0 / code 255. F10P returned in
+35.954 seconds after receiver restart. Configuration readback was unchanged.
+Both the exact failed frame and observed matching acknowledgement are preserved
+privately. The backup has valid framing/checksums, a matching completion count,
+no duplicate frames, and the correct identity/firmware. Its failed payload differs
+from the corresponding-prefix record in the older 201-entry snapshots. Opaque
+DBD contents cannot be given an undocumented interpretation. The longer wait
+did not resolve this rejection, and neither capacity nor content/state conflict
+has been established as the cause. Generic cold restoration remains unqualified.
+
 ## Evidence, compatibility and remaining work
 
 The reviewed primary references are [F10 SPG 6.00, protocol 40.00 R02](https://content.u-blox.com/sites/default/files/documents/u-blox-F10-SPG-6.00_InterfaceDescription_UBX-23002975.pdf)
@@ -145,12 +176,16 @@ observations. Raw receiver identity, location, payloads and credentials are not
 public exports. Trial units have bounded execution and the established recovery
 StopPost. Full suites use unprivileged processes with devices hidden.
 
-Automated validation: 1,201 ARM64 Python tests, four expected skips, no failures
-(98.216 seconds); all 19 frontend
+Automated validation: 1,201 ARM64 Python tests, four expected skips, no failures;
+146 Windows GNSS tests, six expected skips; all 19 frontend
 JavaScript tests passed. Fixtures cover burst PPS, absent/reset counters,
 invalid UTC, missing Chrony pairing, malformed/missing ACK, timeout, identity,
 ownership, partial transfer, cancellation, redaction and independent qualification
 admission. Fixtures are not substituted for the hardware results above.
+The final ARM64 run completed in 99.666 seconds. Browser screenshots and DOM
+width checks covered 360, 768 and 1440 pixels without horizontal page overflow;
+the experimental-restoration warning was also inspected at phone width. The
+ordinary hardware self-test returned zero with ALL ENABLED CHECKS PASSED.
 
 Direct electrical observation during a reproduced failure may be needed to
 separate receiver output from GPIO/kernel behavior. A sanitized u-blox support
@@ -168,6 +203,16 @@ released v2.5.1 at `1ddc585920d9877c76b3516fddbce0d2650434be`; no existing relea
 tag is rewritten. The predecessor receipt is
 `/var/backups/pcs-gnss-safety-ad347fb/receipt.json` and its newest installer backup
 is `/var/backups/pcs-gnss-info/20261117T162722-14619d9f`.
+
+Reliability corrections `ee817c4` and `1ee6c30` were subsequently installed and
+hardware tested as recorded overlays. The final warning/report overlay uses
+`/var/backups/pcs-gnss-reliability-final-20261117/receipt.json`, which records the
+exact installed commit, manifest backup and full ten-layer reverse rollback
+chain. All 22 installed files are checked against the manifest. Each installation
+preserves the 62 protected files and monitored timing/other-service PIDs; only
+the web renderer is restarted when its loaded module changes. The worker-only
+ordering correction required no service restart. No deployment step sends a
+receiver command or changes a normal boot policy.
 
 For any later corrective installation use the qualified exact-manifest installer
 and retain its receipt with the complete reverse hash-verified chain. Preserve

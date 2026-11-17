@@ -259,6 +259,7 @@ class AcquisitionSafetyTests(unittest.TestCase):
             data=fixture();data['acquisition']=value
             html=panel.render_gnss_page(data,'csrf-fixture',section='assistnow').decode()
             self.assertIn('on hold',html)
+            self.assertIn('some validated snapshots are rejected even after a software cold start',html)
 
     def test_advanced_page_explains_partial_database_failure(self):
         data=fixture();data['acquisition']={'job':{'kind':'restore','state':'Failed',
