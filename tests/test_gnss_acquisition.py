@@ -462,9 +462,11 @@ class WorkerTests(unittest.TestCase):
             def exchange(self,*args):
                 if injection_failure:
                     raise ValueError('Fixture interruption')
+                if args[0]==ubx(1,3):
+                    self.event(1,3,struct.pack('<IBBBBII',123000,3,1,0,0,1234,1000))
                 return b''
             def poll(self,*args):
-                self.event(1,3,struct.pack('<IBBBBII',123000,3,1,0,0,1234,0))
+                self.event(1,3,struct.pack('<IBBBBII',123000,0,0,0,0,0,0))
                 payload=pvt();payload[23]=25
                 self.event(1,7,payload)
                 return []

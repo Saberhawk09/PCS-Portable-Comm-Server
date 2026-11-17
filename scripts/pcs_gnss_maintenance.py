@@ -629,6 +629,13 @@ def worker():
                                 metrics.timing({},pps_sequence())
                                 row.update(metrics=dict(metrics.values),first_fix=metrics.first_fix)
                                 if metrics.after_reset_seen and metrics.values['first_3d_seconds'] is not None and metrics.values['utc_seconds'] is not None:
+                                    if metrics.values['receiver_ttff_seconds'] is None:
+                                        # PVT may announce the fix before the next periodic
+                                        # STATUS. Poll the actual receiver result before handback.
+                                        try:
+                                            channel.exchange(ubx(1,3),1,3)
+                                        except assist.AssistanceError:
+                                            pass  # Missing receiver TTFF remains explicitly unknown.
                                     break
                                 jobs.save(job)
                             if not metrics.after_reset_seen or metrics.values['first_3d_seconds'] is None:
