@@ -107,7 +107,9 @@ payloads and metadata are mode 0600. Immutable payload and metadata publication
 precedes the atomic latest pointer. Failed/incomplete writes retain the last
 valid backup. Exact receiver/firmware identity, framing/checksum, SHA-256,
 completion count and age are revalidated on restore. Default age is 24 hours,
-retention five successful backups (maximum ten, each at most 1 MiB).
+retention five successful backups (maximum ten, each at most 1 MiB). A 12 MiB
+total storage cap also bounds orphan objects after failed publication; reaching
+it refuses a new save while retaining the last complete backup.
 Exports omit dumps, identifiers, coordinates and operator notes.
 
 Automatic restore and shutdown saving require hardware evidence admitted by

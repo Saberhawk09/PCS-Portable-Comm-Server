@@ -157,6 +157,15 @@ class StorageTests(unittest.TestCase):
             self.store.publish(dbd(),complete(),IDENTITY,self.hint,retention=3)
         self.assertEqual(len(list(self.store.root.glob('*.ubx'))),3)
 
+    def test_failed_publication_objects_cannot_grow_storage_without_bound(self):
+        first=self.save()
+        orphan=self.store.root/('f'*32+'.ubx')
+        with orphan.open('wb') as stream:
+            stream.truncate(12*1024*1024)
+        with self.assertRaisesRegex(ValueError,'storage limit'):
+            self.save(2)
+        self.assertEqual(self.store.read(IDENTITY,NOW)[1]['id'],first['id'])
+
     @unittest.skipUnless(os.name=='posix','POSIX symlink controls')
     def test_symlink_directory_and_metadata_are_rejected(self):
         elsewhere=self.root/'elsewhere'

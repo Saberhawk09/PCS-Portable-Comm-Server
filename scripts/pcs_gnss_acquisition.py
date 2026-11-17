@@ -130,6 +130,10 @@ class NavigationStore:
         if not 1 <= retention <= 10:
             raise assist.AssistanceError('Invalid backup retention')
         root = directory(self.root)
+        objects=list(root.iterdir())
+        if (len(objects)>64 or any(p.is_symlink() or not p.is_file() for p in objects)
+                or sum(p.stat().st_size for p in objects)+len(raw)+4096>12*1024*1024):
+            raise assist.AssistanceError('Navigation storage limit reached; last valid backup retained')
         digest, ident = hashlib.sha256(raw).hexdigest(), uuid.uuid4().hex
         meta = {'version': 1, 'id': ident, 'identity': identity, 'created_at': utc['utc'],
                 'time_reference': utc['source'], 'sha256': digest, 'bytes': len(raw),
