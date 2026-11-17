@@ -256,6 +256,8 @@ def trials(request):
         sequence = [source]*repetitions
     if mode not in MASKS or any(s not in SOURCES for s in sequence):
         raise assist.AssistanceError('Unknown start or assistance source')
+    if mode!='cold' and 'database' in sequence:
+        raise assist.AssistanceError('Saved receiver database restoration requires an explicitly confirmed software cold test')
     return [{'start':mode, 'source':s, 'fallback':fallback, 'timeout_seconds':timeout,
              'trial':n+1, 'paid_consent':request.get('paid_consent') == 'yes'} for n,s in enumerate(sequence)]
 
@@ -380,7 +382,7 @@ def result_export(job, kind='json'):
     if type(database.get('complete')) is bool:
         value['database_evidence']['complete']=database['complete']
     recovery=job.get('navigation_recovery')
-    value['navigation_recovery']={key:recovery[key] for key in ('utc_seconds','pps_seconds','f10p_seconds')
+    value['navigation_recovery']={key:recovery[key] for key in ('utc_seconds','pps_seconds','stable_pps_seconds','f10p_seconds')
         if type(recovery.get(key)) in (int,float) and math.isfinite(recovery[key]) and 0<=recovery[key]<=300} if isinstance(recovery,dict) else {}
     if kind == 'json':
         return json.dumps(value, indent=2, allow_nan=False)
@@ -388,7 +390,7 @@ def result_export(job, kind='json'):
         out = io.StringIO(newline='')
         extra=('operation','failure_code','failure_phase','ownership_recovered','timing_recovered',
                'database_frame_count','database_accepted','database_rejected','database_offered','database_unacknowledged','failed_frame','receiver_code',
-               'recovery_utc_seconds','recovery_pps_seconds','recovery_f10p_seconds')
+               'recovery_utc_seconds','recovery_pps_seconds','recovery_stable_pps_seconds','recovery_f10p_seconds')
         columns = ('trial','start','requested_source','selected_source','state','download_seconds','injection_seconds','accepted','rejected','offered','unacknowledged') + METRICS + extra
         writer = csv.DictWriter(out, fieldnames=columns)
         writer.writeheader()

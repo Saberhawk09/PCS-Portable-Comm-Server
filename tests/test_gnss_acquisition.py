@@ -50,6 +50,10 @@ class PolicyTests(unittest.TestCase):
     def test_trial_modes_sources_bounds_and_alternating_order(self):
         for mode in acq.MASKS:
             for source in acq.SOURCES:
+                if source=='database' and mode!='cold':
+                    with self.assertRaises(ValueError):
+                        acq.trials({'confirm':acq.CONFIRM,'start':mode,'source':source})
+                    continue
                 rows=acq.trials({'confirm':acq.CONFIRM,'start':mode,'source':source})
                 self.assertEqual((rows[0]['start'],rows[0]['source']),(mode,source))
         for comparison in acq.COMPARISONS:
@@ -525,6 +529,7 @@ class WorkerTests(unittest.TestCase):
              mock.patch.object(maintenance,'read_status',return_value=paired),mock.patch.object(maintenance,'pps_sequence',return_value=20), \
              mock.patch.object(maintenance,'recover') as recover, mock.patch.dict(sys.modules,{'termios':mock.Mock()}), \
              mock.patch.object(maintenance,'stopped'),mock.patch.object(maintenance,'started') as restart, \
+             mock.patch.object(maintenance,'navigation_recovery',return_value={'stable_pps_seconds':3}), \
              mock.patch.object(maintenance,'restore_database',return_value={'state':'Accepted','accepted':1}), \
              mock.patch.object(maintenance,'inject_time',side_effect=ValueError('Fixture injection failure') if injection_failure else None):
             maintenance.worker()
@@ -566,9 +571,9 @@ class WorkerTests(unittest.TestCase):
         self.assertIsNotNone(job['results'][0]['injection_seconds'])
 
     def test_database_assisted_trial_restarts_navigation_before_measuring(self):
-        job,sent=self.run_worker(source='database')
+        job,sent=self.run_worker(mode='cold',source='database')
         self.assertEqual(job['state'],'Completed')
-        self.assertEqual(sent,[acq.reset_frame('hot')])
+        self.assertEqual(sent,[acq.reset_frame('cold')])
 
 
 acq_jobs=acq.Jobs

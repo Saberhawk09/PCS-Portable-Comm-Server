@@ -3,6 +3,7 @@ import contextlib
 import csv
 import io
 import json
+import struct
 from pathlib import Path
 import sys
 import tempfile
@@ -21,6 +22,45 @@ from test_gnss_corrections import pvt,fixture,panel
 
 
 class AcquisitionSafetyTests(unittest.TestCase):
+    def test_retained_database_restore_is_rejected_before_queue_or_serial_access(self):
+        import pcs_gnss_info as info
+        with mock.patch.object(info,'lock',return_value=contextlib.nullcontext()), \
+             mock.patch.object(acq,'Jobs') as jobs,mock.patch.object(info.subprocess,'run') as run:
+            with self.assertRaisesRegex(assist.AssistanceError,'unsupported'):
+                info.acquisition_update({'operation':'navigation-restore','confirm':acq.CONFIRM})
+            jobs.return_value.queue.assert_not_called()
+            run.assert_not_called()
+        for start in ('hot','warm'):
+            with self.assertRaisesRegex(assist.AssistanceError,'software cold'):
+                acq.trials({'confirm':acq.CONFIRM,'start':start,'source':'database'})
+
+    def test_pps_cadence_requires_three_normal_intervals_and_rejects_burst(self):
+        cadence=maintenance.PPSCadence()
+        self.assertFalse(cadence.observe((1000,1)))
+        self.assertFalse(cadence.observe((1000.25,63)))
+        self.assertFalse(cadence.observe((1001.25,64)))
+        self.assertFalse(cadence.observe((1002.25,65)))
+        self.assertTrue(cadence.observe((1003.25,66)))
+        self.assertFalse(cadence.observe((1003.5,127)))
+
+    def test_pps_cadence_resets_on_absence_and_counter_restart(self):
+        cadence=maintenance.PPSCadence()
+        for n in range(4):cadence.observe((1000+n,10+n))
+        self.assertTrue(cadence.observe((1003,13)))
+        self.assertFalse(cadence.observe(None))
+        for n in range(4):cadence.observe((1010+n,20+n))
+        self.assertFalse(cadence.observe((1014,1)))
+
+    def test_navigation_recovery_rejects_advancing_burst_despite_paired_status(self):
+        with mock.patch.object(maintenance,'pps_sequence',side_effect=[1,2,63]), \
+             mock.patch.object(maintenance,'pps_reading',side_effect=[(1000,2),(1000.25,63)]), \
+             mock.patch.object(maintenance,'read_status',return_value={'state':'fresh','utc_valid':True}), \
+             mock.patch.object(maintenance,'paired_timing',return_value=True), \
+             mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,.2,.3,2]), \
+             mock.patch.object(maintenance.time,'sleep'):
+            with self.assertRaisesRegex(maintenance.NavigationRecoveryError,'stable 1 Hz'):
+                maintenance.navigation_recovery(seconds=1)
+
     @contextlib.contextmanager
     def qualification_context(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -86,20 +126,24 @@ class AcquisitionSafetyTests(unittest.TestCase):
     def test_navigation_recovery_requires_valid_utc_and_paired_selection(self):
         states=[{'state':'stale','utc_valid':False},{'state':'fresh','utc_valid':True}]
         with mock.patch.object(maintenance,'pps_sequence',side_effect=[10,11,12]), \
+             mock.patch.object(maintenance,'PPSCadence') as cadence, \
              mock.patch.object(maintenance,'read_status',side_effect=states), \
              mock.patch.object(maintenance,'paired_timing',return_value=True), \
              mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,.2,.3,.4]), \
              mock.patch.object(maintenance.time,'sleep'):
+            cadence.return_value.observe.return_value=True
             value=maintenance.navigation_recovery(seconds=1)
         self.assertLess(value['pps_seconds'],value['utc_seconds'])
         self.assertEqual(value['f10p_seconds'],value['utc_seconds'])
 
     def test_navigation_recovery_requires_chrony_pairing_and_propagates_cancel(self):
         with mock.patch.object(maintenance,'pps_sequence',side_effect=[10,11]), \
+             mock.patch.object(maintenance,'PPSCadence') as cadence, \
              mock.patch.object(maintenance,'read_status',return_value={'state':'fresh','utc_valid':True}), \
              mock.patch.object(maintenance,'paired_timing',return_value=False), \
              mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,2]), \
              mock.patch.object(maintenance.time,'sleep'):
+            cadence.return_value.observe.return_value=True
             with self.assertRaisesRegex(maintenance.NavigationRecoveryError,'Chrony F10P') as error:
                 maintenance.navigation_recovery(seconds=1)
             self.assertEqual(error.exception.evidence['pps_seconds'],.1)
@@ -252,8 +296,15 @@ class AcquisitionSafetyTests(unittest.TestCase):
     def test_worker_keeps_failure_phase_partial_ack_evidence_and_distinct_recovery(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);root.chmod(0o700)
-            jobs=acq.Jobs(root);jobs.queue({'confirm':acq.CONFIRM},kind='restore')
-            channel=mock.Mock();channel.exchange.return_value=bytes(16)
+            jobs=acq.Jobs(root);jobs.queue({'confirm':acq.CONFIRM,'start':'cold','source':'database'})
+            channel=mock.Mock(fd=123)
+            def exchange(request,*args):
+                if request[2:4]==b'\1\3':
+                    payload=struct.pack('<IBBBBII',0,0,0,0,0,0,1)
+                    channel.event(1,3,payload)
+                    return payload
+                return bytes(16)
+            channel.exchange.side_effect=exchange
             owner=mock.Mock();owner.acquire.return_value=contextlib.nullcontext((channel,IDENTITY))
             evidence={'frame_count':2,'accepted':1,'rejected':1,'offered':2,'unacknowledged':0,'failed_frame':2,'receiver_code':255,'complete':False}
             error=maintenance.DatabaseTransferError('database-rejected',evidence)
@@ -264,13 +315,14 @@ class AcquisitionSafetyTests(unittest.TestCase):
                  mock.patch.object(assist,'ROOT',root),mock.patch.object(assist,'read_json',side_effect=read_facts), \
                  mock.patch.object(maintenance.signal,'signal'),mock.patch.object(maintenance,'Owner',return_value=owner), \
                  mock.patch.object(maintenance,'time_hint',return_value=acq.independent_time(NOW,True,'network',uncertainty=1)), \
-                 mock.patch.object(acq.NavigationStore,'read',return_value=(acq.dbd_frames(dbd(2)),{})), \
+                 mock.patch.object(maintenance,'prepare',return_value={'source':'database','frames':acq.dbd_frames(dbd(2)),'download_seconds':0}), \
+                 mock.patch.object(maintenance,'inject_time'),mock.patch.dict(sys.modules,{'termios':mock.Mock()}), \
                  mock.patch.object(maintenance,'stopped'),mock.patch.object(maintenance,'restore_database',side_effect=error), \
                  mock.patch.object(maintenance,'recover'),mock.patch.object(maintenance,'paired_timing',return_value=False):
                 maintenance.worker()
             job=jobs.read()
             self.assertEqual(job['state'],'Failed')
-            self.assertEqual(job['failure_phase'],'Receiver navigation maintenance')
+            self.assertEqual(job['failure_phase'],'Trial 1: receiver acquisition')
             self.assertEqual(job['database_evidence'],evidence)
             self.assertTrue(job['ownership_recovered'])
             self.assertFalse(job['timing_recovered'])

@@ -478,6 +478,8 @@ def acquisition_update(request):
                 raise assist.AssistanceError('Unknown navigation maintenance field')
             if request.get('confirm')!=acq.CONFIRM:
                 raise assist.AssistanceError('Explicit timing-interruption confirmation required')
+            if kind=='restore':
+                raise assist.AssistanceError('Live database overlay restoration is unsupported; use a confirmed software cold acquisition test with saved database assistance')
             if kind=='benchmark':
                 acq.trials(request)
             active=subprocess.run(['systemctl','show','pcs-gnss-acquisition.service','-p','ActiveState','--value'],

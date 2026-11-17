@@ -10,6 +10,7 @@ import importlib.machinery
 import importlib.util
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import select
@@ -183,6 +184,34 @@ def pps_sequence():
         return None
 
 
+def pps_reading():
+    try:
+        target=(RUNTIME/'pps').resolve(strict=True).name
+        stamp,sequence=(Path('/sys/class/pps')/target/'assert').read_text().strip().split('#')
+        stamp,sequence=float(stamp),int(sequence)
+        return (stamp,sequence) if math.isfinite(stamp) and stamp>0 and sequence>=0 else None
+    except (OSError,ValueError):
+        return None
+
+
+class PPSCadence:
+    """Maintenance recovery only; reject bursts as proof of healthy 1 Hz PPS."""
+    def __init__(self):
+        self.previous=None
+        self.consecutive=0
+
+    def observe(self,event):
+        if event is None:
+            self.previous,self.consecutive=None,0
+        elif self.previous is None:
+            self.previous=event
+        elif event[1]!=self.previous[1]:
+            elapsed,events=event[0]-self.previous[0],event[1]-self.previous[1]
+            self.consecutive=min(3,self.consecutive+1) if events==1 and .8<=elapsed<=1.2 else 0
+            self.previous=event
+        return self.consecutive>=3
+
+
 def paired_timing():
     state=read_status()
     return (state.get('state')=='fresh' and state.get('pps_validation')=='paired' and
@@ -193,21 +222,25 @@ def paired_timing():
 def navigation_recovery(check=lambda:None,seconds=120,phase=lambda _:None):
     """Observe new kernel pulses after handover, not a cached pre-maintenance state."""
     baseline=pps_sequence()
+    cadence=PPSCadence()
     began=time.monotonic();deadline=began+seconds
-    evidence={'utc_seconds':None,'pps_seconds':None,'f10p_seconds':None}
+    evidence={'utc_seconds':None,'pps_seconds':None,'stable_pps_seconds':None,'f10p_seconds':None}
     stage=None
     while time.monotonic()<deadline:
         check()
         state=read_status();sequence=pps_sequence();elapsed=time.monotonic()-began
         utc=state.get('state')=='fresh' and state.get('utc_valid') is True
         advancing=baseline is not None and sequence is not None and sequence>baseline
+        stable=cadence.observe(pps_reading())
         if utc and evidence['utc_seconds'] is None:evidence['utc_seconds']=elapsed
         if advancing and evidence['pps_seconds'] is None:evidence['pps_seconds']=elapsed
+        if stable and evidence['stable_pps_seconds'] is None:evidence['stable_pps_seconds']=elapsed
         current=('Waiting for fresh validated UTC' if not utc else
                  'Waiting for advancing kernel PPS' if not advancing else
+                 'Waiting for stable 1 Hz kernel PPS' if not stable else
                  'Waiting for paired Chrony F10P selection')
         if current!=stage:phase(current);stage=current
-        if utc and advancing and paired_timing():
+        if utc and advancing and stable and paired_timing():
             evidence['f10p_seconds']=elapsed
             return evidence
         time.sleep(.1)
@@ -570,6 +603,8 @@ def worker():
         job.update(state='Running',phase='Preparing')
         jobs.save(job)
         try:
+            if job['kind']=='restore':
+                raise assist.AssistanceError('Live database overlay restoration is unsupported; use an explicitly confirmed software cold test')
             facts=assist.read_json(assist.ROOT/'receiver-facts.json',{},private=True)
             bound=facts.get('identity')
             if not bound:
@@ -613,6 +648,8 @@ def worker():
                     if key not in prepared:
                         prepared[key]=prepare(trial['source'],bound,hint,trial['fallback'],trial['paid_consent'])
                     aid=prepared[key]
+                    if aid['source']=='database' and trial['start']!='cold':
+                        raise assist.AssistanceError('Saved database assistance requires an explicitly confirmed software cold test')
                     # Network preparation can take seconds or cross UTC midnight.
                     # Recheck the date before selecting frames and resetting GNSS.
                     hint=time_hint()
@@ -673,6 +710,13 @@ def worker():
                             try:
                                 if aid['frames']:
                                     if aid['source']=='database':
+                                        # CFG-RST may not ACK. Observe the new
+                                        # session before stopping it for restore.
+                                        boundary=time.monotonic()+5
+                                        while not metrics.after_reset_seen and time.monotonic()<boundary:
+                                            channel.exchange(ubx(1,3),1,3)
+                                        if not metrics.after_reset_seen:
+                                            raise assist.AssistanceError('Software cold reset session was not observed; database not restored')
                                         stopped(channel)
                                     inject_time(counted_exchange,hint,bound['binding'])
                                     row['time_aiding']='Independent coarse UTC accepted; not a trusted timing sample'
@@ -717,6 +761,8 @@ def worker():
                             time.sleep(.5)
                         if metrics.values['f10p_seconds'] is None:
                             raise assist.AssistanceError('F10P recovery not observed within 120 seconds')
+                        if aid['source']=='database':
+                            job['navigation_recovery']=navigation_recovery(check,phase=phase)
                         row.update(state='Completed',recovery='Fresh UTC, advancing PPS and F10P selection observed')
                     except BaseException as error:
                         if metrics:
