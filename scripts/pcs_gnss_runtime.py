@@ -129,6 +129,26 @@ def select_time_sources(selection, utc_valid, pps_active, pps_enabled=True):
         selection.set('F10P', True)
 
 
+def owned_generation(alias=SERIAL_ALIAS, proc=Path('/proc'), command=run):
+    """A gate restart need not restart an already admitted, read-only GPSD.
+
+    Replug/absence transitions still use the existing admission/restart path.
+    No device descriptor is opened by this read-only ownership check.
+    """
+    try:
+        info=os.stat(alias)
+        rc,pid=command(['systemctl','show','gpsd.service','-p','MainPID','--value'])
+        pid=pid.strip()
+        if rc or not pid.isdigit() or int(pid)<=1:
+            return None
+        rc,occupied=command(['fuser',alias])
+        if rc or occupied.split()!=[pid] or b'-b\0' not in (proc/pid/'cmdline').read_bytes():
+            return None
+        return info.st_rdev,info.st_ino
+    except (OSError,ValueError,subprocess.SubprocessError):
+        return None
+
+
 def serve():
     config = load_config()
     if config['mode'] != NEO:
@@ -147,7 +167,7 @@ def serve():
         stopping = True
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    last_probe, last_sample, last_generation = float('-inf'), float('-inf'), None
+    last_probe, last_sample, last_generation = float('-inf'), float('-inf'), owned_generation()
     last_report = float('-inf')
     maintenance_id = None
     last_pps = PPS_ALIAS.exists()

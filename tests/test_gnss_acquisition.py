@@ -218,6 +218,17 @@ class MeasurementTests(unittest.TestCase):
 
 
 class TransferTests(unittest.TestCase):
+    def test_gate_restart_recognizes_existing_readonly_owner_without_serial_open(self):
+        import pcs_gnss_runtime as runtime
+        with tempfile.TemporaryDirectory() as tmp:
+            proc=Path(tmp);(proc/'123').mkdir();(proc/'123'/'cmdline').write_bytes(b'GPSD\0-b\0')
+            device=proc/'device';device.touch()
+            with mock.patch.object(runtime.os,'stat',return_value=mock.Mock(st_rdev=99,st_ino=100)):
+                self.assertEqual(runtime.owned_generation(str(device),proc,mock.Mock(side_effect=[(0,'123'),(0,'123')])),(99,100))
+                self.assertIsNone(runtime.owned_generation(str(device),proc,mock.Mock(side_effect=[(0,'123'),(0,'999')])))
+                (proc/'123'/'cmdline').write_bytes(b'GPSD\0')
+                self.assertIsNone(runtime.owned_generation(str(device),proc,mock.Mock(side_effect=[(0,'123'),(0,'123')])))
+
     def test_timing_gate_acknowledges_only_after_withdrawal_and_never_opens_uart(self):
         import pcs_gnss_runtime as runtime
         with tempfile.TemporaryDirectory() as tmp:
