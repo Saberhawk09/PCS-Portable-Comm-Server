@@ -14,6 +14,10 @@ coordinates, altitude and satellite azimuth/elevation geometry. Geometry remains
 available on the authenticated page; its combination with known orbits can reveal
 location and does not belong in a shareable redacted report.
 
+The [dashboard refinement guide](gnss-page-refinement.md) describes the five
+responsive sections, differential/SBAS source reporting and the optional
+single-setting supervised NAV-SBAS output qualification.
+
 ## Ownership and timing
 
 During normal operation GPSD remains the only physical UART owner. The new

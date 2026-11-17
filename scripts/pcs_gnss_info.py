@@ -17,7 +17,7 @@ import time
 
 from pcs_gnss import (NEO, UBXStream, atomic_json, load_config as gnss_config,
                       match_receiver, read_status, ubx)
-from pcs_gnss_diagnostics import Diagnostics, EventHistory, SpectrumCapture, chrony_source_offsets
+from pcs_gnss_diagnostics import Diagnostics, EventHistory, SpectrumCapture, chrony_source_offsets, correction_summary
 import pcs_assistnow as assist
 
 RUNTIME = Path('/run/pcs-gnss-info')
@@ -53,6 +53,7 @@ def read_snapshot(path, max_age=10):
 
 def status():
     value = read_snapshot(RUNTIME / 'status.json')
+    value['corrections'] = correction_summary(value.get('messages', {}))
     value['timing'] = read_status()
     for reference in value.get('chrony_sources', {}).values():
         age = time.monotonic() - reference.get('collected_monotonic', float('-inf'))

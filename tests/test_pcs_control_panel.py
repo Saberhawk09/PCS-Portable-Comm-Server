@@ -489,6 +489,9 @@ class RouteSecurityTests(unittest.TestCase):
             status, _, page = self.request('GET', '/admin/gnss', headers=headers)
             self.assertEqual(status, 200)
             self.assertIn('GNSS Information', page)
+            self.assertNotIn('Start Spectrum Capture', page)
+            status, _, page = self.request('GET', '/admin/gnss?section=rf', headers=headers)
+            self.assertEqual(status, 200)
             self.assertIn('Start Spectrum Capture', page)
             self.assertIn('disabled>Start Spectrum Capture', page)
             csrf = re.search(r'name="csrf" value="([^"]+)"', page).group(1)
@@ -498,8 +501,9 @@ class RouteSecurityTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(json.loads(content), fixture)
             self.assertIn('no-store', response_headers.get('Cache-Control'))
-            status, _, _ = self.request('POST', '/admin/gnss', urlencode({'csrf': csrf, 'operation': 'stop-spectrum'}), headers)
+            status, response_headers, _ = self.request('POST', '/admin/gnss', urlencode({'csrf': csrf, 'operation': 'stop-spectrum'}), headers)
             self.assertEqual(status, 303)
+            self.assertEqual(response_headers['Location'], '/admin/gnss?section=rf&saved=1')
             helper.assert_called_with({'operation': 'stop-spectrum'})
 
     def test_gnss_unavailable_and_untrusted_query_are_escaped(self):

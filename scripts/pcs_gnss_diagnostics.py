@@ -28,10 +28,74 @@ SPOOF = ('Unknown', 'No Indication', 'Warning', 'Critical')
 DETECTIONS = ('Simulated signal', 'Abnormal signal', 'INS/GNSS mismatch',
               'Abrupt signal change', 'Broadband interference', 'Narrowband interference')
 EVENTS = ('Indication started', 'Indication stopped', 'Indication triggered', 'Indication timed out')
+CORRECTION_SOURCES = {0: 'None', 1: 'SBAS', 2: 'BeiDou', 3: 'RTCM 2', 4: 'RTCM 3 OSR',
+                      5: 'RTCM 3 SSR', 6: 'QZSS SLAS', 7: 'SPARTN', 8: 'CLAS'}
+SBAS_SYSTEMS = {-1: 'Unknown', 0: 'WAAS', 1: 'EGNOS', 2: 'MSAS', 3: 'GAGAN', 16: 'GPS'}
 MESSAGES = {(10, 4): 'receiver', (10, 0x38): 'rf', (10, 0x31): 'spectrum',
             (0x27, 9): 'security', (0x27, 0x10): 'security_log', (1, 0x43): 'signals',
             (1, 0x35): 'satellites', (1, 7): 'navigation', (1, 4): 'dop',
-            (1, 3): 'acquisition', (1, 0x60): 'autonomous', (1, 0x34): 'orbits'}
+            (1, 3): 'acquisition', (1, 0x32): 'sbas', (1, 0x60): 'autonomous', (1, 0x34): 'orbits'}
+
+
+def sbas_services(flags):
+    return [name for bit, name in enumerate(('Ranging', 'Corrections', 'Integrity', 'Test mode', 'Bad signal'))
+            if flags & (1 << bit)]
+
+
+def correction_summary(messages):
+    """Keep application, reception and source separate; only join current epochs.
+
+    NAV-SBAS reports no correction age. Its observation age must never be
+    presented as the age of a pseudorange correction. Orbits are not DGPS.
+    """
+    nav_message = messages.get('navigation', {})
+    nav = nav_message.get('data') or {}
+    state = nav_message.get('state', 'Unknown')
+    current = state == 'Fresh' and nav.get('fix_valid') is True
+    applied = nav.get('differential_applied') if current else None
+    def aligned(name):
+        message = messages.get(name, {})
+        value = message.get('data') or {}
+        a, b = value.get('itow_ms'), nav.get('itow_ms')
+        if (message.get('state') != 'Fresh' or not current or type(a) is not int or type(b) is not int
+                or not 0 <= a < 604800000 or not 0 <= b < 604800000):
+            return {}
+        gap = abs(a - b) % 604800000
+        return value if min(gap, 604800000 - gap) <= 2000 else {}
+    status, sbas = aligned('acquisition'), aligned('sbas')
+    sources = set()
+    for row in aligned('signals').get('rows', []):
+        if row.get('used') and any(row.get(k) for k in ('pseudorange_correction_used', 'carrier_correction_used', 'doppler_correction_used')):
+            code = row.get('correction_source')
+            if code:
+                sources.add(CORRECTION_SOURCES.get(code, 'Unknown'))
+    for row in aligned('satellites').get('rows', []):
+        if row.get('used'):
+            for key, source in (('sbas_correction_used', 'SBAS'), ('rtcm_correction_used', 'RTCM'),
+                                ('slas_correction_used', 'QZSS SLAS'), ('spartn_correction_used', 'SPARTN'), ('clas_correction_used', 'CLAS')):
+                if row.get(key):
+                    sources.add(source)
+    # SBAS reception by itself cannot identify the source of a DGPS solution.
+    system = sbas.get('system', 'Unknown')
+    source = 'Unknown'
+    if applied is False:
+        source = 'None applied'
+    elif applied and sources:
+        source = ' / '.join(sorted((system if system != 'Unknown' else 'SBAS (Unknown system)')
+                                  if s == 'SBAS' else s for s in sources))
+    services = sbas.get('services', [])
+    health = ('Stale' if state == 'Stale' else 'Unknown')
+    if current:
+        health = 'Not applied' if not applied else 'Applied; source unverified' if source == 'Unknown' else 'Applied'
+        if 'Bad signal' in services or 'Test mode' in services:
+            health = 'Warning: ' + ', '.join(s for s in services if s in ('Bad signal', 'Test mode'))
+    return {'state': state, 'applied': applied, 'available': status.get('corrections_available'),
+            'source': source, 'health': health, 'reported_system': system,
+            'selected_prn': sbas.get('geo_prn'), 'services': services,
+            'integrity': sbas.get('integrity', 'Unknown'), 'mode': sbas.get('mode', 'Unknown'),
+            'sbas_state': messages.get('sbas', {}).get('state', 'Unknown'),
+            'age_seconds': messages.get('sbas', {}).get('age_seconds'),
+            'correction_age': 'Not reported by NAV-SBAS', 'rows': sbas.get('rows', [])}
 
 
 def chrony_source_offsets(text):
@@ -138,7 +202,11 @@ def decode(cls, msg, p):
                          'cno_dbhz': cno, 'quality_code': quality, 'quality': QUALITY[quality],
                          'health': HEALTH[flags & 3], 'used': bool(flags & 0x38),
                          'pseudorange_used': bool(flags & 8), 'carrier_used': bool(flags & 16),
-                         'doppler_used': bool(flags & 32), 'correction_source': corr})
+                         'doppler_used': bool(flags & 32), 'correction_source': corr,
+                         'correction_source_name': CORRECTION_SOURCES.get(corr, 'Unknown'),
+                         'pseudorange_residual_m': residual * .1, 'iono_model': iono,
+                         'pseudorange_correction_used': bool(flags & 64),
+                         'carrier_correction_used': bool(flags & 128), 'doppler_correction_used': bool(flags & 256)})
         return {'itow_ms': struct.unpack_from('<I', p)[0], 'rows': rows}
     if key == (1, 0x35):
         rows = []
@@ -150,15 +218,41 @@ def decode(cls, msg, p):
                          'used': bool(flags & 8), 'quality_code': flags & 7,
                          'health': HEALTH[(flags >> 4) & 3], 'orbit_source': (flags >> 8) & 7,
                          'autonomous_available': bool(flags & (1 << 14)),
-                         'predictive_available': bool(flags & (1 << 13))})
+                         'predictive_available': bool(flags & (1 << 13)),
+                         'corrections_available': bool(flags & (1 << 6)), 'pseudorange_residual_m': residual * .1,
+                         **{name: bool(flags & (1 << bit)) for bit, name in
+                            ((16, 'sbas_correction_used'), (17, 'rtcm_correction_used'), (18, 'slas_correction_used'),
+                             (19, 'spartn_correction_used'), (20, 'pseudorange_correction_used'),
+                             (21, 'carrier_correction_used'), (22, 'doppler_correction_used'), (23, 'clas_correction_used'))}})
         return {'itow_ms': struct.unpack_from('<I', p)[0], 'rows': rows}
+    if key == (1, 0x32):
+        if len(p) < 12 or len(p) != 12 + p[8] * 12:
+            raise ValueError('Invalid NAV-SBAS length/count')
+        system = struct.unpack_from('<b', p, 6)[0]
+        rows = []
+        for i in range(12, len(p), 12):
+            if not p[i]:
+                raise ValueError('Invalid SBAS satellite identity')
+            sv_system = struct.unpack_from('<b', p, i + 3)[0]
+            rows.append({'svid': p[i], 'udre_code': p[i + 2], 'system_code': sv_system,
+                         'system': SBAS_SYSTEMS.get(sv_system, 'Unknown'), 'services': sbas_services(p[i + 4]),
+                         'pseudorange_correction_m': struct.unpack_from('<h', p, i + 6)[0] * .01,
+                         'ionosphere_correction_m': struct.unpack_from('<h', p, i + 10)[0] * .01})
+        return {'itow_ms': struct.unpack_from('<I', p)[0], 'geo_prn': p[4] or None,
+                'mode_code': p[5], 'mode': {0: 'Disabled', 1: 'Enabled (integrity)', 3: 'Enabled (test mode)'}.get(p[5], 'Unknown'),
+                'system_code': system, 'system': SBAS_SYSTEMS.get(system, 'Unknown'),
+                'services': sbas_services(p[7]), 'integrity_code': p[9] & 3,
+                'integrity': {0: 'Unknown', 1: 'Unavailable or not enabled',
+                              2: 'Only GPS satellites with integrity used'}.get(p[9] & 3, 'Unknown'), 'rows': rows}
     if key == (1, 7):
         if len(p) != 92:
             raise ValueError('Invalid NAV-PVT length')
         fix = p[20]
         valid = bool(p[21] & 1) and fix in (2, 3, 4, 5)
         height, msl, hacc, vacc = struct.unpack_from('<iiII', p, 32)
-        return {'fix_type': {0: 'No fix', 1: 'Dead reckoning', 2: '2D', 3: '3D', 4: 'GNSS + dead reckoning', 5: 'Time only'}.get(fix, 'Unknown'),
+        return {'itow_ms': struct.unpack_from('<I', p)[0],
+                'fix_type': {0: 'No fix', 1: 'Dead reckoning', 2: '2D', 3: '3D', 4: 'GNSS + dead reckoning', 5: 'Time only'}.get(fix, 'Unknown'),
+                'differential_applied': bool(p[21] & 2) if valid else False,
                 'fix_valid': valid, 'utc_valid': p[11] & 7 == 7,
                 'receiver_time_accuracy_ns': struct.unpack_from('<I', p, 12)[0],
                 'horizontal_accuracy_m': hacc / 1000 if valid else None,
@@ -175,7 +269,9 @@ def decode(cls, msg, p):
         if len(p) != 16:
             raise ValueError('Invalid NAV-STATUS length')
         ttff, uptime = struct.unpack_from('<II', p, 8)
-        return {'ttff_seconds': ttff / 1000 if ttff else None, 'receiver_uptime_ms': uptime,
+        return {'itow_ms': struct.unpack_from('<I', p)[0], 'fix_valid': bool(p[5] & 1),
+                'differential_applied': bool(p[5] & 2), 'corrections_available': bool(p[6] & 1),
+                'ttff_seconds': ttff / 1000 if ttff else None, 'receiver_uptime_ms': uptime,
                 'acquisition': 'Fix acquired' if p[5] & 1 else 'Acquiring'}
     if key == (1, 0x60):
         if len(p) != 16:
