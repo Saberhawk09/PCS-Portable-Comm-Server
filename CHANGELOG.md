@@ -4,6 +4,12 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+- Require a newly observed kernel PPS event after navigation-maintenance handover,
+  fresh validated UTC and paired F10P before success; retain bounded partial
+  recovery timings and the specific failed recovery stage without reset retries.
+- Admit startup-restore and shutdown qualification independently through the
+  existing private evidence workflow; validate shutdown power hold before writes.
+
 - Check database hardware qualification before any boot time-aiding write;
   unavailable host assistance permits ordinary acquisition without a reset.
 - Preserve partial database ACK counts, failure phase and receiver status in

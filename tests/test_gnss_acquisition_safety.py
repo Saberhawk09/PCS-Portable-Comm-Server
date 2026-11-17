@@ -22,6 +22,101 @@ from test_gnss_corrections import pvt,fixture,panel
 
 class AcquisitionSafetyTests(unittest.TestCase):
     @contextlib.contextmanager
+    def qualification_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);root.chmod(0o700)
+            (root/'history').mkdir()
+            atomic_json(root/'receiver-facts.json',{'identity':IDENTITY})
+            for kind,ident in (('snapshot','a'*32),('restore','b'*32)):
+                atomic_json(root/'history'/(ident+'.json'),{'kind':kind,'state':'Completed','timing_recovered':True,
+                    'database_evidence':{'identity':IDENTITY,'complete':True,'frame_count':2,'accepted':2,'sha256':'c'*64}})
+            read=assist.read_json
+            def fixture_read(path,*args,**kwargs):
+                # Root-owned enrollment is supplied by the harness; all other
+                # private files still exercise their actual owner/mode checks.
+                return {'identity':IDENTITY} if Path(path)==root/'receiver-facts.json' else read(path,*args,**kwargs)
+            with mock.patch.object(acq,'ROOT',root),mock.patch.object(assist,'ROOT',root), \
+                 mock.patch.object(assist,'read_json',side_effect=fixture_read), \
+                 mock.patch.object(maintenance,'boot_id',return_value='current-boot'):
+                yield root
+
+    def test_shutdown_trial_can_be_armed_without_qualifying_restore(self):
+        with self.qualification_context() as root:
+            atomic_json(root/'request.json',{'snapshot':'a'*32,'power_hold_seconds':90})
+            result=maintenance.qualify(root/'request.json','I authorize GNSS timing maintenance',True)
+            self.assertFalse(result['database_restore_qualified'])
+            self.assertFalse(result['shutdown_qualified'])
+            self.assertTrue(result['shutdown_trial_armed'])
+
+    def test_shutdown_qualification_does_not_depend_on_restore(self):
+        with self.qualification_context() as root:
+            atomic_json(root/'request.json',{'snapshot':'a'*32,'capability':'shutdown'})
+            atomic_json(root/'shutdown-result.json',{'state':'Completed','qualification_trial':True,
+                        'identity':IDENTITY,'sha256':'c'*64,'boot_id':'previous-boot'})
+            result=maintenance.qualify(root/'request.json','I authorize GNSS timing maintenance')
+            self.assertTrue(result['shutdown_qualified'])
+            self.assertFalse(result['database_restore_qualified'])
+
+    def test_bad_shutdown_power_budget_changes_no_qualification_flags(self):
+        with self.qualification_context() as root:
+            atomic_json(root/'request.json',{'snapshot':'a'*32,'restore':'b'*32,'power_hold_seconds':60})
+            with self.assertRaises(assist.AssistanceError):
+                maintenance.qualify(root/'request.json','I authorize GNSS timing maintenance',True)
+            self.assertFalse((root/'qualification.json').exists())
+            self.assertFalse((root/'shutdown-qualification.json').exists())
+
+    def test_restore_qualification_preserves_independent_shutdown_result(self):
+        with self.qualification_context() as root:
+            atomic_json(root/'request.json',{'snapshot':'a'*32,'restore':'b'*32})
+            atomic_json(root/'qualification.json',{'identity':IDENTITY,'shutdown':True,'database_restore':False})
+            result=maintenance.qualify(root/'request.json','I authorize GNSS timing maintenance')
+            self.assertTrue(result['shutdown_qualified'])
+            self.assertTrue(result['database_restore_qualified'])
+
+    def test_navigation_recovery_requires_new_kernel_pulse(self):
+        paired={'state':'fresh','utc_valid':True}
+        with mock.patch.object(maintenance,'pps_sequence',return_value=10), \
+             mock.patch.object(maintenance,'read_status',return_value=paired), \
+             mock.patch.object(maintenance,'paired_timing',return_value=True), \
+             mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,2]), \
+             mock.patch.object(maintenance.time,'sleep'):
+            with self.assertRaisesRegex(assist.AssistanceError,'advancing kernel PPS'):
+                maintenance.navigation_recovery(seconds=1)
+
+    def test_navigation_recovery_requires_valid_utc_and_paired_selection(self):
+        states=[{'state':'stale','utc_valid':False},{'state':'fresh','utc_valid':True}]
+        with mock.patch.object(maintenance,'pps_sequence',side_effect=[10,11,12]), \
+             mock.patch.object(maintenance,'read_status',side_effect=states), \
+             mock.patch.object(maintenance,'paired_timing',return_value=True), \
+             mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,.2,.3,.4]), \
+             mock.patch.object(maintenance.time,'sleep'):
+            value=maintenance.navigation_recovery(seconds=1)
+        self.assertLess(value['pps_seconds'],value['utc_seconds'])
+        self.assertEqual(value['f10p_seconds'],value['utc_seconds'])
+
+    def test_navigation_recovery_requires_chrony_pairing_and_propagates_cancel(self):
+        with mock.patch.object(maintenance,'pps_sequence',side_effect=[10,11]), \
+             mock.patch.object(maintenance,'read_status',return_value={'state':'fresh','utc_valid':True}), \
+             mock.patch.object(maintenance,'paired_timing',return_value=False), \
+             mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,2]), \
+             mock.patch.object(maintenance.time,'sleep'):
+            with self.assertRaisesRegex(maintenance.NavigationRecoveryError,'Chrony F10P') as error:
+                maintenance.navigation_recovery(seconds=1)
+            self.assertEqual(error.exception.evidence['pps_seconds'],.1)
+            self.assertIsNone(error.exception.evidence['f10p_seconds'])
+        with self.assertRaises(maintenance.Cancelled):
+            maintenance.navigation_recovery(check=mock.Mock(side_effect=maintenance.Cancelled()))
+
+    def test_recovery_export_is_bounded_and_has_separate_csv_columns(self):
+        job={'kind':'snapshot','state':'Failed','navigation_recovery':{'utc_seconds':1.2,'pps_seconds':float('nan'),
+             'f10p_seconds':9999,'private':'sentinel'}}
+        self.assertEqual(json.loads(acq.result_export(job))['navigation_recovery'],{'utc_seconds':1.2})
+        row=list(csv.DictReader(io.StringIO(acq.result_export(job,'csv'))))[0]
+        self.assertEqual(row['recovery_utc_seconds'],'1.2')
+        self.assertEqual(row['recovery_pps_seconds'],'')
+        self.assertNotIn('sentinel',acq.result_export(job,'text'))
+
+    @contextlib.contextmanager
     def boot_context(self):
         with tempfile.TemporaryDirectory() as tmp,contextlib.ExitStack() as stack:
             root=Path(tmp);root.chmod(0o700)

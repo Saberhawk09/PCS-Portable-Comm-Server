@@ -379,12 +379,16 @@ def result_export(job, kind='json'):
         value['database_evidence']['receiver_code']=database['receiver_code']
     if type(database.get('complete')) is bool:
         value['database_evidence']['complete']=database['complete']
+    recovery=job.get('navigation_recovery')
+    value['navigation_recovery']={key:recovery[key] for key in ('utc_seconds','pps_seconds','f10p_seconds')
+        if type(recovery.get(key)) in (int,float) and math.isfinite(recovery[key]) and 0<=recovery[key]<=300} if isinstance(recovery,dict) else {}
     if kind == 'json':
         return json.dumps(value, indent=2, allow_nan=False)
     if kind == 'csv':
         out = io.StringIO(newline='')
         extra=('operation','failure_code','failure_phase','ownership_recovered','timing_recovered',
-               'database_frame_count','database_accepted','database_rejected','database_offered','database_unacknowledged','failed_frame','receiver_code')
+               'database_frame_count','database_accepted','database_rejected','database_offered','database_unacknowledged','failed_frame','receiver_code',
+               'recovery_utc_seconds','recovery_pps_seconds','recovery_f10p_seconds')
         columns = ('trial','start','requested_source','selected_source','state','download_seconds','injection_seconds','accepted','rejected','offered','unacknowledged') + METRICS + extra
         writer = csv.DictWriter(out, fieldnames=columns)
         writer.writeheader()
@@ -393,6 +397,7 @@ def result_export(job, kind='json'):
             record.update(operation=value['kind'],**{key:value[key] for key in extra if key in value})
             record.update({key:value['database_evidence'].get(key.removeprefix('database_')) for key in extra
                            if key.startswith('database_') or key in ('receiver_code','failed_frame')})
+            record.update({'recovery_'+key:entry for key,entry in value['navigation_recovery'].items()})
             writer.writerow(record)
         return out.getvalue()
     if kind != 'text':
@@ -401,6 +406,7 @@ def result_export(job, kind='json'):
             f"Operation: {value['kind']}; State: {value['state']}\nFailure: {value['failure']}; Phase: {value['failure_phase']}\n" +
             f"UART ownership recovered: {value['ownership_recovered']}; Paired timing observed at completion: {value['timing_recovered']}\n" +
             'Database transfer evidence: '+json.dumps(value['database_evidence'],allow_nan=False)+'\n' +
+            'Recovery seconds after handover: '+json.dumps(value['navigation_recovery'],allow_nan=False)+'\n' +
             '\n'.join(f"Trial {r['trial']}: {r['start']} / {r['requested_source']} -> {r['selected_source']}: {r['state']}; TTFF {(r.get('metrics') or {}).get('receiver_ttff_seconds')} s; PPS/NTP recovery {(r.get('metrics') or {}).get('f10p_seconds')} s; {r['residual_data']}" for r in safe_rows) +
             '\nStatistics: ' + json.dumps(value['summary'], allow_nan=False))
 

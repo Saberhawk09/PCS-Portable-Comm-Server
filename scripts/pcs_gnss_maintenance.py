@@ -48,6 +48,12 @@ class DatabaseTransferError(assist.AssistanceError):
         self.code,self.evidence=code,dict(evidence)
 
 
+class NavigationRecoveryError(assist.AssistanceError):
+    def __init__(self,stage,evidence):
+        super().__init__(stage)
+        self.evidence=dict(evidence)
+
+
 def command(*args):
     p = subprocess.run(args, capture_output=True, text=True, timeout=4, check=False,
                        env=dict(os.environ, LC_ALL='C'))
@@ -182,6 +188,30 @@ def paired_timing():
     return (state.get('state')=='fresh' and state.get('pps_validation')=='paired' and
             state.get('selected_ref')=='F10P' and state.get('pps_selection')=='*' and
             state.get('utc_valid') is True and state.get('pps_active') is True and state.get('synchronized') is True)
+
+
+def navigation_recovery(check=lambda:None,seconds=120,phase=lambda _:None):
+    """Observe new kernel pulses after handover, not a cached pre-maintenance state."""
+    baseline=pps_sequence()
+    began=time.monotonic();deadline=began+seconds
+    evidence={'utc_seconds':None,'pps_seconds':None,'f10p_seconds':None}
+    stage=None
+    while time.monotonic()<deadline:
+        check()
+        state=read_status();sequence=pps_sequence();elapsed=time.monotonic()-began
+        utc=state.get('state')=='fresh' and state.get('utc_valid') is True
+        advancing=baseline is not None and sequence is not None and sequence>baseline
+        if utc and evidence['utc_seconds'] is None:evidence['utc_seconds']=elapsed
+        if advancing and evidence['pps_seconds'] is None:evidence['pps_seconds']=elapsed
+        current=('Waiting for fresh validated UTC' if not utc else
+                 'Waiting for advancing kernel PPS' if not advancing else
+                 'Waiting for paired Chrony F10P selection')
+        if current!=stage:phase(current);stage=current
+        if utc and advancing and paired_timing():
+            evidence['f10p_seconds']=elapsed
+            return evidence
+        time.sleep(.1)
+    raise NavigationRecoveryError(stage or 'Navigation recovery unavailable',evidence)
 
 
 class Channel:
@@ -569,7 +599,7 @@ def worker():
                                                   'accepted':result['accepted'],'offered':len(frames),'rejected':0,
                                                   'unacknowledged':0,'complete':True}
                 phase('Waiting for fresh UTC/PPS after navigation maintenance')
-                wait(paired_timing,120,check)
+                job['navigation_recovery']=navigation_recovery(check,phase=phase)
                 job['timing_recovered']=True
                 job['state']='Completed'
             else:
@@ -703,6 +733,8 @@ def worker():
             job['failure']='Operation unsuccessful during '+job.get('phase','maintenance')
             if isinstance(error,DatabaseTransferError):
                 job.update(failure=str(error),failure_code=error.code,database_evidence=error.evidence)
+            if isinstance(error,NavigationRecoveryError):
+                job.update(failure=str(error),navigation_recovery=error.evidence)
         finally:
             job['phase']='Restoring ordinary ownership and timing'
             try:
@@ -779,15 +811,20 @@ def qualify(evidence_file,confirm,arm_shutdown=False):
     if confirm!='I authorize GNSS timing maintenance':
         raise assist.AssistanceError('Explicit hardware qualification authorization required')
     evidence=acq.private_json(evidence_file,{})
+    capability=evidence.get('capability','shutdown' if arm_shutdown else 'database_restore')
+    if capability not in ('database_restore','shutdown') or (arm_shutdown and capability!='shutdown'):
+        raise assist.AssistanceError('Select one qualification capability')
+    if arm_shutdown and (type(evidence.get('power_hold_seconds')) is not int or not 90<=evidence['power_hold_seconds']<=600):
+        raise assist.AssistanceError('Verified power hold of at least 90 seconds required')
     bound=assist.read_json(assist.ROOT/'receiver-facts.json',{},private=True).get('identity')
     if not bound:
         raise assist.AssistanceError('Receiver not enrolled')
     receipts=[]
-    for kind in ('snapshot','restore'):
+    for kind in (('snapshot','restore') if capability=='database_restore' else ('snapshot',)):
         ident=evidence.get(kind,'')
         import re
         if not isinstance(ident,str) or not re.fullmatch('[a-f0-9]{32}',ident):
-            raise assist.AssistanceError('Capture and restore reports required')
+            raise assist.AssistanceError('Required navigation maintenance report missing')
         job=acq.private_json(acq.ROOT/'history'/(ident+'.json'),{})
         proof=job.get('database_evidence',{})
         if (job.get('kind')!=kind or job.get('state')!='Completed' or not job.get('timing_recovered') or
@@ -795,22 +832,30 @@ def qualify(evidence_file,confirm,arm_shutdown=False):
                 not proof.get('frame_count') or proof.get('accepted')!=proof['frame_count']):
             raise assist.AssistanceError('Successful exact-receiver hardware evidence missing')
         receipts.append(proof)
-    if receipts[0]['sha256']!=receipts[1]['sha256']:
+    if capability=='database_restore' and receipts[0]['sha256']!=receipts[1]['sha256']:
         raise assist.AssistanceError('Restore must qualify the captured database')
-    result={'identity':bound,'database_capture':True,'database_restore':True,'at':time.time(),
-            'capture_report':evidence['snapshot'],'restore_report':evidence['restore'],'shutdown':False}
+    previous=acq.private_json(acq.ROOT/'qualification.json',{})
+    result={'identity':bound,'database_capture':True,'database_restore':False,'shutdown':False}
+    if previous.get('identity')==bound:
+        result.update({key:previous.get(key) is True for key in ('database_restore','shutdown')})
+        if previous.get('restore_report'):result['restore_report']=previous['restore_report']
+    result.update(at=time.time(),capture_report=evidence['snapshot'])
+    if capability=='database_restore':
+        result.update(database_restore=True,restore_report=evidence['restore'])
     shutdown=acq.private_json(acq.ROOT/'shutdown-result.json',{})
-    if (shutdown.get('state')=='Completed' and shutdown.get('qualification_trial') is True and
+    if (capability=='shutdown' and not arm_shutdown and shutdown.get('state')=='Completed' and shutdown.get('qualification_trial') is True and
             shutdown.get('identity')==bound and shutdown.get('sha256') and
             shutdown.get('boot_id')!=boot_id()):
         result['shutdown']=True
+    elif capability=='shutdown' and not arm_shutdown:
+        raise assist.AssistanceError('Completed exact-receiver shutdown evidence from a previous boot required')
+    result['requalification_required']=not (result['database_restore'] and result['shutdown'])
     atomic_json(acq.ROOT/'qualification.json',result)
     if arm_shutdown:
-        if type(evidence.get('power_hold_seconds')) is not int or not 90<=evidence['power_hold_seconds']<=600:
-            raise assist.AssistanceError('Verified power hold of at least 90 seconds required')
         atomic_json(acq.ROOT/'shutdown-qualification.json',{'authorized':True,'identity':bound,'at':time.time(),
                                                          'power_hold_seconds':evidence['power_hold_seconds']})
     return {'state':'Database hardware evidence admitted','shutdown_qualified':result['shutdown'],
+            'database_restore_qualified':result['database_restore'],
             'shutdown_trial_armed':arm_shutdown}
 
 

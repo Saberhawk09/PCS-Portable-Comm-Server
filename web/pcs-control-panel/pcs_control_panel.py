@@ -1642,7 +1642,7 @@ def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current'
             boot=bench.get('policy',{})
             qualification=bench.get('qualification',{})
             if bench.get('qualification_hold'):
-                content+=card('Navigation database qualification on hold','<p class="fine">Unattended database restoration and shutdown snapshots require renewed hardware qualification. Confirmed manual maintenance remains available. Review the failed operation reports before changing automation settings.</p>')
+                content+=card('Navigation database qualification on hold','<p class="fine">One or more navigation database workflows require hardware qualification. Review the separate restore and shutdown qualification states below and any failed operation reports before changing automation settings. Confirmed manual maintenance remains available.</p>')
             fields=select_field('boot_policy','Normal boot assistance',[(v,t) for v,t in [('automatic','Automatic · qualified database → cache → retained'),('retained','Receiver-retained only'),('database','Saved receiver database · qualification required'),('cached','Cached Predictive Orbits'),('internet','Internet Predictive Orbits · bounded, asynchronous'),('live','Live Orbits · potentially chargeable'),('none','No host assistance')]],boot.get('boot_policy','automatic'))
             fields+=select_field('fallback','Fallback policy',[('local','Valid local assistance, then retained'),('retained','Receiver-retained only'),('none','No fallback')],boot.get('fallback','local'))
             fields+=select_field('save_on_shutdown','Save navigation on clean shutdown · qualified hardware only',[('no','Disabled'),('yes','Enabled')],'yes' if boot.get('save_on_shutdown') else 'no')
@@ -1673,6 +1673,9 @@ def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current'
             progress=table([('Operation',job.get('kind')),('State',job.get('state','Not started')),('Progress',job.get('phase')),('GNSS UTC valid',timing.get('utc_valid')),('PPS pairing',timing.get('pps_validation')),('Selected timing reference',timing.get('selected_ref'))])
             if job.get('failure'):
                 progress+=table([('Failure',job.get('failure')),('Failure phase',job.get('failure_phase')),('UART ownership recovered',job.get('ownership_recovered')),('Paired timing observed at completion',job.get('timing_recovered'))])
+            recovery=job.get('navigation_recovery',{})
+            if recovery:
+                progress+=details('Recovery measurements after GPSD handover',table([('Validated UTC (seconds)',recovery.get('utc_seconds')),('New kernel PPS event (seconds)',recovery.get('pps_seconds')),('Paired F10P selection (seconds)',recovery.get('f10p_seconds'))])+'<p class="fine">Measured after receiver ownership returns to GPSD; separate from receiver TTFF. Missing recovery events remain unknown.</p>')
             database=job.get('database_evidence',{})
             if database:
                 progress+=details('Navigation database transfer evidence',table([('Entries in backup',database.get('frame_count')),('Offered',database.get('offered')),('Accepted',database.get('accepted')),('Rejected',database.get('rejected')),('Unacknowledged',database.get('unacknowledged')),('Failed entry',database.get('failed_frame')),('Receiver status code',database.get('receiver_code')),('Transfer complete',database.get('complete'))])+'<p class="fine">Unknown receiver status codes remain unclassified and fail the transfer. UART ownership recovery and valid UTC/PPS recovery are separate observations.</p>')

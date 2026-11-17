@@ -123,6 +123,10 @@ reports. Unknown codes remain failures; code 255 has no inferred meaning.
 UART ownership recovered and paired timing observed at completion are separate
 fields. A recovered GPSD connection alone does not prove PPS recovery; use the
 current Time Synchronization panel for subsequent recovery observations.
+The additional reliability patch also shows measured UTC, new kernel PPS and
+F10P recovery seconds after GPSD handover. These durations are distinct from
+receiver TTFF, and incomplete events remain unknown. A successful snapshot or
+restore must observe a new post-handover PPS event as well as valid paired timing.
 
 Reports separate download duration, delivery ACK counts/time, receiver TTFF,
 host first 2D/3D, valid receiver UTC, advancing kernel PPS, Chrony synchronization
