@@ -1381,6 +1381,13 @@ def gnss_action_section(operation):
     return ('rf' if operation in ('start-spectrum', 'stop-spectrum', 'snapshot') else
             'advanced' if operation.startswith('autonomous-') else 'assistnow')
 
+
+def gnss_epochs_match(a, b):
+    if type(a) is not int or type(b) is not int or not 0 <= a < 604800000 or not 0 <= b < 604800000:
+        return False
+    gap = abs(a - b)
+    return min(gap, 604800000 - gap) <= 2000
+
 GNSS_CSS = """
 .gnss-app{max-width:1440px;padding:20px 24px 40px;--radius:14px;font-size:15px;line-height:1.5}
 .gnss-app *{box-sizing:border-box;min-width:0}.gnss-app h1{font-size:26px;margin:0}.gnss-app h2{font-size:17px;margin:0 0 12px}.gnss-app h3{font-size:15px;margin:12px 0 8px}
@@ -1482,8 +1489,10 @@ def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current'
     sync = timing.get('synchronized') is True and str(timing.get('state', '')).lower() == 'fresh'
     selected = timing.get('selected_ref', timing.get('source', 'Unknown'))
     navigation_fields = [('Fix', fix), ('Acquisition', acquisition.get('acquisition')), ('Horizontal accuracy', f"{nav['horizontal_accuracy_m']:g} m" if nav.get('horizontal_accuracy_m') is not None else None), ('Altitude MSL (m)', nav.get('altitude_msl_m')), ('TTFF (s)', acquisition.get('ttff_seconds')), ('Navigation telemetry', freshness('navigation'))]
-    correction_fields = [('Corrections applied', correction.get('applied')), ('Available', correction.get('available')), ('Active source', correction.get('source', 'Unknown')), ('Health', correction.get('health', 'Unknown')), ('Reported SBAS system', correction.get('reported_system', 'Unknown')), ('Selected SBAS PRN', correction.get('selected_prn')), ('Services', correction.get('services')), ('Integrity', correction.get('integrity')), ('SBAS telemetry', freshness('sbas'))]
-    time_fields = [('Synchronized', timing.get('synchronized')), ('Selected reference', selected), ('UTC validity gate', timing.get('utc_valid')), ('PPS present / active', f"{timing.get('pps_present', 'Unknown')} / {timing.get('pps_active', 'Unknown')}"), ('PPS selection', timing.get('pps_selection')), ('Timing telemetry', timing.get('state'))]
+    correction_fields = [('Corrections applied', correction.get('applied')), ('Availability flag (NAV-STATUS)', correction.get('available')), ('Active source', correction.get('source', 'Unknown')), ('Health', correction.get('health', 'Unknown')), ('Reported SBAS system', correction.get('reported_system', 'Unknown')), ('Selected SBAS PRN', correction.get('selected_prn')), ('Services', correction.get('services')), ('Integrity', correction.get('integrity')), ('SBAS telemetry', freshness('sbas'))]
+    def yesno(value):
+        return 'Yes' if value is True else 'No' if value is False else 'Unknown'
+    time_fields = [('Synchronized', timing.get('synchronized')), ('Selected reference', selected), ('UTC validity gate', timing.get('utc_valid')), ('PPS present / active', f"{yesno(timing.get('pps_present'))} / {yesno(timing.get('pps_active'))}"), ('PPS selection', timing.get('pps_selection')), ('Timing telemetry', timing.get('state'))]
     if section == 'overview':
         def metric(label, value, hint):
             return f'<article class="card gnss-metric"><span class="label">{esc(label)}</span><strong>{esc(value)}</strong><small>{esc(hint)}</small></article>'
@@ -1495,7 +1504,7 @@ def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current'
         metrics += metric('AssistNow cache', cache.get('state', 'Unknown'), f"{len(cache.get('days', []))} prediction days" if cache.get('days') else 'No verified prediction dates')
         content = '<div class="gnss-metrics">' + metrics + '</div><div class="gnss-grid">'
         content += card('Navigation', table(navigation_fields) + '<p class="fine"><a href="?section=satellites">Explore satellite reception →</a></p>')
-        content += card('Corrections', table(correction_fields[:4] + correction_fields[5:6] + correction_fields[8:]) + details('Services and correction validity', table(correction_fields[4:5] + correction_fields[6:8] + [('Receiver SBAS mode', correction.get('mode')), ('Correction age', correction.get('correction_age', 'Not reported')), ('Meaning', 'Telemetry age is observation freshness, not correction age. AssistNow orbit predictions are not differential corrections.')])) )
+        content += card('Corrections', table(correction_fields[:1] + correction_fields[2:4] + correction_fields[5:6] + correction_fields[8:]) + details('Services and correction validity', table(correction_fields[1:2] + correction_fields[4:5] + correction_fields[6:8] + [('Receiver SBAS mode', correction.get('mode')), ('Correction age', correction.get('correction_age', 'Not reported')), ('Meaning', 'Applied solution comes from NAV-PVT; the NAV-STATUS availability flag is reported independently. Telemetry age is not correction age. AssistNow orbit predictions are not differential corrections.')])) )
         content += card('Time synchronization', table(time_fields) + details('Timing measurements', table([('Receiver time accuracy (ns)', nav.get('receiver_time_accuracy_ns')), ('PPS source offset (s)', pps_source.get('measured_offset_seconds')), ('PPS offset freshness', pps_source.get('state')), ('Chrony system offset (s)', timing.get('offset_seconds'))]) + '<p class="fine">Position accuracy, receiver time accuracy, PPS accuracy and Chrony offset describe different measurements. Faster acquisition does not establish better absolute PPS accuracy.</p>')) + '</div>'
     elif section == 'satellites':
         signal_data, sat = measured('signals'), measured('satellites')
@@ -1513,7 +1522,7 @@ def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current'
         signal_plot = gnss_plot([(b, [(i + 1, r.get('cno_dbhz')) for i, r in enumerate(signals) if r.get('band') == b]) for b in ('L1', 'L5', 'Unknown')], 'Filtered signal row', 'C/N0 (dB-Hz)', 'Measured L1 / L5 signal strength')
         content = card('Satellite reception', f'<p>{freshness("signals")} · counts {esc(counts.get("state", "Unknown"))}. L1/L5 measurements count as one spacecraft.</p>' + pills + filters)
         content += '<div class="gnss-grid two">' + card('Satellite sky', f'<p class="fine">{freshness("satellites")} · North up; filled markers used. GPS blue · Galileo green · BeiDou purple · SBAS amber.</p>' + gnss_sky_plot(sky_rows)) + card('Signal strength', signal_plot + '<p class="fine">Each point is one measured signal. Gaps are not interpolated.</p>') + '</div>'
-        geometry = {(r.get('gnssid'), r.get('svid')): r for r in sat.get('rows', [])} if message('satellites').get('state') == 'Fresh' and message('signals').get('state') == 'Fresh' and min(abs(signal_data.get('itow_ms', -9999999) - sat.get('itow_ms', 9999999)), 604800000 - abs(signal_data.get('itow_ms', -9999999) - sat.get('itow_ms', 9999999))) <= 2000 else {}
+        geometry = {(r.get('gnssid'), r.get('svid')): r for r in sat.get('rows', [])} if message('satellites').get('state') == 'Fresh' and message('signals').get('state') == 'Fresh' and gnss_epochs_match(signal_data.get('itow_ms'), sat.get('itow_ms')) else {}
         rows = []
         for r in signals:
             g = geometry.get((r.get('gnssid'), r.get('svid')), {})

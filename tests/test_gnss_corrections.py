@@ -167,6 +167,11 @@ class CorrectionTests(unittest.TestCase):
 
 
 class DashboardTests(unittest.TestCase):
+    def test_geometry_join_rejects_missing_or_invalid_epochs_and_handles_week_wrap(self):
+        for a,b in ((None, None), (0, None), (-1, 0), (604800001, 1), (0, 3000)):
+            self.assertFalse(panel.gnss_epochs_match(a,b))
+        self.assertTrue(panel.gnss_epochs_match(0,604799000))
+
     def test_overview_compact_and_other_sections_lazy(self):
         value = fixture()
         value['timing']['state'] = 'fresh'  # Authoritative v2.4.0 gate uses lowercase.
