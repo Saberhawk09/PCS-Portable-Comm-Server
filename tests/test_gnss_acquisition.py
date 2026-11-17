@@ -487,9 +487,13 @@ class WorkerTests(unittest.TestCase):
              mock.patch.object(maintenance,'prepare',return_value=aid),mock.patch.object(maintenance,'Owner',return_value=owner), \
              mock.patch.object(maintenance,'read_status',return_value=paired),mock.patch.object(maintenance,'pps_sequence',return_value=20), \
              mock.patch.object(maintenance,'recover') as recover, mock.patch.dict(sys.modules,{'termios':mock.Mock()}), \
+             mock.patch.object(maintenance,'stopped'),mock.patch.object(maintenance,'started') as restart, \
+             mock.patch.object(maintenance,'restore_database',return_value={'state':'Accepted','accepted':1}), \
              mock.patch.object(maintenance,'inject_time',side_effect=ValueError('Fixture injection failure') if injection_failure else None):
             maintenance.worker()
             recover.assert_called()
+            if source=='database' and not injection_failure:
+                restart.assert_called_once_with(channel)
         return jobs.read(),sent
 
     def test_hot_warm_cold_actual_fixture_events_without_reset_ack(self):
@@ -515,6 +519,11 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(job['results'][0]['accepted'],0)
         self.assertEqual(sent,[acq.reset_frame('hot')])
         self.assertIsNotNone(job['results'][0]['injection_seconds'])
+
+    def test_database_assisted_trial_restarts_navigation_before_measuring(self):
+        job,sent=self.run_worker(source='database')
+        self.assertEqual(job['state'],'Completed')
+        self.assertEqual(sent,[acq.reset_frame('hot')])
 
 
 acq_jobs=acq.Jobs

@@ -583,8 +583,8 @@ def worker():
                             channel.decoder=UBXStream()
                             import termios
                             termios.tcflush(channel.fd,termios.TCIFLUSH)
-                            started=time.monotonic()
-                            metrics=acq.TrialMetrics(started,hint)
+                            reset_started=time.monotonic()
+                            metrics=acq.TrialMetrics(reset_started,hint)
                             metrics.pps_baseline=pps_sequence()
                             channel.event=metrics.event
                             row['reset_at']=time.time()
@@ -624,7 +624,7 @@ def worker():
                                     atomic_json(assist.ROOT/'injection.json',{'state':'Benchmark injection; acceptance recorded in acquisition report',
                                         'source':aid['source'],'timestamp':time.time(),
                                         **{k:row[k] for k in ('accepted','rejected','unacknowledged','offered')}})
-                            while time.monotonic()-started<trial['timeout_seconds']:
+                            while time.monotonic()-reset_started<trial['timeout_seconds']:
                                 channel.poll(.1)
                                 metrics.timing({},pps_sequence())
                                 row.update(metrics=dict(metrics.values),first_fix=metrics.first_fix)
