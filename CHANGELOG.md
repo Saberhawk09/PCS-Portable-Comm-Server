@@ -4,6 +4,13 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+- Check database hardware qualification before any boot time-aiding write;
+  unavailable host assistance permits ordinary acquisition without a reset.
+- Preserve partial database ACK counts, failure phase and receiver status in
+  redacted reports; distinguish UART ownership recovery from paired timing.
+- Display an exact-receiver database qualification hold in AssistNow without
+  exposing private evidence or enabling unattended operations.
+
 ## [2.5.0] - 2026-11-17
 
 - Add a responsive five-section GNSS dashboard with actual differential fix,

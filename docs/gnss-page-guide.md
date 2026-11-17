@@ -85,6 +85,8 @@ operator choice. Extended testing on 17 November placed unattended database
 restore and shutdown snapshots on a [qualification hold](v2.5.0-extended-qualification.md)
 after a PPS recovery timeout and a restore rejection over retained data. Normal
 shutdown saving remains off; confirmed manual maintenance remains available.
+The follow-up interface displays this exact-receiver qualification hold in
+AssistNow. It does not expose the private hold reason or enable automation.
 Downloaded Predictive archives and Pi-hosted
 receiver databases are separate stores, with separate dates and validity checks.
 
@@ -114,6 +116,13 @@ explicit fallback. Test policy overrides are temporary and leave normal boot
 settings intact. Paid Live requests need entitlement and per-experiment consent.
 Cancel/Recover releases ownership safely; live progress and current UTC/PPS state
 remain visible. Results/history export JSON, CSV and readable reports.
+
+Failed navigation transfers retain the original failure phase, entry counts,
+matched receiver status code and completion state in Advanced and redacted
+reports. Unknown codes remain failures; code 255 has no inferred meaning.
+UART ownership recovered and paired timing observed at completion are separate
+fields. A recovered GPSD connection alone does not prove PPS recovery; use the
+current Time Synchronization panel for subsequent recovery observations.
 
 Reports separate download duration, delivery ACK counts/time, receiver TTFF,
 host first 2D/3D, valid receiver UTC, advancing kernel PPS, Chrony synchronization

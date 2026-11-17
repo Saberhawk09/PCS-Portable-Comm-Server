@@ -36,6 +36,18 @@ class Cancelled(ValueError):
     pass
 
 
+class DatabaseTransferError(assist.AssistanceError):
+    """Only fixed reasons and numeric ACK evidence may cross the export boundary."""
+    REASONS={'database-rejected':'Database entry rejected by receiver',
+             'database-ack-mismatch':'Database acknowledgement malformed or mismatched',
+             'database-no-ack':'Database acknowledgement unavailable',
+             'database-deadline':'Database restore deadline exceeded'}
+
+    def __init__(self,code,evidence):
+        super().__init__(self.REASONS[code])
+        self.code,self.evidence=code,dict(evidence)
+
+
 def command(*args):
     p = subprocess.run(args, capture_output=True, text=True, timeout=4, check=False,
                        env=dict(os.environ, LC_ALL='C'))
@@ -378,18 +390,30 @@ def restore_database(exchange,frames,binding,deadline_seconds=20):
     before=manager.read_values(exchange,[manager.ACK_AIDING])
     journal=assist.ROOT/'receiver-transaction.json'
     atomic_json(journal,{'state':'pending','binding':binding,'before':{str(k):v for k,v in before.items()}})
-    accepted=0
+    evidence={'frame_count':len(frames),'offered':0,'accepted':0,'rejected':0,'unacknowledged':0,'complete':False}
     deadline=time.monotonic()+deadline_seconds
     try:
         manager.write_values(exchange,{manager.ACK_AIDING:1})
-        for frame in frames:
+        for number,frame in enumerate(frames,1):
             if time.monotonic()>=deadline:
-                raise assist.AssistanceError('Database restore deadline')
-            ack=exchange(frame,0x13,0x60)
-            if len(ack)!=8 or ack[:4]!=b'\x01\0\0\x80' or ack[4:8]!=frame[6:10]:
-                raise assist.AssistanceError('Database restore rejected or mismatched ACK')
-            accepted+=1
-        return {'state':'Accepted','accepted':accepted,'rejected':0}
+                raise DatabaseTransferError('database-deadline',evidence)
+            evidence['offered']+=1
+            try:
+                ack=exchange(frame,0x13,0x60)
+            except Cancelled:
+                raise
+            except (ValueError,OSError,subprocess.SubprocessError):
+                evidence.update(unacknowledged=evidence['unacknowledged']+1,failed_frame=number)
+                raise DatabaseTransferError('database-no-ack',evidence) from None
+            matched=(len(ack)==8 and ack[1]==0 and ack[3]==0x80 and ack[4:8]==frame[6:10])
+            if not matched or ack[0] not in (0,1):
+                evidence.update(unacknowledged=evidence['unacknowledged']+1,failed_frame=number)
+                raise DatabaseTransferError('database-ack-mismatch',evidence)
+            if ack[0]!=1 or ack[2]!=0:
+                evidence.update(rejected=evidence['rejected']+1,failed_frame=number,receiver_code=ack[2])
+                raise DatabaseTransferError('database-rejected',evidence)
+            evidence['accepted']+=1
+        return {'state':'Accepted','accepted':evidence['accepted'],'rejected':0}
     finally:
         manager.write_values(exchange,before)
         atomic_json(journal,{'state':'restored'})
@@ -542,7 +566,8 @@ def worker():
                         stopped(channel)
                         result=restore_database(channel.exchange,frames,bound['binding'])
                         job['database_evidence']={'identity':bound,'sha256':meta['sha256'],'frame_count':len(frames),
-                                                  'accepted':result['accepted'],'complete':True}
+                                                  'accepted':result['accepted'],'offered':len(frames),'rejected':0,
+                                                  'unacknowledged':0,'complete':True}
                 phase('Waiting for fresh UTC/PPS after navigation maintenance')
                 wait(paired_timing,120,check)
                 job['timing_recovered']=True
@@ -610,8 +635,10 @@ def worker():
                                         row['unacknowledged']+=1
                                     raise
                                 if aiding:
-                                    valid=(len(reply)==8 and reply[:3]==b'\1\0\0' and reply[3]==request[3] and reply[4:8]==request[6:10])
-                                    row['accepted' if valid else 'rejected']+=1
+                                    matched=(len(reply)==8 and reply[1]==0 and reply[0] in (0,1) and
+                                             reply[3]==request[3] and reply[4:8]==request[6:10])
+                                    key='unacknowledged' if not matched else 'accepted' if reply[0]==1 and reply[2]==0 else 'rejected'
+                                    row[key]+=1
                                 return reply
                             try:
                                 if aid['frames']:
@@ -661,25 +688,36 @@ def worker():
                         if metrics.values['f10p_seconds'] is None:
                             raise assist.AssistanceError('F10P recovery not observed within 120 seconds')
                         row.update(state='Completed',recovery='Fresh UTC, advancing PPS and F10P selection observed')
-                    except BaseException:
+                    except BaseException as error:
                         if metrics:
                             row.update(metrics=dict(metrics.values),first_fix=metrics.first_fix)
                         row.update(state='Cancelled' if stopped_signal or jobs.cancelled(job['id']) else 'Failed',
                                    failure='Trial interrupted or unsuccessful; inspect recovery status')
+                        if isinstance(error,DatabaseTransferError):
+                            row['failure']=str(error)
                         raise
                 job['state']='Completed'
-        except (ValueError,OSError,subprocess.SubprocessError):
+        except (ValueError,OSError,subprocess.SubprocessError) as error:
             job['state']='Cancelled' if stopped_signal or jobs.cancelled(job['id']) else 'Failed'
+            job['failure_phase']=job.get('phase','maintenance')
             job['failure']='Operation unsuccessful during '+job.get('phase','maintenance')
+            if isinstance(error,DatabaseTransferError):
+                job.update(failure=str(error),failure_code=error.code,database_evidence=error.evidence)
         finally:
             job['phase']='Restoring ordinary ownership and timing'
             try:
                 recover()
             except (ValueError,OSError,subprocess.SubprocessError):
                 job['state']='Recovery required'
+                job['ownership_recovered']=False
                 job['phase']='GNSS references remain withdrawn; operator recovery required'
             else:
+                job['ownership_recovered']=True
                 job['phase']='UART returned to GPSD; timing recovery is independently reported'
+            try:
+                job['timing_recovered']=paired_timing()
+            except (ValueError,OSError,subprocess.SubprocessError):
+                job['timing_recovered']=None
             job['completed_at']=time.time()
             jobs.finish(job)
 
@@ -821,13 +859,18 @@ def boot_assistance(exchange,version,unique,timing_healthy=False):
             return {'state':'Live cache unavailable / Ordinary acquisition','accepted':0}
         aid={'source':'live','frames':frames}
     else:
-        aid=prepare(source,bound,hint,cfg['fallback'])
+        try:
+            aid=prepare(source,bound,hint,cfg['fallback'])
+        except (ValueError,OSError,subprocess.SubprocessError):
+            # No receiver transaction has begun. Invalid or missing assistance
+            # is an ordinary acquisition path, never a reason to reset GNSS.
+            return {'state':'Host assistance unavailable / Ordinary acquisition','accepted':0}
     if not aid['frames']:
         return {'state':'Receiver-retained / Ordinary acquisition','accepted':0}
+    if aid['source']=='database' and not acq.qualified(acq.ROOT,bound,'database_restore'):
+        return {'state':'Database restore not hardware-qualified','accepted':0}
     inject_time(exchange,hint,bound['binding'])
     if aid['source']=='database':
-        if not acq.qualified(acq.ROOT,bound,'database_restore'):
-            return {'state':'Database restore not hardware-qualified','accepted':0}
         atomic_json(journal,{'state':'stopped','identity':bound})
         try:
             exchange(acq.control_frame(False)+ubx(10,4),10,4)
