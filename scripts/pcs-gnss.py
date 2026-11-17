@@ -90,11 +90,23 @@ class ReceiverTimeout(ValueError):
     pass
 
 
-def exchange(fd, request, cls, msg, ack=None):
+def exchange(fd, request, cls, msg, ack=None, timeout=3):
     import select
-    os.write(fd, request)
+    deadline = time.monotonic() + timeout
+    pending = memoryview(request)
+    while pending and time.monotonic() < deadline:
+        if not select.select([], [fd], [], min(0.1, max(0, deadline - time.monotonic())))[1]:
+            continue
+        try:
+            written = os.write(fd, pending)
+        except BlockingIOError:
+            continue
+        if written <= 0:
+            raise ReceiverTimeout('Receiver write did not advance')
+        pending = pending[written:]
+    if pending:
+        raise ReceiverTimeout('Receiver write deadline exceeded')
     decoder = UBXStream()
-    deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         if not select.select([fd], [], [], 0.1)[0]:
             continue
@@ -189,6 +201,7 @@ def prepare_receiver():
         raise ValueError('Enrolled USB alias does not match receiver')
     # Remove stale options before probing, so failure cannot reuse old admission.
     (RUNTIME / 'gpsd.env').unlink(missing_ok=True)
+    (RUNTIME / 'gpsd-owner.json').unlink(missing_ok=True)
     with identified_receiver(device, config.get('baud', 38400)) as (fd, identity, before, baud):
         if identity['protocol'] != config['receiver']['protocol']:
             raise ValueError('Receiver protocol changed')
@@ -196,7 +209,57 @@ def prepare_receiver():
         if not (RUNTIME / 'receiver-before.json').exists():
             atomic_json(RUNTIME / 'receiver-before.json', {str(key): value for key, value in before.items()})
         configure_receiver(fd, required_values())
+        # Additive diagnostics/assistance hook, inside this existing exclusive
+        # owner. No network access and no additional serial client. Disabled
+        # unless the operator has explicitly opted in; ordinary admission must
+        # still work if this optional package is absent.
+        atomic_json(RUNTIME / 'receiver-info.json', dict(identity, baud=baud, verified_at=time.time()))
+        try:
+            from pcs_assistnow import load_config as assist_config, ROOT as assist_root
+            from pcs_gnss_manager import boot_assistance, restore_pending
+        except ImportError:
+            pass
+        else:
+            if assist_root.exists():
+                # Restore any interrupted temporary RAM transaction before use.
+                def managed_exchange(request, cls, msg, ack=None):
+                    return exchange(fd, request, cls, msg, ack, timeout=0.25)
+                restore_pending(managed_exchange)
+                try:
+                    from pcs_gnss_maintenance import recover_admission
+                except ImportError:
+                    pass
+                else:
+                    recover_admission(managed_exchange)
+                try:
+                    options = assist_config()
+                    if options['boot_injection']:
+                        version = managed_exchange(ubx(10, 4), 10, 4)
+                        unique = managed_exchange(ubx(0x27, 3), 0x27, 3)
+                        try:
+                            from pcs_gnss_acquisition import CONFIG as acquisition_config
+                            from pcs_gnss_maintenance import boot_assistance as policy_assistance
+                        except ImportError:
+                            policy_assistance = None
+                        operation = policy_assistance if policy_assistance and acquisition_config.exists() else boot_assistance
+                        result = operation(managed_exchange, version, unique,
+                                           timing_healthy=read_status().get('utc_valid') is True)
+                        try:
+                            atomic_json(assist_root / 'injection.json', dict(result, timestamp=time.time()))
+                        except OSError:
+                            pass  # Optional metadata cannot prevent normal acquisition.
+                except (ValueError, OSError):
+                    # Assistance failure never requires a receiver reset. If
+                    # cleanup fails, leave the journal for explicit recovery.
+                    restore_pending(managed_exchange)
+                    try:
+                        atomic_json(assist_root / 'injection.json', {'state': 'Unavailable / Ordinary acquisition', 'timestamp': time.time()})
+                    except OSError:
+                        pass
         write_file(RUNTIME / 'gpsd.env', gpsd_environment(baud))
+        info=os.stat(device)
+        atomic_json(RUNTIME/'gpsd-owner.json',{'kind':'admission','read_only':True,
+                    'generation':[info.st_rdev,info.st_ino],'admitted_monotonic':time.monotonic()},0o644)
 
 
 def gpsd_environment(baud):
@@ -524,7 +587,7 @@ def main():
     args = parser.parse_args()
     if args.action in ('activate', 'rollback', 'stage', 'prepare-receiver', 'prepare-pps', 'probe') and os.geteuid() != 0:
         parser.error('This explicit operation requires root')
-    if args.action in ('activate', 'rollback'):
+    if args.action in ('activate', 'rollback', 'prepare-receiver', 'probe'):
         import fcntl
         RUNTIME.mkdir(parents=True, exist_ok=True)
         lock = (RUNTIME / 'installation.lock').open('a')

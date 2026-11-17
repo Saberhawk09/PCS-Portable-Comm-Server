@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import datetime as dt
 import getpass
 import hashlib
 import hmac
@@ -1233,11 +1234,11 @@ def render_admin_page(data: dict, csrf: str, result: str = "", action_name: str 
         "storage": backup_settings_html,
         "power": power_settings_html,
         "diagnostics":  '<section class="card"><h2>Administrator access</h2><p>Password changes invalidate active sessions. Forgotten passwords require the PCS terminal.</p><a class="button secondary" href="/admin/password">Change Admin Password</a></section>'}
-    content['diagnostics'] = '<section class="card"><h2>Location</h2><p>Set a manual fallback or persistent position.</p><a class="button secondary" href="/admin/location">Location settings</a></section>' + content['diagnostics']
+    content['diagnostics'] = '<section class="card"><h2>GNSS Information</h2><p>Receiver, RF, spectrum and AssistNow diagnostics.</p><a class="button secondary" href="/admin/gnss">GNSS Information</a></section><section class="card"><h2>Location</h2><p>Set a manual fallback or persistent position.</p><a class="button secondary" href="/admin/location">Location settings</a></section>' + content['diagnostics']
     views = ''.join(f'<section class="workspace-view" id="{key}"><h2 class="section-title">{label}</h2>{render_dashboard_section(public_data or {}, key) if key in DASHBOARD_SECTION_TEMPLATES else ""}{content[key]}{"".join(action_groups.get(key, []))}{action_directory if key == "actions" else ""}</section>' for key, label in sections)
     console = result_html
     body = f"""<a class="skip" href="#workspace-main">Skip to content</a><div class="workspace">
-    <aside class="workspace-sidebar"><a class="workspace-brand" href="/">PCS<span>CONTROL CENTER</span></a><nav class="workspace-nav" aria-label="Administration sections">{nav}<a class="compact-control" href="/admin/location">Location settings</a><a class="compact-control" href="/admin/details">Detailed diagnostics</a></nav></aside>
+    <aside class="workspace-sidebar"><a class="workspace-brand" href="/">PCS<span>CONTROL CENTER</span></a><nav class="workspace-nav" aria-label="Administration sections">{nav}<a class="compact-control" href="/admin/gnss">GNSS Information</a><a class="compact-control" href="/admin/location">Location settings</a><a class="compact-control" href="/admin/details">Detailed diagnostics</a></nav></aside>
     <div class="workspace-content"><header><div class="nav"><div class="brand-group">{header_health(data)}</div><nav class="navlinks"><a class="compact-control" href="/admin/location">Location settings</a><a class="compact-control" href="/admin/details">Detailed diagnostics</a><a class="compact-control" href="#storage">Backup Settings</a><a class="compact-control" href="/">Public Homepage</a><a class="compact-control" href="/admin/password">Change Password</a><form class="logout" method="POST" action="/admin/logout"><input type="hidden" name="csrf" value="{esc(csrf)}"><button type="submit">Logout</button></form></nav></div></header>
     <main class="admin-main" id="workspace-main">{health}{console}{views}</main></div></div>"""
     script = """document.querySelectorAll('form[data-confirm]').forEach(function(form){form.addEventListener('submit',function(event){var message=form.dataset.confirm;if(message&&!window.confirm(message)){event.preventDefault();}});});
@@ -1281,6 +1282,413 @@ def render_location_page(data, csrf, error='', notice=''):
     <p>Saved {esc(config.get('updated_at', 'not yet'))}. Coordinates are stored privately on PCS; the public dashboard shows Manual and its grid locator.</p>
     </section></main>'''
     return document('PCS Location', body)
+
+
+def gnss_request(payload=None):
+    """Fixed privilege boundary. GET reads snapshots; POST queues bounded work."""
+    result = subprocess.run(['sudo', '-n', '/usr/local/sbin/pcs-gnss-info',
+                             'web-status' if payload is None else 'web-update'],
+                            input=None if payload is None else json.dumps(payload),
+                            text=True, capture_output=True, timeout=5, check=False)
+    if result.returncode:
+        raise ValueError('GNSS information service unavailable; check staged installation and operator guide.')
+    return json.loads(result.stdout)
+
+
+def gnss_redacted(data):
+    """Export by schema: future internal fields cannot silently become public."""
+    def scalars(names):
+        return dict.fromkeys(names.split())
+    def project(value, schema):
+        if schema is None:
+            return value if type(value) in (str, int, float, bool, type(None)) else None
+        if isinstance(schema, list):
+            return [project(v, schema[0]) for v in value] if isinstance(value, list) else []
+        return {key: project(value[key], sub) for key, sub in schema.items() if key in value} if isinstance(value, dict) else {}
+    path = scalars('path band center_hz span_hz resolution_hz pga_db sample_count') | {
+        key: [None] for key in ('amplitude_db', 'frequency_hz', 'peak_db', 'average_db')}
+    # Azimuth/elevation plus ephemerides can reconstruct location, so geometry
+    # stays on the authenticated page and is excluded from shareable exports.
+    row = scalars('gnssid svid signal_id signal constellation band cno_dbhz quality_code quality health used pseudorange_used carrier_used doppler_used correction_source correction_source_name corrections_available pseudorange_correction_used carrier_correction_used doppler_correction_used sbas_correction_used rtcm_correction_used slas_correction_used spartn_correction_used clas_correction_used orbit_source autonomous_available predictive_available ephemeris_usability ephemeris_source orbit_type orbit_usability usable_prediction')
+    sbas_row = scalars('gnssid svid raw_svid constellation udre_code system_code system pseudorange_correction_m ionosphere_correction_m') | {'services': [None]}
+    payloads = {
+        'receiver': scalars('model firmware hardware protocol'),
+        'navigation': scalars('itow_ms fix_type fix_valid differential_applied utc_valid receiver_time_accuracy_ns horizontal_accuracy_m vertical_accuracy_m pdop'),
+        'sbas': scalars('itow_ms geo_prn mode_code mode system_code system integrity_code integrity') | {'services': [None], 'rows': [sbas_row]},
+        'rf': {'paths': [scalars('path band jamming antenna_status antenna_power noise_per_ms agc_raw agc_percent cw_suppression')]},
+        'spectrum': {'paths': [path], 'calibrated': None},
+        'security': scalars('jamming spoofing spoofing_code authenticity_proven'),
+        'security_log': {'events': [scalars('elapsed_seconds detection_code event_code detection event severity')]},
+        'signals': {'itow_ms': None, 'rows': [row]}, 'satellites': {'itow_ms': None, 'rows': [row]},
+        'dop': scalars('gdop pdop tdop vdop hdop ndop edop'), 'acquisition': scalars('itow_ms fix_valid differential_applied corrections_available ttff_seconds receiver_uptime_ms acquisition'),
+        'autonomous': scalars('enabled activity'), 'orbits': {'rows': [row]},
+    }
+    schema = scalars('state updated_at last_measurement_at connection rejected_messages') | {
+        'messages': {name: scalars('state availability age_seconds received_at') | {'data': payload} for name, payload in payloads.items()},
+        'receiver': scalars('model firmware hardware protocol baud verified_at'), 'serial': scalars('device baud owner'),
+        'counts': scalars('visible tracked used state source') | {'constellations': scalars('GPS Galileo BeiDou SBAS QZSS GLONASS NavIC')},
+        'corrections': scalars('state applied available source health reported_system selected_prn integrity mode sbas_state age_seconds correction_age') | {'services': [None], 'rows': [sbas_row]},
+        'timing': scalars('mode state utc_valid pps_present pps_active pps_age_seconds pps_selection pps_validation selected_ref source synchronized offset_seconds uncertainty_seconds'),
+        'chrony_sources': {name: scalars('selection reach sample_age_seconds adjusted_offset_seconds measured_offset_seconds root_distance_seconds state') for name in ('F10N', 'F10P')},
+        'signal_trends': [scalars('timestamp L1 L5')],
+        'capture': scalars('active remaining_seconds frame_count last_capture_timestamp average_kind') | {'traces': [path]},
+        'events': [scalars('source detection_code event_code detection event severity elapsed_seconds estimated_timestamp observed_timestamp timestamp_quality')],
+        'injection': scalars('state timestamp source accepted receiver_code'), 'maintenance_request': scalars('state requested_at'),
+        'assistance': scalars('credentials live_entitlement live_state registration_profile') | {
+            'settings': scalars('version automatic_refresh window_days refresh_hours allow_metered boot_injection live_enabled live_cost_authorized predictive_requests_day live_requests_day requests_month bytes_day'),
+            'usage': scalars('state day month last_success last_uplink last_attempt next_refresh predictive_requests live_requests requests_month downloaded_bytes downloaded_bytes_day rejected retry_after'),
+            **{kind: scalars('state downloaded_at expires_at bytes') | {'days': [None], 'constellations': [None]} for kind in ('predictive', 'live')},
+        },
+    }
+    return project(data, schema)
+
+
+def gnss_plot(series, xlabel, ylabel, title):
+    """SVG measured points only: gaps stay gaps; no smoothing or interpolation."""
+    colors = ('#50b8ff', '#ffbb55', '#86dca3', '#dc9cff', '#ff7580', '#c6d364')
+    points = [(x, y) for _, values in series for x, y in values
+              if type(x) in (int, float) and type(y) in (int, float) and math.isfinite(x) and math.isfinite(y)]
+    if not points:
+        return '<p>No measured samples available.</p>'
+    xmin, xmax = min(x for x, _ in points), max(x for x, _ in points)
+    ymin, ymax = min(y for _, y in points), max(y for _, y in points)
+    if xmax == xmin:
+        xmax += 1
+    if ymax == ymin:
+        ymax += 1
+    marks, legend = [], []
+    for n, (label, values) in enumerate(series):
+        color = colors[n % len(colors)]
+        legend.append(f'<span style="color:{color}">{esc(label)}</span>')
+        for x, y in values:
+            if type(x) not in (int, float) or type(y) not in (int, float) or not math.isfinite(x) or not math.isfinite(y):
+                continue
+            px, py = 55 + 400 * (x - xmin) / (xmax - xmin), 175 - 145 * (y - ymin) / (ymax - ymin)
+            marks.append(f'<circle cx="{px:.2f}" cy="{py:.2f}" r="1.8" fill="{color}"><title>{esc(label)}: {x:g}, {y:g}</title></circle>')
+    return f'''<figure><figcaption>{esc(title)} · {' · '.join(legend)}</figcaption>
+    <svg viewBox="0 0 480 230" role="img" aria-label="{esc(title)}" style="width:100%;max-height:350px;background:var(--panel)">
+    <path d="M55 20V175H455" stroke="currentColor" fill="none"/>
+    <g fill="currentColor" font-size="12"><text x="5" y="35">{ymax:g}</text><text x="5" y="175">{ymin:g}</text>
+    <text x="55" y="195">{xmin:g}</text><text x="455" y="195" text-anchor="end">{xmax:g}</text><text x="255" y="220" text-anchor="middle">{esc(xlabel)}</text>
+    <text x="55" y="15">{esc(ylabel)}</text></g>{''.join(marks)}</svg></figure>'''
+
+
+GNSS_SECTIONS = {'overview': 'Overview', 'satellites': 'Satellites', 'rf': 'RF Diagnostics',
+                 'assistnow': 'AssistNow', 'advanced': 'Advanced'}
+
+
+def gnss_action_section(operation):
+    return ('rf' if operation in ('start-spectrum', 'stop-spectrum', 'snapshot') else
+            'advanced' if operation.startswith(('autonomous-','acquisition-')) else 'assistnow')
+
+
+GNSS_INTERRUPTION_CONFIRM = 'I understand GNSS positioning and PPS timing will be interrupted'
+
+
+def render_gnss_confirmation(form, csrf):
+    operation=form.get('operation','')
+    target={'acquisition-review':'acquisition-start','navigation-snapshot-review':'navigation-snapshot',
+            'navigation-restore-review':'navigation-restore'}.get(operation)
+    if target is None:
+        raise ValueError('Unknown review action')
+    allowed={'start','source','comparison','repetitions','timeout_seconds','fallback','paid_consent','antenna'}
+    values={k:v for k,v in form.items() if k in allowed} if target=='acquisition-start' else {}
+    hidden=''.join(f'<input type="hidden" name="{esc(k)}" value="{esc(v)}">' for k,v in values.items())
+    rows=''.join(f'<dt>{esc(k.replace("_"," ").title())}</dt><dd>{esc(v)}</dd>' for k,v in values.items())
+    body=f'''<style>{GNSS_CSS}</style><main class="gnss-app"><section class="card"><h1>Confirm GNSS timing interruption</h1>
+    <p>This operation temporarily interrupts GNSS positioning and PPS-disciplined timing. PCS withdraws its GNSS Chrony references, releases GPSD ownership, and uses an exclusive maintenance session. Internet NTP or holdover remains available.</p>
+    <p>A software cold start is not an electrical power cycle. Autonomous and flash-resident data may remain. Keep the antenna location unchanged for comparisons.</p><dl>{rows}</dl>
+    <p>Live Orbits can be chargeable and requires existing entitlement, activation, limits and per-experiment paid-service consent. A fresh response is shared across repetitions.</p>
+    <form method="POST" action="/admin/gnss"><input type="hidden" name="csrf" value="{esc(csrf)}"><input type="hidden" name="operation" value="{target}">{hidden}
+    <label><input type="checkbox" name="confirm" value="{esc(GNSS_INTERRUPTION_CONFIRM)}" required> {esc(GNSS_INTERRUPTION_CONFIRM)}</label>
+    <button type="submit">Confirm and Start Maintenance</button></form><a class="button" href="/admin/gnss?section=advanced">Return without starting</a></section></main>'''
+    return document('Confirm PCS GNSS maintenance',body)
+
+
+def gnss_epochs_match(a, b):
+    if type(a) is not int or type(b) is not int or not 0 <= a < 604800000 or not 0 <= b < 604800000:
+        return False
+    gap = abs(a - b)
+    return min(gap, 604800000 - gap) <= 2000
+
+GNSS_CSS = """
+.gnss-app{max-width:1440px;padding:20px 24px 40px;--radius:14px;font-size:15px;line-height:1.5}
+.gnss-app *{box-sizing:border-box;min-width:0}.gnss-app h1{font-size:26px;margin:0}.gnss-app h2{font-size:17px;margin:0 0 12px}.gnss-app h3{font-size:15px;margin:12px 0 8px}
+.gnss-app p{margin:8px 0;color:var(--muted)}.gnss-app a{color:var(--accent)}
+.gnss-heading,.gnss-titleline{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.gnss-eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 3px}
+.gnss-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:5px;border:1px solid var(--line);border-radius:12px;background:var(--panel);margin:18px 0}
+.gnss-tabs a{display:flex;align-items:center;justify-content:center;min-height:44px;padding:8px 6px;text-align:center;color:var(--muted);text-decoration:none;font-weight:600;border-radius:8px;font-size:14px}.gnss-tabs a[aria-current=page]{color:var(--text);background:var(--panel2);box-shadow:inset 0 -2px var(--accent)}
+.gnss-app .card{padding:18px;margin:0;border-radius:var(--radius);border:1px solid var(--line);background:var(--panel);overflow-wrap:anywhere}
+.gnss-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px}.gnss-metric{padding:16px!important}.gnss-metric .label{font-size:12px;color:var(--muted);display:block}.gnss-metric strong{display:block;font-size:23px;line-height:1.25;margin:8px 0}.gnss-metric small{font-size:12px;color:var(--muted);display:block}
+.gnss-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.gnss-grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.gnss-stack{display:grid;gap:16px}.gnss-app dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:10px 16px;margin:0}.gnss-app dt{color:var(--muted);font-size:13px}.gnss-app dd{margin:0;text-align:right;overflow-wrap:anywhere;font-size:13px}
+.gnss-app details>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:8px;font-weight:600}.gnss-app details>summary:before{content:'＋';color:var(--muted)}.gnss-app details[open]>summary:before{content:'−'}.gnss-app details[open]>summary{margin-bottom:12px}.gnss-app details{border-top:1px solid var(--line);margin-top:14px;padding-top:6px}
+.gnss-app .table-wrap{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}.gnss-app table{width:100%;border-collapse:collapse;font-size:13px}.gnss-app th,.gnss-app td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}.gnss-app th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.gnss-app figure{margin:12px 0 0}.gnss-app figcaption{color:var(--muted);font-size:12px;margin:0 0 8px}.gnss-app svg{display:block;max-width:100%;height:auto}.gnss-app .sky{width:100%;max-height:360px;margin:auto}
+.gnss-app form{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin:14px 0}.gnss-app label{font-size:12px;color:var(--muted);display:grid;gap:5px;flex:1 1 140px}.gnss-app label:has(input[type=checkbox]){display:flex;align-items:center;flex-basis:100%;line-height:1.5}.gnss-app input,.gnss-app select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:44px;width:100%;font-size:14px}.gnss-app input[type=checkbox]{width:20px;min-height:20px;flex:none}
+.gnss-app button,.gnss-app .button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;min-height:44px;padding:10px 14px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.gnss-app button:disabled{opacity:.45;cursor:not-allowed}.gnss-app button:hover:not(:disabled),.gnss-app .button:hover{border-color:var(--accent)}.gnss-app .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--panel2);padding:5px 9px;border-radius:20px;color:var(--muted)}.gnss-app .badge.good{color:var(--ok)}.gnss-app .badge.warn{color:var(--warn)}.gnss-app .badge.bad{color:var(--bad)}.gnss-app .notice{margin:12px 0;padding:12px;font-size:13px}.gnss-app .fine{font-size:12px}.gnss-app .section-intro{margin-bottom:16px}.gnss-app .controls{border-left:3px solid var(--line);padding-left:14px;margin-top:18px}.gnss-app .hero-value{font-size:28px;font-weight:600;color:var(--text)}.gnss-app .pills{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.gnss-app .event-list{padding-left:20px;font-size:13px}.gnss-app .event-list li{margin:12px 0}
+@media(max-width:1000px){.gnss-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.gnss-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.gnss-grid>.card:last-child:nth-child(3){grid-column:1/-1}}
+@media(max-width:600px){.gnss-app{padding:16px 12px 28px;font-size:14px}.gnss-app h1{font-size:22px}.gnss-heading .button{padding:8px 10px}.gnss-tabs{gap:2px;padding:3px;margin:16px 0}.gnss-tabs a{font-size:11px;padding:7px 3px;line-height:1.25}.gnss-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}.gnss-metric{padding:12px!important}.gnss-metric strong{font-size:21px}.gnss-metric .label,.gnss-metric small{font-size:11px}.gnss-grid,.gnss-grid.two{grid-template-columns:minmax(0,1fr);gap:12px}.gnss-app .card{padding:14px}.gnss-app dl{gap:9px 12px}.gnss-app .hero-value{font-size:25px}.gnss-app form>button{flex:1 1 auto}.gnss-app .section-intro{font-size:13px}.gnss-app .gnss-titleline{align-items:flex-start}}
+"""
+
+
+def gnss_sky_plot(rows):
+    colors = {0: '#68b7ff', 1: '#f2c55c', 2: '#61d69b', 3: '#dc9cff'}
+    marks = []
+    for row in rows:
+        elevation, azimuth = row.get('elevation_deg'), row.get('azimuth_deg')
+        if type(elevation) not in (int, float) or type(azimuth) not in (int, float) or not 0 <= elevation <= 90 or not 0 <= azimuth <= 360:
+            continue
+        radius, angle = (90 - elevation) * 1.4, math.radians(azimuth)
+        x, y = 160 + math.sin(angle) * radius, 160 - math.cos(angle) * radius
+        color = colors.get(row.get('gnssid'), '#a8b5c0')
+        label = f"{row.get('gnssid')}:{row.get('svid')}"
+        marks.append(f'<g><title>{esc(label)} · {elevation}° elevation · {azimuth}° azimuth · used {row.get("used", False)}</title><circle cx="{x:.1f}" cy="{y:.1f}" r="10" stroke="{color}" fill="{color if row.get("used") else "var(--panel)"}"/><text x="{x:.1f}" y="{y+3:.1f}" text-anchor="middle" fill="{ "var(--bg)" if row.get("used") else color}" font-size="8">{esc(row.get('svid'))}</text></g>')
+    if not marks:
+        return '<p>No measured satellite geometry available.</p>'
+    return '<svg class="sky" viewBox="0 0 320 320" role="img" aria-label="Satellite sky plot: north up, filled satellites used in navigation"><g fill="none" stroke="var(--line)"><circle cx="160" cy="160" r="126"/><circle cx="160" cy="160" r="84"/><circle cx="160" cy="160" r="42"/><path d="M34 160H286M160 34V286"/></g><g fill="var(--muted)" font-size="12" text-anchor="middle"><text x="160" y="22">N</text><text x="302" y="164">E</text><text x="160" y="308">S</text><text x="18" y="164">W</text></g>' + ''.join(marks) + '</svg>'
+
+
+def render_gnss_page(data, csrf, notice='', error='', view='L1', trace='current', section='overview', constellation='all', band='all', used_only=False, search=''):
+    messages = data.get('messages', {})
+    def message(name):
+        return messages.get(name, {})
+    def measured(name):
+        return message(name).get('data') or {}
+    def freshness(name):
+        value = message(name)
+        age = value.get('age_seconds')
+        state = 'Not Supported' if value.get('availability') == 'Not Supported' else value.get('state', 'Unknown')
+        return esc(state) + (f' · {age:g}s old' if type(age) in (int, float) else '')
+    def table(values):
+        def readable(value):
+            if value is None:
+                return 'Unknown'
+            if isinstance(value, dict):
+                return ' · '.join(str(k).replace('_', ' ').title() + ': ' + readable(v) for k, v in value.items()) or 'Unknown'
+            if isinstance(value, (list, tuple)):
+                return ', '.join(readable(v) for v in value) or 'None'
+            if type(value) is bool:
+                return 'Yes' if value else 'No'
+            return str(value)
+        return '<dl>' + ''.join(f'<dt>{esc(label)}</dt><dd>{esc(readable(value))}</dd>' for label, value in values) + '</dl>'
+    def timestamp(value):
+        if type(value) not in (int, float) or not math.isfinite(value):
+            return 'Unknown'
+        try:
+            return dt.datetime.fromtimestamp(value, dt.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+        except (ValueError, OverflowError, OSError):
+            return 'Unknown'
+    def form(operation, label, fields='', confirmation=False, disabled=False):
+        wording = ('I authorize this potentially chargeable Live Orbits operation.' if operation in ('live', 'refresh-live') else
+                   'Request separately authorized maintenance to disable Autonomous; receiver firmware may delete retained observation data.' if operation == 'autonomous-disable' else
+                   'Request separately authorized receiver RAM configuration maintenance.' if operation == 'autonomous-enable' else
+                   'I confirm this assistance setting change.')
+        confirm = f'<label><input type="checkbox" name="confirm" value="yes" required> {wording}</label>' if confirmation else ''
+        return f'''<form method="POST" action="/admin/gnss"><input type="hidden" name="csrf" value="{esc(csrf)}">
+        <input type="hidden" name="operation" value="{esc(operation)}">{fields}{confirm}
+        <button type="submit" {'disabled' if disabled else ''}>{esc(label)}</button></form>'''
+
+    section = section if section in GNSS_SECTIONS else 'overview'
+    view = view if view in ('L1', 'L5', 'compare') else 'L1'
+    trace = trace if trace in ('current', 'peak', 'average') else 'current'
+    def card(title, contents, extra=''):
+        return f'<section class="card {extra}"><h2>{esc(title)}</h2>{contents}</section>'
+    def details(title, contents):
+        return f'<details><summary>{esc(title)}</summary>{contents}</details>'
+    def select_field(name,label,choices,selected=''):
+        return f'<label>{esc(label)}<select name="{esc(name)}">'+''.join(f'<option value="{esc(value)}" {"selected" if value==selected else ""}>{esc(text)}</option>' for value,text in choices)+'</select></label>'
+    def rows_table(headers, rows):
+        return '<div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable data table"><table><thead><tr>' + ''.join(f'<th scope="col">{esc(h)}</th>' for h in headers) + '</tr></thead><tbody>' + ''.join('<tr>' + ''.join(f'<td>{esc("Unknown" if v is None else "Yes" if v is True else "No" if v is False else v)}</td>' for v in row) + '</tr>' for row in rows) + '</tbody></table></div>'
+    def badge(text, good=False):
+        return f'<span class="badge {"good" if good else "warn"}">{esc(text)}</span>'
+    nav, counts, timing = measured('navigation'), data.get('counts', {}), data.get('timing', {})
+    correction = data.get('corrections', {})
+    acquisition, assistance = measured('acquisition'), data.get('assistance', {})
+    cache, usage, policy = assistance.get('predictive', {}), assistance.get('usage', {}), assistance.get('settings', {})
+    pps_source = data.get('chrony_sources', {}).get('F10P', {})
+    fix = nav.get('fix_type', 'Unknown')
+    if nav.get('fix_valid') is False:
+        fix = 'No valid fix'
+    elif nav.get('differential_applied') and fix in ('2D', '3D'):
+        fix += ' DGPS'
+    sync = timing.get('synchronized') is True and str(timing.get('state', '')).lower() == 'fresh'
+    selected = timing.get('selected_ref', timing.get('source', 'Unknown'))
+    navigation_fields = [('Fix', fix), ('Acquisition', acquisition.get('acquisition')), ('Horizontal accuracy', f"{nav['horizontal_accuracy_m']:g} m" if nav.get('horizontal_accuracy_m') is not None else None), ('Altitude MSL (m)', nav.get('altitude_msl_m')), ('TTFF (s)', acquisition.get('ttff_seconds')), ('Navigation telemetry', freshness('navigation'))]
+    correction_fields = [('Corrections applied', correction.get('applied')), ('Availability flag (NAV-STATUS)', correction.get('available')), ('Active source', correction.get('source', 'Unknown')), ('Health', correction.get('health', 'Unknown')), ('Reported SBAS system', correction.get('reported_system', 'Unknown')), ('Selected SBAS PRN', correction.get('selected_prn')), ('Services', correction.get('services')), ('Integrity', correction.get('integrity')), ('SBAS telemetry', freshness('sbas'))]
+    def yesno(value):
+        return 'Yes' if value is True else 'No' if value is False else 'Unknown'
+    time_fields = [('Synchronized', timing.get('synchronized')), ('Selected reference', selected), ('UTC validity gate', timing.get('utc_valid')), ('PPS present / active', f"{yesno(timing.get('pps_present'))} / {yesno(timing.get('pps_active'))}"), ('PPS selection', timing.get('pps_selection')), ('Timing telemetry', timing.get('state'))]
+    if section == 'overview':
+        def metric(label, value, hint):
+            return f'<article class="card gnss-metric"><span class="label">{esc(label)}</span><strong>{esc(value)}</strong><small>{esc(hint)}</small></article>'
+        metrics = metric('GNSS fix', fix, message('navigation').get('state', 'Unknown'))
+        metrics += metric('Satellites · used / visible', f"{counts.get('used') if counts.get('used') is not None else '—'} / {counts.get('visible') if counts.get('visible') is not None else '—'}", counts.get('state', 'Unknown') + ' · unique spacecraft')
+        metrics += metric('Horizontal accuracy', f"{nav['horizontal_accuracy_m']:.2f} m" if nav.get('horizontal_accuracy_m') is not None else 'Unknown', 'Receiver position estimate')
+        metrics += metric('Chrony / PPS', str(selected) if sync else 'Not synced' if timing.get('synchronized') is False else 'Unknown', 'Synchronized' if sync else str(timing.get('state', 'Unknown')))
+        metrics += metric('Correction source', correction.get('source', 'Unknown'), correction.get('health', 'Unknown'))
+        metrics += metric('AssistNow cache', cache.get('state', 'Unknown'), f"{len(cache.get('days', []))} prediction days" if cache.get('days') else 'No verified prediction dates')
+        content = '<div class="gnss-metrics">' + metrics + '</div><div class="gnss-grid">'
+        content += card('Navigation', table(navigation_fields) + '<p class="fine"><a href="?section=satellites">Explore satellite reception →</a></p>')
+        content += card('Corrections', table(correction_fields[:1] + correction_fields[2:4] + correction_fields[5:6] + correction_fields[8:]) + details('Services and correction validity', table(correction_fields[1:2] + correction_fields[4:5] + correction_fields[6:8] + [('Receiver SBAS mode', correction.get('mode')), ('Correction age', correction.get('correction_age', 'Not reported')), ('Meaning', 'Applied solution comes from NAV-PVT; the NAV-STATUS availability flag is reported independently. Telemetry age is not correction age. AssistNow orbit predictions are not differential corrections.')])) )
+        content += card('Time synchronization', table(time_fields) + details('Timing measurements', table([('Receiver time accuracy (ns)', nav.get('receiver_time_accuracy_ns')), ('PPS source offset (s)', pps_source.get('measured_offset_seconds')), ('PPS offset freshness', pps_source.get('state')), ('Chrony system offset (s)', timing.get('offset_seconds'))]) + '<p class="fine">Position accuracy, receiver time accuracy, PPS accuracy and Chrony offset describe different measurements. Faster acquisition does not establish better absolute PPS accuracy.</p>')) + '</div>'
+    elif section == 'satellites':
+        signal_data, sat = measured('signals'), measured('satellites')
+        choices = ('all', 'GPS', 'Galileo', 'BeiDou', 'SBAS', 'QZSS', 'GLONASS', 'NavIC', 'Unknown')
+        constellation = constellation if constellation in choices else 'all'
+        band = band if band in ('all', 'L1', 'L5', 'Unknown') else 'all'
+        search = str(search)[:64].strip().casefold()
+        signals = [r for r in signal_data.get('rows', []) if (constellation == 'all' or r.get('constellation') == constellation) and (band == 'all' or r.get('band') == band) and (not used_only or r.get('used')) and (not search or search in f"{r.get('constellation')} {r.get('svid')} {r.get('signal')}".casefold())]
+        sky_rows = [r for r in sat.get('rows', []) if (constellation == 'all' or {'GPS': 0, 'SBAS': 1, 'Galileo': 2, 'BeiDou': 3, 'QZSS': 5, 'GLONASS': 6, 'NavIC': 7}.get(constellation) == r.get('gnssid')) and (not used_only or r.get('used')) and (band == 'all' and not search or (r.get('gnssid'), r.get('svid')) in {(s.get('gnssid'), s.get('svid')) for s in signals})]
+        filters = '<form method="GET" action="/admin/gnss"><input type="hidden" name="section" value="satellites">'
+        for name, label, values, selected_value in (('constellation', 'Constellation', choices, constellation), ('band', 'Band', ('all', 'L1', 'L5', 'Unknown'), band)):
+            filters += f'<label>{label}<select name="{name}">' + ''.join(f'<option value="{v}" {"selected" if v == selected_value else ""}>{"All" if v == "all" else v}</option>' for v in values) + '</select></label>'
+        filters += f'<label>Find satellite or signal<input name="q" value="{esc(search)}" maxlength="64" placeholder="GPS 4, E5a…"></label><label><input type="checkbox" name="used" value="1" {"checked" if used_only else ""}> Used in navigation only</label><button>Apply filters</button></form>'
+        pills = '<div class="pills">' + ''.join(f'<span class="badge">{esc(k)} {esc(v)}</span>' for k, v in counts.get('constellations', {}).items()) + '</div>'
+        signal_plot = gnss_plot([(b, [(i + 1, r.get('cno_dbhz')) for i, r in enumerate(signals) if r.get('band') == b]) for b in ('L1', 'L5', 'Unknown')], 'Filtered signal row', 'C/N0 (dB-Hz)', 'Measured L1 / L5 signal strength')
+        tracked = counts.get('tracked')
+        content = card('Satellite reception', f'<p>{freshness("signals")} · {esc(tracked if tracked is not None else "Unknown")} tracked spacecraft · counts {esc(counts.get("state", "Unknown"))}. L1/L5 measurements count as one spacecraft.</p>' + pills + filters)
+        content += '<div class="gnss-grid two">' + card('Satellite sky', f'<p class="fine">{freshness("satellites")} · North up; filled markers used. GPS blue · Galileo green · BeiDou purple · SBAS amber.</p>' + gnss_sky_plot(sky_rows)) + card('Signal strength', signal_plot + '<p class="fine">Each point is one measured signal. Gaps are not interpolated.</p>') + '</div>'
+        geometry = {(r.get('gnssid'), r.get('svid')): r for r in sat.get('rows', [])} if message('satellites').get('state') == 'Fresh' and message('signals').get('state') == 'Fresh' and gnss_epochs_match(signal_data.get('itow_ms'), sat.get('itow_ms')) else {}
+        rows = []
+        for r in signals:
+            g = geometry.get((r.get('gnssid'), r.get('svid')), {})
+            corrections_used = ', '.join(label for key, label in (('pseudorange_correction_used', 'PR'), ('carrier_correction_used', 'Carrier'), ('doppler_correction_used', 'Doppler')) if r.get(key)) or 'None'
+            rows.append((r.get('constellation'), r.get('svid'), r.get('signal'), r.get('band'), r.get('cno_dbhz'), r.get('quality'), r.get('used'), r.get('health'), g.get('elevation_deg'), g.get('azimuth_deg'), r.get('correction_source_name', 'Unknown'), corrections_used))
+        content += card('Signal details', details(f'Show {len(rows)} matching signal measurements', rows_table(('GNSS', 'SV', 'Signal', 'Band', 'dB-Hz', 'Tracking', 'Used', 'Health', 'Elevation °', 'Azimuth °', 'Correction source', 'Corrections used'), rows)))
+        trends = data.get('signal_trends', [])
+        content += card('Reception history', details('Measured L1 / L5 signal-count trend', gnss_plot([(b, [(r['timestamp'], r[b]) for r in trends]) for b in ('L1', 'L5')], 'Host timestamp (Unix s)', 'Tracked signals', 'Measured signal counts')))
+    elif section == 'rf':
+        security, capture = measured('security'), data.get('capture', {})
+        content = '<div class="gnss-grid">' + card('Signal security', table([('Jamming', security.get('jamming', 'Unknown')), ('Spoofing', security.get('spoofing', 'Unknown')), ('Telemetry', freshness('security'))]) + '<p class="fine">No spoofing indication does not prove authentic satellite signals.</p>')
+        for path in measured('rf').get('paths', []):
+            content += card(f"{path.get('band', 'Unknown')} receiver path", table([('Jamming', path.get('jamming')), ('AGC', f"{path['agc_percent']:.1f}%" if path.get('agc_percent') is not None else 'Unknown'), ('Noise / ms', path.get('noise_per_ms')), ('CW suppression', path.get('cw_suppression')), ('Telemetry', freshness('rf'))]) + details('RF hardware readings', table(list(path.items()))))
+        content += '</div>'
+        paths = measured('spectrum').get('paths', []) if trace == 'current' else capture.get('traces', [])
+        chosen = [p for p in paths if view == 'compare' or p.get('band') == view]
+        amplitude_key = {'peak': 'peak_db', 'average': 'average_db'}.get(trace, 'amplitude_db')
+        if view == 'compare':
+            series = [(p.get('band', 'Unknown'), list(zip([(f-p['center_hz'])/1e6 for f in p['frequency_hz']], p.get(amplitude_key, [])))) for p in chosen]
+            plot = gnss_plot(series, 'Offset from reported center (MHz)', 'Receiver amplitude (dB)', 'L1 / L5 path comparison · ' + trace)
+        else:
+            plot = gnss_plot([(p.get('band', 'Unknown'), list(zip([f/1e6 for f in p['frequency_hz']], p.get(amplitude_key, [])))) for p in chosen], 'Frequency (MHz)', 'Receiver amplitude (dB)', view + ' measured spectrum · ' + trace)
+        fields = '<form method="GET" action="/admin/gnss"><input type="hidden" name="section" value="rf">'
+        for name, label, values, selected_value in (('view', 'RF path', ('L1', 'L5', 'compare'), view), ('trace', 'Trace', ('current', 'peak', 'average'), trace)):
+            fields += f'<label>{label}<select name="{name}">' + ''.join(f'<option {"selected" if v == selected_value else ""}>{v}</option>' for v in values) + '</select></label>'
+        fields += '<button>View spectrum</button></form>'
+        spectrum_metadata = table([(f"{p.get('band')} path {p.get('path')}", f"Center {p.get('center_hz')} Hz · span {p.get('span_hz')} Hz · resolution {p.get('resolution_hz')} Hz · PGA {p.get('pga_db')} dB") for p in chosen])
+        controls = form('start-spectrum', 'Start Spectrum Capture', '<label>Duration (5–300 s)<input type="number" name="seconds" min="5" max="300" value="60"></label>', disabled=message('spectrum').get('state') != 'Fresh' or capture.get('active', False))
+        controls += form('stop-spectrum', 'Stop Spectrum Capture') + form('snapshot', 'Capture Snapshot', disabled=message('spectrum').get('state') != 'Fresh')
+        trace_time = timestamp(message('spectrum').get('received_at') if trace == 'current' else capture.get('last_capture_timestamp'))
+        content += card('Spectrum monitor', fields + f'<p class="fine">{freshness("spectrum")} live telemetry · {esc(trace)} trace captured {esc(trace_time)}</p>' + plot + details('Frequency and capture metadata', spectrum_metadata + table([('Capture active', capture.get('active')), ('Remaining (s)', capture.get('remaining_seconds')), ('Measured frames', capture.get('frame_count')), ('Last capture', timestamp(capture.get('last_capture_timestamp')))])) + '<div class="controls"><h3>Administrator · passive capture</h3>' + controls + '</div><p class="fine">Receiver diagnostic, not a calibrated spectrum analyzer. Capture records existing MON-SPAN output for at most 300 seconds; peak and average use at most 60 matching measured frames. Ten snapshots are retained. No serial writes or timing-service restarts.</p>')
+        event_rows = ''.join(f'<li><strong>{esc(e.get("severity"))} · {esc(e.get("detection"))}</strong><br>{esc(e.get("event"))}<br>Observed {esc(timestamp(e.get("observed_timestamp")))} · estimated {esc(timestamp(e.get("estimated_timestamp")))}</li>' for e in reversed(data.get('events', [])))
+        content += card('RF event history', f'<p>{len(data.get("events", []))} retained events · {freshness("security_log")}</p>' + details('View RF Event History', '<ol class="event-list">' + event_rows + '</ol>' if event_rows else '<p>No events observed.</p>') + '<p class="fine">Compare timestamps with LTE, Starlink, radio and regulator activity logs. Diagnostics never transmit or change power settings. Unknown, Not Supported, Disabled, No Indication, Warning and Critical remain distinct states.</p>')
+    elif section in ('assistnow', 'advanced'):
+        assistance = data.get('assistance', {})
+        policy = assistance.get('settings', {})
+        aop = measured('autonomous')
+        orbit_rows = measured('orbits').get('rows', [])
+        available = sum(r.get('usable_prediction') is True and r.get('orbit_type') == 2 for r in orbit_rows)
+        cache, live_cache = assistance.get('predictive', {}), assistance.get('live', {})
+        usage, injection = assistance.get('usage', {}), data.get('injection', {})
+        assistance_html = table([('Autonomous enabled', aop.get('enabled')), ('Autonomous activity', aop.get('activity')),
+            ('Autonomous freshness', freshness('autonomous')), ('Usable Autonomous predictions (observed)', available if orbit_rows else None),
+            ('Orbit freshness', freshness('orbits')), ('Predictive cache', cache.get('state', 'Unknown')),
+            ('Cache downloaded', timestamp(cache.get('downloaded_at'))), ('Cache expires', timestamp(cache.get('expires_at'))),
+            ('Available prediction days', cache.get('days')), ('Cache constellations', cache.get('constellations')),
+            ('Live entitlement', assistance.get('live_entitlement')), ('Live activation', assistance.get('live_state')),
+            ('Account profile / evaluation access', assistance.get('registration_profile', 'Unknown; verify the Thingstream device profile')),
+            ('Live cache', live_cache.get('state', 'Unknown')), ('Live cache expires', timestamp(live_cache.get('expires_at'))),
+            ('Download status', usage.get('state')), ('Last online success', timestamp(usage.get('last_success'))),
+            ('Selected uplink used', usage.get('last_uplink')), ('Next refresh', timestamp(usage.get('next_refresh')) if policy.get('automatic_refresh') else 'Automatic refresh disabled'),
+            ('Usage accounting day', usage.get('day')), ('Predictive requests on that day', usage.get('predictive_requests')),
+            ('Live requests on that day', usage.get('live_requests')), ('Usage accounting month', usage.get('month')),
+            ('All requests in that month', usage.get('requests_month')), ('Downloaded payload bytes', usage.get('downloaded_bytes')),
+            ('Downloaded payload bytes on accounting day', usage.get('downloaded_bytes_day')), ('Rejected/failed downloads', usage.get('rejected')),
+            ('Last injection outcome', injection.get('state', 'Not attempted')), ('Last injection time', timestamp(injection.get('timestamp'))),
+            ('Accepted assistance frames', injection.get('accepted')), ('Maintenance request', data.get('maintenance_request', {}).get('state', 'None'))])
+        for operation, label in [('autonomous-enable', 'Request Enable Autonomous'), ('autonomous-disable', 'Request Disable Autonomous')]:
+            assistance_html += form(operation, label, confirmation=True)
+        assistance_html += form('refresh-predictive', 'Refresh Predictive Orbits Now')
+        for operation, label, setting in [('automatic-refresh', 'Automatic Refresh', 'automatic_refresh'), ('allow-metered', 'Metered / Unknown Uplink Downloads', 'allow_metered'),
+                                          ('boot-injection', 'Boot Cache Injection', 'boot_injection'), ('live', 'Live Orbits (potentially chargeable)', 'live_enabled')]:
+            enabled = policy.get(setting, False)
+            fields = f'<input type="hidden" name="enabled" value="{"no" if enabled else "yes"}">'
+            assistance_html += form(operation, ('Disable ' if enabled else 'Enable ') + label, fields, confirmation=True)
+        fields = '<label>Prediction window<select name="window_days">' + ''.join(f'<option value="{day}" {"selected" if policy.get("window_days", 7) == day else ""}>{day} days</option>' for day in (1, 3, 7, 14)) + '</select></label>'
+        for name, label, default in [('refresh_hours', 'Refresh interval (hours)', 72), ('predictive_requests_day', 'Predictive requests/day (max 2)', 2),
+                                      ('live_requests_day', 'Live requests/day (max 10)', 1), ('requests_month', 'All requests/month (max 300)', 250),
+                                      ('bytes_day', 'Data reservation limit/day (bytes)', 1048576)]:
+            fields += f'<label>{esc(label)}<input type="number" name="{name}" value="{esc(policy.get(name, default))}" min="0" required></label>'
+        assistance_html += form('policy', 'Save Prediction Window and Limits', fields, confirmation=True)
+        assistance_html += form('refresh-live', 'Request Live Orbits Now (potentially chargeable)', confirmation=True, disabled=not policy.get('live_enabled'))
+        assistance_html += form('clear-expired', 'Clear Expired Cache')
+        assistance_html += '<p><button disabled>Backup Receiver Assistance Data</button> <button disabled>Restore Receiver Assistance Data</button> Not qualified; separate maintenance and firmware-specific validation required.</p>'
+        maintenance_at = assistance_html.index('<form')
+        # Receiver operations belong in Advanced; host cache controls stay here.
+        first_host_action = assistance_html.index('<form', assistance_html.index('Request Disable Autonomous'))
+        maintenance_controls = assistance_html[maintenance_at:first_host_action]
+        host_controls = assistance_html[first_host_action:].partition('<p><button disabled>Backup Receiver Assistance Data')[0]
+        if section == 'assistnow':
+            next_refresh = timestamp(usage.get('next_refresh')) if policy.get('automatic_refresh') else 'Automatic refresh disabled'
+            content = '<div class="gnss-grid">'
+            days = cache.get('days', [])
+            prediction_range = f'{len(days)} days · {min(days)} → {max(days)}' if days else 'Unknown'
+            content += card('Predictive Orbits', f'<div class="hero-value">{esc(cache.get("state", "Unknown"))}</div><p>Next refresh · {esc(next_refresh)}</p>' + table([('Prediction validity', prediction_range), ('Expires', timestamp(cache.get('expires_at'))), ('Constellations', cache.get('constellations')), ('Downloaded', timestamp(cache.get('downloaded_at')))]))
+            content += card('Autonomous', table([('Enabled', aop.get('enabled')), ('Activity', aop.get('activity')), ('Usable predictions observed', available if orbit_rows else None), ('Telemetry', freshness('autonomous')), ('Orbit telemetry', freshness('orbits'))]) + '<p class="fine">Receiver-generated predictions. Retention after complete power loss is not guaranteed.</p>')
+            content += card('Live Orbits', table([('Entitlement', assistance.get('live_entitlement')), ('Activation', assistance.get('live_state')), ('Account profile', assistance.get('registration_profile')), ('Cache', live_cache.get('state', 'Unknown'))]) + '<p class="fine">Potentially chargeable. Explicit activation and request limits still apply.</p>') + '</div>'
+            content += card('Downloads and startup readiness', table([('Last success', timestamp(usage.get('last_success'))), ('Uplink used', usage.get('last_uplink')), ('Download state', usage.get('state')), ('Last injection', injection.get('state', 'Not attempted')), ('Injection timestamp', timestamp(injection.get('timestamp')))]) + details('Usage, validity and request accounting', assistance_html[:maintenance_at]) + '<p class="fine">Offline startup can use valid cache and Autonomous data alongside ordinary acquisition. Healthy PPS timing defers injection. AssistNow provides orbit assistance, not DGPS/SBAS corrections. GPS/Galileo predictions are qualified; BeiDou assistance is excluded pending B1C compatibility verification.</p>')
+            content += card('Assistance settings', '<p class="fine">Administrator controls · confirmations required for policy changes.</p>' + details('Manage refresh, cache and service limits', host_controls))
+            bench=data.get('acquisition',{})
+            boot=bench.get('policy',{})
+            qualification=bench.get('qualification',{})
+            fields=select_field('boot_policy','Normal boot assistance',[(v,t) for v,t in [('automatic','Automatic · qualified database → cache → retained'),('retained','Receiver-retained only'),('database','Saved receiver database · qualification required'),('cached','Cached Predictive Orbits'),('internet','Internet Predictive Orbits · bounded, asynchronous'),('live','Live Orbits · potentially chargeable'),('none','No host assistance')]],boot.get('boot_policy','automatic'))
+            fields+=select_field('fallback','Fallback policy',[('local','Valid local assistance, then retained'),('retained','Receiver-retained only'),('none','No fallback')],boot.get('fallback','local'))
+            fields+=select_field('save_on_shutdown','Save navigation on clean shutdown · qualified hardware only',[('no','Disabled'),('yes','Enabled')],'yes' if boot.get('save_on_shutdown') else 'no')
+            fields+=select_field('restore_next_start','Restore database on next eligible startup',[('no','Normal policy'),('yes','One successful restore · qualified hardware only')],'yes' if boot.get('restore_next_start') else 'no')
+            for name,label,default in [('database_max_age_hours','Maximum database age (hours)',24),('backup_retention','Successful backups retained',5),('shutdown_budget_seconds','Shutdown collection budget (seconds)',30),('power_hold_seconds','Verified power hold interval (seconds)',0)]:
+                fields+=f'<label>{label}<input type="number" name="{name}" value="{esc(boot.get(name,default))}" required></label>'
+            content+=card('Boot assistance policy',table([('Policy configured',bench.get('policy_configured')),('Active policy',boot.get('boot_policy') if bench.get('policy_configured') else 'Legacy cache-only admission'),('Fallback',boot.get('fallback') if bench.get('policy_configured') else 'Existing retained/ordinary acquisition'),('Saved database',bench.get('database',{}).get('state','Unknown')),('Backup creation',timestamp(bench.get('database',{}).get('created_at'))),('Backup size (bytes)',bench.get('database',{}).get('bytes')),('Database restore qualified',qualification.get('database_restore')),('Shutdown saving qualified',qualification.get('shutdown')),('Last shutdown backup',bench.get('shutdown',{}).get('state','Not attempted'))])+details('Configure normal startup and shutdown',form('boot-policy','Save Boot Assistance Policy',fields,confirmation=True))+'<p class="fine">Installation preserves existing startup behavior until a policy is saved. Internet downloads never delay ordinary GNSS acquisition. Healthy fix/PPS defers injection. Shutdown saving defaults off and requires hardware qualification and a verified power-hold interval.</p>')
+            content+=card('Pi-hosted receiver navigation database', '<p class="fine">Separate from the Thingstream orbit cache. Exact receiver and firmware binding, complete-transfer validation, maximum age and bounded retention apply. Snapshot and restore interrupt GNSS timing.</p>'+form('navigation-snapshot-review','Review Save Navigation Snapshot Now')+form('navigation-restore-review','Review Restore Saved Navigation Database')+'<p class="fine">Receiver-retained data and Autonomous predictions are internal; their survival after complete power loss is not guaranteed. Unqualified periodic snapshots remain disabled.</p>')
+        else:
+            receiver = measured('receiver') or data.get('receiver', {})
+            serial = data.get('serial', {})
+            content = '<div class="gnss-grid two">' + card('Receiver and connection', table([(k.title(), receiver.get(k)) for k in ('model', 'firmware', 'hardware', 'protocol')]) + details('Enrollment and UART', table([('Device', serial.get('device')), ('Baud', serial.get('baud')), ('Owner', serial.get('owner')), ('USB connected', timing.get('usb_connected')), ('Receiver connected', timing.get('connected')), ('Identity verified', timestamp(receiver.get('verified_at'))), ('Monitor connection', data.get('connection'))])))
+            content += card('Accuracy and timing', table([('Horizontal accuracy (m)', nav.get('horizontal_accuracy_m')), ('Vertical accuracy (m)', nav.get('vertical_accuracy_m')), ('MSL altitude (m)', nav.get('altitude_msl_m')), ('Ellipsoid altitude (m)', nav.get('altitude_ellipsoid_m')), ('Receiver UTC validity', nav.get('utc_valid')), ('Receiver time accuracy (ns)', nav.get('receiver_time_accuracy_ns'))]) + details('DOP and Chrony source measurements', table([(k.upper(), v) for k, v in (measured('dop') or {'pdop': nav.get('pdop')}).items()] + [('Active timing source', timing.get('source')), ('PPS validation', timing.get('pps_validation')), ('PPS age (s)', timing.get('pps_age_seconds')), ('PPS source freshness', pps_source.get('state')), ('PPS source sample age (s)', pps_source.get('sample_age_seconds')), ('Measured PPS source offset (s)', pps_source.get('measured_offset_seconds')), ('Adjusted PPS source offset (s)', pps_source.get('adjusted_offset_seconds')), ('Chrony system offset (s)', timing.get('offset_seconds')), ('Chrony uncertainty (s)', timing.get('uncertainty_seconds'))]))) + '</div>'
+            sbas = measured('sbas')
+            correction_rows = [(r.get('constellation'), r.get('svid'), r.get('raw_svid'), r.get('system'), ', '.join(r.get('services', [])), r.get('udre_code'), r.get('pseudorange_correction_m'), r.get('ionosphere_correction_m')) for r in sbas.get('rows', [])]
+            content += card('Correction diagnostics', table(correction_fields + [('Receiver mode', correction.get('mode')), ('Correction age', correction.get('correction_age'))]) + details('Per-satellite SBAS corrections', f'<p class="fine">{freshness("sbas")}. NAV-SBAS correction values are reception reports; application is indicated separately by NAV-PVT / NAV-SIG / NAV-SAT. UDRE is the receiver-reported monitoring code. Single-SV identifiers are mapped using the documented constellation numbering; unknown IDs remain unknown.</p>' + rows_table(('GNSS', 'SV', 'Raw SV ID', 'Reported system', 'Services', 'UDRE code', 'Pseudorange (m)', 'Ionosphere (m)'), correction_rows)))
+            telemetry = [(name, msg.get('availability', 'Unknown'), msg.get('state', 'Unknown'), msg.get('age_seconds'), timestamp(msg.get('received_at'))) for name, msg in sorted(messages.items())]
+            content += card('Receiver diagnostics', details('Message availability and freshness', rows_table(('Message', 'Availability', 'State', 'Age (s)', 'Received UTC'), telemetry)) + details('Raw decoded diagnostics', '<pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px">' + esc(json.dumps(messages, indent=2, ensure_ascii=False)) + '</pre>') + table([('Rejected messages', data.get('rejected_messages')), ('Last receiver update', timestamp(data.get('last_measurement_at')))]))
+            content += card('Receiver maintenance', '<p class="fine">Privileged · changes require confirmation and a separate authorized ownership handover. GPSD owns the UART during normal operation; routine page access never writes receiver configuration.</p>' + details('Autonomous configuration requests', maintenance_controls) + '<p class="fine">Pending request: ' + esc(data.get('maintenance_request', {}).get('state', 'None')) + '</p><p><a href="?section=assistnow">Navigation snapshot and restoration →</a></p>')
+            bench=data.get('acquisition',{})
+            job=bench.get('job',{})
+            busy=job.get('state') in ('Queued','Running','Recovering','Recovery required')
+            fields=select_field('start','Software GNSS start',[('cold','Full cold · 0xFFFF'),('warm','Warm · 0x0001'),('hot','Hot · 0x0000')],'cold')
+            fields+=select_field('source','Assistance source',[('none','No external assistance'),('cached','Stored Predictive Orbits · offline'),('internet','Fresh Internet Predictive Orbits'),('database','Saved receiver navigation database'),('live','Live Orbits · potentially chargeable'),('automatic','Configured normal boot policy')])
+            fields+=select_field('comparison','Comparison · overrides individual start/source',[('','Single trial or repeated source'),('cold-unassisted-predictive','Cold unassisted / cached predictions'),('cold-cached-internet','Cold cached / fresh predictions'),('warm-unassisted-assisted','Warm unassisted / cached predictions'),('hot-unassisted-assisted','Hot unassisted / cached predictions'),('database-predictive','Cold database / cached predictions')])
+            fields+=select_field('fallback','Experiment fallback',[('none','No fallback · recommended for comparisons'),('local','Valid local assistance'),('retained','Receiver-retained only')])
+            fields+='<label>Repetitions (A/B pairs when comparing)<input type="number" name="repetitions" min="1" max="5" value="1" required></label><label>Acquisition timeout per trial (seconds)<input type="number" name="timeout_seconds" min="15" max="300" value="180" required></label><label>Antenna / conditions · private operator note<input name="antenna" maxlength="160"></label><label><input type="checkbox" name="paid_consent" value="yes"> Authorize potentially chargeable Live requests for this experiment, within existing limits</label>'
+            progress=table([('Operation',job.get('kind')),('State',job.get('state','Not started')),('Progress',job.get('phase')),('GNSS UTC valid',timing.get('utc_valid')),('PPS pairing',timing.get('pps_validation')),('Selected timing reference',timing.get('selected_ref'))])
+            results=[]
+            for row in job.get('results',[]):
+                metric=row.get('metrics') or {}
+                results.append((row.get('trial'),row.get('start'),row.get('requested_source'),row.get('selected_source'),row.get('state'),row.get('download_seconds'),metric.get('receiver_ttff_seconds'),metric.get('first_3d_seconds'),metric.get('f10p_seconds')))
+            histories=''
+            for item in bench.get('history',[]):
+                exports=''.join(form('acquisition-export',kind.upper(),f'<input type="hidden" name="id" value="{esc(item.get("id"))}"><input type="hidden" name="format" value="{kind}">') for kind in ('json','csv','text'))
+                histories+=details(f'{timestamp(item.get("created_at"))} · {item.get("kind")} · {item.get("state")}',exports)
+            comparison=job.get('summary',{})
+            content=card('Acquisition Testing', '<p class="fine">Disruptive administrator controls. Timing interruption requires a separate confirmation screen. Software resets preserve receiver configuration and PPS electrical settings.</p>'+progress+('<p><a class="button" href="?section=advanced">Update Test Progress</a></p>' if busy else '')+details('Configure a test or A/B comparison',form('acquisition-review','Review Acquisition Test',fields,disabled=busy))+form('acquisition-cancel','Cancel and Recover',disabled=not busy)+form('acquisition-recover','Recover Interrupted Maintenance')+details('Measured trial results',rows_table(('Trial','Start','Requested','Selected','Result','Download s','Receiver TTFF s','Host 3D s','F10P recovery s'),results)+ '<pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(json.dumps(comparison,indent=2))+'</pre>')+details('History and redacted reports',histories)+'<p class="fine">Download latency, receiver TTFF and PPS-disciplined NTP recovery are separate measurements. Retained Autonomous/flash data and warm/hot trial carry-over prevent a claim of equivalent fully unassisted conditions. A/B order alternates. Never move the antenna between trials.</p>')+content
+            content += card('Diagnostic exports', f'<p class="fine">Exports omit credentials, device identity, coordinates, altitude and satellite geometry.</p><form method="POST" action="/admin/gnss/export"><input type="hidden" name="csrf" value="{esc(csrf)}"><button>Export Redacted Diagnostic and Assistance Report</button></form>')
+    links = ''.join(f'<a href="?section={key}" {"aria-current=page" if key == section else ""}>{label}</a>' for key, label in GNSS_SECTIONS.items())
+    message_text = error or notice
+    notification = f'<p class="notice" role="status">{esc(message_text)}</p>' if message_text else ''
+    state = data.get('state', 'Unavailable')
+    body = f'<style>{GNSS_CSS}</style><main class="gnss-app"><div class="gnss-heading"><div><div class="gnss-eyebrow">PCS · Navigation &amp; timing</div><h1>GNSS Information</h1></div><a class="button" href="/admin/">Administration</a></div><nav class="gnss-tabs" aria-label="GNSS sections">{links}</nav><div class="gnss-titleline section-intro"><div>{badge(state, state == "Fresh")} <span class="fine">Last receiver update {esc(timestamp(data.get("last_measurement_at")))}</span></div><a class="button" href="?section={section}&amp;view={view}&amp;trace={trace}">Refresh</a></div>{notification}<div class="gnss-stack">{content}</div><p class="fine">Read-only telemetry · authenticated administrator controls · missing and stale data remain explicitly marked.</p></main>'
+    result=document('PCS GNSS Information', body)
+    if section=='advanced' and data.get('acquisition',{}).get('job',{}).get('state') in ('Queued','Running','Recovering'):
+        result=result.replace(b'</head>',b'<meta http-equiv="refresh" content="5"></head>',1)
+    return result
 
 
 def bandwidth_request(payload=None):
@@ -1482,10 +1890,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin":
             self.redirect("/admin/")
             return
-        if path in {"/admin/", "/admin/password", "/admin/bandwidth"} and not self.session()[1]:
+        if path in {"/admin/", "/admin/password", "/admin/bandwidth", "/admin/gnss"} and not self.session()[1]:
             self.redirect("/admin/login")
             return
-        if path in {"/", "/status/", "/health", "/api/public-status", "/admin/", "/admin/login", "/admin/password", "/admin/bandwidth"}:
+        if path in {"/", "/status/", "/health", "/api/public-status", "/admin/", "/admin/login", "/admin/password", "/admin/bandwidth", "/admin/gnss"}:
             content_type = "application/json; charset=utf-8" if path == "/api/public-status" else "text/html; charset=utf-8"
             self.send_body(200, b"", content_type, head_only=True)
             return
@@ -1494,6 +1902,25 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlsplit(self.path)
         path = parsed.path
+        if path == '/admin/gnss':
+            _, session = self.require_session()
+            if not session:
+                return
+            try:
+                data, error = gnss_request(), ''
+            except (ValueError, OSError, subprocess.SubprocessError):
+                data, error = {}, 'GNSS information unavailable. Check optional service installation.'
+            query = parse_qs(parsed.query)
+            view, trace = query.get('view', ['L1'])[0], query.get('trace', ['current'])[0]
+            view = view if view in ('L1', 'L5', 'compare') else 'L1'
+            trace = trace if trace in ('current', 'peak', 'average') else 'current'
+            section = query.get('section', ['overview'])[0]
+            section = section if section in GNSS_SECTIONS else 'overview'
+            notice = 'Request accepted. Check the current outcome below.' if query.get('saved') == ['1'] else ''
+            self.send_body(200, render_gnss_page(data, session['csrf'], notice, error, view, trace, section,
+                query.get('constellation', ['all'])[0], query.get('band', ['all'])[0],
+                query.get('used') == ['1'], query.get('q', [''])[0][:64]), 'text/html; charset=utf-8')
+            return
         if path in {"/", "/status/"}:
             self.send_body(200, render_public_page(get_public_dashboard()), "text/html; charset=utf-8")
             return
@@ -1571,6 +1998,35 @@ class Handler(BaseHTTPRequestHandler):
         form = self.read_form()
         if form is None:
             self.send_body(400, b"Invalid form submission\n", "text/plain; charset=utf-8")
+            return
+
+        if path in ('/admin/gnss', '/admin/gnss/export'):
+            _, session = self.require_session()
+            if not session:
+                return
+            if not self.csrf_valid(form, session):
+                self.send_body(403, b'CSRF validation failed\n', 'text/plain; charset=utf-8')
+                return
+            section = gnss_action_section(form.get('operation', ''))
+            try:
+                if form.get('operation') in ('acquisition-review','navigation-snapshot-review','navigation-restore-review'):
+                    self.send_body(200,render_gnss_confirmation(form,session['csrf']),'text/html; charset=utf-8')
+                    return
+                if form.get('operation')=='acquisition-export':
+                    result=gnss_request({k:v for k,v in form.items() if k!='csrf'})
+                    kind=form.get('format','json')
+                    mime={'json':'application/json','csv':'text/csv','text':'text/plain'}.get(kind,'text/plain')
+                    self.send_body(200,result['report'].encode(),mime+'; charset=utf-8')
+                    return
+                if path.endswith('/export'):
+                    body = json.dumps(gnss_redacted(gnss_request()), indent=2, allow_nan=False).encode()
+                    self.send_body(200, body, 'application/json; charset=utf-8')
+                    return
+                gnss_request({key: value for key, value in form.items() if key != 'csrf'})
+            except (ValueError, OSError, subprocess.SubprocessError):
+                self.send_body(400, render_gnss_page({}, session['csrf'], error='Request unavailable. Verify confirmation, limits, diagnostic freshness and maintenance requirements.', section=section), 'text/html; charset=utf-8')
+                return
+            self.redirect('/admin/gnss?section=' + section + '&saved=1')
             return
 
         if path == "/admin/login":

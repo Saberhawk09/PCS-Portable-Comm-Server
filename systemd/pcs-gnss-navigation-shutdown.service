@@ -1,0 +1,23 @@
+[Unit]
+Description=PCS optional qualified navigation snapshot before clean shutdown
+# Reverse stop ordering keeps GPSD, UTC gate and USB available for this stop job.
+After=pcs-gnss.service gpsd.service gpsd.socket chrony.service
+Before=pcs-gnss-acquisition.service
+ConditionPathExists=/etc/pcs/gnss.json
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/true
+ExecStop=/usr/local/sbin/pcs-gnss-info navigation-shutdown
+ExecStopPost=/usr/local/sbin/pcs-gnss-info acquisition-recover
+TimeoutStopSec=55
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/pcs-gnss-acquisition /var/lib/pcs-assistnow /run/pcs-gnss /run/chrony /run/gpsd.sock
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

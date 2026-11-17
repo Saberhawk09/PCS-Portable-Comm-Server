@@ -749,15 +749,18 @@ class InstallationTests(unittest.TestCase):
             command.assert_not_called()
 
     def test_failed_time_samples_never_have_lte_side_effects(self):
-        # The complete runtime command vocabulary is limited to Chrony and GPSD.
+        # Runtime mutations remain limited to Chrony and GPSD. Read-only
+        # ownership admission may inspect the GPSD PID and UART holders.
         import ast
         tree = ast.parse((ROOT / 'scripts/pcs_gnss_runtime.py').read_text())
         commands = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.List) and node.elts and isinstance(node.elts[0], ast.Constant) and node.elts[0].value in ('chronyc', 'systemctl'):
+            if isinstance(node, ast.List) and node.elts and isinstance(node.elts[0], ast.Constant) and node.elts[0].value in ('chronyc', 'systemctl', 'fuser'):
                 commands.append([item.value for item in node.elts if isinstance(item, ast.Constant)])
         self.assertTrue(commands)
         self.assertTrue(all(call[0] == 'chronyc' or call in (['systemctl', 'restart', '--no-block', 'gpsd.service'],
+                                                          ['systemctl', 'show', 'gpsd.service', '-p', 'MainPID', '--value'],
+                                                          ['fuser'],
                                                           ['systemctl', 'restart', 'chrony.service']) for call in commands))
 
 

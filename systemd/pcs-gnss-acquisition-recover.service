@@ -1,0 +1,15 @@
+[Unit]
+Description=PCS interrupted GNSS maintenance recovery
+After=pcs-gnss-acquisition.service
+Conflicts=pcs-gnss-acquisition.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pcs-gnss-info acquisition-recover
+TimeoutStartSec=30
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/pcs-gnss-acquisition /var/lib/pcs-assistnow /run/pcs-gnss /run/chrony /run/gpsd.sock
+RestrictAddressFamilies=AF_UNIX

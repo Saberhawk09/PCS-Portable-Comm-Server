@@ -6,6 +6,10 @@ The root `README.md` is the public front page. These documents hold the deeper b
 
 ## Core Docs
 
+- [GNSS page data and settings guide](gnss-page-guide.md)
+- [GNSS acquisition testing and navigation preservation](gnss-acquisition.md) - confirmed benchmarks, boot policies, database qualification and recovery
+- [PCS v2.5.0 acceptance record](v2.5.0-validation.md)
+
 - [Bandwidth Manager](bandwidth-manager.md) - Pi-native client limits, WAN ceilings, and authenticated admin controls
 - [Documentation audit and README content map](documentation-audit.md)
 - [Proposed v2.2.1 release readiness](v2.2.1-release-readiness.md) - candidate ancestry and open gates; unpublished

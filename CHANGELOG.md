@@ -4,6 +4,33 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-17
+
+- Add a responsive five-section GNSS dashboard with actual differential fix,
+  WAAS/EGNOS/MSAS/GAGAN source and NAV-SBAS per-satellite correction reporting.
+- Add confirmed hot/warm/software-cold acquisition experiments, alternating A/B
+  trials, actual event metrics, bounded history, redacted JSON/CSV/text reports,
+  cancellation and journaled exclusive receiver handover/recovery.
+- Add separately configured boot assistance/fallback policies, exact-receiver
+  navigation snapshots/restoration and evidence-gated clean-shutdown saving.
+  Keep current boot settings unchanged until explicitly configured; keep
+  database automation disabled until qualified on the specific F10N.
+- Add bounded independent coarse acquisition-time aiding without bypassing
+  the existing UTC freshness gate or F10N/F10P pairing.
+
+- Add the authenticated GNSS Information page with measured L1/L5 signal and
+  spectrum plots, RF/security states, freshness and bounded persisted events.
+- Add a GPSD-only passive diagnostics service, bounded capture controls and
+  redacted exports using existing admin sessions and CSRF protection.
+- Add identity-bound Thingstream enrollment, free Predictive Orbits caching,
+  opt-in metered/automatic refresh, and separately authorized Live Orbits with
+  durable quota reservations, backoff and conservative data limits.
+- Add explicit Autonomous RAM maintenance and an optional cache-only injection
+  hook within existing exclusive GPSD admission. Preserve F10N/F10P timing,
+  enrollment, baud, manual position, modem and uplink contracts.
+- Keep unqualified live message-rate changes and database automation disabled;
+  document staged installation, rollback and hardware/account qualification.
+
 ## [2.4.0] - 2026-11-15
 
 - Add optional SparkFun NEO-F10N USB GNSS support and GPIO26/pin37 Linux kernel

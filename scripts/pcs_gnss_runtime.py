@@ -129,6 +129,67 @@ def select_time_sources(selection, utc_valid, pps_active, pps_enabled=True):
         selection.set('F10P', True)
 
 
+def process_start(pid,proc=Path('/proc')):
+    return int((proc/str(pid)/'stat').read_text().rsplit(')',1)[1].split()[19])
+
+
+def owned_generation(alias=SERIAL_ALIAS, proc=Path('/proc'), command=run, receipt=None):
+    """A gate restart need not restart an already admitted, read-only GPSD.
+
+    Replug/absence transitions still use the existing admission/restart path.
+    No device descriptor is opened by this read-only ownership check.
+    """
+    try:
+        info=os.stat(alias)
+        rc,pid=command(['systemctl','show','gpsd.service','-p','MainPID','--value'])
+        pid=pid.strip()
+        if rc or not pid.isdigit() or int(pid)<=1:
+            return None
+        rc,occupied=command(['fuser',alias])
+        if not rc and occupied.split()==[pid] and b'-b\0' in (proc/pid/'cmdline').read_bytes():
+            return info.st_rdev,info.st_ino
+        # fuser requires ptrace privileges for the gpsd uid. The UTC gate does
+        # not receive those capabilities. Root admission/deployment can instead
+        # attest the exact generation without granting the gate more authority.
+        proof_path=RUNTIME/'gpsd-owner.json' if receipt is None else Path(receipt)
+        metadata=proof_path.lstat()
+        if proof_path.is_symlink() or metadata.st_uid!=0 or metadata.st_mode&0o022 or metadata.st_size>4096:
+            return None
+        proof=json.loads(proof_path.read_text())
+        if proof.get('generation')!=[info.st_rdev,info.st_ino] or proof.get('read_only') is not True:
+            return None
+        ticks=process_start(pid,proc)
+        if proof.get('kind')=='owner' and proof.get('pid')==pid and proof.get('start_ticks')==ticks:
+            return info.st_rdev,info.st_ino
+        if proof.get('kind')=='admission':
+            started=ticks/os.sysconf('SC_CLK_TCK')
+            if 0<=started-proof.get('admitted_monotonic',float('inf'))<=30:
+                return info.st_rdev,info.st_ino
+        return None
+    except (OSError,ValueError,TypeError,KeyError,IndexError,AttributeError,subprocess.SubprocessError):
+        return None
+
+
+def record_owner():
+    """Root-only read-only attestation; never opens or writes the UART."""
+    if os.geteuid()!=0:
+        raise ValueError('Root ownership attestation required')
+    rc,pid=run(['systemctl','show','gpsd.service','-p','MainPID','--value'])
+    pid=pid.strip()
+    if rc or not pid.isdigit() or int(pid)<=1:
+        raise ValueError('GPSD generation unavailable')
+    ticks=process_start(pid)
+    generation=owned_generation(receipt=Path('/nonexistent-pcs-owner-receipt'))
+    if generation is None:
+        raise ValueError('Cannot verify sole read-only GPSD owner')
+    rc,after=run(['systemctl','show','gpsd.service','-p','MainPID','--value'])
+    info=os.stat(SERIAL_ALIAS)
+    if rc or after.strip()!=pid or process_start(pid)!=ticks or generation!=(info.st_rdev,info.st_ino):
+        raise ValueError('GPSD generation unavailable')
+    atomic_json(RUNTIME/'gpsd-owner.json',{'kind':'owner','pid':pid,'start_ticks':ticks,
+                'generation':list(generation),'read_only':True},0o644)
+
+
 def serve():
     config = load_config()
     if config['mode'] != NEO:
@@ -147,14 +208,54 @@ def serve():
         stopping = True
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    last_probe, last_sample, last_generation = float('-inf'), float('-inf'), None
+    last_probe, last_sample, last_generation = float('-inf'), float('-inf'), owned_generation()
     last_report = float('-inf')
+    maintenance_id = None
     last_pps = PPS_ALIAS.exists()
     pps_enabled = config.get('pps_enabled', True)
     notify('READY=1')
     try:
         while not stopping:
             now = time.monotonic()
+            # A maintenance lease is fail-closed, including malformed/stale
+            # leases. Only the exclusive owner's verified cleanup releases it.
+            lease = RUNTIME / 'maintenance.json'
+            if lease.exists():
+                try:
+                    request = json.loads(lease.read_text())
+                    ident = request['id']
+                    if not isinstance(ident, str) or len(ident) != 32:
+                        raise ValueError('Invalid maintenance identifier')
+                except (OSError, ValueError, KeyError, TypeError):
+                    ident = 'invalid'
+                if maintenance_id != ident:
+                    selection.withdraw()
+                    gate.reset()
+                    for connection in connections:
+                        connection.close()
+                    connections, buffers, pending = {}, {}, []
+                    binary, activity, satellites = UBXStream(), MessageActivity(), SatelliteActivity()
+                    last_report = last_sample = last_probe = float('-inf')
+                    maintenance_id = ident
+                state.update(pulse.status())
+                state.update(utc_valid=False, fix_valid=False, connected=False, pps_validation='maintenance',
+                             state='fresh', diagnostic='Authorized receiver maintenance; GNSS references withdrawn',
+                             updated_monotonic=now)
+                _, tracking = run(['chronyc', '-n', 'tracking'])
+                _, sources = run(['chronyc', '-n', 'sources'])
+                state.update(parse_chrony(tracking, sources))
+                atomic_json(RUNTIME / 'status.json', state, 0o644)
+                atomic_json(RUNTIME / 'maintenance-ack.json', {'id':ident, 'pid':os.getpid(), 'withdrawn':True,
+                                                             'updated_monotonic':time.monotonic()})
+                notify('WATCHDOG=1')
+                time.sleep(0.2)
+                continue
+            if maintenance_id is not None:
+                # Discard all pre-maintenance timing evidence; fresh UTC/TOFF
+                # pairing is required before either reference can return.
+                gate.reset()
+                maintenance_id = None
+                (RUNTIME / 'maintenance-ack.json').unlink(missing_ok=True)
             try:
                 generation = (os.stat(SERIAL_ALIAS).st_rdev, os.stat(SERIAL_ALIAS).st_ino)
             except OSError:

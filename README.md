@@ -1,5 +1,14 @@
 # Portable Comm Server
 
+PCS v2.5.0 extends the commissioned v2.4.0 timing architecture with
+authenticated [GNSS Information, RF/spectrum diagnostics and AssistNow](docs/gnss-intelligence.md),
+a responsive five-section dashboard, actual DGPS/SBAS source reporting, and
+[controlled acquisition testing and navigation preservation](docs/gnss-acquisition.md).
+Disruptive operations require explicit confirmation; paid assistance remains
+separately authorized. See [installation/rollback](docs/gnss-intelligence-install.md)
+and [v2.5.0 acceptance](docs/v2.5.0-validation.md) for verified and deferred gates.
+The [GNSS page guide](docs/gnss-page-guide.md) explains its data and settings.
+
 PCS v2.4.0 adds optional [dedicated NEO-F10N GNSS and kernel PPS](docs/gnss-pps.md),
 with a separate [hardware commissioning runbook](docs/gnss-pps-commissioning.md).
 The [installation guide](docs/gnss-pps-install.md) covers the delivered 115200
@@ -48,6 +57,11 @@ In its current state, PCS is *much* more feature complete. It integrates the cor
 For more detail, see [Project Overview](docs/project-overview.md).
 
 ## Current Status
+
+Version 2.5.0 adds GNSS intelligence, differential correction reporting, controlled
+acquisition comparisons and qualified host navigation preservation. See the
+[measured hardware results](docs/v2.5.0-validation.md); normal timing, assistance
+quotas and uplink/radio settings are preserved.
 
 Version 2.4.0 adds the optional dedicated USB GNSS/PPS path while preserving the
 v2.3.x manual-position service, GPSD sharing, existing networking and radio
