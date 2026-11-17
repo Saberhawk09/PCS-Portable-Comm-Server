@@ -126,13 +126,15 @@ def time_hint():
                 normalized='#'+line[1:]
                 normalized=normalized.replace(columns[1],'F10P',1)
                 row=chrony_source_offsets(normalized).get('F10P',{})
-                if (row.get('sample_age_seconds',1e9)<=180 and row.get('root_distance_seconds',1e9)<=.5
+                age=row.get('sample_age_seconds',1e9)
+                max_age=min(3600,max(180,2*(2**int(columns[3]))))
+                if (age<=max_age and row.get('root_distance_seconds',1e9)<=.5
                         and abs(row.get('adjusted_offset_seconds',1e9))<=.5):
-                    offsets.append((columns[1],row['adjusted_offset_seconds']))
+                    offsets.append((columns[1],row['adjusted_offset_seconds'],age))
             except (ValueError,IndexError):
                 continue
-        if len({a for a,_ in offsets})>=2 and max(v for _,v in offsets)-min(v for _,v in offsets)<=.5:
-            hint=acq.independent_time(time.time(),True,'network',uncertainty=1)
+        if len({a for a,_,_ in offsets})>=2 and max(v for _,v,_ in offsets)-min(v for _,v,_ in offsets)<=.5:
+            hint=acq.independent_time(time.time(),True,'network',uncertainty=1+max(age for _,_,age in offsets)*.0002)
             hint['source']='Independent Internet NTP cross-check (two sources)'
     rtc=Path('/sys/class/rtc/rtc0')
     validation_path=acq.ROOT/'rtc-validation.json'

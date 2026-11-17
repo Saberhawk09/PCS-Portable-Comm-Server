@@ -89,7 +89,11 @@ class PolicyTests(unittest.TestCase):
         sources+='^- 108.61.215.221 3 10 377 45 +1ms[+1ms] +/- 35ms\n'
         with mock.patch.object(maintenance,'command',side_effect=['Leap status : Normal',sources]),mock.patch.object(maintenance.time,'time',return_value=NOW):
             self.assertTrue(maintenance.time_hint()['valid'])
-        for changed in (sources.replace('108.61.215.221','10.42.0.1'),sources.replace('377 45','377 999'),sources.replace('+1ms','+9s')):
+        with mock.patch.object(maintenance,'command',side_effect=['Leap status : Normal',sources.replace('377 45','377 999')]),mock.patch.object(maintenance.time,'time',return_value=NOW):
+            hint=maintenance.time_hint()
+            self.assertTrue(hint['valid'])
+            self.assertGreater(hint['uncertainty_seconds'],1)
+        for changed in (sources.replace('108.61.215.221','10.42.0.1'),sources.replace('377 45','377 3601'),sources.replace('+1ms','+9s')):
             with mock.patch.object(maintenance,'command',side_effect=['Leap status : Normal',changed]),mock.patch.object(maintenance.time,'time',return_value=NOW):
                 self.assertFalse(maintenance.time_hint()['valid'])
 
