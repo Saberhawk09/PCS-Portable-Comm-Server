@@ -79,11 +79,29 @@ def main():
         text = guard('02:00:00:00:00:02', '02:00:00:00:00:04')
         run('nft', '-c', '-f', '-', input=text)
         run('nft', '-f', '-', input=text)
-        time.sleep(2)  # bounded IPv6 DAD in disposable namespaces
+        # Wait for observed DAD completion rather than assuming the runner's
+        # kernel finishes every endpoint within a fixed two-second sleep.
+        deadline = time.monotonic() + 10
+        while True:
+            queries = [lambda *a: run('ip', '-6', 'address', 'show', *a)]
+            queries += [lambda *a, pid=pid: ns(pid, 'ip', '-6', 'address', 'show', *a)
+                        for pid in (lan, wan)]
+            if any(query('dadfailed').strip() for query in queries):
+                raise AssertionError('IPv6 duplicate-address detection failed in fixture')
+            if not any(query('tentative').strip() for query in queries):
+                break
+            if time.monotonic() >= deadline:
+                raise AssertionError('IPv6 fixture addresses did not become ready')
+            time.sleep(0.1)
         def ping(pid, target, succeeds):
-            result = subprocess.run(['nsenter', '-t', str(pid), '-n', 'ping', '-n', '-c', '1', '-W', '1', target], capture_output=True)
+            # First routed IPv6 traffic may resolve two neighbor entries. Only
+            # expected-success probes retry; denial assertions remain strict.
+            for _ in range(3 if succeeds else 1):
+                result = subprocess.run(['nsenter', '-t', str(pid), '-n', 'ping', '-n', '-c', '1', '-W', '1', target], capture_output=True)
+                if result.returncode == 0:
+                    break
             if (result.returncode == 0) != succeeds:
-                raise AssertionError(f'packet expectation failed: {target}, expected success={succeeds}: {result.stderr!r}')
+                raise AssertionError(f'packet expectation failed: {target}, expected success={succeeds}: {result.stdout!r} {result.stderr!r}')
         for target in ('10.42.0.1', '192.0.2.1', 'fd20::1'):
             ping(lan, target, True)
         for target in ('192.0.2.2', '10.42.0.100', 'fd42::100'):
