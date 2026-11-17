@@ -1,9 +1,10 @@
-# GNSS Information, RF diagnostics and AssistNow (v2.4.1 candidate)
+# GNSS Information, RF diagnostics and AssistNow (PCS v2.5.0)
 
-This is an additive development candidate based on commissioned v2.4.0 commit
+This is an additive implementation based on commissioned v2.4.0 commit
 `55a1bd336c0dc50771480aa9afb78bedf2050f63`. Installing software, enabling passive
 diagnostics, authorizing receiver maintenance, and accepting RF/timing hardware
-behavior are separate operations. Nothing in this candidate deploys itself.
+behavior are separate operations. See [v2.5.0 acceptance](v2.5.0-validation.md)
+for authorized deployment and measured hardware qualification.
 
 The authenticated page is **Administration → GNSS Information**, at
 `/admin/gnss`. It reuses the existing Python backend, administrator sessions,
@@ -33,7 +34,7 @@ The commissioned F10N/F10P validity gate, kernel GPIO26/pin37 PPS,
 GNSS-disabled configuration are preserved. No automatic receiver failover is
 introduced. Existing GPSD `-b` read-only configuration is retained.
 
-Receiver writes are restricted to two explicit contexts:
+Receiver writes are restricted to explicit ownership contexts:
 
 1. **Operator maintenance**, with GPSD service/socket and the PCS UTC gate
    already released by the operator. The manager checks their state, shares
@@ -44,8 +45,13 @@ Receiver writes are restricted to two explicit contexts:
    exclusive file-descriptor scope before GPSD opens the UART. No additional
    serial process, Internet request or downloader lock is involved. Default is
    disabled. Healthy/fixed receivers are left alone. No late injection occurs.
+3. **Confirmed acquisition/navigation maintenance**, added in v2.5.0. The worker
+   withdraws references through an acknowledged gate lease and uses GPSD's
+   control socket to release/reacquire only the enrolled receiver. It does not
+   restart GPSD/Chrony. The [acquisition runbook](gnss-acquisition.md) covers
+   reset, database, shutdown, recovery and normal boot-policy rules.
 
-Only `CFG-ANA-USE_ANA`, optional `CFG-ITFM-ENABLE`, and temporary
+The original configuration manager admits only `CFG-ANA-USE_ANA`, optional `CFG-ITFM-ENABLE`, and temporary
 `CFG-NAVSPG-ACKAIDING` boolean RAM values are admitted by the manager. No baud,
 timepulse, orbit-error threshold, flash, BBR persistence, reset, power or modem
 command is admitted. Changes require readback. Temporary ACK policy has a

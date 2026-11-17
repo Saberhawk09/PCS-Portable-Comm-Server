@@ -6,6 +6,7 @@ The root `README.md` is the public front page. These documents hold the deeper b
 
 ## Core Docs
 
+- [GNSS page data and settings guide](gnss-page-guide.md)
 - [GNSS acquisition testing and navigation preservation](gnss-acquisition.md) - confirmed benchmarks, boot policies, database qualification and recovery
 - [PCS v2.5.0 acceptance record](v2.5.0-validation.md)
 

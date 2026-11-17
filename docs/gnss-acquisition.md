@@ -110,6 +110,8 @@ checks Autonomous activity, stops the GNSS engine with controlled mode `0x08`,
 collects validated DBD entries, and requires an MGA-ACK completion carrying the
 exact entry count. Cleanup starts GNSS with mode `0x09`. Restoration requires
 per-entry matching successful acknowledgements; any rejection fails qualification.
+F10 SPG 6.00 also requires ACKAIDING for dump-completion acknowledgement;
+capture temporarily enables it in RAM and restores its journaled original value.
 
 Objects live under root-owned mode-0700 `/var/lib/pcs-gnss-acquisition/navigation`;
 payloads and metadata are mode 0600. Immutable payload and metadata publication
