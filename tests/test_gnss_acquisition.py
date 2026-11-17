@@ -336,12 +336,22 @@ class TransferTests(unittest.TestCase):
     def test_database_dump_completion_and_bad_counts(self):
         channel=mock.Mock()
         channel.poll.return_value=[(0x13,0x80,bytes(12)),(0x13,0x60,complete())]
-        raw,ack=maintenance.dump_database(channel,maintenance.time.monotonic()+1)
+        raw,ack=maintenance.collect_database(channel,maintenance.time.monotonic()+1)
         self.assertEqual(raw,dbd())
         self.assertEqual(ack,complete())
         channel.poll.return_value=[(0x13,0x80,bytes(12)),(0x13,0x60,complete(2))]
         with self.assertRaises(ValueError):
-            maintenance.dump_database(channel,maintenance.time.monotonic()+1)
+            maintenance.collect_database(channel,maintenance.time.monotonic()+1)
+
+    def test_dump_enables_ram_ack_and_restores_after_incomplete_transfer(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(assist,'ROOT',Path(tmp)), \
+             mock.patch.object(manager,'read_values',return_value={manager.ACK_AIDING:0}), \
+             mock.patch.object(manager,'write_values') as writer, \
+             mock.patch.object(maintenance,'collect_database',side_effect=ValueError('Incomplete')):
+            with self.assertRaises(ValueError):
+                maintenance.dump_database(mock.Mock(),maintenance.time.monotonic()+1,IDENTITY['binding'])
+            self.assertEqual([c.args[1] for c in writer.call_args_list],[{manager.ACK_AIDING:1},{manager.ACK_AIDING:0}])
+            self.assertEqual(assist.read_json(Path(tmp)/'receiver-transaction.json',{})['state'],'restored')
 
     def test_restore_ack_exact_match_and_cleanup_on_every_failure(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(assist,'ROOT',Path(tmp)), \

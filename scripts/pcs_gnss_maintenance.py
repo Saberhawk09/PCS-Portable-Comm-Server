@@ -341,7 +341,21 @@ def started(channel):
     atomic_json(JOURNAL,dict(value,stopped=False))
 
 
-def dump_database(channel,deadline):
+def dump_database(channel,deadline,binding):
+    # F10 SPG 6.00 suppresses the dump-completion MGA-ACK when ACKAIDING
+    # is disabled. Preserve the setting and enable it in RAM for this transfer.
+    before=manager.read_values(channel.exchange,[manager.ACK_AIDING])
+    journal=assist.ROOT/'receiver-transaction.json'
+    atomic_json(journal,{'state':'pending','binding':binding,'before':{str(k):v for k,v in before.items()}})
+    try:
+        manager.write_values(channel.exchange,{manager.ACK_AIDING:1})
+        return collect_database(channel,deadline)
+    finally:
+        manager.write_values(channel.exchange,before)
+        atomic_json(journal,{'state':'restored'})
+
+
+def collect_database(channel,deadline):
     channel.send(ubx(0x13,0x80))
     frames=[]
     while time.monotonic()<deadline:
@@ -514,7 +528,7 @@ def worker():
                         raise assist.AssistanceError('Autonomous generation busy or unknown')
                     if job['kind']=='snapshot':
                         stopped(channel)
-                        raw,ack=dump_database(channel,time.monotonic()+20)
+                        raw,ack=dump_database(channel,time.monotonic()+20,bound['binding'])
                         meta=acq.NavigationStore().publish(raw,ack,bound,hint,retention=acq.load_policy()['backup_retention'])
                         job['database_evidence']={'identity':bound,'sha256':meta['sha256'],'frame_count':meta['frame_count'],
                                                   'accepted':meta['frame_count'],'complete':True}
@@ -697,7 +711,7 @@ def shutdown_backup():
                     if len(aop)!=16 or aop[5]:
                         raise assist.AssistanceError('Autonomous generation busy')
                     stopped(channel)
-                    raw,ack=dump_database(channel,deadline)
+                    raw,ack=dump_database(channel,deadline,actual['binding'])
                     meta=acq.NavigationStore().publish(raw,ack,actual,hint,retention=config['backup_retention'])
                 state='Completed'
         except (ValueError,OSError,subprocess.SubprocessError):
