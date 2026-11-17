@@ -189,6 +189,12 @@ and `allowedData` entitlement. Evaluation access cannot be inferred from
 `allowedData` alone; its exact profile and remaining vendor quota must be checked
 in the portal. The page explicitly reports that uncertainty.
 
+The enrollment response parser accepts the guide's `allowedData` string array
+and the comma-separated string observed from the live service. Both normalize
+to a bounded list of exact entitlement names. Partial names, malformed CSV,
+query parameters and alternate service endpoints cannot grant permissions;
+Live still requires separate local enablement and cost consent.
+
 ## Cache, refresh and cost controls
 
 The client uses verified HTTPS to the current `GetAssistNowData.ashx` endpoint,

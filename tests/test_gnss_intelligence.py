@@ -234,6 +234,33 @@ class EventCaptureTests(unittest.TestCase):
 
 
 class AssistanceTests(unittest.TestCase):
+    def test_enrollment_accepts_documented_array_and_observed_csv_entitlements(self):
+        response = {'serviceUrl': assist.SERVICE, 'chipcode': 'nonsecretFixture123', 'allowedData': ['uporb_7', 'ulorb_l1']}
+        expected = assist.enrollment_credentials(response, IDENTITY)
+        actual = assist.enrollment_credentials(response | {'allowedData': 'uporb_7, ulorb_l1'}, IDENTITY)
+        self.assertEqual(actual, expected)
+        self.assertTrue(assist.valid_credentials(actual))
+
+    def test_enrollment_csv_cannot_inject_query_parameters_or_unbounded_entitlements(self):
+        response = {'serviceUrl': assist.SERVICE, 'chipcode': 'nonsecretFixture123'}
+        for allowed in ('uporb_7&data=ulorb_l1', 'uporb_7,', 'uporb_7\nulorb_l1',
+                        'uporb_7;' + 'ulorb_l1', 'x' * 1281, ['uporb_7'] * 33, [7], None):
+            with self.subTest(kind=type(allowed).__name__), self.assertRaises(assist.AssistanceError):
+                assist.enrollment_credentials(response | {'allowedData': allowed}, IDENTITY)
+        with self.assertRaises(assist.AssistanceError):
+            assist.enrollment_credentials(response | {'allowedData': 'uporb_7', 'serviceUrl': 'https://example.invalid'}, IDENTITY)
+
+    def test_csv_entitlement_does_not_enable_live_or_match_partial_names(self):
+        response = {'serviceUrl': assist.SERVICE, 'chipcode': 'nonsecretFixture123', 'allowedData': 'uporb_7_extra,ulorb_l1'}
+        creds = assist.enrollment_credentials(response, IDENTITY)
+        request = mock.Mock()
+        client = assist.Downloader(self.cache, request=request, clock=lambda: NOW)
+        usage = client.refresh({}, creds, {'online': True, 'metered': False}, {}, force=True)
+        self.assertIn('Missing Entitlement', usage['state'])
+        usage = client.refresh({}, creds, {'online': True, 'metered': False}, {}, kind='live', force=True)
+        self.assertEqual(usage['state'], 'Live Orbits Disabled')
+        request.assert_not_called()
+
     def test_commissioned_48_bit_identity_binds_sixth_byte(self):
         first = assist.receiver_identity(version(), ubx(0x27, 3, b'\2\0\0\0abcdeA'))
         second = assist.receiver_identity(version(), ubx(0x27, 3, b'\2\0\0\0abcdeB'))

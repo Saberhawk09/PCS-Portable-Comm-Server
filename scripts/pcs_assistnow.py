@@ -355,6 +355,23 @@ def https(url, body=None):
         raise AssistanceError('Assistance network unavailable or TLS verification failed') from None
 
 
+def enrollment_credentials(response, identity):
+    """Normalize documented arrays and the service's observed CSV entitlement form."""
+    if not isinstance(response, dict):
+        raise AssistanceError('Invalid enrollment response')
+    allowed = response.get('allowedData')
+    if isinstance(allowed, str) and len(allowed) <= 1280:
+        allowed = [item.strip(' ') for item in allowed.split(',')] if allowed else []
+    if (not isinstance(response, dict) or response.get('serviceUrl') != SERVICE
+            or not isinstance(allowed, list) or len(allowed) > 32
+            or not all(isinstance(x, str) and re.fullmatch(r'[A-Za-z0-9_]{1,39}', x) for x in allowed)
+            or not isinstance(response.get('chipcode'), str)
+            or not re.fullmatch(r'[A-Za-z0-9+/=_-]{8,512}', response['chipcode'])):
+        raise AssistanceError('Invalid enrollment credentials or service endpoint')
+    return {'version': 1, 'identity': identity, 'chipcode': response['chipcode'],
+            'allowed_data': allowed, 'service_url': SERVICE}
+
+
 def enroll(token, version_frame, unique_frame, request=https):
     identity = receiver_identity(version_frame, unique_frame)
     if not isinstance(token, str) or not 8 <= len(token) <= 4096:
@@ -364,14 +381,7 @@ def enroll(token, version_frame, unique_frame, request=https):
         response = json.loads(request(ZTP, json.dumps(payload).encode()))
     except (ValueError, UnicodeError):
         raise AssistanceError('Invalid enrollment response') from None
-    if (not isinstance(response, dict) or response.get('serviceUrl') != SERVICE
-            or not isinstance(response.get('allowedData'), list)
-            or not all(isinstance(x, str) for x in response['allowedData'])
-            or not isinstance(response.get('chipcode'), str)
-            or not re.fullmatch(r'[A-Za-z0-9+/=_-]{8,512}', response['chipcode'])):
-        raise AssistanceError('Invalid enrollment credentials or service endpoint')
-    return {'version': 1, 'identity': identity, 'chipcode': response['chipcode'],
-            'allowed_data': response['allowedData'], 'service_url': SERVICE}
+    return enrollment_credentials(response, identity)
 
 
 def network(snapshot, now=None):
