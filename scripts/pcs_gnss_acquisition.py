@@ -270,7 +270,8 @@ def summary(rows):
                       type(r.get('metrics',{}).get(key)) in (int,float) and math.isfinite(r['metrics'][key])]
             metrics[key] = {'samples':len(values), 'median':statistics.median(values) if values else None,
                             'fastest':min(values) if values else None, 'slowest':max(values) if values else None}
-        result[source] = {'trials':len(group), 'failures':sum(r.get('state') != 'Completed' for r in group), 'metrics':metrics}
+        result[source] = {'trials':len(group), 'failures':sum(r.get('state') in ('Failed','Cancelled','Interrupted') for r in group),
+                          'in_progress':sum(r.get('state') in ('Queued','Running','Recovering') for r in group), 'metrics':metrics}
     improvements = []
     names = list(dict.fromkeys(r.get('requested_source') or 'unknown' for r in rows))
     for index,a in enumerate(names):

@@ -199,6 +199,12 @@ class StorageTests(unittest.TestCase):
 
 
 class MeasurementTests(unittest.TestCase):
+    def test_in_progress_is_not_reported_as_failed_or_in_success_statistics(self):
+        value=acq.summary([{'requested_source':'none','selected_source':'none','state':'Running',
+                            'metrics':{'receiver_ttff_seconds':2}}])['sources']['none']
+        self.assertEqual((value['failures'],value['in_progress']),(0,1))
+        self.assertEqual(value['metrics']['receiver_ttff_seconds']['samples'],0)
+
     def test_actual_events_new_session_and_separate_recovery_metrics(self):
         clock=[100.0]
         metrics=acq.TrialMetrics(100,{'valid':False},clock=lambda:clock[0])
