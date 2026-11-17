@@ -234,6 +234,18 @@ class EventCaptureTests(unittest.TestCase):
 
 
 class AssistanceTests(unittest.TestCase):
+    def test_commissioned_48_bit_identity_binds_sixth_byte(self):
+        first = assist.receiver_identity(version(), ubx(0x27, 3, b'\2\0\0\0abcdeA'))
+        second = assist.receiver_identity(version(), ubx(0x27, 3, b'\2\0\0\0abcdeB'))
+        self.assertNotEqual(first['binding'], second['binding'])
+        self.assertNotEqual(first['binding'], IDENTITY['binding'])
+
+    def test_unique_identity_version_length_and_reserved_bytes_are_exact(self):
+        for payload in (b'\1\0\0\0abcdef', b'\2\0\0\0abcde', b'\3\0\0\0abcdef',
+                        b'\2\1\0\0abcdef', b'\2' + bytes(9), b''):
+            with self.subTest(length=len(payload)), self.assertRaises(assist.AssistanceError):
+                assist.receiver_identity(version(), ubx(0x27, 3, payload))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

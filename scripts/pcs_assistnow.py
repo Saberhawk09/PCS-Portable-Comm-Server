@@ -128,7 +128,10 @@ def receiver_identity(version_frame, unique_frame):
     if len(v[0][6:-2]) < 40 or (len(v[0][6:-2]) - 40) % 30:
         raise AssistanceError('Malformed receiver version extensions')
     p = u[0][6:-2]
-    if len(p) != 9 or p[0] != 1 or not any(p[4:]):
+    # F10 R02 documents v1/40-bit; the commissioned F10 also emits the
+    # manufacturer's v2/48-bit form documented by M10 and Thingstream ZTP.
+    # Keep exact version/length pairs and bind every ID byte, never truncate.
+    if (len(p), p[0] if p else None) not in ((9, 1), (10, 2)) or p[1:4] != b'\0\0\0' or not any(p[4:]):
         raise AssistanceError('Unsupported unique receiver identity')
     identity = mon_ver(v[0][6:-2])
     if not identity['firmware'].startswith('EXT SPGL1L5 6.00'):

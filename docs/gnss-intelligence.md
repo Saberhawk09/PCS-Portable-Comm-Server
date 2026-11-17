@@ -140,6 +140,14 @@ Full MON-VER and SEC-UNIQID responses bind enrollment, cache and injections to
 the verified chip identity plus firmware/hardware/protocol. Another receiver or
 firmware requires review and re-enrollment. CH340 VID/PID alone is insufficient.
 
+Commissioning found SEC-UNIQID version 2 (six ID bytes) on this F10N, whereas
+F10 interface R02 lists version 1 (five bytes). PCS admits only these exact
+version/length pairs and binds all ID bytes. The version-2 layout is documented
+in the manufacturer's [M10 SPG 5.00 interface description](https://content.u-blox.com/sites/default/files/u-blox%20M10-SPG-5.00_InterfaceDescription_UBX-20053845.pdf)
+and illustrated by the current [Thingstream integration guide](https://support.thingstream.io/hc/en-gb/articles/19691732434972-AssistNow-service-integration-guide).
+This is an observed F10 documentation discrepancy, not a change of the admitted
+receiver model, firmware or protocol. Other formats remain rejected.
+
 Create a Thingstream domain/device profile yourself, choosing **OTHER** for this
 module and **Predictive Orbits** for free-only enrollment. Account creation,
 subscriptions and billable activation are never performed by PCS. Select the
