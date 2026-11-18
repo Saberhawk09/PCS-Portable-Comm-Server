@@ -8,6 +8,9 @@ Disruptive operations require explicit confirmation; paid assistance remains
 separately authorized. See [installation/rollback](docs/gnss-intelligence-install.md)
 and [v2.5.0 acceptance](docs/v2.5.0-validation.md) for verified and deferred gates.
 The [GNSS page guide](docs/gnss-page-guide.md) explains its data and settings.
+The [final GNSS reliability closeout](docs/gnss-final-closeout.md) records the
+installed safety overlay, real power-up results and independent qualification
+holds. Both unattended navigation-database features remain disabled.
 
 PCS v2.4.0 adds optional [dedicated NEO-F10N GNSS and kernel PPS](docs/gnss-pps.md),
 with a separate [hardware commissioning runbook](docs/gnss-pps-commissioning.md).

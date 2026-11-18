@@ -1,5 +1,9 @@
 # GNSS maintenance reliability qualification — 17 November 2026
 
+See [the final closeout](gnss-final-closeout.md) for the subsequent real power-up,
+read-only SBAS checks, final validation and individual acceptance decisions.
+The measurements below remain the detailed maintenance evidence.
+
 ## Operator outcome
 
 The investigation found reproducible receiver-state and snapshot limitations:
