@@ -5,8 +5,14 @@ All notable user-facing PCS changes are recorded here.
 ## [Unreleased]
 
 - Require a newly observed kernel PPS event after navigation-maintenance handover,
-  fresh validated UTC and paired F10P before success; retain bounded partial
+  stable 1 Hz cadence, fresh validated UTC and paired F10P before success; retain bounded partial
   recovery timings and the specific failed recovery stage without reset retries.
+- Reject live database overlays and warm/hot database trials before receiver
+  access. Keep cold restoration experimental: some valid same-receiver snapshots
+  are rejected even after reset. Both unattended database features remain held.
+- Send independent coarse time before stopping the GNSS engine for database
+  restoration. Observe bounded timing recovery after failure or cancellation
+  while preserving the original failed/cancelled outcome.
 - Admit startup-restore and shutdown qualification independently through the
   existing private evidence workflow; validate shutdown power hold before writes.
 

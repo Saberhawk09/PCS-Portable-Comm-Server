@@ -1,5 +1,11 @@
 # GNSS acquisition follow-up to PCS v2.5.1
 
+For the subsequently deployed reliability corrections and current hardware
+acceptance, see [the maintenance qualification report](gnss-maintenance-reliability.md).
+That report supersedes the original completion-sampling and restoration
+acceptance descriptions below. Both unattended database features remain held;
+even software cold restoration can reject a valid snapshot.
+
 This additive patch audits the requested acquisition system against the already
 released implementation. It preserves the five-section GNSS interface, SBAS,
 spectrum, GPSD ownership, F10N/F10P validity gate and existing AssistNow account,
