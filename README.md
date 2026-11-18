@@ -1,6 +1,6 @@
 # Portable Comm Server
 
-PCS v2.5.0 extends the commissioned v2.4.0 timing architecture with
+PCS v2.5.2 extends the commissioned v2.4.0 timing architecture with
 authenticated [GNSS Information, RF/spectrum diagnostics and AssistNow](docs/gnss-intelligence.md),
 a responsive five-section dashboard, actual DGPS/SBAS source reporting, and
 [controlled acquisition testing and navigation preservation](docs/gnss-acquisition.md).

@@ -4,6 +4,8 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-11-17
+
 - Close GNSS reliability qualification with explicit capability states, observed
   power-up and read-only SBAS evidence, retained database automation holds,
   recovery/rollback instructions and a sanitized, unsent manufacturer report.

@@ -1,8 +1,10 @@
-# GNSS reliability release candidate
+# PCS v2.5.2 — GNSS maintenance reliability
 
-Candidate for the next separately approved PCS maintenance release through
+Maintenance release prepared for authorized publication through
 [PR #112](https://github.com/Saberhawk09/PCS-Portable-Comm-Server/pull/112).
-No existing release tag is changed by this candidate.
+Existing release tags are preserved. The final closeout report records the
+pre-release acceptance checkpoint; the release receipt records subsequent
+publication and deployment.
 
 * Require fresh UTC, a new kernel PPS event, stable 1 Hz cadence and paired,
   selected F10P before navigation maintenance succeeds.
