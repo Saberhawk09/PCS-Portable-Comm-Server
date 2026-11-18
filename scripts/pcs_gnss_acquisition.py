@@ -256,6 +256,8 @@ def trials(request):
         sequence = [source]*repetitions
     if mode not in MASKS or any(s not in SOURCES for s in sequence):
         raise assist.AssistanceError('Unknown start or assistance source')
+    if mode!='cold' and 'database' in sequence:
+        raise assist.AssistanceError('Saved receiver database restoration requires an explicitly confirmed software cold test')
     return [{'start':mode, 'source':s, 'fallback':fallback, 'timeout_seconds':timeout,
              'trial':n+1, 'paid_consent':request.get('paid_consent') == 'yes'} for n,s in enumerate(sequence)]
 
@@ -362,21 +364,51 @@ def result_export(job, kind='json'):
                            and type(v) in (str,int,float,bool,type(None))}
         safe_rows.append(safe)
     value = {'id':job.get('id'), 'state':job.get('state'), 'created_at':job.get('created_at'),
+             'kind':job.get('kind') if job.get('kind') in ('benchmark','snapshot','restore') else None,
              'failure':job.get('failure') if isinstance(job.get('failure'),str) else None,
              'results':safe_rows, 'summary':summary(safe_rows), 'label':'Software GNSS starts; not electrical power-cycle tests'}
+    value.update(failure_code=job.get('failure_code') if job.get('failure_code') in
+                 ('database-rejected','database-ack-mismatch','database-no-ack','database-deadline') else None,
+                 failure_phase=job.get('failure_phase') if isinstance(job.get('failure_phase'),str) else None)
+    for key in ('ownership_recovered','timing_recovered'):
+        value[key]=job.get(key) if type(job.get(key)) is bool else None
+    database=job.get('database_evidence') or {}
+    if not isinstance(database,dict):
+        database={}
+    value['database_evidence']={key:database[key] for key in ('frame_count','offered','accepted','rejected','unacknowledged','failed_frame')
+        if type(database.get(key)) is int and 0<=database[key]<=8192}
+    if type(database.get('receiver_code')) is int and 0<=database['receiver_code']<=255:
+        value['database_evidence']['receiver_code']=database['receiver_code']
+    if type(database.get('complete')) is bool:
+        value['database_evidence']['complete']=database['complete']
+    recovery=job.get('navigation_recovery')
+    value['navigation_recovery']={key:recovery[key] for key in ('utc_seconds','pps_seconds','stable_pps_seconds','f10p_seconds')
+        if type(recovery.get(key)) in (int,float) and math.isfinite(recovery[key]) and 0<=recovery[key]<=300} if isinstance(recovery,dict) else {}
     if kind == 'json':
         return json.dumps(value, indent=2, allow_nan=False)
     if kind == 'csv':
         out = io.StringIO(newline='')
-        columns = ('trial','start','requested_source','selected_source','state','download_seconds','injection_seconds','accepted','rejected','offered','unacknowledged') + METRICS
+        extra=('operation','failure_code','failure_phase','ownership_recovered','timing_recovered',
+               'database_frame_count','database_accepted','database_rejected','database_offered','database_unacknowledged','failed_frame','receiver_code',
+               'recovery_utc_seconds','recovery_pps_seconds','recovery_stable_pps_seconds','recovery_f10p_seconds')
+        columns = ('trial','start','requested_source','selected_source','state','download_seconds','injection_seconds','accepted','rejected','offered','unacknowledged') + METRICS + extra
         writer = csv.DictWriter(out, fieldnames=columns)
         writer.writeheader()
-        for row in safe_rows:
-            writer.writerow({key:(row.get('metrics') or {}).get(key) if key in METRICS else row.get(key) for key in columns})
+        for row in safe_rows or ([{'state':value['state']}] if value['kind'] in ('snapshot','restore') else []):
+            record={key:(row.get('metrics') or {}).get(key) if key in METRICS else row.get(key) for key in columns}
+            record.update(operation=value['kind'],**{key:value[key] for key in extra if key in value})
+            record.update({key:value['database_evidence'].get(key.removeprefix('database_')) for key in extra
+                           if key.startswith('database_') or key in ('receiver_code','failed_frame')})
+            record.update({'recovery_'+key:entry for key,entry in value['navigation_recovery'].items()})
+            writer.writerow(record)
         return out.getvalue()
     if kind != 'text':
         raise assist.AssistanceError('Unknown report format')
     return ('PCS GNSS acquisition report\nSoftware starts, not electrical power cycles.\n' +
+            f"Operation: {value['kind']}; State: {value['state']}\nFailure: {value['failure']}; Phase: {value['failure_phase']}\n" +
+            f"UART ownership recovered: {value['ownership_recovered']}; Paired timing observed at completion: {value['timing_recovered']}\n" +
+            'Database transfer evidence: '+json.dumps(value['database_evidence'],allow_nan=False)+'\n' +
+            'Recovery seconds after handover: '+json.dumps(value['navigation_recovery'],allow_nan=False)+'\n' +
             '\n'.join(f"Trial {r['trial']}: {r['start']} / {r['requested_source']} -> {r['selected_source']}: {r['state']}; TTFF {(r.get('metrics') or {}).get('receiver_ttff_seconds')} s; PPS/NTP recovery {(r.get('metrics') or {}).get('f10p_seconds')} s; {r['residual_data']}" for r in safe_rows) +
             '\nStatistics: ' + json.dumps(value['summary'], allow_nan=False))
 
@@ -437,9 +469,11 @@ def public_status(root=ROOT, config=None, identity=None):
             history.append({'id':item.get('id'),'state':item.get('state'),'created_at':item.get('created_at'),
                             'kind':item.get('kind'),'trials':len(item.get('results',[]))})
     qualification = {name:qualified(root,identity,name) for name in ('database_capture','database_restore','shutdown')}
+    qualification_record=private_json(Path(root)/'qualification.json',{})
     return {'policy':config,'policy_configured':CONFIG.exists(), 'job':safe,'history':history,
             'database':NavigationStore(root).status(identity,max_age_hours=config['database_max_age_hours']),
             'qualification':qualification,
+            'qualification_hold':qualification_record.get('identity')==identity and qualification_record.get('requalification_required') is True,
             'shutdown':{k:v for k,v in private_json(Path(root)/'shutdown-result.json',{}).items()
                         if k in ('state','at','duration_seconds')},
             'retained_data':'Receiver-retained and flash-resident predictions may remain; software reset is not a power cycle'}

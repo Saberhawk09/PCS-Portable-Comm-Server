@@ -1,0 +1,332 @@
+"""Qualification and failure-reporting fixtures; no hardware acceptance claims."""
+import contextlib
+import csv
+import io
+import json
+import struct
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
+import pcs_gnss_acquisition as acq
+import pcs_gnss_maintenance as maintenance
+import pcs_gnss_manager as manager
+import pcs_assistnow as assist
+from pcs_gnss import atomic_json
+from test_gnss_acquisition import dbd
+from test_gnss_intelligence import IDENTITY,NOW,version,unique
+from test_gnss_corrections import pvt,fixture,panel
+
+
+class AcquisitionSafetyTests(unittest.TestCase):
+    def test_retained_database_restore_is_rejected_before_queue_or_serial_access(self):
+        import pcs_gnss_info as info
+        with mock.patch.object(info,'lock',return_value=contextlib.nullcontext()), \
+             mock.patch.object(acq,'Jobs') as jobs,mock.patch.object(info.subprocess,'run') as run:
+            with self.assertRaisesRegex(assist.AssistanceError,'unsupported'):
+                info.acquisition_update({'operation':'navigation-restore','confirm':acq.CONFIRM})
+            jobs.return_value.queue.assert_not_called()
+            run.assert_not_called()
+        for start in ('hot','warm'):
+            with self.assertRaisesRegex(assist.AssistanceError,'software cold'):
+                acq.trials({'confirm':acq.CONFIRM,'start':start,'source':'database'})
+
+    def test_pps_cadence_requires_three_normal_intervals_and_rejects_burst(self):
+        cadence=maintenance.PPSCadence()
+        self.assertFalse(cadence.observe((1000,1)))
+        self.assertFalse(cadence.observe((1000.25,63)))
+        self.assertFalse(cadence.observe((1001.25,64)))
+        self.assertFalse(cadence.observe((1002.25,65)))
+        self.assertTrue(cadence.observe((1003.25,66)))
+        self.assertFalse(cadence.observe((1003.5,127)))
+
+    def test_pps_cadence_resets_on_absence_and_counter_restart(self):
+        cadence=maintenance.PPSCadence()
+        for n in range(4):cadence.observe((1000+n,10+n))
+        self.assertTrue(cadence.observe((1003,13)))
+        self.assertFalse(cadence.observe(None))
+        for n in range(4):cadence.observe((1010+n,20+n))
+        self.assertFalse(cadence.observe((1014,1)))
+
+    def test_navigation_recovery_rejects_advancing_burst_despite_paired_status(self):
+        with mock.patch.object(maintenance,'pps_sequence',side_effect=[1,2,63]), \
+             mock.patch.object(maintenance,'pps_reading',side_effect=[(1000,2),(1000.25,63)]), \
+             mock.patch.object(maintenance,'read_status',return_value={'state':'fresh','utc_valid':True}), \
+             mock.patch.object(maintenance,'paired_timing',return_value=True), \
+             mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,.2,.3,2]), \
+             mock.patch.object(maintenance.time,'sleep'):
+            with self.assertRaisesRegex(maintenance.NavigationRecoveryError,'stable 1 Hz'):
+                maintenance.navigation_recovery(seconds=1)
+
+    @contextlib.contextmanager
+    def qualification_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);root.chmod(0o700)
+            (root/'history').mkdir()
+            atomic_json(root/'receiver-facts.json',{'identity':IDENTITY})
+            for kind,ident in (('snapshot','a'*32),('restore','b'*32)):
+                atomic_json(root/'history'/(ident+'.json'),{'kind':kind,'state':'Completed','timing_recovered':True,
+                    'database_evidence':{'identity':IDENTITY,'complete':True,'frame_count':2,'accepted':2,'sha256':'c'*64}})
+            read=assist.read_json
+            def fixture_read(path,*args,**kwargs):
+                # Root-owned enrollment is supplied by the harness; all other
+                # private files still exercise their actual owner/mode checks.
+                return {'identity':IDENTITY} if Path(path)==root/'receiver-facts.json' else read(path,*args,**kwargs)
+            with mock.patch.object(acq,'ROOT',root),mock.patch.object(assist,'ROOT',root), \
+                 mock.patch.object(assist,'read_json',side_effect=fixture_read), \
+                 mock.patch.object(maintenance,'boot_id',return_value='current-boot'):
+                yield root
+
+    def test_shutdown_trial_can_be_armed_without_qualifying_restore(self):
+        with self.qualification_context() as root:
+            atomic_json(root/'request.json',{'snapshot':'a'*32,'power_hold_seconds':90})
+            result=maintenance.qualify(root/'request.json','I authorize GNSS timing maintenance',True)
+            self.assertFalse(result['database_restore_qualified'])
+            self.assertFalse(result['shutdown_qualified'])
+            self.assertTrue(result['shutdown_trial_armed'])
+
+    def test_shutdown_qualification_does_not_depend_on_restore(self):
+        with self.qualification_context() as root:
+            atomic_json(root/'request.json',{'snapshot':'a'*32,'capability':'shutdown'})
+            atomic_json(root/'shutdown-result.json',{'state':'Completed','qualification_trial':True,
+                        'identity':IDENTITY,'sha256':'c'*64,'boot_id':'previous-boot'})
+            result=maintenance.qualify(root/'request.json','I authorize GNSS timing maintenance')
+            self.assertTrue(result['shutdown_qualified'])
+            self.assertFalse(result['database_restore_qualified'])
+
+    def test_bad_shutdown_power_budget_changes_no_qualification_flags(self):
+        with self.qualification_context() as root:
+            atomic_json(root/'request.json',{'snapshot':'a'*32,'restore':'b'*32,'power_hold_seconds':60})
+            with self.assertRaises(assist.AssistanceError):
+                maintenance.qualify(root/'request.json','I authorize GNSS timing maintenance',True)
+            self.assertFalse((root/'qualification.json').exists())
+            self.assertFalse((root/'shutdown-qualification.json').exists())
+
+    def test_restore_qualification_preserves_independent_shutdown_result(self):
+        with self.qualification_context() as root:
+            atomic_json(root/'request.json',{'snapshot':'a'*32,'restore':'b'*32})
+            atomic_json(root/'qualification.json',{'identity':IDENTITY,'shutdown':True,'database_restore':False})
+            result=maintenance.qualify(root/'request.json','I authorize GNSS timing maintenance')
+            self.assertTrue(result['shutdown_qualified'])
+            self.assertTrue(result['database_restore_qualified'])
+
+    def test_navigation_recovery_requires_new_kernel_pulse(self):
+        paired={'state':'fresh','utc_valid':True}
+        with mock.patch.object(maintenance,'pps_sequence',return_value=10), \
+             mock.patch.object(maintenance,'read_status',return_value=paired), \
+             mock.patch.object(maintenance,'paired_timing',return_value=True), \
+             mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,2]), \
+             mock.patch.object(maintenance.time,'sleep'):
+            with self.assertRaisesRegex(assist.AssistanceError,'advancing kernel PPS'):
+                maintenance.navigation_recovery(seconds=1)
+
+    def test_navigation_recovery_requires_valid_utc_and_paired_selection(self):
+        states=[{'state':'stale','utc_valid':False},{'state':'fresh','utc_valid':True}]
+        with mock.patch.object(maintenance,'pps_sequence',side_effect=[10,11,12]), \
+             mock.patch.object(maintenance,'PPSCadence') as cadence, \
+             mock.patch.object(maintenance,'read_status',side_effect=states), \
+             mock.patch.object(maintenance,'paired_timing',return_value=True), \
+             mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,.2,.3,.4]), \
+             mock.patch.object(maintenance.time,'sleep'):
+            cadence.return_value.observe.return_value=True
+            value=maintenance.navigation_recovery(seconds=1)
+        self.assertLess(value['pps_seconds'],value['utc_seconds'])
+        self.assertEqual(value['f10p_seconds'],value['utc_seconds'])
+
+    def test_navigation_recovery_requires_chrony_pairing_and_propagates_cancel(self):
+        with mock.patch.object(maintenance,'pps_sequence',side_effect=[10,11]), \
+             mock.patch.object(maintenance,'PPSCadence') as cadence, \
+             mock.patch.object(maintenance,'read_status',return_value={'state':'fresh','utc_valid':True}), \
+             mock.patch.object(maintenance,'paired_timing',return_value=False), \
+             mock.patch.object(maintenance.time,'monotonic',side_effect=[0,0,.1,2]), \
+             mock.patch.object(maintenance.time,'sleep'):
+            cadence.return_value.observe.return_value=True
+            with self.assertRaisesRegex(maintenance.NavigationRecoveryError,'Chrony F10P') as error:
+                maintenance.navigation_recovery(seconds=1)
+            self.assertEqual(error.exception.evidence['pps_seconds'],.1)
+            self.assertIsNone(error.exception.evidence['f10p_seconds'])
+        with self.assertRaises(maintenance.Cancelled):
+            maintenance.navigation_recovery(check=mock.Mock(side_effect=maintenance.Cancelled()))
+
+    def test_recovery_export_is_bounded_and_has_separate_csv_columns(self):
+        job={'kind':'snapshot','state':'Failed','navigation_recovery':{'utc_seconds':1.2,'pps_seconds':float('nan'),
+             'f10p_seconds':9999,'private':'sentinel'}}
+        self.assertEqual(json.loads(acq.result_export(job))['navigation_recovery'],{'utc_seconds':1.2})
+        row=list(csv.DictReader(io.StringIO(acq.result_export(job,'csv'))))[0]
+        self.assertEqual(row['recovery_utc_seconds'],'1.2')
+        self.assertEqual(row['recovery_pps_seconds'],'')
+        self.assertNotIn('sentinel',acq.result_export(job,'text'))
+
+    @contextlib.contextmanager
+    def boot_context(self):
+        with tempfile.TemporaryDirectory() as tmp,contextlib.ExitStack() as stack:
+            root=Path(tmp);root.chmod(0o700)
+            for target,name,value in ((acq,'ROOT',root),(assist,'ROOT',root),
+                    (acq,'load_policy',acq.DEFAULT|{'boot_policy':'database'}),
+                    (assist,'load_config',assist.DEFAULT|{'boot_injection':True}),
+                    (maintenance,'time_hint',acq.independent_time(NOW,True,'network',uncertainty=1))):
+                stack.enter_context(mock.patch.object(target,name,return_value=value) if callable(getattr(target,name)) else mock.patch.object(target,name,value))
+            payload=bytearray(pvt(valid=False));payload[21]=0
+            exchange=mock.Mock(return_value=bytes(payload))
+            yield root,exchange
+
+    def boot(self,exchange):
+        return maintenance.boot_assistance(exchange,version()[6:-2],unique()[6:-2])
+
+    def test_unqualified_database_sends_no_time_or_orbit_aid(self):
+        with self.boot_context() as (_,exchange), \
+             mock.patch.object(maintenance,'prepare',return_value={'source':'database','frames':acq.dbd_frames(dbd())}), \
+             mock.patch.object(acq,'qualified',return_value=False),mock.patch.object(maintenance,'inject_time') as time_aid:
+            result=self.boot(exchange)
+            self.assertEqual(result['state'],'Database restore not hardware-qualified')
+            time_aid.assert_not_called()
+            self.assertTrue(all(c.args[0][2:4]==b'\1\7' for c in exchange.call_args_list))
+
+    def test_unavailable_database_falls_back_without_receiver_writes(self):
+        with self.boot_context() as (_,exchange), \
+             mock.patch.object(maintenance,'prepare',side_effect=assist.AssistanceError('Private cache error must not be exported')), \
+             mock.patch.object(maintenance,'inject_time') as time_aid:
+            result=self.boot(exchange)
+            self.assertEqual(result['accepted'],0)
+            self.assertIn('Ordinary acquisition',result['state'])
+            self.assertNotIn('Private',json.dumps(result))
+            time_aid.assert_not_called()
+
+    def test_interrupted_boot_identity_mismatch_still_fails_closed(self):
+        with self.boot_context() as (root,exchange):
+            atomic_json(root/'boot-restore.json',{'state':'stopped','identity':{'binding':'another-receiver'}})
+            with self.assertRaisesRegex(assist.AssistanceError,'another receiver'):
+                self.boot(exchange)
+            exchange.assert_not_called()
+
+    def test_export_ignores_malformed_database_evidence(self):
+        for evidence in ('private-invalid',[],42):
+            with self.subTest(evidence=type(evidence).__name__):
+                value=json.loads(acq.result_export({'database_evidence':evidence}))
+                self.assertEqual(value['database_evidence'],{})
+
+    def restore(self,exchange):
+        with tempfile.TemporaryDirectory() as tmp,mock.patch.object(assist,'ROOT',Path(tmp)), \
+             mock.patch.object(manager,'read_values',return_value={manager.ACK_AIDING:0}), \
+             mock.patch.object(manager,'write_values') as writer:
+            with self.assertRaises(assist.AssistanceError) as error:
+                maintenance.restore_database(exchange,acq.dbd_frames(dbd(2)),IDENTITY['binding'])
+            self.assertEqual(writer.call_args.args[1],{manager.ACK_AIDING:0})
+            return error.exception
+
+    def test_unknown_database_ack_is_rejected_with_exact_partial_counts(self):
+        frames=acq.dbd_frames(dbd(2))
+        exchange=mock.Mock(side_effect=[b'\1\0\0\x80'+frames[0][6:10],b'\0\0\xff\x80'+frames[1][6:10]])
+        error=self.restore(exchange)
+        self.assertEqual(error.code,'database-rejected')
+        self.assertEqual(error.evidence,{'frame_count':2,'offered':2,'accepted':1,'rejected':1,'unacknowledged':0,
+                                         'failed_frame':2,'receiver_code':255,'complete':False})
+        self.assertEqual(exchange.call_count,2)  # Unknown codes must not trigger retries.
+
+    def test_database_timeout_never_serializes_exception_details(self):
+        error=self.restore(mock.Mock(side_effect=assist.AssistanceError('https://private.invalid/?credential=sentinel')))
+        self.assertEqual(error.code,'database-no-ack')
+        self.assertEqual(error.evidence['unacknowledged'],1)
+        self.assertEqual(error.evidence['accepted'],0)
+        self.assertNotIn('sentinel',str(error))
+        self.assertNotIn('private.invalid',str(error))
+
+    def test_redacted_database_failure_keeps_numeric_evidence_only(self):
+        job={'kind':'restore','failure_code':'database-rejected','failure_phase':'Receiver navigation maintenance',
+             'ownership_recovered':True,'timing_recovered':False,
+             'database_evidence':{'identity':IDENTITY,'sha256':'private','raw':'private','frame_count':159,
+                                  'offered':53,'accepted':52,'rejected':1,'unacknowledged':0,'failed_frame':53,
+                                  'receiver_code':255,'complete':False}}
+        value=json.loads(acq.result_export(job))
+        self.assertEqual(value['database_evidence']['accepted'],52)
+        self.assertEqual(value['database_evidence']['receiver_code'],255)
+        self.assertFalse(value['timing_recovered'])
+        self.assertTrue(value['ownership_recovered'])
+        self.assertNotIn('private',json.dumps(value))
+        self.assertNotIn('identity',value['database_evidence'])
+
+    def test_qualification_hold_is_visible_without_private_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);root.chmod(0o700)
+            atomic_json(root/'qualification.json',{'identity':IDENTITY,'database_restore':False,'shutdown':False,
+                       'requalification_required':True,'qualification_hold':'private-reason-sentinel'})
+            value=acq.public_status(root=root,config=acq.DEFAULT,identity=IDENTITY)
+            self.assertTrue(value['qualification_hold'])
+            self.assertNotIn('private-reason-sentinel',json.dumps(value))
+            data=fixture();data['acquisition']=value
+            html=panel.render_gnss_page(data,'csrf-fixture',section='assistnow').decode()
+            self.assertIn('on hold',html)
+            self.assertIn('some validated snapshots are rejected even after a software cold start',html)
+
+    def test_advanced_page_explains_partial_database_failure(self):
+        data=fixture();data['acquisition']={'job':{'kind':'restore','state':'Failed',
+            'failure':'Database entry rejected by receiver','failure_phase':'Receiver navigation maintenance',
+            'ownership_recovered':True,'timing_recovered':False,
+            'database_evidence':{'frame_count':159,'accepted':52,'rejected':1,'offered':53,
+                                 'unacknowledged':0,'failed_frame':53,'receiver_code':255,'complete':False}}}
+        html=panel.render_gnss_page(data,'csrf-fixture',section='advanced').decode()
+        self.assertIn('Database entry rejected by receiver',html)
+        self.assertIn('Receiver status code',html)
+        self.assertIn('255',html)
+
+    def test_database_maintenance_csv_and_text_include_failure_and_recovery(self):
+        job={'kind':'restore','state':'Failed','failure_code':'database-rejected','failure':'Database entry rejected by receiver',
+             'failure_phase':'Receiver navigation maintenance','ownership_recovered':True,'timing_recovered':False,
+             'database_evidence':{'frame_count':159,'offered':53,'accepted':52,'rejected':1,'unacknowledged':0,'failed_frame':53,'receiver_code':255,'complete':False}}
+        rows=list(csv.DictReader(io.StringIO(acq.result_export(job,'csv'))))
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]['database_accepted'],'52')
+        self.assertEqual(rows[0]['receiver_code'],'255')
+        self.assertEqual(rows[0]['ownership_recovered'],'True')
+        self.assertEqual(rows[0]['timing_recovered'],'False')
+        text=acq.result_export(job,'text')
+        self.assertIn('Database entry rejected by receiver',text)
+        self.assertIn('"receiver_code": 255',text)
+
+    def test_cancelled_database_transfer_keeps_cancellation_and_restores_settings(self):
+        with tempfile.TemporaryDirectory() as tmp,mock.patch.object(assist,'ROOT',Path(tmp)), \
+             mock.patch.object(manager,'read_values',return_value={manager.ACK_AIDING:0}), \
+             mock.patch.object(manager,'write_values') as writer:
+            with self.assertRaises(maintenance.Cancelled):
+                maintenance.restore_database(mock.Mock(side_effect=maintenance.Cancelled()),acq.dbd_frames(dbd()),IDENTITY['binding'])
+            self.assertEqual(writer.call_args.args[1],{manager.ACK_AIDING:0})
+
+    def test_worker_keeps_failure_phase_partial_ack_evidence_and_distinct_recovery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);root.chmod(0o700)
+            jobs=acq.Jobs(root);jobs.queue({'confirm':acq.CONFIRM,'start':'cold','source':'database'})
+            channel=mock.Mock(fd=123)
+            def exchange(request,*args):
+                if request[2:4]==b'\1\3':
+                    payload=struct.pack('<IBBBBII',0,0,0,0,0,0,1)
+                    channel.event(1,3,payload)
+                    return payload
+                return bytes(16)
+            channel.exchange.side_effect=exchange
+            owner=mock.Mock();owner.acquire.return_value=contextlib.nullcontext((channel,IDENTITY))
+            evidence={'frame_count':2,'accepted':1,'rejected':1,'offered':2,'unacknowledged':0,'failed_frame':2,'receiver_code':255,'complete':False}
+            error=maintenance.DatabaseTransferError('database-rejected',evidence)
+            read=assist.read_json
+            def read_facts(path,*args,**kwargs):
+                return {'identity':IDENTITY} if Path(path).name=='receiver-facts.json' else read(path,*args,**kwargs)
+            with mock.patch.object(acq,'Jobs',return_value=jobs),mock.patch.object(maintenance,'lock',return_value=contextlib.nullcontext()), \
+                 mock.patch.object(assist,'ROOT',root),mock.patch.object(assist,'read_json',side_effect=read_facts), \
+                 mock.patch.object(maintenance.signal,'signal'),mock.patch.object(maintenance,'Owner',return_value=owner), \
+                 mock.patch.object(maintenance,'time_hint',return_value=acq.independent_time(NOW,True,'network',uncertainty=1)), \
+                 mock.patch.object(maintenance,'prepare',return_value={'source':'database','frames':acq.dbd_frames(dbd(2)),'download_seconds':0}), \
+                 mock.patch.object(maintenance,'inject_time'),mock.patch.dict(sys.modules,{'termios':mock.Mock()}), \
+                 mock.patch.object(maintenance,'stopped'),mock.patch.object(maintenance,'restore_database',side_effect=error), \
+                 mock.patch.object(maintenance,'recover'),mock.patch.object(maintenance,'paired_timing',return_value=False),mock.patch.object(maintenance,'navigation_recovery',side_effect=maintenance.NavigationRecoveryError('Waiting for stable 1 Hz kernel PPS',{'utc_seconds':1,'pps_seconds':2,'stable_pps_seconds':None,'f10p_seconds':None})) as recovery:
+                maintenance.worker()
+            job=jobs.read()
+            self.assertEqual(job['state'],'Failed')
+            self.assertEqual(job['failure_phase'],'Trial 1: database restoration')
+            self.assertEqual(job['database_evidence'],evidence)
+            self.assertTrue(job['ownership_recovered'])
+            self.assertFalse(job['timing_recovered'])
+            self.assertEqual(recovery.call_args.kwargs['seconds'],120)
+            self.assertIn('Waiting for stable 1 Hz kernel PPS',job['phase'])
+            self.assertIsNone(job['navigation_recovery']['stable_pps_seconds'])

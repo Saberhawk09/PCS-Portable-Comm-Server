@@ -50,6 +50,10 @@ class PolicyTests(unittest.TestCase):
     def test_trial_modes_sources_bounds_and_alternating_order(self):
         for mode in acq.MASKS:
             for source in acq.SOURCES:
+                if source=='database' and mode!='cold':
+                    with self.assertRaises(ValueError):
+                        acq.trials({'confirm':acq.CONFIRM,'start':mode,'source':source})
+                    continue
                 rows=acq.trials({'confirm':acq.CONFIRM,'start':mode,'source':source})
                 self.assertEqual((rows[0]['start'],rows[0]['source']),(mode,source))
         for comparison in acq.COMPARISONS:
@@ -511,6 +515,7 @@ class WorkerTests(unittest.TestCase):
         paired={'state':'fresh','synchronized':True,'selected_ref':'F10P','utc_valid':True,'pps_active':True,'pps_validation':'paired','pps_selection':'*'}
         aid={'source':source,'frames':[prediction()] if source!='none' else [],'download_seconds':0}
         self.prepared_dates=[]
+        self.action_order=[]
         def prepared(source,bound,hint,*args):
             self.prepared_dates.append(hint['utc'])
             return aid
@@ -524,10 +529,12 @@ class WorkerTests(unittest.TestCase):
              mock.patch.object(maintenance,'prepare',side_effect=prepared),mock.patch.object(maintenance,'Owner',return_value=owner), \
              mock.patch.object(maintenance,'read_status',return_value=paired),mock.patch.object(maintenance,'pps_sequence',return_value=20), \
              mock.patch.object(maintenance,'recover') as recover, mock.patch.dict(sys.modules,{'termios':mock.Mock()}), \
-             mock.patch.object(maintenance,'stopped'),mock.patch.object(maintenance,'started') as restart, \
-             mock.patch.object(maintenance,'restore_database',return_value={'state':'Accepted','accepted':1}), \
-             mock.patch.object(maintenance,'inject_time',side_effect=ValueError('Fixture injection failure') if injection_failure else None):
+             mock.patch.object(maintenance,'stopped',side_effect=lambda *_:self.action_order.append('stop')),mock.patch.object(maintenance,'started',side_effect=lambda *_:self.action_order.append('start')) as restart, \
+             mock.patch.object(maintenance,'navigation_recovery',return_value={'stable_pps_seconds':3}) as recovery, \
+             mock.patch.object(maintenance,'restore_database',side_effect=lambda *_:self.action_order.append('database') or {'state':'Accepted','accepted':1}), \
+             mock.patch.object(maintenance,'inject_time',side_effect=ValueError('Fixture injection failure') if injection_failure else lambda *_:self.action_order.append('time')):
             maintenance.worker()
+            self.recovery_call=recovery.call_args
             recover.assert_called()
             if source=='database' and not injection_failure:
                 restart.assert_called_once_with(channel)
@@ -564,11 +571,19 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(job['results'][0]['accepted'],0)
         self.assertEqual(sent,[acq.reset_frame('hot')])
         self.assertIsNotNone(job['results'][0]['injection_seconds'])
+        self.assertEqual(self.recovery_call.kwargs['seconds'],120)
+        self.assertEqual(job['navigation_recovery']['stable_pps_seconds'],3)
+
+    def test_cancelled_receiver_trial_bounds_timing_recovery_within_stop_budget(self):
+        job,_=self.run_worker(cancel_phase='receiver acquisition')
+        self.assertEqual(job['state'],'Cancelled')
+        self.assertEqual(self.recovery_call.kwargs['seconds'],30)
 
     def test_database_assisted_trial_restarts_navigation_before_measuring(self):
-        job,sent=self.run_worker(source='database')
+        job,sent=self.run_worker(mode='cold',source='database')
         self.assertEqual(job['state'],'Completed')
-        self.assertEqual(sent,[acq.reset_frame('hot')])
+        self.assertEqual(sent,[acq.reset_frame('cold')])
+        self.assertEqual(self.action_order,['time','stop','database','start'])
 
 
 acq_jobs=acq.Jobs

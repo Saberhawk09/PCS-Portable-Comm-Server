@@ -1,5 +1,13 @@
 # GNSS acquisition testing and navigation preservation
 
+**Current qualification hold:** read the [17 November reliability report](gnss-maintenance-reliability.md)
+before using the original commissioning procedures below. Both unattended
+database features remain disabled. Live overlay restoration is blocked; manual
+database restoration is experimental and requires an explicitly confirmed cold
+acquisition test. Some valid snapshots still reject after cold reset. The current
+root evidence workflow admits shutdown and restore independently; do not use
+the older combined commissioning sequence below to bypass either failed gate.
+
 The v2.5.0 acquisition extension uses the existing five-section GNSS page.
 Advanced contains confirmed, disruptive acquisition tests; AssistNow contains
 normal boot policy and navigation-snapshot controls. The Overview, satellite,

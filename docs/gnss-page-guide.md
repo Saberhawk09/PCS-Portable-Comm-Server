@@ -77,7 +77,8 @@ data cannot be assumed to survive complete power loss.
 | Restore on Next Eligible Start | One successful qualified database restoration; healthy fix/PPS still defers unnecessary injection |
 | Database Age / Retention | Default 24 hours and five successful backups; configurable within validated bounds |
 | Shutdown Budget / Power Hold | Bounded 10–30-second collection; verified power interval must cover collection and cleanup |
-| Save Snapshot Now / Restore Database | Reviewed, disruptive exclusive maintenance; exact receiver, firmware, checksum, age and ACK checks |
+| Save Snapshot Now | Reviewed, disruptive exclusive maintenance; exact receiver, firmware, checksum and completion checks |
+| Restore Database | Experimental Cold + Saved Receiver Database test in Advanced; retained-data overlays and warm/hot restores are blocked. Some valid snapshots still reject after cold reset. Exact identity, age, integrity and ACK checks remain mandatory |
 
 The acquisition policy file remains absent after this deployment, so the active
 boot behavior is the existing cache-only admission. Saving policy is a separate
@@ -85,6 +86,12 @@ operator choice. Extended testing on 17 November placed unattended database
 restore and shutdown snapshots on a [qualification hold](v2.5.0-extended-qualification.md)
 after a PPS recovery timeout and a restore rejection over retained data. Normal
 shutdown saving remains off; confirmed manual maintenance remains available.
+The [current reliability report](gnss-maintenance-reliability.md) records further
+code-255 rejection even after cold start and an unexplained stopped-interval PPS
+burst. Neither unattended feature is qualified. No policy silently cold-resets
+the receiver to force restoration.
+The follow-up interface displays this exact-receiver qualification hold in
+AssistNow. It does not expose the private hold reason or enable automation.
 Downloaded Predictive archives and Pi-hosted
 receiver databases are separate stores, with separate dates and validity checks.
 
@@ -114,6 +121,19 @@ explicit fallback. Test policy overrides are temporary and leave normal boot
 settings intact. Paid Live requests need entitlement and per-experiment consent.
 Cancel/Recover releases ownership safely; live progress and current UTC/PPS state
 remain visible. Results/history export JSON, CSV and readable reports.
+
+Failed navigation transfers retain the original failure phase, entry counts,
+matched receiver status code and completion state in Advanced and redacted
+reports. Unknown codes remain failures; code 255 has no inferred meaning.
+UART ownership recovered and paired timing observed at completion are separate
+fields. A recovered GPSD connection alone does not prove PPS recovery; use the
+current Time Synchronization panel for subsequent recovery observations.
+Recovery details show measured UTC, new kernel PPS, stable 1 Hz PPS and
+F10P recovery seconds after GPSD handover. These durations are distinct from
+receiver TTFF, and incomplete events remain unknown. A successful snapshot or
+restore must observe three consecutive 1 Hz intervals after handover as well as
+fresh valid UTC and selected paired F10P. Failed operations attempt bounded
+recovery without changing their Failed/Cancelled outcome or resetting GNSS.
 
 Reports separate download duration, delivery ACK counts/time, receiver TTFF,
 host first 2D/3D, valid receiver UTC, advancing kernel PPS, Chrony synchronization

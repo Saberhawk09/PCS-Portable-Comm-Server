@@ -10,6 +10,7 @@ import importlib.machinery
 import importlib.util
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import select
@@ -34,6 +35,24 @@ def boot_id():
 
 class Cancelled(ValueError):
     pass
+
+
+class DatabaseTransferError(assist.AssistanceError):
+    """Only fixed reasons and numeric ACK evidence may cross the export boundary."""
+    REASONS={'database-rejected':'Database entry rejected by receiver',
+             'database-ack-mismatch':'Database acknowledgement malformed or mismatched',
+             'database-no-ack':'Database acknowledgement unavailable',
+             'database-deadline':'Database restore deadline exceeded'}
+
+    def __init__(self,code,evidence):
+        super().__init__(self.REASONS[code])
+        self.code,self.evidence=code,dict(evidence)
+
+
+class NavigationRecoveryError(assist.AssistanceError):
+    def __init__(self,stage,evidence):
+        super().__init__(stage)
+        self.evidence=dict(evidence)
 
 
 def command(*args):
@@ -165,11 +184,67 @@ def pps_sequence():
         return None
 
 
+def pps_reading():
+    try:
+        target=(RUNTIME/'pps').resolve(strict=True).name
+        stamp,sequence=(Path('/sys/class/pps')/target/'assert').read_text().strip().split('#')
+        stamp,sequence=float(stamp),int(sequence)
+        return (stamp,sequence) if math.isfinite(stamp) and stamp>0 and sequence>=0 else None
+    except (OSError,ValueError):
+        return None
+
+
+class PPSCadence:
+    """Maintenance recovery only; reject bursts as proof of healthy 1 Hz PPS."""
+    def __init__(self):
+        self.previous=None
+        self.consecutive=0
+
+    def observe(self,event):
+        if event is None:
+            self.previous,self.consecutive=None,0
+        elif self.previous is None:
+            self.previous=event
+        elif event[1]!=self.previous[1]:
+            elapsed,events=event[0]-self.previous[0],event[1]-self.previous[1]
+            self.consecutive=min(3,self.consecutive+1) if events==1 and .8<=elapsed<=1.2 else 0
+            self.previous=event
+        return self.consecutive>=3
+
+
 def paired_timing():
     state=read_status()
     return (state.get('state')=='fresh' and state.get('pps_validation')=='paired' and
             state.get('selected_ref')=='F10P' and state.get('pps_selection')=='*' and
             state.get('utc_valid') is True and state.get('pps_active') is True and state.get('synchronized') is True)
+
+
+def navigation_recovery(check=lambda:None,seconds=120,phase=lambda _:None):
+    """Observe new kernel pulses after handover, not a cached pre-maintenance state."""
+    baseline=pps_sequence()
+    cadence=PPSCadence()
+    began=time.monotonic();deadline=began+seconds
+    evidence={'utc_seconds':None,'pps_seconds':None,'stable_pps_seconds':None,'f10p_seconds':None}
+    stage=None
+    while time.monotonic()<deadline:
+        check()
+        state=read_status();sequence=pps_sequence();elapsed=time.monotonic()-began
+        utc=state.get('state')=='fresh' and state.get('utc_valid') is True
+        advancing=baseline is not None and sequence is not None and sequence>baseline
+        stable=cadence.observe(pps_reading())
+        if utc and evidence['utc_seconds'] is None:evidence['utc_seconds']=elapsed
+        if advancing and evidence['pps_seconds'] is None:evidence['pps_seconds']=elapsed
+        if stable and evidence['stable_pps_seconds'] is None:evidence['stable_pps_seconds']=elapsed
+        current=('Waiting for fresh validated UTC' if not utc else
+                 'Waiting for advancing kernel PPS' if not advancing else
+                 'Waiting for stable 1 Hz kernel PPS' if not stable else
+                 'Waiting for paired Chrony F10P selection')
+        if current!=stage:phase(current);stage=current
+        if utc and advancing and stable and paired_timing():
+            evidence['f10p_seconds']=elapsed
+            return evidence
+        time.sleep(.1)
+    raise NavigationRecoveryError(stage or 'Navigation recovery unavailable',evidence)
 
 
 class Channel:
@@ -378,18 +453,30 @@ def restore_database(exchange,frames,binding,deadline_seconds=20):
     before=manager.read_values(exchange,[manager.ACK_AIDING])
     journal=assist.ROOT/'receiver-transaction.json'
     atomic_json(journal,{'state':'pending','binding':binding,'before':{str(k):v for k,v in before.items()}})
-    accepted=0
+    evidence={'frame_count':len(frames),'offered':0,'accepted':0,'rejected':0,'unacknowledged':0,'complete':False}
     deadline=time.monotonic()+deadline_seconds
     try:
         manager.write_values(exchange,{manager.ACK_AIDING:1})
-        for frame in frames:
+        for number,frame in enumerate(frames,1):
             if time.monotonic()>=deadline:
-                raise assist.AssistanceError('Database restore deadline')
-            ack=exchange(frame,0x13,0x60)
-            if len(ack)!=8 or ack[:4]!=b'\x01\0\0\x80' or ack[4:8]!=frame[6:10]:
-                raise assist.AssistanceError('Database restore rejected or mismatched ACK')
-            accepted+=1
-        return {'state':'Accepted','accepted':accepted,'rejected':0}
+                raise DatabaseTransferError('database-deadline',evidence)
+            evidence['offered']+=1
+            try:
+                ack=exchange(frame,0x13,0x60)
+            except Cancelled:
+                raise
+            except (ValueError,OSError,subprocess.SubprocessError):
+                evidence.update(unacknowledged=evidence['unacknowledged']+1,failed_frame=number)
+                raise DatabaseTransferError('database-no-ack',evidence) from None
+            matched=(len(ack)==8 and ack[1]==0 and ack[3]==0x80 and ack[4:8]==frame[6:10])
+            if not matched or ack[0] not in (0,1):
+                evidence.update(unacknowledged=evidence['unacknowledged']+1,failed_frame=number)
+                raise DatabaseTransferError('database-ack-mismatch',evidence)
+            if ack[0]!=1 or ack[2]!=0:
+                evidence.update(rejected=evidence['rejected']+1,failed_frame=number,receiver_code=ack[2])
+                raise DatabaseTransferError('database-rejected',evidence)
+            evidence['accepted']+=1
+        return {'state':'Accepted','accepted':evidence['accepted'],'rejected':0}
     finally:
         manager.write_values(exchange,before)
         atomic_json(journal,{'state':'restored'})
@@ -501,6 +588,7 @@ def worker():
         if job.get('state')!='Queued':
             return
         stopped_signal=False
+        receiver_owned=False
         def stop(*_):
             nonlocal stopped_signal
             stopped_signal=True
@@ -516,6 +604,8 @@ def worker():
         job.update(state='Running',phase='Preparing')
         jobs.save(job)
         try:
+            if job['kind']=='restore':
+                raise assist.AssistanceError('Live database overlay restoration is unsupported; use an explicitly confirmed software cold test')
             facts=assist.read_json(assist.ROOT/'receiver-facts.json',{},private=True)
             bound=facts.get('identity')
             if not bound:
@@ -526,6 +616,7 @@ def worker():
                     raise assist.AssistanceError('Independent UTC date unavailable')
                 phase('Receiver navigation maintenance')
                 with Owner(job['id'],check).acquire() as (channel,actual):
+                    receiver_owned=True
                     if actual!=bound:
                         raise assist.AssistanceError('Receiver changed during preparation')
                     aop=channel.exchange(ubx(1,0x60),1,0x60)
@@ -542,9 +633,10 @@ def worker():
                         stopped(channel)
                         result=restore_database(channel.exchange,frames,bound['binding'])
                         job['database_evidence']={'identity':bound,'sha256':meta['sha256'],'frame_count':len(frames),
-                                                  'accepted':result['accepted'],'complete':True}
+                                                  'accepted':result['accepted'],'offered':len(frames),'rejected':0,
+                                                  'unacknowledged':0,'complete':True}
                 phase('Waiting for fresh UTC/PPS after navigation maintenance')
-                wait(paired_timing,120,check)
+                job['navigation_recovery']=navigation_recovery(check,phase=phase)
                 job['timing_recovered']=True
                 job['state']='Completed'
             else:
@@ -558,6 +650,8 @@ def worker():
                     if key not in prepared:
                         prepared[key]=prepare(trial['source'],bound,hint,trial['fallback'],trial['paid_consent'])
                     aid=prepared[key]
+                    if aid['source']=='database' and trial['start']!='cold':
+                        raise assist.AssistanceError('Saved database assistance requires an explicitly confirmed software cold test')
                     # Network preparation can take seconds or cross UTC midnight.
                     # Recheck the date before selecting frames and resetting GNSS.
                     hint=time_hint()
@@ -583,6 +677,7 @@ def worker():
                     metrics=None
                     try:
                         with Owner(job['id'],check).acquire() as (channel,actual):
+                            receiver_owned=True
                             if actual!=bound:
                                 raise assist.AssistanceError('Receiver changed')
                             row['receiver_verified']=True
@@ -610,16 +705,29 @@ def worker():
                                         row['unacknowledged']+=1
                                     raise
                                 if aiding:
-                                    valid=(len(reply)==8 and reply[:3]==b'\1\0\0' and reply[3]==request[3] and reply[4:8]==request[6:10])
-                                    row['accepted' if valid else 'rejected']+=1
+                                    matched=(len(reply)==8 and reply[1]==0 and reply[0] in (0,1) and
+                                             reply[3]==request[3] and reply[4:8]==request[6:10])
+                                    key='unacknowledged' if not matched else 'accepted' if reply[0]==1 and reply[2]==0 else 'rejected'
+                                    row[key]+=1
                                 return reply
                             try:
                                 if aid['frames']:
                                     if aid['source']=='database':
-                                        stopped(channel)
+                                        # CFG-RST may not ACK. Observe the new
+                                        # session before stopping it for restore.
+                                        boundary=time.monotonic()+5
+                                        while not metrics.after_reset_seen and time.monotonic()<boundary:
+                                            channel.exchange(ubx(1,3),1,3)
+                                        if not metrics.after_reset_seen:
+                                            raise assist.AssistanceError('Software cold reset session was not observed; database not restored')
+                                    phase('Trial '+str(trial['trial'])+': independent time aiding')
                                     inject_time(counted_exchange,hint,bound['binding'])
                                     row['time_aiding']='Independent coarse UTC accepted; not a trusted timing sample'
                                     if aid['source']=='database':
+                                        # The F10N rejects MGA-INI while stopped.
+                                        # Aid time in the running new session first.
+                                        stopped(channel)
+                                        phase('Trial '+str(trial['trial'])+': database restoration')
                                         result=restore_database(counted_exchange,aid['frames'],bound['binding'])
                                         started(channel)
                                     else:
@@ -660,26 +768,58 @@ def worker():
                             time.sleep(.5)
                         if metrics.values['f10p_seconds'] is None:
                             raise assist.AssistanceError('F10P recovery not observed within 120 seconds')
+                        if aid['source']=='database':
+                            job['navigation_recovery']=navigation_recovery(check,phase=phase)
                         row.update(state='Completed',recovery='Fresh UTC, advancing PPS and F10P selection observed')
-                    except BaseException:
+                    except BaseException as error:
                         if metrics:
                             row.update(metrics=dict(metrics.values),first_fix=metrics.first_fix)
                         row.update(state='Cancelled' if stopped_signal or jobs.cancelled(job['id']) else 'Failed',
                                    failure='Trial interrupted or unsuccessful; inspect recovery status')
+                        if isinstance(error,DatabaseTransferError):
+                            row['failure']=str(error)
                         raise
                 job['state']='Completed'
-        except (ValueError,OSError,subprocess.SubprocessError):
+        except (ValueError,OSError,subprocess.SubprocessError) as error:
             job['state']='Cancelled' if stopped_signal or jobs.cancelled(job['id']) else 'Failed'
+            job['failure_phase']=job.get('phase','maintenance')
             job['failure']='Operation unsuccessful during '+job.get('phase','maintenance')
+            if isinstance(error,DatabaseTransferError):
+                job.update(failure=str(error),failure_code=error.code,database_evidence=error.evidence)
+            if isinstance(error,NavigationRecoveryError):
+                job.update(failure=str(error),navigation_recovery=error.evidence)
         finally:
             job['phase']='Restoring ordinary ownership and timing'
             try:
                 recover()
             except (ValueError,OSError,subprocess.SubprocessError):
                 job['state']='Recovery required'
+                job['ownership_recovered']=False
                 job['phase']='GNSS references remain withdrawn; operator recovery required'
             else:
+                job['ownership_recovered']=True
                 job['phase']='UART returned to GPSD; timing recovery is independently reported'
+                if receiver_owned and job['state']!='Completed' and not job.get('navigation_recovery'):
+                    # Recovery ignores the cancelled trial but remains bounded.
+                    # Leave time for StopPost within systemd's stop budget.
+                    seconds=30 if stopped_signal or jobs.cancelled(job['id']) else 120
+                    def recovery_phase(text):
+                        job['phase']='Recovery: '+text
+                        jobs.save(job)
+                    try:
+                        job['navigation_recovery']=navigation_recovery(seconds=seconds,phase=recovery_phase)
+                    except NavigationRecoveryError as error:
+                        job['navigation_recovery']=error.evidence
+                        job['phase']='UART returned; '+str(error)
+                    except (ValueError,OSError,subprocess.SubprocessError):
+                        job['navigation_recovery']={key:None for key in ('utc_seconds','pps_seconds','stable_pps_seconds','f10p_seconds')}
+                        job['phase']='UART returned; timing recovery observation unavailable'
+                    else:
+                        job['phase']='UART and stable paired timing recovered after unsuccessful operation'
+            try:
+                job['timing_recovered']=paired_timing()
+            except (ValueError,OSError,subprocess.SubprocessError):
+                job['timing_recovered']=None
             job['completed_at']=time.time()
             jobs.finish(job)
 
@@ -741,15 +881,20 @@ def qualify(evidence_file,confirm,arm_shutdown=False):
     if confirm!='I authorize GNSS timing maintenance':
         raise assist.AssistanceError('Explicit hardware qualification authorization required')
     evidence=acq.private_json(evidence_file,{})
+    capability=evidence.get('capability','shutdown' if arm_shutdown else 'database_restore')
+    if capability not in ('database_restore','shutdown') or (arm_shutdown and capability!='shutdown'):
+        raise assist.AssistanceError('Select one qualification capability')
+    if arm_shutdown and (type(evidence.get('power_hold_seconds')) is not int or not 90<=evidence['power_hold_seconds']<=600):
+        raise assist.AssistanceError('Verified power hold of at least 90 seconds required')
     bound=assist.read_json(assist.ROOT/'receiver-facts.json',{},private=True).get('identity')
     if not bound:
         raise assist.AssistanceError('Receiver not enrolled')
     receipts=[]
-    for kind in ('snapshot','restore'):
+    for kind in (('snapshot','restore') if capability=='database_restore' else ('snapshot',)):
         ident=evidence.get(kind,'')
         import re
         if not isinstance(ident,str) or not re.fullmatch('[a-f0-9]{32}',ident):
-            raise assist.AssistanceError('Capture and restore reports required')
+            raise assist.AssistanceError('Required navigation maintenance report missing')
         job=acq.private_json(acq.ROOT/'history'/(ident+'.json'),{})
         proof=job.get('database_evidence',{})
         if (job.get('kind')!=kind or job.get('state')!='Completed' or not job.get('timing_recovered') or
@@ -757,22 +902,30 @@ def qualify(evidence_file,confirm,arm_shutdown=False):
                 not proof.get('frame_count') or proof.get('accepted')!=proof['frame_count']):
             raise assist.AssistanceError('Successful exact-receiver hardware evidence missing')
         receipts.append(proof)
-    if receipts[0]['sha256']!=receipts[1]['sha256']:
+    if capability=='database_restore' and receipts[0]['sha256']!=receipts[1]['sha256']:
         raise assist.AssistanceError('Restore must qualify the captured database')
-    result={'identity':bound,'database_capture':True,'database_restore':True,'at':time.time(),
-            'capture_report':evidence['snapshot'],'restore_report':evidence['restore'],'shutdown':False}
+    previous=acq.private_json(acq.ROOT/'qualification.json',{})
+    result={'identity':bound,'database_capture':True,'database_restore':False,'shutdown':False}
+    if previous.get('identity')==bound:
+        result.update({key:previous.get(key) is True for key in ('database_restore','shutdown')})
+        if previous.get('restore_report'):result['restore_report']=previous['restore_report']
+    result.update(at=time.time(),capture_report=evidence['snapshot'])
+    if capability=='database_restore':
+        result.update(database_restore=True,restore_report=evidence['restore'])
     shutdown=acq.private_json(acq.ROOT/'shutdown-result.json',{})
-    if (shutdown.get('state')=='Completed' and shutdown.get('qualification_trial') is True and
+    if (capability=='shutdown' and not arm_shutdown and shutdown.get('state')=='Completed' and shutdown.get('qualification_trial') is True and
             shutdown.get('identity')==bound and shutdown.get('sha256') and
             shutdown.get('boot_id')!=boot_id()):
         result['shutdown']=True
+    elif capability=='shutdown' and not arm_shutdown:
+        raise assist.AssistanceError('Completed exact-receiver shutdown evidence from a previous boot required')
+    result['requalification_required']=not (result['database_restore'] and result['shutdown'])
     atomic_json(acq.ROOT/'qualification.json',result)
     if arm_shutdown:
-        if type(evidence.get('power_hold_seconds')) is not int or not 90<=evidence['power_hold_seconds']<=600:
-            raise assist.AssistanceError('Verified power hold of at least 90 seconds required')
         atomic_json(acq.ROOT/'shutdown-qualification.json',{'authorized':True,'identity':bound,'at':time.time(),
                                                          'power_hold_seconds':evidence['power_hold_seconds']})
     return {'state':'Database hardware evidence admitted','shutdown_qualified':result['shutdown'],
+            'database_restore_qualified':result['database_restore'],
             'shutdown_trial_armed':arm_shutdown}
 
 
@@ -821,13 +974,18 @@ def boot_assistance(exchange,version,unique,timing_healthy=False):
             return {'state':'Live cache unavailable / Ordinary acquisition','accepted':0}
         aid={'source':'live','frames':frames}
     else:
-        aid=prepare(source,bound,hint,cfg['fallback'])
+        try:
+            aid=prepare(source,bound,hint,cfg['fallback'])
+        except (ValueError,OSError,subprocess.SubprocessError):
+            # No receiver transaction has begun. Invalid or missing assistance
+            # is an ordinary acquisition path, never a reason to reset GNSS.
+            return {'state':'Host assistance unavailable / Ordinary acquisition','accepted':0}
     if not aid['frames']:
         return {'state':'Receiver-retained / Ordinary acquisition','accepted':0}
+    if aid['source']=='database' and not acq.qualified(acq.ROOT,bound,'database_restore'):
+        return {'state':'Database restore not hardware-qualified','accepted':0}
     inject_time(exchange,hint,bound['binding'])
     if aid['source']=='database':
-        if not acq.qualified(acq.ROOT,bound,'database_restore'):
-            return {'state':'Database restore not hardware-qualified','accepted':0}
         atomic_json(journal,{'state':'stopped','identity':bound})
         try:
             exchange(acq.control_frame(False)+ubx(10,4),10,4)

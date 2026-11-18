@@ -4,6 +4,30 @@ All notable user-facing PCS changes are recorded here.
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-11-17
+
+- Close GNSS reliability qualification with explicit capability states, observed
+  power-up and read-only SBAS evidence, retained database automation holds,
+  recovery/rollback instructions and a sanitized, unsent manufacturer report.
+- Require a newly observed kernel PPS event after navigation-maintenance handover,
+  stable 1 Hz cadence, fresh validated UTC and paired F10P before success; retain bounded partial
+  recovery timings and the specific failed recovery stage without reset retries.
+- Reject live database overlays and warm/hot database trials before receiver
+  access. Keep cold restoration experimental: some valid same-receiver snapshots
+  are rejected even after reset. Both unattended database features remain held.
+- Send independent coarse time before stopping the GNSS engine for database
+  restoration. Observe bounded timing recovery after failure or cancellation
+  while preserving the original failed/cancelled outcome.
+- Admit startup-restore and shutdown qualification independently through the
+  existing private evidence workflow; validate shutdown power hold before writes.
+
+- Check database hardware qualification before any boot time-aiding write;
+  unavailable host assistance permits ordinary acquisition without a reset.
+- Preserve partial database ACK counts, failure phase and receiver status in
+  redacted reports; distinguish UART ownership recovery from paired timing.
+- Display an exact-receiver database qualification hold in AssistNow without
+  exposing private evidence or enabling unattended operations.
+
 ## [2.5.0] - 2026-11-17
 
 - Add a responsive five-section GNSS dashboard with actual differential fix,
